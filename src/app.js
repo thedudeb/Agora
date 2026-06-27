@@ -47,6 +47,7 @@ const seedData = {
       name: "Agora MVP Launch",
       description: "Define and ship the first public version of Agora.",
       owner: "mara",
+      startDate: "2026-06-27",
       dueDate: "2026-08-21"
     },
     {
@@ -54,6 +55,7 @@ const seedData = {
       name: "Client Delivery Template",
       description: "Create a reusable workflow for agencies and service teams.",
       owner: "sam",
+      startDate: "2026-07-01",
       dueDate: "2026-07-31"
     },
     {
@@ -61,6 +63,7 @@ const seedData = {
       name: "Design System",
       description: "Establish core interaction patterns and reusable interface pieces.",
       owner: "nina",
+      startDate: "2026-07-02",
       dueDate: "2026-08-07"
     }
   ],
@@ -322,6 +325,16 @@ function formatDate(date) {
   return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function formatFullDate(date) {
+  if (!date) return "No date";
+  const parsed = new Date(`${date}T12:00:00`);
+  return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function parseDateValue(date) {
+  return date ? new Date(`${date}T12:00:00`) : null;
+}
+
 function formatTimestamp(timestamp) {
   const parsed = new Date(timestamp);
   return parsed.toLocaleString(undefined, {
@@ -441,6 +454,34 @@ function updateTask(id, updates) {
   const next = { ...previous, ...updates };
   state.tasks = state.tasks.map((task) => task.id === id ? next : task);
   recordTaskChanges(previous, next);
+  saveState();
+  render();
+}
+
+function updateMilestoneDate(id, dueDate) {
+  const milestone = byId(state.milestones, id);
+  if (!milestone || milestone.dueDate === dueDate) return;
+
+  state.milestones = state.milestones.map((item) => item.id === id ? { ...item, dueDate } : item);
+  addActivity({
+    projectId: milestone.projectId,
+    type: "milestone_date",
+    message: `moved milestone ${milestone.title} to ${formatFullDate(dueDate)}`
+  });
+  saveState();
+  render();
+}
+
+function updateProjectDate(id, field, date) {
+  const project = byId(state.projects, id);
+  if (!project || project[field] === date) return;
+
+  state.projects = state.projects.map((item) => item.id === id ? { ...item, [field]: date } : item);
+  addActivity({
+    projectId: id,
+    type: "project_date",
+    message: `changed project ${field === "startDate" ? "start" : "due"} date to ${formatFullDate(date)}`
+  });
   saveState();
   render();
 }
@@ -651,6 +692,7 @@ function renderProjectPage() {
         <p>${escapeHtml(project.description)}</p>
         <div class="meta-row">
           <span>Owner ${memberName(project.owner)}</span>
+          <span>Start ${formatDate(project.startDate)}</span>
           <span>Due ${formatDate(project.dueDate)}</span>
           <span>${milestones.length} ${milestones.length === 1 ? "milestone" : "milestones"}</span>
         </div>
@@ -666,6 +708,7 @@ function renderProjectPage() {
       ${projectTabButton("overview", "Overview")}
       ${projectTabButton("tasks", "Tasks")}
       ${projectTabButton("board", "Board")}
+      ${projectTabButton("timeline", "Timeline")}
       ${projectTabButton("milestones", "Milestones")}
     </nav>
 
@@ -679,6 +722,7 @@ function renderProjectPage() {
     }) : ""}
     ${state.selectedProjectTab === "tasks" ? renderProjectTasks(filteredProjectTasks) : ""}
     ${state.selectedProjectTab === "board" ? renderProjectBoard(filteredProjectTasks) : ""}
+    ${state.selectedProjectTab === "timeline" ? renderProjectTimeline(project, filteredProjectTasks, milestones) : ""}
     ${state.selectedProjectTab === "milestones" ? renderProjectMilestones(milestones) : ""}
   `;
 }
@@ -805,6 +849,130 @@ function renderProjectBoard(tasks) {
         `;
       }).join("")}
     </div>
+  `;
+}
+
+function renderProjectTimeline(project, tasks, milestones) {
+  const datedTasks = tasks.filter((task) => task.dueDate);
+  const undatedTasks = tasks.filter((task) => !task.dueDate);
+  const timelineItems = [
+    project.startDate ? {
+      id: `${project.id}-start`,
+      type: "project",
+      label: "Project start",
+      title: project.name,
+      date: project.startDate,
+      description: "Planned project kickoff."
+    } : null,
+    ...milestones.filter((milestone) => milestone.dueDate).map((milestone) => ({
+      id: milestone.id,
+      type: "milestone",
+      label: "Milestone",
+      title: milestone.title,
+      date: milestone.dueDate,
+      description: milestone.description,
+      status: milestone.status
+    })),
+    ...datedTasks.map((task) => ({
+      id: task.id,
+      type: "task",
+      label: "Task due",
+      title: task.title,
+      date: task.dueDate,
+      description: task.description,
+      status: task.status,
+      priority: task.priority,
+      assignee: task.assignee
+    })),
+    project.dueDate ? {
+      id: `${project.id}-end`,
+      type: "project",
+      label: "Project due",
+      title: project.name,
+      date: project.dueDate,
+      description: "Target project completion."
+    } : null
+  ].filter(Boolean).sort((a, b) => a.date.localeCompare(b.date));
+
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Plan</p>
+          <h2>Timeline</h2>
+        </div>
+      </div>
+
+      <div class="timeline-controls">
+        <label>
+          <span>Project start</span>
+          <input type="date" value="${project.startDate || ""}" data-project-date="startDate" data-project-id="${project.id}">
+        </label>
+        <label>
+          <span>Project due</span>
+          <input type="date" value="${project.dueDate || ""}" data-project-date="dueDate" data-project-id="${project.id}">
+        </label>
+      </div>
+
+      <div class="timeline-list">
+        ${timelineItems.length ? timelineItems.map(renderTimelineItem).join("") : emptyState("Add dates to tasks or milestones to build this timeline.")}
+      </div>
+
+      ${undatedTasks.length ? `
+        <div class="undated-panel">
+          <div>
+            <p class="eyebrow">Unscheduled</p>
+            <h3>No-date tasks</h3>
+          </div>
+          <div class="undated-list">
+            ${undatedTasks.map(renderUndatedTask).join("")}
+          </div>
+        </div>
+      ` : ""}
+    </section>
+  `;
+}
+
+function renderTimelineItem(item) {
+  const isPast = parseDateValue(item.date) && parseDateValue(item.date) < new Date() && item.status !== "done";
+  const detail = item.type === "task"
+    ? `${memberName(item.assignee)} - ${priorityLabel(item.priority)} - ${statusLabel(item.status)}`
+    : item.type === "milestone"
+      ? item.status.replace("-", " ")
+      : item.description;
+
+  return `
+    <article class="timeline-item timeline-${item.type} ${isPast ? "is-late" : ""}">
+      <div class="timeline-date">
+        <strong>${formatDate(item.date)}</strong>
+        <span>${item.label}</span>
+      </div>
+      <div class="timeline-marker" aria-hidden="true"></div>
+      <div class="timeline-card">
+        <div>
+          <h3>${escapeHtml(item.title)}</h3>
+          <p>${escapeHtml(item.description)}</p>
+          <div class="meta-row">
+            <span>${escapeHtml(detail)}</span>
+            ${isPast ? "<span class=\"is-overdue\">Past due</span>" : ""}
+          </div>
+        </div>
+        ${item.type === "task" ? `<input class="timeline-date-input" type="date" value="${item.date}" data-task-date="${item.id}" aria-label="Change task due date">` : ""}
+        ${item.type === "milestone" ? `<input class="timeline-date-input" type="date" value="${item.date}" data-milestone-date="${item.id}" aria-label="Change milestone due date">` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function renderUndatedTask(task) {
+  return `
+    <article class="undated-task">
+      <button class="table-task-button" type="button" data-edit-task="${task.id}">
+        <strong>${escapeHtml(task.title)}</strong>
+        <span>${memberName(task.assignee)} - ${priorityLabel(task.priority)}</span>
+      </button>
+      <input class="timeline-date-input" type="date" data-task-date="${task.id}" aria-label="Add task due date">
+    </article>
   `;
 }
 
@@ -1097,6 +1265,7 @@ function fillSelect(selector, options, selectedValue, labelKey) {
 function populateProjectForm() {
   document.querySelector("#project-name").value = "";
   document.querySelector("#project-description").value = "";
+  document.querySelector("#project-start-date").value = "";
   document.querySelector("#project-due-date").value = "";
   fillSelect("#project-owner", members, members[0].id, "name");
 }
@@ -1217,8 +1386,27 @@ els.priorityFilter.addEventListener("change", (event) => {
 
 els.appView.addEventListener("change", (event) => {
   const select = event.target.closest("[data-inline-field]");
-  if (!select) return;
-  updateTask(select.dataset.taskId, { [select.dataset.inlineField]: select.value });
+  if (select) {
+    updateTask(select.dataset.taskId, { [select.dataset.inlineField]: select.value });
+    return;
+  }
+
+  const taskDateInput = event.target.closest("[data-task-date]");
+  if (taskDateInput) {
+    updateTask(taskDateInput.dataset.taskDate, { dueDate: taskDateInput.value });
+    return;
+  }
+
+  const milestoneDateInput = event.target.closest("[data-milestone-date]");
+  if (milestoneDateInput) {
+    updateMilestoneDate(milestoneDateInput.dataset.milestoneDate, milestoneDateInput.value);
+    return;
+  }
+
+  const projectDateInput = event.target.closest("[data-project-date]");
+  if (projectDateInput) {
+    updateProjectDate(projectDateInput.dataset.projectId, projectDateInput.dataset.projectDate, projectDateInput.value);
+  }
 });
 
 els.appView.addEventListener("dragstart", (event) => {
@@ -1280,6 +1468,7 @@ els.projectForm.addEventListener("submit", (event) => {
     name: document.querySelector("#project-name").value.trim(),
     description: document.querySelector("#project-description").value.trim(),
     owner: document.querySelector("#project-owner").value,
+    startDate: document.querySelector("#project-start-date").value,
     dueDate: document.querySelector("#project-due-date").value
   };
 

@@ -507,6 +507,121 @@ textarea:focus {
   background: var(--accent-soft);
 }
 
+.timeline-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 14px 0 18px;
+  padding: 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.timeline-list {
+  display: grid;
+  gap: 0;
+}
+
+.timeline-item {
+  display: grid;
+  grid-template-columns: 112px 28px minmax(0, 1fr);
+  gap: 12px;
+  position: relative;
+  padding: 0 0 14px;
+}
+
+.timeline-item::before {
+  content: "";
+  position: absolute;
+  top: 28px;
+  bottom: -2px;
+  left: 125px;
+  width: 2px;
+  background: var(--line);
+}
+
+.timeline-item:last-child::before {
+  display: none;
+}
+
+.timeline-date {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-height: 46px;
+  padding-top: 6px;
+}
+
+.timeline-date strong {
+  font-size: 0.9rem;
+}
+
+.timeline-date span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.timeline-marker {
+  width: 14px;
+  height: 14px;
+  margin: 10px auto 0;
+  background: var(--accent);
+  border: 3px solid var(--surface);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1px var(--line-strong);
+  z-index: 1;
+}
+
+.timeline-task .timeline-marker {
+  background: var(--blue);
+}
+
+.timeline-milestone .timeline-marker {
+  background: var(--amber);
+}
+
+.timeline-card,
+.undated-task {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px;
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.timeline-card h3,
+.undated-panel h3 {
+  margin: 0;
+}
+
+.timeline-card p {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.timeline-date-input {
+  min-width: 0;
+}
+
+.undated-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.undated-list {
+  display: grid;
+  gap: 10px;
+}
+
 .board {
   display: grid;
   grid-template-columns: repeat(4, minmax(230px, 1fr));
@@ -832,6 +947,7 @@ th {
   .project-hero,
   .form-grid,
   .collaboration-grid,
+  .timeline-controls,
   .nav-list,
   .project-list {
     grid-template-columns: 1fr;
@@ -842,6 +958,22 @@ th {
   }
 
   .milestone-card {
+    grid-template-columns: 1fr;
+  }
+
+  .timeline-item {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding-bottom: 12px;
+  }
+
+  .timeline-item::before,
+  .timeline-marker {
+    display: none;
+  }
+
+  .timeline-card,
+  .undated-task {
     grid-template-columns: 1fr;
   }
 
