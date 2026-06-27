@@ -32,6 +32,9 @@ const routes = {
   calendar: "Calendar",
   "my-work": "My Work",
   time: "Time",
+  docs: "Docs & Files",
+  intake: "Intake",
+  fields: "Custom Fields",
   companies: "Companies",
   company: "Company",
   project: "Project"
@@ -132,6 +135,11 @@ const seedData = {
         { id: "subtask-1-2", title: "Call out deferred enterprise scope", done: false },
         { id: "subtask-1-3", title: "Share scope with early contributors", done: false }
       ],
+      customFields: {
+        effort: "Large",
+        risk: "High",
+        budget: "0"
+      },
       createdAt: "2026-06-27T12:00:00.000Z"
     },
     {
@@ -148,6 +156,11 @@ const seedData = {
         { id: "subtask-2-1", title: "Outline local setup", done: true },
         { id: "subtask-2-2", title: "Draft deployment notes", done: false }
       ],
+      customFields: {
+        effort: "Medium",
+        risk: "Medium",
+        budget: "0"
+      },
       createdAt: "2026-06-27T12:10:00.000Z"
     },
     {
@@ -180,6 +193,11 @@ const seedData = {
         { id: "subtask-4-1", title: "Capture sales handoff", done: true },
         { id: "subtask-4-2", title: "Define client kickoff tasks", done: false }
       ],
+      customFields: {
+        effort: "Medium",
+        risk: "Medium",
+        budget: "2500"
+      },
       createdAt: "2026-06-27T12:30:00.000Z"
     },
     {
@@ -341,6 +359,136 @@ const seedData = {
       createdAt: "2026-06-27T14:45:00.000Z"
     }
   ],
+  customFields: [
+    {
+      id: "effort",
+      name: "Effort",
+      type: "select",
+      options: ["Small", "Medium", "Large"]
+    },
+    {
+      id: "risk",
+      name: "Risk",
+      type: "select",
+      options: ["Low", "Medium", "High"]
+    },
+    {
+      id: "budget",
+      name: "Budget",
+      type: "number",
+      options: []
+    }
+  ],
+  documents: [
+    {
+      id: "doc-launch-brief",
+      projectId: "launch",
+      title: "MVP Launch Brief",
+      type: "Brief",
+      owner: "mara",
+      updatedAt: "2026-06-27T15:30:00.000Z",
+      body: "Release scope, positioning, contributor story, and the first self-hosting path."
+    },
+    {
+      id: "doc-client-kickoff",
+      projectId: "client-delivery",
+      title: "Client Kickoff Template",
+      type: "Template",
+      owner: "sam",
+      updatedAt: "2026-07-02T13:10:00.000Z",
+      body: "Reusable agenda, stakeholder notes, risks, open questions, and handoff checklist."
+    },
+    {
+      id: "doc-design-principles",
+      projectId: "design-system",
+      title: "Interaction Principles",
+      type: "Spec",
+      owner: "nina",
+      updatedAt: "2026-07-03T10:20:00.000Z",
+      body: "Density, hierarchy, empty states, motion restraint, and core card behaviors."
+    }
+  ],
+  files: [
+    {
+      id: "file-launch-map",
+      projectId: "launch",
+      title: "Launch messaging map.pdf",
+      kind: "PDF",
+      size: "1.8 MB",
+      owner: "mara",
+      updatedAt: "2026-06-28T09:45:00.000Z"
+    },
+    {
+      id: "file-flow-sketch",
+      projectId: "client-delivery",
+      title: "Agency onboarding flow.fig",
+      kind: "Design",
+      size: "4.2 MB",
+      owner: "nina",
+      updatedAt: "2026-07-04T16:00:00.000Z"
+    },
+    {
+      id: "file-export-sample",
+      projectId: "design-system",
+      title: "Task card density notes.csv",
+      kind: "CSV",
+      size: "320 KB",
+      owner: "eli",
+      updatedAt: "2026-07-05T11:35:00.000Z"
+    }
+  ],
+  intakeForms: [
+    {
+      id: "form-client-request",
+      title: "Client Work Request",
+      projectId: "client-delivery",
+      assignee: "sam",
+      description: "Capture new client asks and turn approved requests into delivery tasks.",
+      fields: [
+        { id: "requester", label: "Requester", type: "text", required: true },
+        { id: "company", label: "Company", type: "text", required: true },
+        { id: "urgency", label: "Urgency", type: "select", options: ["Low", "Normal", "High"], required: true },
+        { id: "details", label: "Request details", type: "textarea", required: true }
+      ]
+    },
+    {
+      id: "form-bug-report",
+      title: "Product Bug Report",
+      projectId: "launch",
+      assignee: "eli",
+      description: "Route product issues into the MVP launch backlog.",
+      fields: [
+        { id: "requester", label: "Reporter", type: "text", required: true },
+        { id: "company", label: "Area", type: "text", required: true },
+        { id: "urgency", label: "Severity", type: "select", options: ["Low", "Normal", "High"], required: true },
+        { id: "details", label: "What happened?", type: "textarea", required: true }
+      ]
+    }
+  ],
+  intakeSubmissions: [
+    {
+      id: "submission-1",
+      formId: "form-client-request",
+      title: "Add client-facing kickoff checklist",
+      requester: "Jordan Lee",
+      company: "Northstar Labs",
+      urgency: "High",
+      details: "Clients need a shared kickoff checklist before the first delivery call.",
+      taskId: "",
+      createdAt: "2026-07-05T12:15:00.000Z"
+    },
+    {
+      id: "submission-2",
+      formId: "form-bug-report",
+      title: "Calendar count looks confusing",
+      requester: "Avery Kim",
+      company: "Calendar",
+      urgency: "Normal",
+      details: "A stakeholder expected milestones and task counts to be separated in the month view.",
+      taskId: "task-2",
+      createdAt: "2026-07-06T09:30:00.000Z"
+    }
+  ],
   timeEntries: [
     {
       id: "time-1",
@@ -401,6 +549,9 @@ const els = {
   appView: document.querySelector("#app-view"),
   pageTitle: document.querySelector("#page-title"),
   projectList: document.querySelector("#project-list"),
+  navInboxCount: document.querySelector("#nav-inbox-count"),
+  notificationCount: document.querySelector("#notification-count"),
+  toastRegion: document.querySelector("#toast-region"),
   searchInput: document.querySelector("#search-input"),
   companyFilter: document.querySelector("#company-filter"),
   projectFilter: document.querySelector("#project-filter"),
@@ -418,6 +569,7 @@ const els = {
 };
 
 let draftSubtasks = [];
+let toastTimers = new Map();
 
 function loadState() {
   const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -445,6 +597,11 @@ function normalizeState(nextState) {
     dailyPlans: { ...seedData.dailyPlans, ...(nextState.dailyPlans || {}) },
     inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
     inboxArchived: Array.isArray(nextState.inboxArchived) ? nextState.inboxArchived : [],
+    customFields: Array.isArray(nextState.customFields) ? nextState.customFields : seedData.customFields,
+    documents: Array.isArray(nextState.documents) ? nextState.documents : seedData.documents,
+    files: Array.isArray(nextState.files) ? nextState.files : seedData.files,
+    intakeForms: Array.isArray(nextState.intakeForms) ? nextState.intakeForms : seedData.intakeForms,
+    intakeSubmissions: Array.isArray(nextState.intakeSubmissions) ? nextState.intakeSubmissions : seedData.intakeSubmissions,
     companies: nextState.companies.map((company) => ({
       type: "Client",
       status: "active",
@@ -453,7 +610,8 @@ function normalizeState(nextState) {
     })),
     tasks: nextState.tasks.map((task) => ({
       ...task,
-      subtasks: Array.isArray(task.subtasks) ? task.subtasks : []
+      subtasks: Array.isArray(task.subtasks) ? task.subtasks : [],
+      customFields: task.customFields && typeof task.customFields === "object" ? task.customFields : {}
     }))
   };
 }
@@ -491,6 +649,58 @@ function priorityLabel(id) {
   return byId(priorities, id)?.label || id;
 }
 
+function projectMatchesContext(projectId) {
+  const project = byId(state.projects, projectId);
+  return (
+    (state.filters.company === "all" || project?.companyId === state.filters.company) &&
+    (state.selectedProject === "all" || projectId === state.selectedProject)
+  );
+}
+
+function getVisibleDocuments() {
+  const query = state.filters.query.trim().toLowerCase();
+  return state.documents
+    .filter((document) => projectMatchesContext(document.projectId))
+    .filter((document) => {
+      const haystack = [document.title, document.type, document.body, projectName(document.projectId), memberName(document.owner)].join(" ").toLowerCase();
+      return !query || haystack.includes(query);
+    })
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+}
+
+function getVisibleFiles() {
+  const query = state.filters.query.trim().toLowerCase();
+  return state.files
+    .filter((file) => projectMatchesContext(file.projectId))
+    .filter((file) => {
+      const haystack = [file.title, file.kind, projectName(file.projectId), memberName(file.owner)].join(" ").toLowerCase();
+      return !query || haystack.includes(query);
+    })
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+}
+
+function getVisibleIntakeSubmissions() {
+  return state.intakeSubmissions
+    .filter((submission) => {
+      const form = byId(state.intakeForms, submission.formId);
+      return form && projectMatchesContext(form.projectId);
+    })
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function customFieldValue(task, field) {
+  const value = task.customFields?.[field.id];
+  if (value === undefined || value === null || value === "") return "";
+  if (field.type === "number" && field.id === "budget") return `$${Number(value).toLocaleString()}`;
+  return String(value);
+}
+
+function visibleTaskCustomFields(task) {
+  return state.customFields
+    .map((field) => ({ ...field, value: customFieldValue(task, field) }))
+    .filter((field) => field.value);
+}
+
 function isTaskVisibleForContext(task) {
   const query = state.filters.query.trim().toLowerCase();
   const haystack = [
@@ -500,6 +710,7 @@ function isTaskVisibleForContext(task) {
     companyName(projectCompany(task.projectId)?.id),
     memberName(task.assignee),
     task.tags.join(" "),
+    visibleTaskCustomFields(task).map((field) => `${field.name} ${field.value}`).join(" "),
     taskSubtasks(task).map((subtask) => subtask.title).join(" ")
   ].join(" ").toLowerCase();
 
@@ -527,6 +738,53 @@ function markInboxRead(id) {
 function archiveInboxItem(id) {
   markInboxRead(id);
   if (!state.inboxArchived.includes(id)) state.inboxArchived = [...state.inboxArchived, id];
+}
+
+function unreadInboxCount() {
+  return getInboxItems().filter((item) => !isInboxRead(item.id)).length;
+}
+
+function renderNotificationBadges() {
+  const count = unreadInboxCount();
+  [els.navInboxCount, els.notificationCount].filter(Boolean).forEach((badge) => {
+    badge.textContent = count > 99 ? "99+" : String(count);
+    badge.hidden = count === 0;
+  });
+}
+
+function showToast(message, tone = "info") {
+  if (!els.toastRegion) return;
+
+  const id = uid("toast");
+  const toast = document.createElement("div");
+  toast.className = `toast toast-${tone}`;
+  toast.dataset.toastId = id;
+
+  const text = document.createElement("span");
+  text.textContent = message;
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "toast-close";
+  closeButton.dataset.toastDismiss = id;
+  closeButton.setAttribute("aria-label", "Dismiss notification");
+  closeButton.textContent = "x";
+
+  toast.append(text, closeButton);
+  els.toastRegion.prepend(toast);
+
+  const timer = window.setTimeout(() => dismissToast(id), 4200);
+  toastTimers.set(id, timer);
+}
+
+function dismissToast(id) {
+  const toast = els.toastRegion?.querySelector(`[data-toast-id="${id}"]`);
+  if (!toast) return;
+
+  const timer = toastTimers.get(id);
+  if (timer) window.clearTimeout(timer);
+  toastTimers.delete(id);
+  toast.remove();
 }
 
 function getInboxItems({ includeArchived = false } = {}) {
@@ -922,6 +1180,7 @@ function updateTask(id, updates) {
   recordTaskChanges(previous, next);
   saveState();
   render();
+  showToast(`${next.title} updated`, "success");
 }
 
 function updateMilestoneDate(id, dueDate) {
@@ -936,6 +1195,7 @@ function updateMilestoneDate(id, dueDate) {
   });
   saveState();
   render();
+  showToast("Milestone date updated", "success");
 }
 
 function updateProjectDate(id, field, date) {
@@ -950,6 +1210,7 @@ function updateProjectDate(id, field, date) {
   });
   saveState();
   render();
+  showToast("Project date updated", "success");
 }
 
 function recordTaskChanges(previous, next) {
@@ -1005,6 +1266,7 @@ function render() {
 
   renderSidebarProjects();
   renderFilters();
+  renderNotificationBadges();
 
   if (state.selectedRoute === "project") renderProjectPage();
   if (state.selectedRoute === "company") renderCompanyPage();
@@ -1015,6 +1277,9 @@ function render() {
   if (state.selectedRoute === "calendar") renderCalendar();
   if (state.selectedRoute === "my-work") renderMyWork();
   if (state.selectedRoute === "time") renderTimeTracking();
+  if (state.selectedRoute === "docs") renderDocsAndFiles();
+  if (state.selectedRoute === "intake") renderIntake();
+  if (state.selectedRoute === "fields") renderCustomFields();
   if (state.selectedRoute === "companies") renderCompanies();
   if (state.selectedRoute === "dashboard") renderDashboard();
 }
@@ -1294,7 +1559,7 @@ function renderInboxItem(item) {
     <article class="inbox-item ${read ? "is-read" : "is-unread"}">
       <div class="inbox-main">
         <span class="status-pill inbox-${item.tone}">${escapeHtml(item.type)}</span>
-        <button class="table-task-button" type="button" ${item.taskId ? `data-edit-task="${item.taskId}"` : ""}>
+        <button class="table-task-button" type="button" ${item.taskId ? `data-edit-task="${item.taskId}" data-inbox-id="${item.id}"` : ""}>
           <strong>${escapeHtml(item.title)}</strong>
           <span>${escapeHtml(item.message)}</span>
         </button>
@@ -1548,6 +1813,7 @@ function renderProjectPage() {
       ${projectTabButton("board", "Board")}
       ${projectTabButton("timeline", "Timeline")}
       ${projectTabButton("milestones", "Milestones")}
+      ${projectTabButton("docs", "Docs")}
     </nav>
 
     ${state.selectedProjectTab === "overview" ? renderProjectOverview(project, {
@@ -1563,6 +1829,7 @@ function renderProjectPage() {
     ${state.selectedProjectTab === "board" ? renderProjectBoard(filteredProjectTasks) : ""}
     ${state.selectedProjectTab === "timeline" ? renderProjectTimeline(project, filteredProjectTasks, milestones) : ""}
     ${state.selectedProjectTab === "milestones" ? renderProjectMilestones(milestones) : ""}
+    ${state.selectedProjectTab === "docs" ? renderProjectDocs(project) : ""}
   `;
 }
 
@@ -1656,6 +1923,7 @@ function renderProjectTasks(tasks) {
 
 function renderProjectTaskRow(task) {
   const checklist = subtaskSummary(task);
+  const fields = renderTaskFieldChips(task);
   return `
     <tr>
       <td>
@@ -1663,6 +1931,7 @@ function renderProjectTaskRow(task) {
           <strong>${escapeHtml(task.title)}</strong>
           <span>${escapeHtml(task.description)}</span>
           ${checklist ? `<span>${escapeHtml(checklist)}</span>` : ""}
+          ${fields}
         </button>
       </td>
       <td>${memberName(task.assignee)}</td>
@@ -2038,6 +2307,49 @@ function renderTaskTimeTracking(taskId = "") {
   `;
 }
 
+function renderTaskCustomFields(task = null) {
+  const container = document.querySelector("#task-custom-fields");
+  if (!container) return;
+
+  if (!state.customFields.length) {
+    container.innerHTML = `
+      <div>
+        <p class="eyebrow">Custom fields</p>
+        ${emptyState("Add custom fields to track task-specific metadata.")}
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <div>
+      <p class="eyebrow">Custom fields</p>
+      <div class="custom-field-grid">
+        ${state.customFields.map((field) => {
+          const value = task?.customFields?.[field.id] || "";
+          if (field.type === "select") {
+            return `
+              <label>
+                <span>${escapeHtml(field.name)}</span>
+                <select data-custom-field="${field.id}">
+                  <option value="">None</option>
+                  ${(field.options || []).map((option) => `<option value="${escapeHtml(option)}" ${option === value ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+                </select>
+              </label>
+            `;
+          }
+          return `
+            <label>
+              <span>${escapeHtml(field.name)}</span>
+              <input data-custom-field="${field.id}" type="${field.type === "number" ? "number" : "text"}" value="${escapeHtml(value)}">
+            </label>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function renderTaskTimeEntry(entry) {
   return `
     <article class="task-time-entry">
@@ -2257,6 +2569,329 @@ function renderMyWork() {
   `;
 }
 
+function renderDocsAndFiles() {
+  const documents = getVisibleDocuments();
+  const files = getVisibleFiles();
+  const activeProjects = new Set([...documents.map((document) => document.projectId), ...files.map((file) => file.projectId)]);
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Documents", documents.length)}
+      ${metric("Files", files.length)}
+      ${metric("Projects", activeProjects.size)}
+      ${metric("Updated", documents.length + files.length)}
+    </div>
+
+    <div class="docs-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Knowledge base</p>
+            <h2>Project docs</h2>
+          </div>
+        </div>
+        <div class="doc-composer">
+          <label>
+            <span>Title</span>
+            <input id="doc-title" placeholder="Project brief">
+          </label>
+          <label>
+            <span>Project</span>
+            <select id="doc-project">
+              ${state.projects.map((project) => `<option value="${project.id}">${escapeHtml(project.name)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Type</span>
+            <select id="doc-type">
+              ${["Brief", "Spec", "Template", "Note"].map((type) => `<option value="${type}">${type}</option>`).join("")}
+            </select>
+          </label>
+          <label class="wide-field">
+            <span>Summary</span>
+            <textarea id="doc-body" rows="3" placeholder="What should the team know?"></textarea>
+          </label>
+          <button class="button button-secondary" type="button" id="doc-create">Add Doc</button>
+        </div>
+        <div class="doc-list">
+          ${documents.length ? documents.map(renderDocumentCard).join("") : emptyState("No docs match the current filters.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Attachments</p>
+            <h2>Files</h2>
+          </div>
+        </div>
+        <div class="file-composer">
+          <label>
+            <span>File name</span>
+            <input id="file-title" placeholder="launch-plan.pdf">
+          </label>
+          <label>
+            <span>Project</span>
+            <select id="file-project">
+              ${state.projects.map((project) => `<option value="${project.id}">${escapeHtml(project.name)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Kind</span>
+            <input id="file-kind" placeholder="PDF, Design, CSV">
+          </label>
+          <label>
+            <span>Size</span>
+            <input id="file-size" placeholder="1.2 MB">
+          </label>
+          <button class="button button-secondary" type="button" id="file-create">Add File</button>
+        </div>
+        <div class="file-list">
+          ${files.length ? files.map(renderFileCard).join("") : emptyState("No files match the current filters.")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderDocumentCard(document) {
+  return `
+    <article class="doc-card">
+      <div>
+        <span class="status-pill inbox-blue">${escapeHtml(document.type)}</span>
+        <h3>${escapeHtml(document.title)}</h3>
+        <p>${escapeHtml(document.body)}</p>
+        <div class="meta-row">
+          <span>${escapeHtml(projectName(document.projectId))}</span>
+          <span>${memberName(document.owner)}</span>
+          <span>${formatTimestamp(document.updatedAt)}</span>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function renderFileCard(file) {
+  return `
+    <article class="file-card">
+      <div class="file-icon">${escapeHtml(file.kind.slice(0, 3).toUpperCase())}</div>
+      <div>
+        <h3>${escapeHtml(file.title)}</h3>
+        <div class="meta-row">
+          <span>${escapeHtml(projectName(file.projectId))}</span>
+          <span>${escapeHtml(file.size)}</span>
+          <span>${memberName(file.owner)}</span>
+          <span>${formatTimestamp(file.updatedAt)}</span>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function renderProjectDocs(project) {
+  const documents = state.documents.filter((document) => document.projectId === project.id);
+  const files = state.files.filter((file) => file.projectId === project.id);
+  return `
+    <div class="docs-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Knowledge base</p>
+            <h2>${documents.length} docs</h2>
+          </div>
+        </div>
+        <div class="doc-list">
+          ${documents.length ? documents.map(renderDocumentCard).join("") : emptyState("No docs have been added to this project yet.")}
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Attachments</p>
+            <h2>${files.length} files</h2>
+          </div>
+        </div>
+        <div class="file-list">
+          ${files.length ? files.map(renderFileCard).join("") : emptyState("No files have been added to this project yet.")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderIntake() {
+  const submissions = getVisibleIntakeSubmissions();
+  const openSubmissions = submissions.filter((submission) => !submission.taskId);
+  const highUrgency = submissions.filter((submission) => submission.urgency === "High");
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Forms", state.intakeForms.length)}
+      ${metric("Open requests", openSubmissions.length)}
+      ${metric("Converted", submissions.length - openSubmissions.length)}
+      ${metric("High urgency", highUrgency.length)}
+    </div>
+
+    <div class="intake-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Request capture</p>
+            <h2>Forms</h2>
+          </div>
+        </div>
+        <div class="intake-form-list">
+          ${state.intakeForms.map(renderIntakeForm).join("")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Queue</p>
+            <h2>Submissions</h2>
+          </div>
+        </div>
+        <div class="submission-list">
+          ${submissions.length ? submissions.map(renderSubmissionCard).join("") : emptyState("No intake submissions match the current filters.")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderIntakeForm(form) {
+  return `
+    <article class="intake-form-card" data-intake-form-card="${form.id}">
+      <div>
+        <span class="status-pill inbox-green">${escapeHtml(projectName(form.projectId))}</span>
+        <h3>${escapeHtml(form.title)}</h3>
+        <p>${escapeHtml(form.description)}</p>
+      </div>
+      <div class="intake-field-grid">
+        <label>
+          <span>Title</span>
+          <input data-intake-title placeholder="Short request title">
+        </label>
+        <label>
+          <span>Requester</span>
+          <input data-intake-requester placeholder="Name">
+        </label>
+        <label>
+          <span>Company / area</span>
+          <input data-intake-company placeholder="Company or area">
+        </label>
+        <label>
+          <span>Urgency</span>
+          <select data-intake-urgency>
+            ${["Low", "Normal", "High"].map((option) => `<option value="${option}">${option}</option>`).join("")}
+          </select>
+        </label>
+        <label class="wide-field">
+          <span>Details</span>
+          <textarea data-intake-details rows="3" placeholder="What is being requested?"></textarea>
+        </label>
+      </div>
+      <button class="button button-secondary" type="button" data-submit-intake="${form.id}">Submit Request</button>
+    </article>
+  `;
+}
+
+function renderSubmissionCard(submission) {
+  const form = byId(state.intakeForms, submission.formId);
+  const task = submission.taskId ? byId(state.tasks, submission.taskId) : null;
+  return `
+    <article class="submission-card ${submission.taskId ? "is-converted" : ""}">
+      <div>
+        <span class="status-pill ${submission.urgency === "High" ? "inbox-red" : "inbox-amber"}">${escapeHtml(submission.urgency)}</span>
+        <h3>${escapeHtml(submission.title)}</h3>
+        <p>${escapeHtml(submission.details)}</p>
+        <div class="meta-row">
+          <span>${escapeHtml(form?.title || "Unknown form")}</span>
+          <span>${escapeHtml(submission.company)}</span>
+          <span>${escapeHtml(submission.requester)}</span>
+          <span>${formatTimestamp(submission.createdAt)}</span>
+        </div>
+      </div>
+      ${task ? `
+        <button class="button button-secondary" type="button" data-edit-task="${task.id}">Open Task</button>
+      ` : `
+        <button class="button button-primary" type="button" data-convert-submission="${submission.id}">Create Task</button>
+      `}
+    </article>
+  `;
+}
+
+function renderCustomFields() {
+  const fieldsWithUsage = state.customFields.map((field) => ({
+    ...field,
+    usage: state.tasks.filter((task) => customFieldValue(task, field)).length
+  }));
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Fields", state.customFields.length)}
+      ${metric("Used values", fieldsWithUsage.reduce((total, field) => total + field.usage, 0))}
+      ${metric("Select fields", state.customFields.filter((field) => field.type === "select").length)}
+      ${metric("Number fields", state.customFields.filter((field) => field.type === "number").length)}
+    </div>
+
+    <div class="fields-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Task metadata</p>
+            <h2>Custom fields</h2>
+          </div>
+        </div>
+        <div class="field-list">
+          ${fieldsWithUsage.map(renderCustomFieldCard).join("")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Add field</p>
+            <h2>New metadata</h2>
+          </div>
+        </div>
+        <div class="field-composer">
+          <label>
+            <span>Name</span>
+            <input id="field-name" placeholder="Sprint, Client cost, Risk">
+          </label>
+          <label>
+            <span>Type</span>
+            <select id="field-type">
+              <option value="text">Text</option>
+              <option value="number">Number</option>
+              <option value="select">Select</option>
+            </select>
+          </label>
+          <label class="wide-field">
+            <span>Select options</span>
+            <input id="field-options" placeholder="Low, Medium, High">
+          </label>
+          <button class="button button-secondary" type="button" id="field-create">Add Field</button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderCustomFieldCard(field) {
+  return `
+    <article class="field-card">
+      <div>
+        <h3>${escapeHtml(field.name)}</h3>
+        <p>${escapeHtml(field.type)}${field.options?.length ? ` - ${field.options.map((option) => escapeHtml(option)).join(", ")}` : ""}</p>
+      </div>
+      <strong>${field.usage}</strong>
+    </article>
+  `;
+}
+
 function renderTimeTracking() {
   const entries = getFilteredTimeEntries();
   const billableEntries = entries.filter((entry) => entry.billable);
@@ -2379,6 +3014,7 @@ function renderTimeEntryRow(entry) {
 function renderTaskCard(task) {
   const company = projectCompany(task.projectId);
   const checklist = subtaskSummary(task);
+  const fields = renderTaskFieldChips(task);
   return `
     <article class="task-card" draggable="true" data-task-id="${task.id}">
       <button class="task-card-main" type="button" data-edit-task="${task.id}">
@@ -2395,6 +3031,7 @@ function renderTaskCard(task) {
       <div class="tag-row">
         ${task.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
       </div>
+      ${fields}
     </article>
   `;
 }
@@ -2402,6 +3039,7 @@ function renderTaskCard(task) {
 function renderTaskRow(task) {
   const company = projectCompany(task.projectId);
   const checklist = subtaskSummary(task);
+  const fields = renderTaskFieldChips(task);
   return `
     <tr>
       <td>
@@ -2409,6 +3047,7 @@ function renderTaskRow(task) {
           <strong>${escapeHtml(task.title)}</strong>
           <span>${escapeHtml(task.description)}</span>
           ${checklist ? `<span>${escapeHtml(checklist)}</span>` : ""}
+          ${fields}
         </button>
       </td>
       <td>
@@ -2420,6 +3059,17 @@ function renderTaskRow(task) {
       <td>${selectControl("priority", task.id, task.priority, priorities)}</td>
       <td class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}</td>
     </tr>
+  `;
+}
+
+function renderTaskFieldChips(task) {
+  const fields = visibleTaskCustomFields(task);
+  if (!fields.length) return "";
+
+  return `
+    <span class="field-chip-row">
+      ${fields.map((field) => `<span>${escapeHtml(field.name)}: ${escapeHtml(field.value)}</span>`).join("")}
+    </span>
   `;
 }
 
@@ -2455,6 +3105,7 @@ function populateTaskForm(task = null) {
   fillSelect("#task-priority", priorities, task?.priority || "normal", "label");
   renderTaskCollaboration(task?.id || "");
   renderTaskSubtasks();
+  renderTaskCustomFields(task);
   renderTaskTimeTracking(task?.id || "");
 }
 
@@ -2525,6 +3176,7 @@ function addTaskComment() {
   saveState();
   renderTaskCollaboration(taskId);
   render();
+  showToast("Comment added", "success");
 }
 
 function addTaskTimeEntry() {
@@ -2561,6 +3213,7 @@ function addTaskTimeEntry() {
   renderTaskTimeTracking(taskId);
   renderTaskCollaboration(taskId);
   render();
+  showToast(`Logged ${formatDuration(minutes)}`, "success");
 }
 
 function addQuickDailyTime(taskId, minutes = 30) {
@@ -2586,11 +3239,174 @@ function addQuickDailyTime(taskId, minutes = 30) {
   });
   saveState();
   render();
+  showToast(`Logged ${formatDuration(minutes)} for today`, "success");
+}
+
+function createDocument() {
+  const title = document.querySelector("#doc-title")?.value.trim();
+  const projectId = document.querySelector("#doc-project")?.value;
+  const type = document.querySelector("#doc-type")?.value || "Note";
+  const body = document.querySelector("#doc-body")?.value.trim();
+  if (!title || !projectId) return;
+
+  state.documents = [{
+    id: uid("doc"),
+    projectId,
+    title,
+    type,
+    owner: currentMemberId,
+    updatedAt: new Date().toISOString(),
+    body: body || "No summary yet."
+  }, ...state.documents];
+
+  addActivity({
+    projectId,
+    type: "doc_create",
+    message: `added doc ${title}`
+  });
+  saveState();
+  render();
+  showToast("Doc added", "success");
+}
+
+function createFileRecord() {
+  const title = document.querySelector("#file-title")?.value.trim();
+  const projectId = document.querySelector("#file-project")?.value;
+  const kind = document.querySelector("#file-kind")?.value.trim() || "File";
+  const size = document.querySelector("#file-size")?.value.trim() || "Unknown size";
+  if (!title || !projectId) return;
+
+  state.files = [{
+    id: uid("file"),
+    projectId,
+    title,
+    kind,
+    size,
+    owner: currentMemberId,
+    updatedAt: new Date().toISOString()
+  }, ...state.files];
+
+  addActivity({
+    projectId,
+    type: "file_create",
+    message: `added file ${title}`
+  });
+  saveState();
+  render();
+  showToast("File added", "success");
+}
+
+function submitIntakeRequest(formId) {
+  const formCard = document.querySelector(`[data-intake-form-card="${formId}"]`);
+  const form = byId(state.intakeForms, formId);
+  if (!formCard || !form) return;
+
+  const title = formCard.querySelector("[data-intake-title]")?.value.trim();
+  const requester = formCard.querySelector("[data-intake-requester]")?.value.trim();
+  const company = formCard.querySelector("[data-intake-company]")?.value.trim();
+  const urgency = formCard.querySelector("[data-intake-urgency]")?.value || "Normal";
+  const details = formCard.querySelector("[data-intake-details]")?.value.trim();
+  if (!title || !requester || !details) return;
+
+  state.intakeSubmissions = [{
+    id: uid("submission"),
+    formId,
+    title,
+    requester,
+    company: company || companyName(projectCompany(form.projectId)?.id),
+    urgency,
+    details,
+    taskId: "",
+    createdAt: new Date().toISOString()
+  }, ...state.intakeSubmissions];
+
+  saveState();
+  render();
+  showToast("Request submitted", "success");
+}
+
+function convertSubmissionToTask(submissionId) {
+  const submission = byId(state.intakeSubmissions, submissionId);
+  const form = submission ? byId(state.intakeForms, submission.formId) : null;
+  if (!submission || !form || submission.taskId) return;
+
+  const task = {
+    id: uid("task"),
+    projectId: form.projectId,
+    title: submission.title,
+    description: `${submission.details}\n\nRequester: ${submission.requester}\nSource: ${form.title}`,
+    assignee: form.assignee,
+    status: "todo",
+    priority: submission.urgency === "High" ? "high" : "normal",
+    dueDate: "",
+    tags: ["intake"],
+    subtasks: [],
+    customFields: {
+      risk: submission.urgency === "High" ? "High" : "Medium"
+    },
+    createdAt: new Date().toISOString()
+  };
+
+  state.tasks = [task, ...state.tasks];
+  state.intakeSubmissions = state.intakeSubmissions.map((item) => item.id === submissionId ? { ...item, taskId: task.id } : item);
+  addActivity({
+    projectId: task.projectId,
+    taskId: task.id,
+    type: "intake_convert",
+    message: `converted request ${submission.title} to a task`
+  });
+  saveState();
+  render();
+  showToast("Request converted to task", "success");
+}
+
+function createCustomField() {
+  const name = document.querySelector("#field-name")?.value.trim();
+  const type = document.querySelector("#field-type")?.value || "text";
+  const options = document.querySelector("#field-options")?.value.split(",").map((option) => option.trim()).filter(Boolean) || [];
+  if (!name) return;
+
+  const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || uid("field");
+  if (state.customFields.some((field) => field.id === id)) {
+    showToast("Field already exists", "info");
+    return;
+  }
+
+  state.customFields = [...state.customFields, {
+    id,
+    name,
+    type,
+    options: type === "select" ? options : []
+  }];
+  saveState();
+  render();
+  showToast("Custom field added", "success");
 }
 
 document.addEventListener("click", (event) => {
+  const toastDismissButton = event.target.closest("[data-toast-dismiss]");
+  if (toastDismissButton) {
+    dismissToast(toastDismissButton.dataset.toastDismiss);
+    return;
+  }
+
   const routeButton = event.target.closest("[data-route]");
   if (routeButton) setRoute(routeButton.dataset.route);
+
+  const createDocButton = event.target.closest("#doc-create");
+  if (createDocButton) createDocument();
+
+  const createFileButton = event.target.closest("#file-create");
+  if (createFileButton) createFileRecord();
+
+  const submitIntakeButton = event.target.closest("[data-submit-intake]");
+  if (submitIntakeButton) submitIntakeRequest(submitIntakeButton.dataset.submitIntake);
+
+  const convertSubmissionButton = event.target.closest("[data-convert-submission]");
+  if (convertSubmissionButton) convertSubmissionToTask(convertSubmissionButton.dataset.convertSubmission);
+
+  const createFieldButton = event.target.closest("#field-create");
+  if (createFieldButton) createCustomField();
 
   const projectButton = event.target.closest("[data-project-id]");
   if (projectButton) setProject(projectButton.dataset.projectId);
@@ -2635,6 +3451,7 @@ document.addEventListener("click", (event) => {
     planTaskForDate(dailyPlanButton.dataset.taskId, dailyPlanButton.dataset.dailyPlan);
     saveState();
     render();
+    showToast("Task planned for Today", "success");
   }
 
   const dailyActionButton = event.target.closest("[data-daily-action]");
@@ -2652,6 +3469,7 @@ document.addEventListener("click", (event) => {
       planTaskForDate(taskId, plan?.lane || "next", shiftDate(state.selectedDailyDate, 1));
       saveState();
       render();
+      showToast("Task moved to tomorrow", "success");
       return;
     }
 
@@ -2666,6 +3484,7 @@ document.addEventListener("click", (event) => {
     state.selectedDailyDate = shiftDate(state.selectedDailyDate, Number(dailyShiftButton.dataset.dailyShift));
     saveState();
     render();
+    showToast("Daily date updated", "success");
   }
 
   const dailyTodayButton = event.target.closest("[data-daily-today]");
@@ -2673,6 +3492,7 @@ document.addEventListener("click", (event) => {
     state.selectedDailyDate = todayKey();
     saveState();
     render();
+    showToast("Showing today", "success");
   }
 
   const inboxPlanButton = event.target.closest("[data-inbox-plan]");
@@ -2683,6 +3503,7 @@ document.addEventListener("click", (event) => {
     state.selectedDailyDate = todayKey();
     saveState();
     render();
+    showToast("Task planned for Today", "success");
   }
 
   const inboxReadButton = event.target.closest("[data-inbox-read]");
@@ -2693,6 +3514,7 @@ document.addEventListener("click", (event) => {
       : [...state.inboxRead, id];
     saveState();
     render();
+    showToast(isInboxRead(id) ? "Notification marked read" : "Notification marked unread", "success");
   }
 
   const inboxClearButton = event.target.closest("[data-inbox-clear]");
@@ -2700,6 +3522,7 @@ document.addEventListener("click", (event) => {
     archiveInboxItem(inboxClearButton.dataset.inboxClear);
     saveState();
     render();
+    showToast("Notification cleared", "success");
   }
 
   const inboxBulkButton = event.target.closest("[data-inbox-bulk]");
@@ -2707,10 +3530,12 @@ document.addEventListener("click", (event) => {
     const items = getInboxItems();
     if (inboxBulkButton.dataset.inboxBulk === "read") {
       state.inboxRead = Array.from(new Set([...state.inboxRead, ...items.map((item) => item.id)]));
+      showToast("All notifications marked read", "success");
     }
     if (inboxBulkButton.dataset.inboxBulk === "archive-read") {
       const readIds = items.filter((item) => isInboxRead(item.id)).map((item) => item.id);
       state.inboxArchived = Array.from(new Set([...state.inboxArchived, ...readIds]));
+      showToast("Read notifications cleared", "success");
     }
     saveState();
     render();
@@ -2734,6 +3559,7 @@ document.addEventListener("click", (event) => {
     if (editButton.dataset.inboxId) {
       markInboxRead(editButton.dataset.inboxId);
       saveState();
+      renderNotificationBadges();
     }
     populateTaskForm(byId(state.tasks, editButton.dataset.editTask));
     openDialog(els.taskDialog);
@@ -2769,6 +3595,7 @@ document.querySelector("#seed-reset").addEventListener("click", () => {
   state = structuredClone(seedData);
   saveState();
   render();
+  showToast("Sample data reset", "success");
 });
 
 els.searchInput.addEventListener("input", (event) => {
@@ -2885,6 +3712,10 @@ els.taskForm.addEventListener("submit", (event) => {
     dueDate: document.querySelector("#task-due-date").value,
     tags: document.querySelector("#task-tags").value.split(",").map((tag) => tag.trim()).filter(Boolean),
     subtasks: draftSubtasks,
+    customFields: Array.from(document.querySelectorAll("[data-custom-field]")).reduce((values, input) => {
+      if (input.value !== "") values[input.dataset.customField] = input.value;
+      return values;
+    }, {}),
     createdAt: existingTask?.createdAt || new Date().toISOString()
   };
 
@@ -2904,6 +3735,7 @@ els.taskForm.addEventListener("submit", (event) => {
   saveState();
   closeDialog(els.taskDialog);
   render();
+  showToast(existingTask ? "Task updated" : "Task created", "success");
 });
 
 els.projectForm.addEventListener("submit", (event) => {
@@ -2930,6 +3762,7 @@ els.projectForm.addEventListener("submit", (event) => {
   saveState();
   closeDialog(els.projectDialog);
   render();
+  showToast("Project created", "success");
 });
 
 els.companyForm.addEventListener("submit", (event) => {
@@ -2958,6 +3791,7 @@ els.companyForm.addEventListener("submit", (event) => {
   saveState();
   closeDialog(els.companyDialog);
   render();
+  showToast(existingCompany ? "Company updated" : "Company created", "success");
 });
 
 render();
