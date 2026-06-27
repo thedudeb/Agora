@@ -1,0 +1,48 @@
+# Roadmap
+
+This roadmap describes the intended direction for Agora. It will evolve as the project moves from product definition into implementation.
+
+## Phase 0: Project Foundation
+
+- Finalize product requirements.
+- Choose initial technical architecture.
+- Add development setup documentation.
+- Define contribution standards and issue labels.
+- Publish a small set of design principles and core user flows.
+
+## Phase 1: MVP
+
+- Workspace creation and member invitations.
+- Project creation with configurable statuses.
+- Task creation, assignment, due dates, priorities, comments, and attachments.
+- List and board project views.
+- My Work view for assigned tasks across projects.
+- Basic in-app notifications.
+- Self-hosting setup guide.
+
+## Phase 2: Team Planning
+
+- Calendar or timeline view.
+- Milestones and project dashboards.
+- Project templates and project duplication.
+- Guest access for client or stakeholder collaboration.
+- Saved filters and saved project views.
+- Data export for workspace and project content.
+
+## Phase 3: Extensibility
+
+- Webhooks.
+- Public API foundations.
+- Import from common project management formats.
+- Email notification configuration.
+- Authentication provider configuration.
+- Plugin or integration strategy.
+
+## Later
+
+- Advanced automations.
+- Resource planning and capacity views.
+- Native mobile apps.
+- Deeper third-party integrations.
+- Hosted cloud option, if the community and maintainers decide to pursue it.
+
