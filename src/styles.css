@@ -712,6 +712,83 @@ th {
   gap: 10px;
 }
 
+.collaboration-panel {
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.collaboration-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(240px, 0.9fr);
+  gap: 16px;
+}
+
+.collaboration-header,
+.comment-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.collaboration-header span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  min-height: 22px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.comment-list,
+.activity-list {
+  display: grid;
+  gap: 10px;
+}
+
+.comment-item,
+.activity-item {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.comment-item p,
+.activity-item p {
+  margin: 0;
+  color: var(--text);
+}
+
+.comment-meta {
+  margin-bottom: 6px;
+}
+
+.comment-meta small,
+.activity-item small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.comment-composer {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.comment-composer .button {
+  justify-self: end;
+}
+
 @media (max-width: 1040px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -754,6 +831,7 @@ th {
   .dashboard-grid,
   .project-hero,
   .form-grid,
+  .collaboration-grid,
   .nav-list,
   .project-list {
     grid-template-columns: 1fr;

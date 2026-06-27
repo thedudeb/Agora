@@ -21,6 +21,8 @@ const members = [
   { id: "sam", name: "Sam Rivera", role: "Operations" }
 ];
 
+const currentMemberId = "mara";
+
 const routes = {
   dashboard: "Dashboard",
   board: "Board",
@@ -189,6 +191,74 @@ const seedData = {
       status: "planned",
       taskIds: ["task-6", "task-7"]
     }
+  ],
+  comments: [
+    {
+      id: "comment-1",
+      taskId: "task-1",
+      author: "mara",
+      body: "I tightened this around workspaces, tasks, views, and collaboration. Anything that smells like enterprise portfolio management can wait.",
+      createdAt: "2026-06-27T13:15:00.000Z"
+    },
+    {
+      id: "comment-2",
+      taskId: "task-1",
+      author: "eli",
+      body: "Agree. That scope is small enough to build well and still big enough to prove the product direction.",
+      createdAt: "2026-06-27T13:30:00.000Z"
+    },
+    {
+      id: "comment-3",
+      taskId: "task-2",
+      author: "eli",
+      body: "I want the first setup guide to be boring in the best way: clone, configure env, run, deploy.",
+      createdAt: "2026-06-27T14:05:00.000Z"
+    },
+    {
+      id: "comment-4",
+      taskId: "task-4",
+      author: "sam",
+      body: "This template should make the handoff from sales to delivery feel obvious for agency teams.",
+      createdAt: "2026-06-27T14:22:00.000Z"
+    }
+  ],
+  activities: [
+    {
+      id: "activity-1",
+      projectId: "launch",
+      taskId: "task-1",
+      memberId: "mara",
+      type: "task_status",
+      message: "moved Finalize MVP scope to Doing",
+      createdAt: "2026-06-27T13:05:00.000Z"
+    },
+    {
+      id: "activity-2",
+      projectId: "launch",
+      taskId: "task-2",
+      memberId: "eli",
+      type: "comment",
+      message: "commented on Draft self-hosting setup",
+      createdAt: "2026-06-27T14:05:00.000Z"
+    },
+    {
+      id: "activity-3",
+      projectId: "client-delivery",
+      taskId: "task-4",
+      memberId: "sam",
+      type: "task_status",
+      message: "moved Map agency onboarding flow to Review",
+      createdAt: "2026-06-27T14:18:00.000Z"
+    },
+    {
+      id: "activity-4",
+      projectId: "design-system",
+      taskId: "task-6",
+      memberId: "nina",
+      type: "task_status",
+      message: "moved Define task card density to Doing",
+      createdAt: "2026-06-27T14:45:00.000Z"
+    }
   ]
 };
 
@@ -252,6 +322,16 @@ function formatDate(date) {
   return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function formatTimestamp(timestamp) {
+  const parsed = new Date(timestamp);
+  return parsed.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
 function isOverdue(task) {
   if (!task.dueDate || task.status === "done") return false;
   const today = new Date();
@@ -298,6 +378,26 @@ function getProjectMilestones(projectId) {
   return state.milestones.filter((milestone) => milestone.projectId === projectId);
 }
 
+function getTaskComments(taskId) {
+  return state.comments
+    .filter((comment) => comment.taskId === taskId)
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+}
+
+function getProjectActivity(projectId, limit = 6) {
+  return state.activities
+    .filter((activity) => activity.projectId === projectId)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, limit);
+}
+
+function getTaskActivity(taskId, limit = 6) {
+  return state.activities
+    .filter((activity) => activity.taskId === taskId)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, limit);
+}
+
 function projectProgress(tasks) {
   const done = tasks.filter((task) => task.status === "done").length;
   return tasks.length ? Math.round((done / tasks.length) * 100) : 0;
@@ -306,6 +406,18 @@ function projectProgress(tasks) {
 function milestoneProgress(milestone) {
   const linkedTasks = milestone.taskIds.map((taskId) => byId(state.tasks, taskId)).filter(Boolean);
   return projectProgress(linkedTasks);
+}
+
+function addActivity({ projectId, taskId = "", memberId = currentMemberId, type, message }) {
+  state.activities = [{
+    id: uid("activity"),
+    projectId,
+    taskId,
+    memberId,
+    type,
+    message,
+    createdAt: new Date().toISOString()
+  }, ...state.activities];
 }
 
 function setRoute(route) {
@@ -324,9 +436,51 @@ function setProject(projectId) {
 }
 
 function updateTask(id, updates) {
-  state.tasks = state.tasks.map((task) => task.id === id ? { ...task, ...updates } : task);
+  const previous = byId(state.tasks, id);
+  if (!previous) return;
+  const next = { ...previous, ...updates };
+  state.tasks = state.tasks.map((task) => task.id === id ? next : task);
+  recordTaskChanges(previous, next);
   saveState();
   render();
+}
+
+function recordTaskChanges(previous, next) {
+  if (previous.status !== next.status) {
+    addActivity({
+      projectId: next.projectId,
+      taskId: next.id,
+      type: "task_status",
+      message: `moved ${next.title} to ${statusLabel(next.status)}`
+    });
+  }
+
+  if (previous.priority !== next.priority) {
+    addActivity({
+      projectId: next.projectId,
+      taskId: next.id,
+      type: "task_priority",
+      message: `changed ${next.title} priority to ${priorityLabel(next.priority)}`
+    });
+  }
+
+  if (previous.assignee !== next.assignee) {
+    addActivity({
+      projectId: next.projectId,
+      taskId: next.id,
+      type: "task_assignee",
+      message: `assigned ${next.title} to ${memberName(next.assignee)}`
+    });
+  }
+
+  if (previous.title !== next.title || previous.description !== next.description || previous.dueDate !== next.dueDate || previous.projectId !== next.projectId) {
+    addActivity({
+      projectId: next.projectId,
+      taskId: next.id,
+      type: "task_update",
+      message: `updated ${next.title}`
+    });
+  }
 }
 
 function render() {
@@ -571,6 +725,16 @@ function renderProjectOverview(project, details) {
         </div>
         ${nextMilestone ? renderMilestoneCard(nextMilestone) : emptyState(`${escapeHtml(project.name)} does not have an active milestone yet.`)}
       </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Pulse</p>
+            <h2>Recent activity</h2>
+          </div>
+        </div>
+        ${renderActivityList(getProjectActivity(project.id, 5))}
+      </section>
     </div>
   `;
 }
@@ -680,6 +844,85 @@ function renderMilestoneCard(milestone) {
       <div class="progress-block" aria-label="${progress}% complete">
         <strong>${progress}%</strong>
         <span class="progress-track"><span style="width: ${progress}%"></span></span>
+      </div>
+    </article>
+  `;
+}
+
+function renderActivityList(activities) {
+  if (!activities.length) return emptyState("No activity has been recorded yet.");
+
+  return `
+    <div class="activity-list">
+      ${activities.map((activity) => `
+        <article class="activity-item">
+          <span class="avatar">${memberName(activity.memberId).split(" ").map((part) => part[0]).join("")}</span>
+          <div>
+            <p><strong>${memberName(activity.memberId)}</strong> ${escapeHtml(activity.message)}</p>
+            <small>${formatTimestamp(activity.createdAt)}</small>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderTaskCollaboration(taskId = "") {
+  const container = document.querySelector("#task-collaboration");
+  if (!container) return;
+
+  if (!taskId) {
+    container.innerHTML = `
+      <div class="collaboration-grid">
+        <section>
+          <p class="eyebrow">Comments</p>
+          ${emptyState("Save this task before adding comments.")}
+        </section>
+        <section>
+          <p class="eyebrow">Activity</p>
+          ${emptyState("Activity will appear after the task is saved.")}
+        </section>
+      </div>
+    `;
+    return;
+  }
+
+  const comments = getTaskComments(taskId);
+  const activities = getTaskActivity(taskId, 5);
+
+  container.innerHTML = `
+    <div class="collaboration-grid">
+      <section>
+        <div class="collaboration-header">
+          <p class="eyebrow">Comments</p>
+          <span>${comments.length}</span>
+        </div>
+        <div class="comment-list">
+          ${comments.length ? comments.map(renderComment).join("") : emptyState("No comments yet.")}
+        </div>
+        <div class="comment-composer">
+          <textarea id="comment-body" rows="3" placeholder="Add a comment"></textarea>
+          <button class="button button-secondary" type="button" id="comment-submit">Comment</button>
+        </div>
+      </section>
+      <section>
+        <p class="eyebrow">Activity</p>
+        ${renderActivityList(activities)}
+      </section>
+    </div>
+  `;
+}
+
+function renderComment(comment) {
+  return `
+    <article class="comment-item">
+      <span class="avatar">${memberName(comment.author).split(" ").map((part) => part[0]).join("")}</span>
+      <div>
+        <div class="comment-meta">
+          <strong>${memberName(comment.author)}</strong>
+          <small>${formatTimestamp(comment.createdAt)}</small>
+        </div>
+        <p>${escapeHtml(comment.body)}</p>
       </div>
     </article>
   `;
@@ -841,6 +1084,7 @@ function populateTaskForm(task = null) {
   fillSelect("#task-assignee", members, task?.assignee || members[0].id, "name");
   fillSelect("#task-status", statuses, task?.status || "todo", "label");
   fillSelect("#task-priority", priorities, task?.priority || "normal", "label");
+  renderTaskCollaboration(task?.id || "");
 }
 
 function fillSelect(selector, options, selectedValue, labelKey) {
@@ -873,6 +1117,33 @@ function uid(prefix) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function addTaskComment() {
+  const taskId = document.querySelector("#task-id").value;
+  const bodyInput = document.querySelector("#comment-body");
+  const body = bodyInput?.value.trim();
+  const task = byId(state.tasks, taskId);
+  if (!task || !body) return;
+
+  state.comments = [{
+    id: uid("comment"),
+    taskId,
+    author: currentMemberId,
+    body,
+    createdAt: new Date().toISOString()
+  }, ...state.comments];
+
+  addActivity({
+    projectId: task.projectId,
+    taskId,
+    type: "comment",
+    message: `commented on ${task.title}`
+  });
+
+  saveState();
+  renderTaskCollaboration(taskId);
+  render();
+}
+
 document.addEventListener("click", (event) => {
   const routeButton = event.target.closest("[data-route]");
   if (routeButton) setRoute(routeButton.dataset.route);
@@ -886,6 +1157,9 @@ document.addEventListener("click", (event) => {
     saveState();
     render();
   }
+
+  const commentButton = event.target.closest("#comment-submit");
+  if (commentButton) addTaskComment();
 
   const editButton = event.target.closest("[data-edit-task]");
   if (editButton) {
@@ -967,6 +1241,7 @@ els.appView.addEventListener("drop", (event) => {
 els.taskForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const id = document.querySelector("#task-id").value || uid("task");
+  const existingTask = byId(state.tasks, id);
   const task = {
     id,
     projectId: document.querySelector("#task-project").value,
@@ -977,13 +1252,20 @@ els.taskForm.addEventListener("submit", (event) => {
     priority: document.querySelector("#task-priority").value,
     dueDate: document.querySelector("#task-due-date").value,
     tags: document.querySelector("#task-tags").value.split(",").map((tag) => tag.trim()).filter(Boolean),
-    createdAt: byId(state.tasks, id)?.createdAt || new Date().toISOString()
+    createdAt: existingTask?.createdAt || new Date().toISOString()
   };
 
-  if (byId(state.tasks, id)) {
+  if (existingTask) {
     state.tasks = state.tasks.map((item) => item.id === id ? task : item);
+    recordTaskChanges(existingTask, task);
   } else {
     state.tasks = [task, ...state.tasks];
+    addActivity({
+      projectId: task.projectId,
+      taskId: task.id,
+      type: "task_create",
+      message: `created ${task.title}`
+    });
   }
 
   saveState();
@@ -1002,6 +1284,11 @@ els.projectForm.addEventListener("submit", (event) => {
   };
 
   state.projects = [project, ...state.projects];
+  addActivity({
+    projectId: project.id,
+    type: "project_create",
+    message: `created project ${project.name}`
+  });
   state.selectedProject = project.id;
   state.selectedRoute = "project";
   state.selectedProjectTab = "overview";
