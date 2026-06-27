@@ -300,6 +300,96 @@ textarea:focus {
   gap: 16px;
 }
 
+.daily-hero {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
+  gap: 16px;
+  align-items: stretch;
+  margin-bottom: 16px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.daily-hero h2 {
+  margin: 0 0 14px;
+  font-size: 1.65rem;
+}
+
+.daily-date-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.daily-date-controls input {
+  max-width: 180px;
+}
+
+.daily-note {
+  min-width: 0;
+}
+
+.daily-note textarea {
+  min-height: 126px;
+  background: var(--surface-strong);
+}
+
+.daily-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+  gap: 16px;
+}
+
+.daily-lanes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.daily-lane {
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.daily-task-stack,
+.daily-smart-list {
+  display: grid;
+  gap: 10px;
+}
+
+.daily-task-card,
+.daily-smart-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.daily-task-card.is-done {
+  opacity: 0.72;
+}
+
+.daily-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.daily-actions .button {
+  min-height: 32px;
+  padding: 6px 9px;
+  font-size: 0.78rem;
+}
+
 .time-grid {
   display: grid;
   grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
@@ -1281,12 +1371,18 @@ th {
   }
 
   .dashboard-grid,
+  .daily-hero,
+  .daily-layout,
   .time-grid,
   .company-grid,
   .company-detail-grid,
   .project-hero,
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .daily-lanes {
+    grid-template-columns: 1fr;
   }
 
   .calendar-grid {
@@ -1313,6 +1409,8 @@ th {
   .toolbar,
   .metric-grid,
   .dashboard-grid,
+  .daily-hero,
+  .daily-layout,
   .time-grid,
   .company-grid,
   .company-detail-grid,

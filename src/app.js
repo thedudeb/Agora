@@ -25,6 +25,7 @@ const currentMemberId = "mara";
 
 const routes = {
   dashboard: "Dashboard",
+  daily: "Today",
   board: "Board",
   list: "List",
   calendar: "Calendar",
@@ -41,12 +42,21 @@ const seedData = {
   selectedCompany: "all",
   selectedProjectTab: "overview",
   selectedCalendarMonth: "2026-07",
+  selectedDailyDate: "2026-06-27",
   filters: {
     company: "all",
     assignee: "all",
     status: "all",
     priority: "all",
     query: ""
+  },
+  dailyNotes: {
+    "2026-06-27": "Focus: tighten the MVP story, keep the build small, and leave notes for tomorrow."
+  },
+  dailyPlans: {
+    "task-1": { date: "2026-06-27", lane: "now" },
+    "task-2": { date: "2026-06-27", lane: "next" },
+    "task-7": { date: "2026-06-27", lane: "later" }
   },
   companies: [
     {
@@ -427,6 +437,9 @@ function normalizeState(nextState) {
   return {
     ...nextState,
     selectedCalendarMonth: nextState.selectedCalendarMonth || seedData.selectedCalendarMonth,
+    selectedDailyDate: nextState.selectedDailyDate || todayKey(),
+    dailyNotes: { ...seedData.dailyNotes, ...(nextState.dailyNotes || {}) },
+    dailyPlans: { ...seedData.dailyPlans, ...(nextState.dailyPlans || {}) },
     companies: nextState.companies.map((company) => ({
       type: "Client",
       status: "active",
@@ -471,6 +484,65 @@ function statusLabel(id) {
 
 function priorityLabel(id) {
   return byId(priorities, id)?.label || id;
+}
+
+function todayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function dateInputLabel(date) {
+  return formatFullDate(date);
+}
+
+function shiftDate(date, offset) {
+  const parsed = new Date(`${date}T12:00:00`);
+  parsed.setDate(parsed.getDate() + offset);
+  return parsed.toISOString().slice(0, 10);
+}
+
+function dailyPlan(taskId) {
+  return state.dailyPlans?.[taskId] || null;
+}
+
+function isPlannedForDate(task, date) {
+  return dailyPlan(task.id)?.date === date;
+}
+
+function planTaskForDate(taskId, lane = "next", date = state.selectedDailyDate) {
+  state.dailyPlans = {
+    ...state.dailyPlans,
+    [taskId]: { date, lane }
+  };
+}
+
+function unplanTask(taskId) {
+  const nextPlans = { ...state.dailyPlans };
+  delete nextPlans[taskId];
+  state.dailyPlans = nextPlans;
+}
+
+function dailyLaneTasks(lane, date = state.selectedDailyDate) {
+  return state.tasks.filter((task) => dailyPlan(task.id)?.date === date && dailyPlan(task.id)?.lane === lane);
+}
+
+function smartDailyTasks(date = state.selectedDailyDate) {
+  const targetDate = parseDateValue(date);
+  return getFilteredTasks()
+    .filter((task) => task.status !== "done")
+    .filter((task) => {
+      const dueDate = parseDateValue(task.dueDate);
+      return (
+        isPlannedForDate(task, date) ||
+        task.assignee === currentMemberId ||
+        (dueDate && targetDate && dueDate <= targetDate)
+      );
+    })
+    .sort((a, b) => {
+      const aPlanned = isPlannedForDate(a, date) ? 0 : 1;
+      const bPlanned = isPlannedForDate(b, date) ? 0 : 1;
+      if (aPlanned !== bPlanned) return aPlanned - bPlanned;
+      return (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31");
+    });
 }
 
 function taskSubtasks(task) {
@@ -798,6 +870,7 @@ function render() {
 
   if (state.selectedRoute === "project") renderProjectPage();
   if (state.selectedRoute === "company") renderCompanyPage();
+  if (state.selectedRoute === "daily") renderDailyTasks();
   if (state.selectedRoute === "board") renderBoard();
   if (state.selectedRoute === "list") renderList();
   if (state.selectedRoute === "calendar") renderCalendar();
@@ -909,6 +982,137 @@ function renderDashboard() {
         </div>
       </section>
     </div>
+  `;
+}
+
+function renderDailyTasks() {
+  const date = state.selectedDailyDate;
+  const smartTasks = smartDailyTasks(date);
+  const plannedTasks = ["now", "next", "later"].flatMap((lane) => dailyLaneTasks(lane, date));
+  const plannedIds = new Set(plannedTasks.map((task) => task.id));
+  const unplannedSmartTasks = smartTasks.filter((task) => !plannedIds.has(task.id));
+  const completedToday = plannedTasks.filter((task) => task.status === "done");
+  const loggedToday = state.timeEntries.filter((entry) => entry.date === date);
+  const note = state.dailyNotes?.[date] || "";
+
+  els.appView.innerHTML = `
+    <section class="daily-hero">
+      <div>
+        <p class="eyebrow">Daily task page</p>
+        <h2>${dateInputLabel(date)}</h2>
+        <div class="daily-date-controls">
+          <button class="icon-button" type="button" data-daily-shift="-1" aria-label="Previous day">&lt;</button>
+          <input type="date" value="${date}" data-daily-date aria-label="Daily task date">
+          <button class="button button-secondary" type="button" data-daily-today>Today</button>
+          <button class="icon-button" type="button" data-daily-shift="1" aria-label="Next day">&gt;</button>
+        </div>
+      </div>
+      <label class="daily-note">
+        <span>Daily note</span>
+        <textarea id="daily-note" rows="5" placeholder="Notes, blockers, standup, decisions">${escapeHtml(note)}</textarea>
+      </label>
+    </section>
+
+    <div class="metric-grid">
+      ${metric("Planned", plannedTasks.length)}
+      ${metric("Smart inbox", unplannedSmartTasks.length)}
+      ${metric("Completed", completedToday.length)}
+      ${metric("Logged", formatDuration(sumMinutes(loggedToday)))}
+    </div>
+
+    <div class="daily-layout">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Plan</p>
+            <h2>Today lanes</h2>
+          </div>
+        </div>
+        <div class="daily-lanes">
+          ${renderDailyLane("now", "Now")}
+          ${renderDailyLane("next", "Next")}
+          ${renderDailyLane("later", "Later")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Suggested</p>
+            <h2>Smart inbox</h2>
+          </div>
+        </div>
+        <div class="daily-smart-list">
+          ${unplannedSmartTasks.length ? unplannedSmartTasks.map(renderDailySmartTask).join("") : emptyState("No unplanned work is asking for attention.")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderDailyLane(lane, label) {
+  const tasks = dailyLaneTasks(lane);
+  return `
+    <section class="daily-lane">
+      <div class="board-column-header">
+        <h3>${label}</h3>
+        <span>${tasks.length}</span>
+      </div>
+      <div class="daily-task-stack">
+        ${tasks.length ? tasks.map((task) => renderDailyTask(task, lane)).join("") : emptyState(`Nothing in ${label.toLowerCase()}.`)}
+      </div>
+    </section>
+  `;
+}
+
+function renderDailyTask(task, lane) {
+  const checklist = subtaskSummary(task);
+  return `
+    <article class="daily-task-card ${task.status === "done" ? "is-done" : ""}">
+      <button class="task-card-main" type="button" data-edit-task="${task.id}">
+        <span class="task-project">${escapeHtml(projectCompany(task.projectId).name)} / ${escapeHtml(projectName(task.projectId))}</span>
+        <strong>${escapeHtml(task.title)}</strong>
+        <span>${escapeHtml(task.description)}</span>
+      </button>
+      <div class="task-meta">
+        <span class="avatar">${memberName(task.assignee).split(" ").map((part) => part[0]).join("")}</span>
+        <span class="priority priority-${task.priority}">${priorityLabel(task.priority)}</span>
+        <span class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}</span>
+        ${checklist ? `<span>${escapeHtml(checklist)}</span>` : ""}
+      </div>
+      <div class="daily-actions">
+        ${lane !== "now" ? `<button class="button button-secondary" type="button" data-daily-plan="now" data-task-id="${task.id}">Now</button>` : ""}
+        ${lane !== "next" ? `<button class="button button-secondary" type="button" data-daily-plan="next" data-task-id="${task.id}">Next</button>` : ""}
+        ${lane !== "later" ? `<button class="button button-secondary" type="button" data-daily-plan="later" data-task-id="${task.id}">Later</button>` : ""}
+        <button class="button button-secondary" type="button" data-daily-action="log" data-task-id="${task.id}">Log 30m</button>
+        <button class="button button-secondary" type="button" data-daily-action="tomorrow" data-task-id="${task.id}">Tomorrow</button>
+        <button class="button button-primary" type="button" data-daily-action="done" data-task-id="${task.id}">Done</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderDailySmartTask(task) {
+  const reason = isOverdue(task)
+    ? "Overdue"
+    : task.dueDate === state.selectedDailyDate
+      ? "Due today"
+      : task.assignee === currentMemberId
+        ? "Assigned to you"
+        : "Suggested";
+
+  return `
+    <article class="daily-smart-card">
+      <button class="table-task-button" type="button" data-edit-task="${task.id}">
+        <strong>${escapeHtml(task.title)}</strong>
+        <span>${escapeHtml(projectName(task.projectId))} - ${reason}</span>
+      </button>
+      <div class="daily-actions">
+        <button class="button button-secondary" type="button" data-daily-plan="now" data-task-id="${task.id}">Now</button>
+        <button class="button button-secondary" type="button" data-daily-plan="next" data-task-id="${task.id}">Next</button>
+        <button class="button button-secondary" type="button" data-daily-plan="later" data-task-id="${task.id}">Later</button>
+      </div>
+    </article>
   `;
 }
 
@@ -2161,6 +2365,31 @@ function addTaskTimeEntry() {
   render();
 }
 
+function addQuickDailyTime(taskId, minutes = 30) {
+  const task = byId(state.tasks, taskId);
+  if (!task) return;
+
+  state.timeEntries = [{
+    id: uid("time"),
+    taskId,
+    memberId: currentMemberId,
+    date: state.selectedDailyDate,
+    minutes,
+    note: "Daily focus block",
+    billable: false,
+    createdAt: new Date().toISOString()
+  }, ...state.timeEntries];
+
+  addActivity({
+    projectId: task.projectId,
+    taskId,
+    type: "time_log",
+    message: `logged ${formatDuration(minutes)} on ${task.title}`
+  });
+  saveState();
+  render();
+}
+
 document.addEventListener("click", (event) => {
   const routeButton = event.target.closest("[data-route]");
   if (routeButton) setRoute(routeButton.dataset.route);
@@ -2199,6 +2428,51 @@ document.addEventListener("click", (event) => {
   const todayButton = event.target.closest("[data-calendar-today]");
   if (todayButton) {
     state.selectedCalendarMonth = new Date().toISOString().slice(0, 7);
+    saveState();
+    render();
+  }
+
+  const dailyPlanButton = event.target.closest("[data-daily-plan]");
+  if (dailyPlanButton) {
+    planTaskForDate(dailyPlanButton.dataset.taskId, dailyPlanButton.dataset.dailyPlan);
+    saveState();
+    render();
+  }
+
+  const dailyActionButton = event.target.closest("[data-daily-action]");
+  if (dailyActionButton) {
+    const taskId = dailyActionButton.dataset.taskId;
+    const action = dailyActionButton.dataset.dailyAction;
+    const plan = dailyPlan(taskId);
+
+    if (action === "done") {
+      updateTask(taskId, { status: "done" });
+      return;
+    }
+
+    if (action === "tomorrow") {
+      planTaskForDate(taskId, plan?.lane || "next", shiftDate(state.selectedDailyDate, 1));
+      saveState();
+      render();
+      return;
+    }
+
+    if (action === "log") {
+      addQuickDailyTime(taskId);
+      return;
+    }
+  }
+
+  const dailyShiftButton = event.target.closest("[data-daily-shift]");
+  if (dailyShiftButton) {
+    state.selectedDailyDate = shiftDate(state.selectedDailyDate, Number(dailyShiftButton.dataset.dailyShift));
+    saveState();
+    render();
+  }
+
+  const dailyTodayButton = event.target.closest("[data-daily-today]");
+  if (dailyTodayButton) {
+    state.selectedDailyDate = todayKey();
     saveState();
     render();
   }
@@ -2294,6 +2568,14 @@ els.priorityFilter.addEventListener("change", (event) => {
 });
 
 els.appView.addEventListener("change", (event) => {
+  const dailyDateInput = event.target.closest("[data-daily-date]");
+  if (dailyDateInput) {
+    state.selectedDailyDate = dailyDateInput.value || todayKey();
+    saveState();
+    render();
+    return;
+  }
+
   const select = event.target.closest("[data-inline-field]");
   if (select) {
     updateTask(select.dataset.taskId, { [select.dataset.inlineField]: select.value });
@@ -2316,6 +2598,16 @@ els.appView.addEventListener("change", (event) => {
   if (projectDateInput) {
     updateProjectDate(projectDateInput.dataset.projectId, projectDateInput.dataset.projectDate, projectDateInput.value);
   }
+});
+
+els.appView.addEventListener("input", (event) => {
+  const dailyNote = event.target.closest("#daily-note");
+  if (!dailyNote) return;
+  state.dailyNotes = {
+    ...state.dailyNotes,
+    [state.selectedDailyDate]: dailyNote.value
+  };
+  saveState();
 });
 
 els.appView.addEventListener("dragstart", (event) => {
