@@ -25,12 +25,14 @@ const routes = {
   dashboard: "Dashboard",
   board: "Board",
   list: "List",
-  "my-work": "My Work"
+  "my-work": "My Work",
+  project: "Project"
 };
 
 const seedData = {
   selectedRoute: "dashboard",
   selectedProject: "all",
+  selectedProjectTab: "overview",
   filters: {
     assignee: "all",
     status: "all",
@@ -145,6 +147,48 @@ const seedData = {
       tags: ["ux"],
       createdAt: "2026-06-27T13:00:00.000Z"
     }
+  ],
+  milestones: [
+    {
+      id: "milestone-launch-alpha",
+      projectId: "launch",
+      title: "Prototype ready for contributors",
+      description: "The repository has a runnable app shell, clear docs, and enough workflow shape for early feedback.",
+      dueDate: "2026-07-12",
+      owner: "mara",
+      status: "on-track",
+      taskIds: ["task-1", "task-2", "task-3"]
+    },
+    {
+      id: "milestone-launch-public",
+      projectId: "launch",
+      title: "Public MVP scope locked",
+      description: "Core release scope and self-hosting expectations are clear enough to start implementation planning.",
+      dueDate: "2026-08-02",
+      owner: "eli",
+      status: "at-risk",
+      taskIds: ["task-1", "task-2"]
+    },
+    {
+      id: "milestone-client-template",
+      projectId: "client-delivery",
+      title: "Client delivery workflow drafted",
+      description: "Agency teams can start from a useful default structure for repeatable client projects.",
+      dueDate: "2026-07-22",
+      owner: "sam",
+      status: "on-track",
+      taskIds: ["task-4", "task-5"]
+    },
+    {
+      id: "milestone-design-language",
+      projectId: "design-system",
+      title: "Core interaction language",
+      description: "Cards, task density, empty states, navigation, and project surfaces feel coherent across the app.",
+      dueDate: "2026-07-28",
+      owner: "nina",
+      status: "planned",
+      taskIds: ["task-6", "task-7"]
+    }
   ]
 };
 
@@ -171,7 +215,8 @@ function loadState() {
   if (!stored) return structuredClone(seedData);
 
   try {
-    return { ...structuredClone(seedData), ...JSON.parse(stored) };
+    const parsed = JSON.parse(stored);
+    return { ...structuredClone(seedData), ...parsed };
   } catch {
     return structuredClone(seedData);
   }
@@ -244,14 +289,36 @@ function getFilteredTasks() {
   });
 }
 
+function getProjectTasks(projectId, useFilters = true) {
+  const tasks = useFilters ? getFilteredTasks() : state.tasks;
+  return tasks.filter((task) => task.projectId === projectId);
+}
+
+function getProjectMilestones(projectId) {
+  return state.milestones.filter((milestone) => milestone.projectId === projectId);
+}
+
+function projectProgress(tasks) {
+  const done = tasks.filter((task) => task.status === "done").length;
+  return tasks.length ? Math.round((done / tasks.length) * 100) : 0;
+}
+
+function milestoneProgress(milestone) {
+  const linkedTasks = milestone.taskIds.map((taskId) => byId(state.tasks, taskId)).filter(Boolean);
+  return projectProgress(linkedTasks);
+}
+
 function setRoute(route) {
   state.selectedRoute = route;
+  if (route !== "project") state.selectedProjectTab = "overview";
   saveState();
   render();
 }
 
 function setProject(projectId) {
   state.selectedProject = projectId;
+  state.selectedRoute = projectId === "all" ? "dashboard" : "project";
+  state.selectedProjectTab = "overview";
   saveState();
   render();
 }
@@ -263,7 +330,8 @@ function updateTask(id, updates) {
 }
 
 function render() {
-  els.pageTitle.textContent = routes[state.selectedRoute];
+  const selectedProject = byId(state.projects, state.selectedProject);
+  els.pageTitle.textContent = state.selectedRoute === "project" && selectedProject ? selectedProject.name : routes[state.selectedRoute];
   document.querySelectorAll("[data-route]").forEach((item) => {
     item.classList.toggle("is-active", item.dataset.route === state.selectedRoute);
   });
@@ -271,6 +339,7 @@ function render() {
   renderSidebarProjects();
   renderFilters();
 
+  if (state.selectedRoute === "project") renderProjectPage();
   if (state.selectedRoute === "board") renderBoard();
   if (state.selectedRoute === "list") renderList();
   if (state.selectedRoute === "my-work") renderMyWork();
@@ -381,8 +450,7 @@ function metric(label, value) {
 
 function renderProjectSummary(project) {
   const projectTasks = state.tasks.filter((task) => task.projectId === project.id);
-  const done = projectTasks.filter((task) => task.status === "done").length;
-  const progress = projectTasks.length ? Math.round((done / projectTasks.length) * 100) : 0;
+  const progress = projectProgress(projectTasks);
   return `
     <article class="project-summary">
       <div>
@@ -391,6 +459,222 @@ function renderProjectSummary(project) {
         <div class="meta-row">
           <span>${memberName(project.owner)}</span>
           <span>Due ${formatDate(project.dueDate)}</span>
+        </div>
+      </div>
+      <div class="progress-block" aria-label="${progress}% complete">
+        <strong>${progress}%</strong>
+        <span class="progress-track"><span style="width: ${progress}%"></span></span>
+      </div>
+    </article>
+  `;
+}
+
+function renderProjectPage() {
+  const project = byId(state.projects, state.selectedProject);
+  if (!project) {
+    state.selectedProject = "all";
+    state.selectedRoute = "dashboard";
+    renderDashboard();
+    return;
+  }
+
+  const allProjectTasks = getProjectTasks(project.id, false);
+  const filteredProjectTasks = getProjectTasks(project.id);
+  const openTasks = allProjectTasks.filter((task) => task.status !== "done");
+  const completedTasks = allProjectTasks.filter((task) => task.status === "done");
+  const overdueTasks = allProjectTasks.filter(isOverdue);
+  const milestones = getProjectMilestones(project.id);
+  const nextMilestone = [...milestones]
+    .filter((milestone) => milestone.status !== "completed")
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
+  const progress = projectProgress(allProjectTasks);
+
+  els.appView.innerHTML = `
+    <section class="project-hero">
+      <div>
+        <p class="eyebrow">Project workspace</p>
+        <h2>${escapeHtml(project.name)}</h2>
+        <p>${escapeHtml(project.description)}</p>
+        <div class="meta-row">
+          <span>Owner ${memberName(project.owner)}</span>
+          <span>Due ${formatDate(project.dueDate)}</span>
+          <span>${milestones.length} ${milestones.length === 1 ? "milestone" : "milestones"}</span>
+        </div>
+      </div>
+      <div class="project-progress-card">
+        <span>Progress</span>
+        <strong>${progress}%</strong>
+        <span class="progress-track"><span style="width: ${progress}%"></span></span>
+      </div>
+    </section>
+
+    <nav class="tab-list" aria-label="Project sections">
+      ${projectTabButton("overview", "Overview")}
+      ${projectTabButton("tasks", "Tasks")}
+      ${projectTabButton("board", "Board")}
+      ${projectTabButton("milestones", "Milestones")}
+    </nav>
+
+    ${state.selectedProjectTab === "overview" ? renderProjectOverview(project, {
+      openTasks,
+      completedTasks,
+      overdueTasks,
+      filteredProjectTasks,
+      nextMilestone,
+      milestones
+    }) : ""}
+    ${state.selectedProjectTab === "tasks" ? renderProjectTasks(filteredProjectTasks) : ""}
+    ${state.selectedProjectTab === "board" ? renderProjectBoard(filteredProjectTasks) : ""}
+    ${state.selectedProjectTab === "milestones" ? renderProjectMilestones(milestones) : ""}
+  `;
+}
+
+function projectTabButton(tab, label) {
+  return `
+    <button class="tab-button ${state.selectedProjectTab === tab ? "is-active" : ""}" type="button" data-project-tab="${tab}">
+      ${label}
+    </button>
+  `;
+}
+
+function renderProjectOverview(project, details) {
+  const { openTasks, completedTasks, overdueTasks, filteredProjectTasks, nextMilestone, milestones } = details;
+  return `
+    <div class="metric-grid">
+      ${metric("Open tasks", openTasks.length)}
+      ${metric("Completed", completedTasks.length)}
+      ${metric("Overdue", overdueTasks.length)}
+      ${metric("Milestones", milestones.length)}
+    </div>
+
+    <div class="dashboard-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Focus</p>
+            <h2>Next work</h2>
+          </div>
+          <button class="button button-secondary" type="button" data-project-tab="tasks">Open tasks</button>
+        </div>
+        <div class="task-stack">
+          ${filteredProjectTasks.filter((task) => task.status !== "done").slice(0, 5).map(renderTaskCard).join("") || emptyState("No open tasks match the current filters.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Milestone</p>
+            <h2>${nextMilestone ? "Coming up" : "No active milestone"}</h2>
+          </div>
+          <button class="button button-secondary" type="button" data-project-tab="milestones">View milestones</button>
+        </div>
+        ${nextMilestone ? renderMilestoneCard(nextMilestone) : emptyState(`${escapeHtml(project.name)} does not have an active milestone yet.`)}
+      </section>
+    </div>
+  `;
+}
+
+function renderProjectTasks(tasks) {
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Project tasks</p>
+          <h2>${tasks.length} matching ${tasks.length === 1 ? "task" : "tasks"}</h2>
+        </div>
+      </div>
+      ${tasks.length ? `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Task</th>
+                <th>Assignee</th>
+                <th>Status</th>
+                <th>Priority</th>
+                <th>Due</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tasks.map(renderProjectTaskRow).join("")}
+            </tbody>
+          </table>
+        </div>
+      ` : emptyState("No project tasks match those filters.")}
+    </section>
+  `;
+}
+
+function renderProjectTaskRow(task) {
+  return `
+    <tr>
+      <td>
+        <button class="table-task-button" type="button" data-edit-task="${task.id}">
+          <strong>${escapeHtml(task.title)}</strong>
+          <span>${escapeHtml(task.description)}</span>
+        </button>
+      </td>
+      <td>${memberName(task.assignee)}</td>
+      <td>${selectControl("status", task.id, task.status, statuses)}</td>
+      <td>${selectControl("priority", task.id, task.priority, priorities)}</td>
+      <td class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}</td>
+    </tr>
+  `;
+}
+
+function renderProjectBoard(tasks) {
+  return `
+    <div class="board" aria-label="Project task board">
+      ${statuses.map((status) => {
+        const columnTasks = tasks.filter((task) => task.status === status.id);
+        return `
+          <section class="board-column" data-status="${status.id}">
+            <div class="board-column-header">
+              <h2>${status.label}</h2>
+              <span>${columnTasks.length}</span>
+            </div>
+            <div class="task-stack" data-drop-status="${status.id}">
+              ${columnTasks.length ? columnTasks.map(renderTaskCard).join("") : emptyState("No tasks here.")}
+            </div>
+          </section>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderProjectMilestones(milestones) {
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Plan</p>
+          <h2>Milestones</h2>
+        </div>
+      </div>
+      <div class="milestone-list">
+        ${milestones.length ? milestones.map(renderMilestoneCard).join("") : emptyState("No milestones have been planned for this project.")}
+      </div>
+    </section>
+  `;
+}
+
+function renderMilestoneCard(milestone) {
+  const progress = milestoneProgress(milestone);
+  const linkedTasks = milestone.taskIds.map((taskId) => byId(state.tasks, taskId)).filter(Boolean);
+  return `
+    <article class="milestone-card">
+      <div class="milestone-main">
+        <div>
+          <span class="status-pill status-${milestone.status}">${escapeHtml(milestone.status.replace("-", " "))}</span>
+          <h3>${escapeHtml(milestone.title)}</h3>
+          <p>${escapeHtml(milestone.description)}</p>
+        </div>
+        <div class="meta-row">
+          <span>${memberName(milestone.owner)}</span>
+          <span>Due ${formatDate(milestone.dueDate)}</span>
+          <span>${linkedTasks.length} linked ${linkedTasks.length === 1 ? "task" : "tasks"}</span>
         </div>
       </div>
       <div class="progress-block" aria-label="${progress}% complete">
@@ -596,6 +880,13 @@ document.addEventListener("click", (event) => {
   const projectButton = event.target.closest("[data-project-id]");
   if (projectButton) setProject(projectButton.dataset.projectId);
 
+  const projectTabButton = event.target.closest("[data-project-tab]");
+  if (projectTabButton) {
+    state.selectedProjectTab = projectTabButton.dataset.projectTab;
+    saveState();
+    render();
+  }
+
   const editButton = event.target.closest("[data-edit-task]");
   if (editButton) {
     populateTaskForm(byId(state.tasks, editButton.dataset.editTask));
@@ -712,10 +1003,11 @@ els.projectForm.addEventListener("submit", (event) => {
 
   state.projects = [project, ...state.projects];
   state.selectedProject = project.id;
+  state.selectedRoute = "project";
+  state.selectedProjectTab = "overview";
   saveState();
   closeDialog(els.projectDialog);
   render();
 });
 
 render();
-

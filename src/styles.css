@@ -300,6 +300,82 @@ textarea:focus {
   gap: 16px;
 }
 
+.project-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 18px;
+  align-items: stretch;
+  margin-bottom: 14px;
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.project-hero h2 {
+  margin: 0;
+  font-size: 1.65rem;
+}
+
+.project-hero p {
+  max-width: 760px;
+  color: var(--muted);
+}
+
+.project-progress-card {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  padding: 16px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.project-progress-card span:first-child {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.project-progress-card strong {
+  font-size: 2.2rem;
+  line-height: 1;
+}
+
+.tab-list {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.tab-button {
+  min-height: 34px;
+  padding: 7px 12px;
+  color: var(--muted);
+  font-weight: 800;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.tab-button:hover {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.tab-button.is-active {
+  color: #ffffff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
 .panel {
   padding: 18px;
 }
@@ -321,7 +397,8 @@ textarea:focus {
 }
 
 .project-summary-list,
-.task-stack {
+.task-stack,
+.milestone-list {
   display: grid;
   gap: 10px;
 }
@@ -376,6 +453,58 @@ textarea:focus {
   display: block;
   height: 100%;
   background: var(--accent);
+}
+
+.milestone-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px;
+  gap: 18px;
+  padding: 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.milestone-main {
+  display: grid;
+  gap: 10px;
+}
+
+.milestone-card h3 {
+  margin: 8px 0 6px;
+}
+
+.milestone-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: capitalize;
+  background: #ede9df;
+  border-radius: 999px;
+}
+
+.status-on-track {
+  color: var(--green);
+  background: #e1eee1;
+}
+
+.status-at-risk {
+  color: var(--amber);
+  background: #f3e7d4;
+}
+
+.status-completed {
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .board {
@@ -599,6 +728,7 @@ th {
   }
 
   .dashboard-grid,
+  .project-hero,
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -622,6 +752,7 @@ th {
   .toolbar,
   .metric-grid,
   .dashboard-grid,
+  .project-hero,
   .form-grid,
   .nav-list,
   .project-list {
@@ -632,9 +763,12 @@ th {
     grid-template-columns: 1fr;
   }
 
+  .milestone-card {
+    grid-template-columns: 1fr;
+  }
+
   .board,
   .work-lanes {
     grid-template-columns: minmax(260px, 1fr);
   }
 }
-
