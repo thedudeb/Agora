@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Agora</title>
+    <meta name="description" content="Open source project management for teams that want clarity without lock-in.">
+    <link rel="icon" href="./assets/agora-mark.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./src/styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Workspace navigation">
+        <a class="brand" href="#dashboard" data-route="dashboard" aria-label="Agora dashboard">
+          <img src="./assets/agora-mark.svg" alt="" width="36" height="36">
+          <span>
+            <strong>Agora</strong>
+            <small>Acme Studio</small>
+          </span>
+        </a>
+
+        <nav class="nav-list" aria-label="Primary">
+          <button class="nav-item is-active" type="button" data-route="dashboard">Dashboard</button>
+          <button class="nav-item" type="button" data-route="board">Board</button>
+          <button class="nav-item" type="button" data-route="list">List</button>
+          <button class="nav-item" type="button" data-route="my-work">My Work</button>
+        </nav>
+
+        <section class="sidebar-section" aria-labelledby="projects-heading">
+          <div class="section-title" id="projects-heading">Projects</div>
+          <div class="project-list" id="project-list"></div>
+        </section>
+
+        <button class="secondary-action" type="button" id="seed-reset">Reset sample data</button>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Open source project management</p>
+            <h1 id="page-title">Dashboard</h1>
+          </div>
+          <div class="topbar-actions">
+            <label class="search-control">
+              <span>Search</span>
+              <input id="search-input" type="search" placeholder="Tasks, projects, people">
+            </label>
+            <button class="button button-secondary" type="button" id="new-project-button">New Project</button>
+            <button class="button button-primary" type="button" id="new-task-button">New Task</button>
+          </div>
+        </header>
+
+        <section class="toolbar" aria-label="View controls">
+          <label>
+            <span>Project</span>
+            <select id="project-filter"></select>
+          </label>
+          <label>
+            <span>Assignee</span>
+            <select id="assignee-filter"></select>
+          </label>
+          <label>
+            <span>Status</span>
+            <select id="status-filter"></select>
+          </label>
+          <label>
+            <span>Priority</span>
+            <select id="priority-filter"></select>
+          </label>
+        </section>
+
+        <section id="app-view" class="view" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <dialog class="modal" id="task-dialog">
+      <form method="dialog" id="task-form" class="modal-form">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Task</p>
+            <h2 id="task-form-title">New Task</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-dialog="task-dialog" aria-label="Close">x</button>
+        </div>
+
+        <input type="hidden" id="task-id">
+        <label>
+          <span>Title</span>
+          <input id="task-title" required maxlength="120" placeholder="Write launch checklist">
+        </label>
+        <label>
+          <span>Description</span>
+          <textarea id="task-description" rows="4" placeholder="What needs to be done?"></textarea>
+        </label>
+        <div class="form-grid">
+          <label>
+            <span>Project</span>
+            <select id="task-project" required></select>
+          </label>
+          <label>
+            <span>Assignee</span>
+            <select id="task-assignee" required></select>
+          </label>
+          <label>
+            <span>Status</span>
+            <select id="task-status" required></select>
+          </label>
+          <label>
+            <span>Priority</span>
+            <select id="task-priority" required></select>
+          </label>
+          <label>
+            <span>Due date</span>
+            <input id="task-due-date" type="date">
+          </label>
+          <label>
+            <span>Tags</span>
+            <input id="task-tags" placeholder="design, launch">
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button class="button button-secondary" type="button" data-close-dialog="task-dialog">Cancel</button>
+          <button class="button button-primary" type="submit">Save Task</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="project-dialog">
+      <form method="dialog" id="project-form" class="modal-form">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Project</p>
+            <h2>New Project</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-dialog="project-dialog" aria-label="Close">x</button>
+        </div>
+
+        <label>
+          <span>Name</span>
+          <input id="project-name" required maxlength="80" placeholder="Client onboarding">
+        </label>
+        <label>
+          <span>Description</span>
+          <textarea id="project-description" rows="3" placeholder="What is this project for?"></textarea>
+        </label>
+        <div class="form-grid">
+          <label>
+            <span>Owner</span>
+            <select id="project-owner" required></select>
+          </label>
+          <label>
+            <span>Due date</span>
+            <input id="project-due-date" type="date">
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button class="button button-secondary" type="button" data-close-dialog="project-dialog">Cancel</button>
+          <button class="button button-primary" type="submit">Create Project</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./src/app.js"></script>
+  </body>
+</html>
+

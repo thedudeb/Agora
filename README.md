@@ -6,7 +6,17 @@ Agora is a self-hostable project management workspace inspired by tools like Asa
 
 ## Status
 
-Agora is at the product definition stage. The initial repository focuses on the product requirements, roadmap, contribution direction, and project shape before implementation begins.
+Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, project filters, task creation, list view, board view, and a My Work view.
+
+## Run Locally
+
+```sh
+npm run dev
+```
+
+Then open `http://localhost:5173`.
+
+The prototype stores changes in browser local storage. Use "Reset sample data" in the sidebar to restore the seeded workspace.
 
 ## Product Principles
 
@@ -27,6 +37,9 @@ Agora is at the product definition stage. The initial repository focuses on the 
 ## Repository Structure
 
 - `prds/` contains product requirements and planning documents.
+- `index.html` contains the first browser prototype shell.
+- `src/` contains prototype application logic and styles.
+- `assets/` contains brand and interface assets.
 - `ROADMAP.md` outlines the release direction.
 - `CONTRIBUTING.md` explains how to contribute.
 - `.github/ISSUE_TEMPLATE/` contains starter issue templates.
@@ -38,4 +51,3 @@ In ancient Greece, the agora was a public gathering place for discussion, trade,
 ## License
 
 Agora is licensed under the GNU Affero General Public License v3.0. See `LICENSE` for details.
-

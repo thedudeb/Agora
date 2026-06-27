@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Agora mark</title>
+  <desc id="desc">A simple architectural mark inspired by a shared gathering place.</desc>
+  <rect width="64" height="64" rx="14" fill="#245a58"/>
+  <path d="M14 45h36v6H14z" fill="#f6f5f0"/>
+  <path d="M17 39h30v5H17z" fill="#dce8e5"/>
+  <path d="M18 24h6v15h-6zm11 0h6v15h-6zm11 0h6v15h-6z" fill="#f6f5f0"/>
+  <path d="M13 20l19-9 19 9v5H13z" fill="#f6f5f0"/>
+</svg>
+
