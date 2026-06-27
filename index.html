@@ -25,6 +25,7 @@
           <button class="nav-item" type="button" data-route="list">List</button>
           <button class="nav-item" type="button" data-route="my-work">My Work</button>
           <button class="nav-item" type="button" data-route="time">Time</button>
+          <button class="nav-item" type="button" data-route="companies">Companies</button>
         </nav>
 
         <section class="sidebar-section" aria-labelledby="projects-heading">
@@ -52,6 +53,10 @@
         </header>
 
         <section class="toolbar" aria-label="View controls">
+          <label>
+            <span>Company</span>
+            <select id="company-filter"></select>
+          </label>
           <label>
             <span>Project</span>
             <select id="project-filter"></select>
@@ -149,6 +154,10 @@
           <textarea id="project-description" rows="3" placeholder="What is this project for?"></textarea>
         </label>
         <div class="form-grid">
+          <label>
+            <span>Company</span>
+            <select id="project-company" required></select>
+          </label>
           <label>
             <span>Owner</span>
             <select id="project-owner" required></select>

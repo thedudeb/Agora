@@ -247,7 +247,7 @@ textarea:focus {
 
 .toolbar {
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  grid-template-columns: repeat(5, minmax(140px, 1fr));
   gap: 12px;
   margin-bottom: 20px;
   padding: 14px;
@@ -304,6 +304,74 @@ textarea:focus {
   display: grid;
   grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
   gap: 16px;
+}
+
+.company-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.company-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+  gap: 16px;
+}
+
+.company-detail-grid .panel:last-child {
+  grid-column: 1 / -1;
+}
+
+.company-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.company-card-main {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+
+.company-card-main h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.company-card-main p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.company-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.company-metrics span {
+  display: grid;
+  gap: 3px;
+  min-height: 58px;
+  padding: 10px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.company-metrics strong {
+  color: var(--text);
 }
 
 .project-hero {
@@ -512,6 +580,16 @@ textarea:focus {
 .status-completed {
   color: var(--accent);
   background: var(--accent-soft);
+}
+
+.status-active {
+  color: var(--green);
+  background: #e1eee1;
+}
+
+.status-watch {
+  color: var(--amber);
+  background: #f3e7d4;
 }
 
 .timeline-controls {
@@ -780,6 +858,14 @@ th {
   border: 0;
 }
 
+.table-kicker {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
 .inline-select {
   min-width: 120px;
 }
@@ -1033,6 +1119,8 @@ th {
 
   .dashboard-grid,
   .time-grid,
+  .company-grid,
+  .company-detail-grid,
   .project-hero,
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1058,6 +1146,8 @@ th {
   .metric-grid,
   .dashboard-grid,
   .time-grid,
+  .company-grid,
+  .company-detail-grid,
   .project-hero,
   .form-grid,
   .collaboration-grid,
@@ -1079,6 +1169,10 @@ th {
 
   .time-summary-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .company-detail-grid .panel:last-child {
+    grid-column: auto;
   }
 
   .task-time-entry {

@@ -29,23 +29,54 @@ const routes = {
   list: "List",
   "my-work": "My Work",
   time: "Time",
+  companies: "Companies",
+  company: "Company",
   project: "Project"
 };
 
 const seedData = {
   selectedRoute: "dashboard",
   selectedProject: "all",
+  selectedCompany: "all",
   selectedProjectTab: "overview",
   filters: {
+    company: "all",
     assignee: "all",
     status: "all",
     priority: "all",
     query: ""
   },
+  companies: [
+    {
+      id: "acme-studio",
+      name: "Acme Studio",
+      type: "Internal",
+      owner: "mara",
+      status: "active",
+      description: "The core team building Agora and running internal product delivery."
+    },
+    {
+      id: "northstar-labs",
+      name: "Northstar Labs",
+      type: "Client",
+      owner: "sam",
+      status: "active",
+      description: "Agency-style client delivery work with repeatable onboarding and handoff needs."
+    },
+    {
+      id: "brightline-health",
+      name: "Brightline Health",
+      type: "Client",
+      owner: "nina",
+      status: "watch",
+      description: "Design-heavy operational work where milestones and stakeholder visibility matter."
+    }
+  ],
   projects: [
     {
       id: "launch",
       name: "Agora MVP Launch",
+      companyId: "acme-studio",
       description: "Define and ship the first public version of Agora.",
       owner: "mara",
       startDate: "2026-06-27",
@@ -54,6 +85,7 @@ const seedData = {
     {
       id: "client-delivery",
       name: "Client Delivery Template",
+      companyId: "northstar-labs",
       description: "Create a reusable workflow for agencies and service teams.",
       owner: "sam",
       startDate: "2026-07-01",
@@ -62,6 +94,7 @@ const seedData = {
     {
       id: "design-system",
       name: "Design System",
+      companyId: "brightline-health",
       description: "Establish core interaction patterns and reusable interface pieces.",
       owner: "nina",
       startDate: "2026-07-02",
@@ -325,6 +358,7 @@ const els = {
   pageTitle: document.querySelector("#page-title"),
   projectList: document.querySelector("#project-list"),
   searchInput: document.querySelector("#search-input"),
+  companyFilter: document.querySelector("#company-filter"),
   projectFilter: document.querySelector("#project-filter"),
   assigneeFilter: document.querySelector("#assignee-filter"),
   statusFilter: document.querySelector("#status-filter"),
@@ -342,7 +376,12 @@ function loadState() {
 
   try {
     const parsed = JSON.parse(stored);
-    return { ...structuredClone(seedData), ...parsed };
+    const base = structuredClone(seedData);
+    return {
+      ...base,
+      ...parsed,
+      filters: { ...base.filters, ...parsed.filters }
+    };
   } catch {
     return structuredClone(seedData);
   }
@@ -362,6 +401,15 @@ function memberName(id) {
 
 function projectName(id) {
   return byId(state.projects, id)?.name || "Unknown project";
+}
+
+function projectCompany(projectId) {
+  const project = byId(state.projects, projectId);
+  return byId(state.companies, project?.companyId) || state.companies[0];
+}
+
+function companyName(id) {
+  return byId(state.companies, id)?.name || "Unknown company";
 }
 
 function statusLabel(id) {
@@ -434,6 +482,7 @@ function getFilteredTasks() {
     ].join(" ").toLowerCase();
 
     return (
+      (state.filters.company === "all" || projectCompany(task.projectId)?.id === state.filters.company) &&
       (state.selectedProject === "all" || task.projectId === state.selectedProject) &&
       (state.filters.assignee === "all" || task.assignee === state.filters.assignee) &&
       (state.filters.status === "all" || task.status === state.filters.status) &&
@@ -450,6 +499,33 @@ function getProjectTasks(projectId, useFilters = true) {
 
 function getProjectMilestones(projectId) {
   return state.milestones.filter((milestone) => milestone.projectId === projectId);
+}
+
+function getCompanyProjects(companyId) {
+  return state.projects.filter((project) => project.companyId === companyId);
+}
+
+function getCompanyTasks(companyId) {
+  const projectIds = new Set(getCompanyProjects(companyId).map((project) => project.id));
+  return state.tasks.filter((task) => projectIds.has(task.projectId));
+}
+
+function getCompanyMilestones(companyId) {
+  const projectIds = new Set(getCompanyProjects(companyId).map((project) => project.id));
+  return state.milestones.filter((milestone) => projectIds.has(milestone.projectId));
+}
+
+function getCompanyTimeEntries(companyId) {
+  const projectIds = new Set(getCompanyProjects(companyId).map((project) => project.id));
+  return state.timeEntries.filter((entry) => projectIds.has(byId(state.tasks, entry.taskId)?.projectId));
+}
+
+function getCompanyActivity(companyId, limit = 6) {
+  const projectIds = new Set(getCompanyProjects(companyId).map((project) => project.id));
+  return state.activities
+    .filter((activity) => projectIds.has(activity.projectId))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, limit);
 }
 
 function getTaskComments(taskId) {
@@ -484,6 +560,7 @@ function getFilteredTimeEntries() {
     if (!task) return false;
 
     return (
+      (state.filters.company === "all" || projectCompany(task.projectId)?.id === state.filters.company) &&
       (state.selectedProject === "all" || task.projectId === state.selectedProject) &&
       (state.filters.assignee === "all" || entry.memberId === state.filters.assignee)
     );
@@ -519,6 +596,7 @@ function addActivity({ projectId, taskId = "", memberId = currentMemberId, type,
 function setRoute(route) {
   state.selectedRoute = route;
   if (route !== "project") state.selectedProjectTab = "overview";
+  if (route !== "company") state.selectedCompany = "all";
   saveState();
   render();
 }
@@ -527,6 +605,16 @@ function setProject(projectId) {
   state.selectedProject = projectId;
   state.selectedRoute = projectId === "all" ? "dashboard" : "project";
   state.selectedProjectTab = "overview";
+  if (projectId !== "all") state.filters.company = projectCompany(projectId)?.id || "all";
+  saveState();
+  render();
+}
+
+function setCompany(companyId) {
+  state.selectedCompany = companyId;
+  state.selectedRoute = companyId === "all" ? "companies" : "company";
+  state.filters.company = companyId;
+  state.selectedProject = "all";
   saveState();
   render();
 }
@@ -609,19 +697,27 @@ function recordTaskChanges(previous, next) {
 
 function render() {
   const selectedProject = byId(state.projects, state.selectedProject);
-  els.pageTitle.textContent = state.selectedRoute === "project" && selectedProject ? selectedProject.name : routes[state.selectedRoute];
+  const selectedCompany = byId(state.companies, state.selectedCompany);
+  els.pageTitle.textContent = state.selectedRoute === "project" && selectedProject
+    ? selectedProject.name
+    : state.selectedRoute === "company" && selectedCompany
+      ? selectedCompany.name
+      : routes[state.selectedRoute];
   document.querySelectorAll("[data-route]").forEach((item) => {
-    item.classList.toggle("is-active", item.dataset.route === state.selectedRoute);
+    const isCompaniesRoute = item.dataset.route === "companies" && state.selectedRoute === "company";
+    item.classList.toggle("is-active", item.dataset.route === state.selectedRoute || isCompaniesRoute);
   });
 
   renderSidebarProjects();
   renderFilters();
 
   if (state.selectedRoute === "project") renderProjectPage();
+  if (state.selectedRoute === "company") renderCompanyPage();
   if (state.selectedRoute === "board") renderBoard();
   if (state.selectedRoute === "list") renderList();
   if (state.selectedRoute === "my-work") renderMyWork();
   if (state.selectedRoute === "time") renderTimeTracking();
+  if (state.selectedRoute === "companies") renderCompanies();
   if (state.selectedRoute === "dashboard") renderDashboard();
 }
 
@@ -647,10 +743,18 @@ function renderSidebarProjects() {
 }
 
 function renderFilters() {
+  const projectOptions = state.filters.company === "all"
+    ? state.projects
+    : state.projects.filter((project) => project.companyId === state.filters.company);
+
   els.searchInput.value = state.filters.query;
+  els.companyFilter.innerHTML = `
+    <option value="all">All companies</option>
+    ${state.companies.map((company) => `<option value="${company.id}">${escapeHtml(company.name)}</option>`).join("")}
+  `;
   els.projectFilter.innerHTML = `
     <option value="all">All projects</option>
-    ${state.projects.map((project) => `<option value="${project.id}">${escapeHtml(project.name)}</option>`).join("")}
+    ${projectOptions.map((project) => `<option value="${project.id}">${escapeHtml(project.name)}</option>`).join("")}
   `;
   els.assigneeFilter.innerHTML = `
     <option value="all">Everyone</option>
@@ -665,6 +769,7 @@ function renderFilters() {
     ${priorities.map((priority) => `<option value="${priority.id}">${priority.label}</option>`).join("")}
   `;
 
+  els.companyFilter.value = state.filters.company;
   els.projectFilter.value = state.selectedProject;
   els.assigneeFilter.value = state.filters.assignee;
   els.statusFilter.value = state.filters.status;
@@ -673,6 +778,9 @@ function renderFilters() {
 
 function renderDashboard() {
   const tasks = getFilteredTasks();
+  const visibleProjects = state.filters.company === "all"
+    ? state.projects
+    : state.projects.filter((project) => project.companyId === state.filters.company);
   const openTasks = tasks.filter((task) => task.status !== "done");
   const completedTasks = tasks.filter((task) => task.status === "done");
   const overdueTasks = tasks.filter(isOverdue);
@@ -699,7 +807,7 @@ function renderDashboard() {
           </div>
         </div>
         <div class="project-summary-list">
-          ${state.projects.map(renderProjectSummary).join("")}
+          ${visibleProjects.length ? visibleProjects.map(renderProjectSummary).join("") : emptyState("No projects match the selected company.")}
         </div>
       </section>
 
@@ -713,6 +821,158 @@ function renderDashboard() {
         <div class="task-stack">
           ${dueSoonTasks.length ? dueSoonTasks.map(renderTaskCard).join("") : emptyState("No upcoming tasks match the current filters.")}
         </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderCompanies() {
+  const companies = state.filters.company === "all"
+    ? state.companies
+    : state.companies.filter((company) => company.id === state.filters.company);
+  const allCompanyTasks = companies.flatMap((company) => getCompanyTasks(company.id));
+  const openTasks = allCompanyTasks.filter((task) => task.status !== "done");
+  const overdueTasks = allCompanyTasks.filter(isOverdue);
+  const trackedMinutes = sumMinutes(companies.flatMap((company) => getCompanyTimeEntries(company.id)));
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Companies", companies.length)}
+      ${metric("Projects", companies.reduce((total, company) => total + getCompanyProjects(company.id).length, 0))}
+      ${metric("Open tasks", openTasks.length)}
+      ${metric("Tracked", formatDuration(trackedMinutes))}
+    </div>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Portfolio</p>
+          <h2>Companies</h2>
+        </div>
+      </div>
+      <div class="company-grid">
+        ${companies.map(renderCompanyCard).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderCompanyCard(company) {
+  const projects = getCompanyProjects(company.id);
+  const tasks = getCompanyTasks(company.id);
+  const openTasks = tasks.filter((task) => task.status !== "done");
+  const overdueTasks = tasks.filter(isOverdue);
+  const milestones = getCompanyMilestones(company.id);
+  const trackedMinutes = sumMinutes(getCompanyTimeEntries(company.id));
+  const progress = projectProgress(tasks);
+
+  return `
+    <article class="company-card">
+      <button class="company-card-main" type="button" data-company-id="${company.id}">
+        <span class="status-pill status-${company.status}">${escapeHtml(company.status)}</span>
+        <h3>${escapeHtml(company.name)}</h3>
+        <p>${escapeHtml(company.description)}</p>
+      </button>
+      <div class="meta-row">
+        <span>${escapeHtml(company.type)}</span>
+        <span>Owner ${memberName(company.owner)}</span>
+      </div>
+      <div class="company-metrics">
+        <span><strong>${projects.length}</strong> projects</span>
+        <span><strong>${openTasks.length}</strong> open</span>
+        <span><strong>${overdueTasks.length}</strong> overdue</span>
+        <span><strong>${formatDuration(trackedMinutes)}</strong> tracked</span>
+      </div>
+      <div class="progress-block" aria-label="${progress}% complete">
+        <strong>${progress}%</strong>
+        <span class="progress-track"><span style="width: ${progress}%"></span></span>
+      </div>
+      <div class="tag-row">
+        <span>${milestones.length} ${milestones.length === 1 ? "milestone" : "milestones"}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderCompanyPage() {
+  const company = byId(state.companies, state.selectedCompany);
+  if (!company) {
+    state.selectedCompany = "all";
+    state.selectedRoute = "companies";
+    renderCompanies();
+    return;
+  }
+
+  const projects = getCompanyProjects(company.id);
+  const tasks = getCompanyTasks(company.id);
+  const openTasks = tasks.filter((task) => task.status !== "done");
+  const overdueTasks = tasks.filter(isOverdue);
+  const milestones = getCompanyMilestones(company.id);
+  const trackedMinutes = sumMinutes(getCompanyTimeEntries(company.id));
+  const nextMilestones = [...milestones]
+    .filter((milestone) => milestone.status !== "completed")
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    .slice(0, 3);
+
+  els.appView.innerHTML = `
+    <section class="project-hero">
+      <div>
+        <p class="eyebrow">Company portfolio</p>
+        <h2>${escapeHtml(company.name)}</h2>
+        <p>${escapeHtml(company.description)}</p>
+        <div class="meta-row">
+          <span>${escapeHtml(company.type)}</span>
+          <span>Owner ${memberName(company.owner)}</span>
+          <span>${escapeHtml(company.status)}</span>
+        </div>
+      </div>
+      <div class="project-progress-card">
+        <span>Tracked time</span>
+        <strong>${formatDuration(trackedMinutes)}</strong>
+        <span>${projects.length} ${projects.length === 1 ? "project" : "projects"}</span>
+      </div>
+    </section>
+
+    <div class="metric-grid">
+      ${metric("Projects", projects.length)}
+      ${metric("Open tasks", openTasks.length)}
+      ${metric("Overdue", overdueTasks.length)}
+      ${metric("Milestones", milestones.length)}
+    </div>
+
+    <div class="company-detail-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Projects</p>
+            <h2>Active work</h2>
+          </div>
+        </div>
+        <div class="project-summary-list">
+          ${projects.length ? projects.map(renderProjectSummary).join("") : emptyState("No projects for this company yet.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Milestones</p>
+            <h2>Coming up</h2>
+          </div>
+        </div>
+        <div class="milestone-list">
+          ${nextMilestones.length ? nextMilestones.map(renderMilestoneCard).join("") : emptyState("No active milestones for this company.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Pulse</p>
+            <h2>Recent activity</h2>
+          </div>
+        </div>
+        ${renderActivityList(getCompanyActivity(company.id, 6))}
       </section>
     </div>
   `;
@@ -736,6 +996,7 @@ function renderProjectSummary(project) {
         <h3>${escapeHtml(project.name)}</h3>
         <p>${escapeHtml(project.description)}</p>
         <div class="meta-row">
+          <span>${escapeHtml(companyName(project.companyId))}</span>
           <span>${memberName(project.owner)}</span>
           <span>Due ${formatDate(project.dueDate)}</span>
         </div>
@@ -776,6 +1037,7 @@ function renderProjectPage() {
         <h2>${escapeHtml(project.name)}</h2>
         <p>${escapeHtml(project.description)}</p>
         <div class="meta-row">
+          <span>${escapeHtml(companyName(project.companyId))}</span>
           <span>Owner ${memberName(project.owner)}</span>
           <span>Start ${formatDate(project.startDate)}</span>
           <span>Due ${formatDate(project.dueDate)}</span>
@@ -1403,6 +1665,7 @@ function renderTimeTracking() {
 
 function renderEmployeeTimeSummary(member) {
   const projectIds = new Set(member.entries.map((entry) => byId(state.tasks, entry.taskId)?.projectId).filter(Boolean));
+  const companyIds = new Set([...projectIds].map((projectId) => projectCompany(projectId)?.id).filter(Boolean));
   const billablePercent = member.minutes ? Math.round((member.billableMinutes / member.minutes) * 100) : 0;
 
   return `
@@ -1417,7 +1680,7 @@ function renderEmployeeTimeSummary(member) {
       <div class="time-summary-metrics">
         <span><strong>${formatDuration(member.minutes)}</strong> total</span>
         <span><strong>${formatDuration(member.billableMinutes)}</strong> billable</span>
-        <span><strong>${projectIds.size}</strong> ${projectIds.size === 1 ? "project" : "projects"}</span>
+        <span><strong>${companyIds.size}</strong> ${companyIds.size === 1 ? "company" : "companies"}</span>
         <span><strong>${billablePercent}%</strong> billable mix</span>
       </div>
     </article>
@@ -1448,6 +1711,7 @@ function renderTimeEntryTable(entries) {
 
 function renderTimeEntryRow(entry) {
   const task = byId(state.tasks, entry.taskId);
+  const company = task ? projectCompany(task.projectId) : null;
   return `
     <tr>
       <td>${formatDate(entry.date)}</td>
@@ -1458,7 +1722,10 @@ function renderTimeEntryRow(entry) {
           <span>${escapeHtml(entry.note || "No note")}</span>
         </button>
       </td>
-      <td>${escapeHtml(task ? projectName(task.projectId) : "Unknown project")}</td>
+      <td>
+        <span class="table-kicker">${escapeHtml(company?.name || "Unknown company")}</span>
+        ${escapeHtml(task ? projectName(task.projectId) : "Unknown project")}
+      </td>
       <td>${formatDuration(entry.minutes)}</td>
       <td>${entry.billable ? "Billable" : "Internal"}</td>
     </tr>
@@ -1466,10 +1733,11 @@ function renderTimeEntryRow(entry) {
 }
 
 function renderTaskCard(task) {
+  const company = projectCompany(task.projectId);
   return `
     <article class="task-card" draggable="true" data-task-id="${task.id}">
       <button class="task-card-main" type="button" data-edit-task="${task.id}">
-        <span class="task-project">${escapeHtml(projectName(task.projectId))}</span>
+        <span class="task-project">${escapeHtml(company.name)} / ${escapeHtml(projectName(task.projectId))}</span>
         <strong>${escapeHtml(task.title)}</strong>
         <span>${escapeHtml(task.description)}</span>
       </button>
@@ -1486,6 +1754,7 @@ function renderTaskCard(task) {
 }
 
 function renderTaskRow(task) {
+  const company = projectCompany(task.projectId);
   return `
     <tr>
       <td>
@@ -1494,7 +1763,10 @@ function renderTaskRow(task) {
           <span>${escapeHtml(task.description)}</span>
         </button>
       </td>
-      <td>${escapeHtml(projectName(task.projectId))}</td>
+      <td>
+        <span class="table-kicker">${escapeHtml(company.name)}</span>
+        ${escapeHtml(projectName(task.projectId))}
+      </td>
       <td>${memberName(task.assignee)}</td>
       <td>${selectControl("status", task.id, task.status, statuses)}</td>
       <td>${selectControl("priority", task.id, task.priority, priorities)}</td>
@@ -1523,8 +1795,12 @@ function populateTaskForm(task = null) {
   document.querySelector("#task-tags").value = task?.tags?.join(", ") || "";
   els.taskFormTitle.textContent = task ? "Edit Task" : "New Task";
 
-  const selectedProject = task?.projectId || (state.selectedProject === "all" ? state.projects[0]?.id : state.selectedProject);
-  fillSelect("#task-project", state.projects, selectedProject, "name");
+  const availableProjects = state.filters.company === "all"
+    ? state.projects
+    : state.projects.filter((project) => project.companyId === state.filters.company);
+  const projectOptions = availableProjects.length ? availableProjects : state.projects;
+  const selectedProject = task?.projectId || (state.selectedProject === "all" ? projectOptions[0]?.id : state.selectedProject);
+  fillSelect("#task-project", projectOptions, selectedProject, "name");
   fillSelect("#task-assignee", members, task?.assignee || members[0].id, "name");
   fillSelect("#task-status", statuses, task?.status || "todo", "label");
   fillSelect("#task-priority", priorities, task?.priority || "normal", "label");
@@ -1544,6 +1820,7 @@ function populateProjectForm() {
   document.querySelector("#project-description").value = "";
   document.querySelector("#project-start-date").value = "";
   document.querySelector("#project-due-date").value = "";
+  fillSelect("#project-company", state.companies, state.filters.company === "all" ? state.companies[0].id : state.filters.company, "name");
   fillSelect("#project-owner", members, members[0].id, "name");
 }
 
@@ -1633,6 +1910,9 @@ document.addEventListener("click", (event) => {
   const projectButton = event.target.closest("[data-project-id]");
   if (projectButton) setProject(projectButton.dataset.projectId);
 
+  const companyButton = event.target.closest("[data-company-id]");
+  if (companyButton) setCompany(companyButton.dataset.companyId);
+
   const projectTabButton = event.target.closest("[data-project-tab]");
   if (projectTabButton) {
     state.selectedProjectTab = projectTabButton.dataset.projectTab;
@@ -1674,6 +1954,17 @@ document.querySelector("#seed-reset").addEventListener("click", () => {
 
 els.searchInput.addEventListener("input", (event) => {
   state.filters.query = event.target.value;
+  saveState();
+  render();
+});
+
+els.companyFilter.addEventListener("change", (event) => {
+  state.filters.company = event.target.value;
+  state.selectedProject = "all";
+  if (state.selectedRoute === "company") {
+    state.selectedCompany = event.target.value;
+    state.selectedRoute = event.target.value === "all" ? "companies" : "company";
+  }
   saveState();
   render();
 });
@@ -1782,6 +2073,7 @@ els.projectForm.addEventListener("submit", (event) => {
   const project = {
     id: uid("project"),
     name: document.querySelector("#project-name").value.trim(),
+    companyId: document.querySelector("#project-company").value,
     description: document.querySelector("#project-description").value.trim(),
     owner: document.querySelector("#project-owner").value,
     startDate: document.querySelector("#project-start-date").value,
