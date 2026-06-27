@@ -300,6 +300,12 @@ textarea:focus {
   gap: 16px;
 }
 
+.time-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  gap: 16px;
+}
+
 .project-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 220px;
@@ -377,6 +383,7 @@ textarea:focus {
 }
 
 .panel {
+  min-width: 0;
   padding: 18px;
 }
 
@@ -904,6 +911,111 @@ th {
   justify-self: end;
 }
 
+.time-summary-list,
+.task-time-list {
+  display: grid;
+  gap: 10px;
+}
+
+.employee-time-card {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.employee-time-card > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.employee-time-card h3 {
+  margin: 0;
+}
+
+.employee-time-card p {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+
+.time-summary-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.time-summary-metrics span {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.time-summary-metrics strong {
+  color: var(--text);
+}
+
+.task-time-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(240px, 0.9fr);
+  gap: 16px;
+}
+
+.time-entry-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.time-note-field {
+  grid-column: 1 / -1;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding-top: 20px;
+}
+
+.checkbox-label input {
+  width: auto;
+  min-height: auto;
+}
+
+.time-entry-form .button {
+  align-self: end;
+}
+
+.task-time-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.task-time-entry span {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.task-time-entry p {
+  margin: 6px 0 0;
+  color: var(--text);
+}
+
 @media (max-width: 1040px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -920,6 +1032,7 @@ th {
   }
 
   .dashboard-grid,
+  .time-grid,
   .project-hero,
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -944,9 +1057,12 @@ th {
   .toolbar,
   .metric-grid,
   .dashboard-grid,
+  .time-grid,
   .project-hero,
   .form-grid,
   .collaboration-grid,
+  .task-time-grid,
+  .time-entry-form,
   .timeline-controls,
   .nav-list,
   .project-list {
@@ -958,6 +1074,14 @@ th {
   }
 
   .milestone-card {
+    grid-template-columns: 1fr;
+  }
+
+  .time-summary-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .task-time-entry {
     grid-template-columns: 1fr;
   }
 

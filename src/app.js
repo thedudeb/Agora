@@ -28,6 +28,7 @@ const routes = {
   board: "Board",
   list: "List",
   "my-work": "My Work",
+  time: "Time",
   project: "Project"
 };
 
@@ -262,6 +263,58 @@ const seedData = {
       message: "moved Define task card density to Doing",
       createdAt: "2026-06-27T14:45:00.000Z"
     }
+  ],
+  timeEntries: [
+    {
+      id: "time-1",
+      taskId: "task-1",
+      memberId: "mara",
+      date: "2026-06-27",
+      minutes: 90,
+      note: "PRD scope and release shape",
+      billable: false,
+      createdAt: "2026-06-27T15:00:00.000Z"
+    },
+    {
+      id: "time-2",
+      taskId: "task-2",
+      memberId: "eli",
+      date: "2026-06-28",
+      minutes: 120,
+      note: "Deployment notes and setup outline",
+      billable: false,
+      createdAt: "2026-06-28T11:00:00.000Z"
+    },
+    {
+      id: "time-3",
+      taskId: "task-4",
+      memberId: "sam",
+      date: "2026-07-02",
+      minutes: 75,
+      note: "Agency workflow mapping",
+      billable: true,
+      createdAt: "2026-07-02T16:15:00.000Z"
+    },
+    {
+      id: "time-4",
+      taskId: "task-6",
+      memberId: "nina",
+      date: "2026-07-03",
+      minutes: 105,
+      note: "Task card density exploration",
+      billable: false,
+      createdAt: "2026-07-03T14:45:00.000Z"
+    },
+    {
+      id: "time-5",
+      taskId: "task-5",
+      memberId: "nina",
+      date: "2026-07-04",
+      minutes: 60,
+      note: "Template section draft",
+      billable: true,
+      createdAt: "2026-07-04T12:10:00.000Z"
+    }
   ]
 };
 
@@ -329,6 +382,14 @@ function formatFullDate(date) {
   if (!date) return "No date";
   const parsed = new Date(`${date}T12:00:00`);
   return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatDuration(minutes) {
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  if (!hours) return `${remainder}m`;
+  if (!remainder) return `${hours}h`;
+  return `${hours}h ${remainder}m`;
 }
 
 function parseDateValue(date) {
@@ -409,6 +470,28 @@ function getTaskActivity(taskId, limit = 6) {
     .filter((activity) => activity.taskId === taskId)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, limit);
+}
+
+function getTaskTimeEntries(taskId) {
+  return state.timeEntries
+    .filter((entry) => entry.taskId === taskId)
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function getFilteredTimeEntries() {
+  return state.timeEntries.filter((entry) => {
+    const task = byId(state.tasks, entry.taskId);
+    if (!task) return false;
+
+    return (
+      (state.selectedProject === "all" || task.projectId === state.selectedProject) &&
+      (state.filters.assignee === "all" || entry.memberId === state.filters.assignee)
+    );
+  });
+}
+
+function sumMinutes(entries) {
+  return entries.reduce((total, entry) => total + Number(entry.minutes || 0), 0);
 }
 
 function projectProgress(tasks) {
@@ -538,6 +621,7 @@ function render() {
   if (state.selectedRoute === "board") renderBoard();
   if (state.selectedRoute === "list") renderList();
   if (state.selectedRoute === "my-work") renderMyWork();
+  if (state.selectedRoute === "time") renderTimeTracking();
   if (state.selectedRoute === "dashboard") renderDashboard();
 }
 
@@ -679,6 +763,7 @@ function renderProjectPage() {
   const completedTasks = allProjectTasks.filter((task) => task.status === "done");
   const overdueTasks = allProjectTasks.filter(isOverdue);
   const milestones = getProjectMilestones(project.id);
+  const projectTimeEntries = state.timeEntries.filter((entry) => byId(state.tasks, entry.taskId)?.projectId === project.id);
   const nextMilestone = [...milestones]
     .filter((milestone) => milestone.status !== "completed")
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
@@ -718,7 +803,8 @@ function renderProjectPage() {
       overdueTasks,
       filteredProjectTasks,
       nextMilestone,
-      milestones
+      milestones,
+      trackedMinutes: sumMinutes(projectTimeEntries)
     }) : ""}
     ${state.selectedProjectTab === "tasks" ? renderProjectTasks(filteredProjectTasks) : ""}
     ${state.selectedProjectTab === "board" ? renderProjectBoard(filteredProjectTasks) : ""}
@@ -736,13 +822,14 @@ function projectTabButton(tab, label) {
 }
 
 function renderProjectOverview(project, details) {
-  const { openTasks, completedTasks, overdueTasks, filteredProjectTasks, nextMilestone, milestones } = details;
+  const { openTasks, completedTasks, overdueTasks, filteredProjectTasks, nextMilestone, milestones, trackedMinutes } = details;
   return `
     <div class="metric-grid">
       ${metric("Open tasks", openTasks.length)}
       ${metric("Completed", completedTasks.length)}
       ${metric("Overdue", overdueTasks.length)}
       ${metric("Milestones", milestones.length)}
+      ${metric("Tracked", formatDuration(trackedMinutes))}
     </div>
 
     <div class="dashboard-grid">
@@ -1081,6 +1168,81 @@ function renderTaskCollaboration(taskId = "") {
   `;
 }
 
+function renderTaskTimeTracking(taskId = "") {
+  const container = document.querySelector("#task-time");
+  if (!container) return;
+
+  if (!taskId) {
+    container.innerHTML = `
+      <div>
+        <p class="eyebrow">Time tracking</p>
+        ${emptyState("Save this task before logging time.")}
+      </div>
+    `;
+    return;
+  }
+
+  const entries = getTaskTimeEntries(taskId);
+  const totalMinutes = sumMinutes(entries);
+
+  container.innerHTML = `
+    <div class="task-time-grid">
+      <section>
+        <div class="collaboration-header">
+          <p class="eyebrow">Time tracking</p>
+          <span>${formatDuration(totalMinutes)}</span>
+        </div>
+        <div class="time-entry-form">
+          <label>
+            <span>Employee</span>
+            <select id="time-member">
+              ${members.map((member) => `<option value="${member.id}" ${member.id === currentMemberId ? "selected" : ""}>${member.name}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Date</span>
+            <input id="time-date" type="date" value="${new Date().toISOString().slice(0, 10)}">
+          </label>
+          <label>
+            <span>Minutes</span>
+            <input id="time-minutes" type="number" min="1" step="5" value="30">
+          </label>
+          <label class="checkbox-label">
+            <input id="time-billable" type="checkbox">
+            <span>Billable</span>
+          </label>
+          <label class="time-note-field">
+            <span>Note</span>
+            <input id="time-note" placeholder="What did they work on?">
+          </label>
+          <button class="button button-secondary" type="button" id="time-submit">Log Time</button>
+        </div>
+      </section>
+      <section>
+        <p class="eyebrow">Task time log</p>
+        ${entries.length ? `
+          <div class="task-time-list">
+            ${entries.map(renderTaskTimeEntry).join("")}
+          </div>
+        ` : emptyState("No time has been logged for this task.")}
+      </section>
+    </div>
+  `;
+}
+
+function renderTaskTimeEntry(entry) {
+  return `
+    <article class="task-time-entry">
+      <div>
+        <strong>${memberName(entry.memberId)}</strong>
+        <span>${formatDate(entry.date)} - ${entry.billable ? "Billable" : "Internal"}</span>
+        <p>${escapeHtml(entry.note || "No note")}</p>
+      </div>
+      <strong>${formatDuration(entry.minutes)}</strong>
+    </article>
+  `;
+}
+
 function renderComment(comment) {
   return `
     <article class="comment-item">
@@ -1189,6 +1351,120 @@ function renderMyWork() {
   `;
 }
 
+function renderTimeTracking() {
+  const entries = getFilteredTimeEntries();
+  const billableEntries = entries.filter((entry) => entry.billable);
+  const employeeRows = members.map((member) => {
+    const memberEntries = entries.filter((entry) => entry.memberId === member.id);
+    return {
+      ...member,
+      entries: memberEntries,
+      minutes: sumMinutes(memberEntries),
+      billableMinutes: sumMinutes(memberEntries.filter((entry) => entry.billable))
+    };
+  }).filter((member) => member.minutes > 0);
+  const recentEntries = [...entries].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Tracked time", formatDuration(sumMinutes(entries)))}
+      ${metric("Billable", formatDuration(sumMinutes(billableEntries)))}
+      ${metric("Employees", employeeRows.length)}
+      ${metric("Entries", entries.length)}
+    </div>
+
+    <div class="time-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Employees</p>
+            <h2>Timesheet summary</h2>
+          </div>
+        </div>
+        ${employeeRows.length ? `
+          <div class="time-summary-list">
+            ${employeeRows.map(renderEmployeeTimeSummary).join("")}
+          </div>
+        ` : emptyState("No time entries match the current filters.")}
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Recent</p>
+            <h2>Time log</h2>
+          </div>
+        </div>
+        ${recentEntries.length ? renderTimeEntryTable(recentEntries) : emptyState("No time has been logged yet.")}
+      </section>
+    </div>
+  `;
+}
+
+function renderEmployeeTimeSummary(member) {
+  const projectIds = new Set(member.entries.map((entry) => byId(state.tasks, entry.taskId)?.projectId).filter(Boolean));
+  const billablePercent = member.minutes ? Math.round((member.billableMinutes / member.minutes) * 100) : 0;
+
+  return `
+    <article class="employee-time-card">
+      <div>
+        <span class="avatar">${member.name.split(" ").map((part) => part[0]).join("")}</span>
+        <div>
+          <h3>${member.name}</h3>
+          <p>${member.role}</p>
+        </div>
+      </div>
+      <div class="time-summary-metrics">
+        <span><strong>${formatDuration(member.minutes)}</strong> total</span>
+        <span><strong>${formatDuration(member.billableMinutes)}</strong> billable</span>
+        <span><strong>${projectIds.size}</strong> ${projectIds.size === 1 ? "project" : "projects"}</span>
+        <span><strong>${billablePercent}%</strong> billable mix</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderTimeEntryTable(entries) {
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Employee</th>
+            <th>Task</th>
+            <th>Project</th>
+            <th>Time</th>
+            <th>Type</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${entries.map(renderTimeEntryRow).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderTimeEntryRow(entry) {
+  const task = byId(state.tasks, entry.taskId);
+  return `
+    <tr>
+      <td>${formatDate(entry.date)}</td>
+      <td>${memberName(entry.memberId)}</td>
+      <td>
+        <button class="table-task-button" type="button" data-edit-task="${entry.taskId}">
+          <strong>${escapeHtml(task?.title || "Unknown task")}</strong>
+          <span>${escapeHtml(entry.note || "No note")}</span>
+        </button>
+      </td>
+      <td>${escapeHtml(task ? projectName(task.projectId) : "Unknown project")}</td>
+      <td>${formatDuration(entry.minutes)}</td>
+      <td>${entry.billable ? "Billable" : "Internal"}</td>
+    </tr>
+  `;
+}
+
 function renderTaskCard(task) {
   return `
     <article class="task-card" draggable="true" data-task-id="${task.id}">
@@ -1253,6 +1529,7 @@ function populateTaskForm(task = null) {
   fillSelect("#task-status", statuses, task?.status || "todo", "label");
   fillSelect("#task-priority", priorities, task?.priority || "normal", "label");
   renderTaskCollaboration(task?.id || "");
+  renderTaskTimeTracking(task?.id || "");
 }
 
 function fillSelect(selector, options, selectedValue, labelKey) {
@@ -1313,6 +1590,42 @@ function addTaskComment() {
   render();
 }
 
+function addTaskTimeEntry() {
+  const taskId = document.querySelector("#task-id").value;
+  const task = byId(state.tasks, taskId);
+  const minutes = Number(document.querySelector("#time-minutes")?.value || 0);
+  const memberId = document.querySelector("#time-member")?.value || currentMemberId;
+  const date = document.querySelector("#time-date")?.value;
+  const note = document.querySelector("#time-note")?.value.trim() || "";
+  const billable = Boolean(document.querySelector("#time-billable")?.checked);
+
+  if (!task || !date || minutes <= 0) return;
+
+  state.timeEntries = [{
+    id: uid("time"),
+    taskId,
+    memberId,
+    date,
+    minutes,
+    note,
+    billable,
+    createdAt: new Date().toISOString()
+  }, ...state.timeEntries];
+
+  addActivity({
+    projectId: task.projectId,
+    taskId,
+    memberId,
+    type: "time_log",
+    message: `logged ${formatDuration(minutes)} on ${task.title}`
+  });
+
+  saveState();
+  renderTaskTimeTracking(taskId);
+  renderTaskCollaboration(taskId);
+  render();
+}
+
 document.addEventListener("click", (event) => {
   const routeButton = event.target.closest("[data-route]");
   if (routeButton) setRoute(routeButton.dataset.route);
@@ -1329,6 +1642,9 @@ document.addEventListener("click", (event) => {
 
   const commentButton = event.target.closest("#comment-submit");
   if (commentButton) addTaskComment();
+
+  const timeButton = event.target.closest("#time-submit");
+  if (timeButton) addTaskTimeEntry();
 
   const editButton = event.target.closest("[data-edit-task]");
   if (editButton) {
