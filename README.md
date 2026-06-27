@@ -14,7 +14,7 @@ Agora is in early prototype development. The current app is a dependency-free br
 npm run dev
 ```
 
-Then open `http://localhost:5173`.
+Then open `http://localhost:5174`.
 
 The prototype stores changes in browser local storage. Use "Reset sample data" in the sidebar to restore the seeded workspace.
 

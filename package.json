@@ -4,9 +4,8 @@
   "private": true,
   "description": "Open source project management for teams that want clarity without lock-in.",
   "scripts": {
-    "dev": "python3 -m http.server 5173",
+    "dev": "python3 -m http.server 5174 --bind 127.0.0.1",
     "check": "node --check src/app.js"
   },
   "license": "AGPL-3.0-only"
 }
-
