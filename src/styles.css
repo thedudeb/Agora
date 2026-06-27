@@ -390,6 +390,82 @@ textarea:focus {
   font-size: 0.78rem;
 }
 
+.inbox-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.inbox-header-actions,
+.inbox-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.inbox-list {
+  display: grid;
+  gap: 10px;
+}
+
+.inbox-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.inbox-item.is-unread {
+  background: #ffffff;
+  border-color: var(--accent);
+  box-shadow: 0 10px 26px rgba(36, 90, 88, 0.09);
+}
+
+.inbox-item.is-read {
+  opacity: 0.76;
+}
+
+.inbox-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.inbox-actions .button {
+  min-height: 32px;
+  padding: 6px 9px;
+  font-size: 0.78rem;
+}
+
+.inbox-blue {
+  color: var(--blue);
+  background: #e0e8f8;
+}
+
+.inbox-red {
+  color: var(--red);
+  background: #f4ded9;
+}
+
+.inbox-amber {
+  color: var(--amber);
+  background: #f3e7d4;
+}
+
+.inbox-green {
+  color: var(--green);
+  background: #e1eee1;
+}
+
+.inbox-neutral {
+  color: var(--muted);
+  background: #ede9df;
+}
+
 .time-grid {
   display: grid;
   grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
@@ -1383,6 +1459,15 @@ th {
 
   .daily-lanes {
     grid-template-columns: 1fr;
+  }
+
+  .inbox-item {
+    grid-template-columns: 1fr;
+  }
+
+  .inbox-header-actions,
+  .inbox-actions {
+    justify-content: flex-start;
   }
 
   .calendar-grid {

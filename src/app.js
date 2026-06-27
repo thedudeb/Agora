@@ -26,6 +26,7 @@ const currentMemberId = "mara";
 const routes = {
   dashboard: "Dashboard",
   daily: "Today",
+  inbox: "Inbox",
   board: "Board",
   list: "List",
   calendar: "Calendar",
@@ -58,6 +59,8 @@ const seedData = {
     "task-2": { date: "2026-06-27", lane: "next" },
     "task-7": { date: "2026-06-27", lane: "later" }
   },
+  inboxRead: [],
+  inboxArchived: [],
   companies: [
     {
       id: "acme-studio",
@@ -440,6 +443,8 @@ function normalizeState(nextState) {
     selectedDailyDate: nextState.selectedDailyDate || todayKey(),
     dailyNotes: { ...seedData.dailyNotes, ...(nextState.dailyNotes || {}) },
     dailyPlans: { ...seedData.dailyPlans, ...(nextState.dailyPlans || {}) },
+    inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
+    inboxArchived: Array.isArray(nextState.inboxArchived) ? nextState.inboxArchived : [],
     companies: nextState.companies.map((company) => ({
       type: "Client",
       status: "active",
@@ -484,6 +489,139 @@ function statusLabel(id) {
 
 function priorityLabel(id) {
   return byId(priorities, id)?.label || id;
+}
+
+function isTaskVisibleForContext(task) {
+  const query = state.filters.query.trim().toLowerCase();
+  const haystack = [
+    task.title,
+    task.description,
+    projectName(task.projectId),
+    companyName(projectCompany(task.projectId)?.id),
+    memberName(task.assignee),
+    task.tags.join(" "),
+    taskSubtasks(task).map((subtask) => subtask.title).join(" ")
+  ].join(" ").toLowerCase();
+
+  return (
+    (state.filters.company === "all" || projectCompany(task.projectId)?.id === state.filters.company) &&
+    (state.selectedProject === "all" || task.projectId === state.selectedProject) &&
+    (state.filters.status === "all" || task.status === state.filters.status) &&
+    (state.filters.priority === "all" || task.priority === state.filters.priority) &&
+    (!query || haystack.includes(query))
+  );
+}
+
+function isInboxRead(id) {
+  return state.inboxRead.includes(id);
+}
+
+function isInboxArchived(id) {
+  return state.inboxArchived.includes(id);
+}
+
+function markInboxRead(id) {
+  if (!state.inboxRead.includes(id)) state.inboxRead = [...state.inboxRead, id];
+}
+
+function archiveInboxItem(id) {
+  markInboxRead(id);
+  if (!state.inboxArchived.includes(id)) state.inboxArchived = [...state.inboxArchived, id];
+}
+
+function getInboxItems({ includeArchived = false } = {}) {
+  const today = todayKey();
+  const dueSoon = shiftDate(today, 7);
+  const visibleTasks = state.tasks.filter(isTaskVisibleForContext);
+  const visibleTaskIds = new Set(visibleTasks.map((task) => task.id));
+  const items = [];
+
+  visibleTasks.forEach((task) => {
+    if (task.status !== "done" && task.assignee === currentMemberId) {
+      items.push({
+        id: `assignment-${task.id}`,
+        type: "assignment",
+        tone: "blue",
+        title: task.title,
+        message: `Assigned to ${memberName(task.assignee)} in ${projectName(task.projectId)}.`,
+        taskId: task.id,
+        projectId: task.projectId,
+        createdAt: task.createdAt,
+        urgency: 2
+      });
+    }
+
+    if (isOverdue(task)) {
+      items.push({
+        id: `overdue-${task.id}`,
+        type: "overdue",
+        tone: "red",
+        title: task.title,
+        message: `Past due since ${formatFullDate(task.dueDate)}.`,
+        taskId: task.id,
+        projectId: task.projectId,
+        createdAt: `${task.dueDate}T23:59:00.000Z`,
+        urgency: 4
+      });
+    } else if (task.status !== "done" && task.dueDate && task.dueDate <= dueSoon) {
+      items.push({
+        id: `due-${task.id}`,
+        type: "due soon",
+        tone: "amber",
+        title: task.title,
+        message: `Due ${formatFullDate(task.dueDate)} in ${projectName(task.projectId)}.`,
+        taskId: task.id,
+        projectId: task.projectId,
+        createdAt: `${task.dueDate}T09:00:00.000Z`,
+        urgency: 3
+      });
+    }
+  });
+
+  state.comments
+    .filter((comment) => comment.author !== currentMemberId)
+    .filter((comment) => visibleTaskIds.has(comment.taskId))
+    .forEach((comment) => {
+      const task = byId(state.tasks, comment.taskId);
+      items.push({
+        id: `comment-${comment.id}`,
+        type: "comment",
+        tone: "green",
+        title: task?.title || "Task comment",
+        message: `${memberName(comment.author)} commented: ${comment.body}`,
+        taskId: comment.taskId,
+        projectId: task?.projectId || "",
+        createdAt: comment.createdAt,
+        urgency: 1
+      });
+    });
+
+  state.activities
+    .filter((activity) => activity.memberId !== currentMemberId)
+    .filter((activity) => !activity.taskId || visibleTaskIds.has(activity.taskId))
+    .slice(0, 12)
+    .forEach((activity) => {
+      items.push({
+        id: `activity-${activity.id}`,
+        type: "activity",
+        tone: "neutral",
+        title: activity.taskId ? byId(state.tasks, activity.taskId)?.title || projectName(activity.projectId) : projectName(activity.projectId),
+        message: `${memberName(activity.memberId)} ${activity.message}.`,
+        taskId: activity.taskId,
+        projectId: activity.projectId,
+        createdAt: activity.createdAt,
+        urgency: 0
+      });
+    });
+
+  return items
+    .filter((item) => includeArchived || !isInboxArchived(item.id))
+    .sort((a, b) => {
+      const unreadSort = Number(isInboxRead(a.id)) - Number(isInboxRead(b.id));
+      if (unreadSort !== 0) return unreadSort;
+      if (b.urgency !== a.urgency) return b.urgency - a.urgency;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
 }
 
 function todayKey() {
@@ -871,6 +1009,7 @@ function render() {
   if (state.selectedRoute === "project") renderProjectPage();
   if (state.selectedRoute === "company") renderCompanyPage();
   if (state.selectedRoute === "daily") renderDailyTasks();
+  if (state.selectedRoute === "inbox") renderInbox();
   if (state.selectedRoute === "board") renderBoard();
   if (state.selectedRoute === "list") renderList();
   if (state.selectedRoute === "calendar") renderCalendar();
@@ -1111,6 +1250,65 @@ function renderDailySmartTask(task) {
         <button class="button button-secondary" type="button" data-daily-plan="now" data-task-id="${task.id}">Now</button>
         <button class="button button-secondary" type="button" data-daily-plan="next" data-task-id="${task.id}">Next</button>
         <button class="button button-secondary" type="button" data-daily-plan="later" data-task-id="${task.id}">Later</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderInbox() {
+  const items = getInboxItems();
+  const unreadItems = items.filter((item) => !isInboxRead(item.id));
+  const urgentItems = items.filter((item) => item.type === "overdue" || item.type === "assignment");
+  const dueItems = items.filter((item) => item.type === "due soon");
+  const activityItems = items.filter((item) => item.type === "comment" || item.type === "activity");
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Unread", unreadItems.length)}
+      ${metric("Needs action", urgentItems.length)}
+      ${metric("Due soon", dueItems.length)}
+      ${metric("Activity", activityItems.length)}
+    </div>
+
+    <section class="panel inbox-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Attention</p>
+          <h2>Inbox</h2>
+        </div>
+        <div class="inbox-header-actions">
+          <button class="button button-secondary" type="button" data-inbox-bulk="read" ${items.length ? "" : "disabled"}>Mark All Read</button>
+          <button class="button button-secondary" type="button" data-inbox-bulk="archive-read" ${items.some((item) => isInboxRead(item.id)) ? "" : "disabled"}>Clear Read</button>
+        </div>
+      </div>
+      <div class="inbox-list">
+        ${items.length ? items.map(renderInboxItem).join("") : emptyState("Inbox is clear.")}
+      </div>
+    </section>
+  `;
+}
+
+function renderInboxItem(item) {
+  const read = isInboxRead(item.id);
+  return `
+    <article class="inbox-item ${read ? "is-read" : "is-unread"}">
+      <div class="inbox-main">
+        <span class="status-pill inbox-${item.tone}">${escapeHtml(item.type)}</span>
+        <button class="table-task-button" type="button" ${item.taskId ? `data-edit-task="${item.taskId}"` : ""}>
+          <strong>${escapeHtml(item.title)}</strong>
+          <span>${escapeHtml(item.message)}</span>
+        </button>
+        <div class="meta-row">
+          <span>${escapeHtml(projectName(item.projectId))}</span>
+          <span>${formatTimestamp(item.createdAt)}</span>
+          ${read ? "<span>Read</span>" : "<span>Unread</span>"}
+        </div>
+      </div>
+      <div class="inbox-actions">
+        ${item.taskId ? `<button class="button button-secondary" type="button" data-inbox-plan="${item.taskId}" data-inbox-id="${item.id}">Plan Today</button>` : ""}
+        ${item.taskId ? `<button class="button button-secondary" type="button" data-edit-task="${item.taskId}" data-inbox-id="${item.id}">Open</button>` : ""}
+        <button class="button button-secondary" type="button" data-inbox-read="${item.id}">${read ? "Mark Unread" : "Mark Read"}</button>
+        <button class="button button-secondary" type="button" data-inbox-clear="${item.id}">Clear</button>
       </div>
     </article>
   `;
@@ -2477,6 +2675,47 @@ document.addEventListener("click", (event) => {
     render();
   }
 
+  const inboxPlanButton = event.target.closest("[data-inbox-plan]");
+  if (inboxPlanButton) {
+    planTaskForDate(inboxPlanButton.dataset.inboxPlan, "next", todayKey());
+    markInboxRead(inboxPlanButton.dataset.inboxId);
+    state.selectedRoute = "daily";
+    state.selectedDailyDate = todayKey();
+    saveState();
+    render();
+  }
+
+  const inboxReadButton = event.target.closest("[data-inbox-read]");
+  if (inboxReadButton) {
+    const id = inboxReadButton.dataset.inboxRead;
+    state.inboxRead = isInboxRead(id)
+      ? state.inboxRead.filter((itemId) => itemId !== id)
+      : [...state.inboxRead, id];
+    saveState();
+    render();
+  }
+
+  const inboxClearButton = event.target.closest("[data-inbox-clear]");
+  if (inboxClearButton) {
+    archiveInboxItem(inboxClearButton.dataset.inboxClear);
+    saveState();
+    render();
+  }
+
+  const inboxBulkButton = event.target.closest("[data-inbox-bulk]");
+  if (inboxBulkButton) {
+    const items = getInboxItems();
+    if (inboxBulkButton.dataset.inboxBulk === "read") {
+      state.inboxRead = Array.from(new Set([...state.inboxRead, ...items.map((item) => item.id)]));
+    }
+    if (inboxBulkButton.dataset.inboxBulk === "archive-read") {
+      const readIds = items.filter((item) => isInboxRead(item.id)).map((item) => item.id);
+      state.inboxArchived = Array.from(new Set([...state.inboxArchived, ...readIds]));
+    }
+    saveState();
+    render();
+  }
+
   const projectTabButton = event.target.closest("[data-project-tab]");
   if (projectTabButton) {
     state.selectedProjectTab = projectTabButton.dataset.projectTab;
@@ -2492,6 +2731,10 @@ document.addEventListener("click", (event) => {
 
   const editButton = event.target.closest("[data-edit-task]");
   if (editButton) {
+    if (editButton.dataset.inboxId) {
+      markInboxRead(editButton.dataset.inboxId);
+      saveState();
+    }
     populateTaskForm(byId(state.tasks, editButton.dataset.editTask));
     openDialog(els.taskDialog);
   }
