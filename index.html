@@ -23,6 +23,7 @@
           <button class="nav-item is-active" type="button" data-route="dashboard">Dashboard</button>
           <button class="nav-item" type="button" data-route="board">Board</button>
           <button class="nav-item" type="button" data-route="list">List</button>
+          <button class="nav-item" type="button" data-route="calendar">Calendar</button>
           <button class="nav-item" type="button" data-route="my-work">My Work</button>
           <button class="nav-item" type="button" data-route="time">Time</button>
           <button class="nav-item" type="button" data-route="companies">Companies</button>
@@ -126,6 +127,7 @@
         </div>
 
         <section class="collaboration-panel" id="task-collaboration" aria-label="Task collaboration"></section>
+        <section class="collaboration-panel" id="task-subtasks" aria-label="Task checklist"></section>
         <section class="collaboration-panel" id="task-time" aria-label="Task time tracking"></section>
 
         <div class="modal-actions">
@@ -174,6 +176,55 @@
         <div class="modal-actions">
           <button class="button button-secondary" type="button" data-close-dialog="project-dialog">Cancel</button>
           <button class="button button-primary" type="submit">Create Project</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="company-dialog">
+      <form method="dialog" id="company-form" class="modal-form">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Company</p>
+            <h2 id="company-form-title">New Company</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-dialog="company-dialog" aria-label="Close">x</button>
+        </div>
+
+        <input type="hidden" id="company-id">
+        <label>
+          <span>Name</span>
+          <input id="company-name" required maxlength="80" placeholder="Northstar Labs">
+        </label>
+        <label>
+          <span>Description</span>
+          <textarea id="company-description" rows="3" placeholder="What kind of work does this company need?"></textarea>
+        </label>
+        <div class="form-grid">
+          <label>
+            <span>Type</span>
+            <select id="company-type" required>
+              <option value="Client">Client</option>
+              <option value="Internal">Internal</option>
+              <option value="Partner">Partner</option>
+              <option value="Vendor">Vendor</option>
+            </select>
+          </label>
+          <label>
+            <span>Owner</span>
+            <select id="company-owner" required></select>
+          </label>
+          <label>
+            <span>Status</span>
+            <select id="company-status" required>
+              <option value="active">Active</option>
+              <option value="watch">Watch</option>
+              <option value="archived">Archived</option>
+            </select>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button class="button button-secondary" type="button" data-close-dialog="company-dialog">Cancel</button>
+          <button class="button button-primary" type="submit">Save Company</button>
         </div>
       </form>
     </dialog>

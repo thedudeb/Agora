@@ -6,7 +6,7 @@ Agora is a self-hostable project management workspace inspired by tools like Asa
 
 ## Status
 
-Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, company portfolios, project filters, task creation, comments, activity, employee time tracking, list view, board view, project workspaces, milestones, project timelines, and a My Work view.
+Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, company portfolios, editable companies, project filters, task creation, subtasks, comments, activity, employee time tracking, list view, board view, calendar view, project workspaces, milestones, project timelines, and a My Work view.
 
 ## Run Locally
 

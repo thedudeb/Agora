@@ -27,6 +27,7 @@ const routes = {
   dashboard: "Dashboard",
   board: "Board",
   list: "List",
+  calendar: "Calendar",
   "my-work": "My Work",
   time: "Time",
   companies: "Companies",
@@ -39,6 +40,7 @@ const seedData = {
   selectedProject: "all",
   selectedCompany: "all",
   selectedProjectTab: "overview",
+  selectedCalendarMonth: "2026-07",
   filters: {
     company: "all",
     assignee: "all",
@@ -112,6 +114,11 @@ const seedData = {
       priority: "urgent",
       dueDate: "2026-07-03",
       tags: ["planning", "mvp"],
+      subtasks: [
+        { id: "subtask-1-1", title: "Confirm release pillars", done: true },
+        { id: "subtask-1-2", title: "Call out deferred enterprise scope", done: false },
+        { id: "subtask-1-3", title: "Share scope with early contributors", done: false }
+      ],
       createdAt: "2026-06-27T12:00:00.000Z"
     },
     {
@@ -124,6 +131,10 @@ const seedData = {
       priority: "high",
       dueDate: "2026-07-10",
       tags: ["docs", "ops"],
+      subtasks: [
+        { id: "subtask-2-1", title: "Outline local setup", done: true },
+        { id: "subtask-2-2", title: "Draft deployment notes", done: false }
+      ],
       createdAt: "2026-06-27T12:10:00.000Z"
     },
     {
@@ -136,6 +147,10 @@ const seedData = {
       priority: "normal",
       dueDate: "2026-06-28",
       tags: ["community"],
+      subtasks: [
+        { id: "subtask-3-1", title: "Add issue labels", done: true },
+        { id: "subtask-3-2", title: "Document first contribution path", done: true }
+      ],
       createdAt: "2026-06-27T12:20:00.000Z"
     },
     {
@@ -148,6 +163,10 @@ const seedData = {
       priority: "high",
       dueDate: "2026-07-12",
       tags: ["template", "clients"],
+      subtasks: [
+        { id: "subtask-4-1", title: "Capture sales handoff", done: true },
+        { id: "subtask-4-2", title: "Define client kickoff tasks", done: false }
+      ],
       createdAt: "2026-06-27T12:30:00.000Z"
     },
     {
@@ -160,6 +179,10 @@ const seedData = {
       priority: "normal",
       dueDate: "2026-07-17",
       tags: ["template"],
+      subtasks: [
+        { id: "subtask-5-1", title: "Draft discovery section", done: false },
+        { id: "subtask-5-2", title: "Draft delivery section", done: false }
+      ],
       createdAt: "2026-06-27T12:40:00.000Z"
     },
     {
@@ -172,6 +195,10 @@ const seedData = {
       priority: "normal",
       dueDate: "2026-07-08",
       tags: ["design"],
+      subtasks: [
+        { id: "subtask-6-1", title: "Compare compact card metadata", done: true },
+        { id: "subtask-6-2", title: "Validate mobile density", done: false }
+      ],
       createdAt: "2026-06-27T12:50:00.000Z"
     },
     {
@@ -184,6 +211,10 @@ const seedData = {
       priority: "low",
       dueDate: "2026-07-18",
       tags: ["ux"],
+      subtasks: [
+        { id: "subtask-7-1", title: "Write empty project state", done: false },
+        { id: "subtask-7-2", title: "Write filtered task state", done: false }
+      ],
       createdAt: "2026-06-27T13:00:00.000Z"
     }
   ],
@@ -367,8 +398,13 @@ const els = {
   taskForm: document.querySelector("#task-form"),
   taskFormTitle: document.querySelector("#task-form-title"),
   projectDialog: document.querySelector("#project-dialog"),
-  projectForm: document.querySelector("#project-form")
+  projectForm: document.querySelector("#project-form"),
+  companyDialog: document.querySelector("#company-dialog"),
+  companyForm: document.querySelector("#company-form"),
+  companyFormTitle: document.querySelector("#company-form-title")
 };
+
+let draftSubtasks = [];
 
 function loadState() {
   const stored = window.localStorage.getItem(STORAGE_KEY);
@@ -377,14 +413,31 @@ function loadState() {
   try {
     const parsed = JSON.parse(stored);
     const base = structuredClone(seedData);
-    return {
+    return normalizeState({
       ...base,
       ...parsed,
       filters: { ...base.filters, ...parsed.filters }
-    };
+    });
   } catch {
     return structuredClone(seedData);
   }
+}
+
+function normalizeState(nextState) {
+  return {
+    ...nextState,
+    selectedCalendarMonth: nextState.selectedCalendarMonth || seedData.selectedCalendarMonth,
+    companies: nextState.companies.map((company) => ({
+      type: "Client",
+      status: "active",
+      description: "",
+      ...company
+    })),
+    tasks: nextState.tasks.map((task) => ({
+      ...task,
+      subtasks: Array.isArray(task.subtasks) ? task.subtasks : []
+    }))
+  };
 }
 
 function saveState() {
@@ -418,6 +471,37 @@ function statusLabel(id) {
 
 function priorityLabel(id) {
   return byId(priorities, id)?.label || id;
+}
+
+function taskSubtasks(task) {
+  return Array.isArray(task.subtasks) ? task.subtasks : [];
+}
+
+function subtaskStats(task) {
+  const subtasks = taskSubtasks(task);
+  const done = subtasks.filter((subtask) => subtask.done).length;
+  return { total: subtasks.length, done };
+}
+
+function subtaskSummary(task) {
+  const { total, done } = subtaskStats(task);
+  if (!total) return "";
+  return `${done}/${total} checklist`;
+}
+
+function monthLabel(month) {
+  const parsed = new Date(`${month}-01T12:00:00`);
+  return parsed.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+}
+
+function shiftMonth(month, offset) {
+  const parsed = new Date(`${month}-01T12:00:00`);
+  parsed.setMonth(parsed.getMonth() + offset);
+  return parsed.toISOString().slice(0, 7);
+}
+
+function calendarDateKey(date) {
+  return date.toISOString().slice(0, 10);
 }
 
 function formatDate(date) {
@@ -478,7 +562,8 @@ function getFilteredTasks() {
       task.description,
       projectName(task.projectId),
       memberName(task.assignee),
-      task.tags.join(" ")
+      task.tags.join(" "),
+      taskSubtasks(task).map((subtask) => subtask.title).join(" ")
     ].join(" ").toLowerCase();
 
     return (
@@ -715,6 +800,7 @@ function render() {
   if (state.selectedRoute === "company") renderCompanyPage();
   if (state.selectedRoute === "board") renderBoard();
   if (state.selectedRoute === "list") renderList();
+  if (state.selectedRoute === "calendar") renderCalendar();
   if (state.selectedRoute === "my-work") renderMyWork();
   if (state.selectedRoute === "time") renderTimeTracking();
   if (state.selectedRoute === "companies") renderCompanies();
@@ -849,6 +935,7 @@ function renderCompanies() {
           <p class="eyebrow">Portfolio</p>
           <h2>Companies</h2>
         </div>
+        <button class="button button-primary" type="button" id="new-company-button">New Company</button>
       </div>
       <div class="company-grid">
         ${companies.map(renderCompanyCard).join("")}
@@ -890,6 +977,7 @@ function renderCompanyCard(company) {
       <div class="tag-row">
         <span>${milestones.length} ${milestones.length === 1 ? "milestone" : "milestones"}</span>
       </div>
+      <button class="button button-secondary" type="button" data-edit-company="${company.id}">Edit Company</button>
     </article>
   `;
 }
@@ -930,6 +1018,7 @@ function renderCompanyPage() {
         <span>Tracked time</span>
         <strong>${formatDuration(trackedMinutes)}</strong>
         <span>${projects.length} ${projects.length === 1 ? "project" : "projects"}</span>
+        <button class="button button-secondary" type="button" data-edit-company="${company.id}">Edit Company</button>
       </div>
     </section>
 
@@ -1164,12 +1253,14 @@ function renderProjectTasks(tasks) {
 }
 
 function renderProjectTaskRow(task) {
+  const checklist = subtaskSummary(task);
   return `
     <tr>
       <td>
         <button class="table-task-button" type="button" data-edit-task="${task.id}">
           <strong>${escapeHtml(task.title)}</strong>
           <span>${escapeHtml(task.description)}</span>
+          ${checklist ? `<span>${escapeHtml(checklist)}</span>` : ""}
         </button>
       </td>
       <td>${memberName(task.assignee)}</td>
@@ -1430,6 +1521,59 @@ function renderTaskCollaboration(taskId = "") {
   `;
 }
 
+function renderTaskSubtasks() {
+  const container = document.querySelector("#task-subtasks");
+  if (!container) return;
+  const doneCount = draftSubtasks.filter((subtask) => subtask.done).length;
+
+  container.innerHTML = `
+    <div class="subtask-panel">
+      <div class="collaboration-header">
+        <p class="eyebrow">Checklist</p>
+        <span>${doneCount}/${draftSubtasks.length}</span>
+      </div>
+      <div class="subtask-list">
+        ${draftSubtasks.length ? draftSubtasks.map(renderDraftSubtask).join("") : emptyState("No checklist items yet.")}
+      </div>
+      <div class="subtask-composer">
+        <input id="subtask-title" placeholder="Add checklist item">
+        <button class="button button-secondary" type="button" id="subtask-submit">Add Item</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderDraftSubtask(subtask) {
+  return `
+    <article class="subtask-item ${subtask.done ? "is-done" : ""}">
+      <label>
+        <input type="checkbox" data-toggle-subtask="${subtask.id}" ${subtask.done ? "checked" : ""}>
+        <span>${escapeHtml(subtask.title)}</span>
+      </label>
+      <button class="icon-button" type="button" data-delete-subtask="${subtask.id}" aria-label="Remove checklist item">x</button>
+    </article>
+  `;
+}
+
+function addDraftSubtask() {
+  const input = document.querySelector("#subtask-title");
+  const title = input?.value.trim();
+  if (!title) return;
+
+  draftSubtasks = [...draftSubtasks, { id: uid("subtask"), title, done: false }];
+  renderTaskSubtasks();
+}
+
+function toggleDraftSubtask(id, done) {
+  draftSubtasks = draftSubtasks.map((subtask) => subtask.id === id ? { ...subtask, done } : subtask);
+  renderTaskSubtasks();
+}
+
+function deleteDraftSubtask(id) {
+  draftSubtasks = draftSubtasks.filter((subtask) => subtask.id !== id);
+  renderTaskSubtasks();
+}
+
 function renderTaskTimeTracking(taskId = "") {
   const container = document.querySelector("#task-time");
   if (!container) return;
@@ -1467,7 +1611,7 @@ function renderTaskTimeTracking(taskId = "") {
           </label>
           <label>
             <span>Minutes</span>
-            <input id="time-minutes" type="number" min="1" step="5" value="30">
+            <input id="time-minutes" type="number" min="5" step="5" value="30">
           </label>
           <label class="checkbox-label">
             <input id="time-billable" type="checkbox">
@@ -1572,6 +1716,104 @@ function renderList() {
         </div>
       ` : emptyState("No tasks match those filters.")}
     </section>
+  `;
+}
+
+function renderCalendar() {
+  const tasks = getFilteredTasks().filter((task) => task.dueDate);
+  const projectIds = new Set(tasks.map((task) => task.projectId));
+  const milestones = state.milestones.filter((milestone) => {
+    if (!milestone.dueDate) return false;
+    const project = byId(state.projects, milestone.projectId);
+    return (
+      (!project || state.filters.company === "all" || project.companyId === state.filters.company) &&
+      (state.selectedProject === "all" || milestone.projectId === state.selectedProject) &&
+      (state.selectedProject !== "all" || state.filters.company === "all" || projectIds.has(milestone.projectId) || project?.companyId === state.filters.company)
+    );
+  });
+  const monthStart = new Date(`${state.selectedCalendarMonth}-01T12:00:00`);
+  const gridStart = new Date(monthStart);
+  gridStart.setDate(monthStart.getDate() - monthStart.getDay());
+  const days = Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(gridStart);
+    date.setDate(gridStart.getDate() + index);
+    return date;
+  });
+  const itemsByDate = [...tasks.map((task) => ({
+    id: task.id,
+    type: "task",
+    title: task.title,
+    projectId: task.projectId,
+    date: task.dueDate,
+    status: task.status,
+    priority: task.priority,
+    assignee: task.assignee
+  })), ...milestones.map((milestone) => ({
+    id: milestone.id,
+    type: "milestone",
+    title: milestone.title,
+    projectId: milestone.projectId,
+    date: milestone.dueDate,
+    status: milestone.status,
+    priority: "normal",
+    assignee: milestone.owner
+  }))].reduce((grouped, item) => {
+    grouped[item.date] = [...(grouped[item.date] || []), item];
+    return grouped;
+  }, {});
+  const monthItems = Object.values(itemsByDate).flat().filter((item) => item.date.startsWith(state.selectedCalendarMonth));
+  const openMonthTasks = tasks.filter((task) => task.dueDate.startsWith(state.selectedCalendarMonth) && task.status !== "done");
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Scheduled", monthItems.length)}
+      ${metric("Open tasks", openMonthTasks.length)}
+      ${metric("Milestones", milestones.filter((milestone) => milestone.dueDate.startsWith(state.selectedCalendarMonth)).length)}
+      ${metric("Overdue", tasks.filter(isOverdue).length)}
+    </div>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Plan</p>
+          <h2>${monthLabel(state.selectedCalendarMonth)}</h2>
+        </div>
+        <div class="calendar-actions">
+          <button class="icon-button" type="button" data-calendar-shift="-1" aria-label="Previous month">&lt;</button>
+          <button class="button button-secondary" type="button" data-calendar-today>Today</button>
+          <button class="icon-button" type="button" data-calendar-shift="1" aria-label="Next month">&gt;</button>
+        </div>
+      </div>
+      <div class="calendar-grid" aria-label="${monthLabel(state.selectedCalendarMonth)} calendar">
+        ${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => `<div class="calendar-weekday">${day}</div>`).join("")}
+        ${days.map((date) => renderCalendarDay(date, itemsByDate[calendarDateKey(date)] || [], monthStart.getMonth())).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderCalendarDay(date, items, activeMonth) {
+  const key = calendarDateKey(date);
+  const isMuted = date.getMonth() !== activeMonth;
+  const today = calendarDateKey(new Date()) === key;
+  return `
+    <section class="calendar-day ${isMuted ? "is-muted" : ""} ${today ? "is-today" : ""}">
+      <div class="calendar-date">${date.getDate()}</div>
+      <div class="calendar-items">
+        ${items.slice(0, 4).map(renderCalendarItem).join("")}
+        ${items.length > 4 ? `<span class="calendar-more">+${items.length - 4} more</span>` : ""}
+      </div>
+    </section>
+  `;
+}
+
+function renderCalendarItem(item) {
+  const isTask = item.type === "task";
+  return `
+    <button class="calendar-item calendar-${item.type}" type="button" ${isTask ? `data-edit-task="${item.id}"` : ""}>
+      <strong>${escapeHtml(item.title)}</strong>
+      <span>${escapeHtml(projectName(item.projectId))}</span>
+    </button>
   `;
 }
 
@@ -1734,6 +1976,7 @@ function renderTimeEntryRow(entry) {
 
 function renderTaskCard(task) {
   const company = projectCompany(task.projectId);
+  const checklist = subtaskSummary(task);
   return `
     <article class="task-card" draggable="true" data-task-id="${task.id}">
       <button class="task-card-main" type="button" data-edit-task="${task.id}">
@@ -1745,6 +1988,7 @@ function renderTaskCard(task) {
         <span class="avatar">${memberName(task.assignee).split(" ").map((part) => part[0]).join("")}</span>
         <span class="priority priority-${task.priority}">${priorityLabel(task.priority)}</span>
         <span class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}</span>
+        ${checklist ? `<span>${escapeHtml(checklist)}</span>` : ""}
       </div>
       <div class="tag-row">
         ${task.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
@@ -1755,12 +1999,14 @@ function renderTaskCard(task) {
 
 function renderTaskRow(task) {
   const company = projectCompany(task.projectId);
+  const checklist = subtaskSummary(task);
   return `
     <tr>
       <td>
         <button class="table-task-button" type="button" data-edit-task="${task.id}">
           <strong>${escapeHtml(task.title)}</strong>
           <span>${escapeHtml(task.description)}</span>
+          ${checklist ? `<span>${escapeHtml(checklist)}</span>` : ""}
         </button>
       </td>
       <td>
@@ -1793,6 +2039,7 @@ function populateTaskForm(task = null) {
   document.querySelector("#task-description").value = task?.description || "";
   document.querySelector("#task-due-date").value = task?.dueDate || "";
   document.querySelector("#task-tags").value = task?.tags?.join(", ") || "";
+  draftSubtasks = taskSubtasks(task || {}).map((subtask) => ({ ...subtask }));
   els.taskFormTitle.textContent = task ? "Edit Task" : "New Task";
 
   const availableProjects = state.filters.company === "all"
@@ -1805,6 +2052,7 @@ function populateTaskForm(task = null) {
   fillSelect("#task-status", statuses, task?.status || "todo", "label");
   fillSelect("#task-priority", priorities, task?.priority || "normal", "label");
   renderTaskCollaboration(task?.id || "");
+  renderTaskSubtasks();
   renderTaskTimeTracking(task?.id || "");
 }
 
@@ -1822,6 +2070,16 @@ function populateProjectForm() {
   document.querySelector("#project-due-date").value = "";
   fillSelect("#project-company", state.companies, state.filters.company === "all" ? state.companies[0].id : state.filters.company, "name");
   fillSelect("#project-owner", members, members[0].id, "name");
+}
+
+function populateCompanyForm(company = null) {
+  document.querySelector("#company-id").value = company?.id || "";
+  document.querySelector("#company-name").value = company?.name || "";
+  document.querySelector("#company-description").value = company?.description || "";
+  document.querySelector("#company-type").value = company?.type || "Client";
+  document.querySelector("#company-status").value = company?.status || "active";
+  fillSelect("#company-owner", members, company?.owner || members[0].id, "name");
+  els.companyFormTitle.textContent = company ? "Edit Company" : "New Company";
 }
 
 function openDialog(dialog) {
@@ -1913,6 +2171,38 @@ document.addEventListener("click", (event) => {
   const companyButton = event.target.closest("[data-company-id]");
   if (companyButton) setCompany(companyButton.dataset.companyId);
 
+  const newCompanyButton = event.target.closest("#new-company-button");
+  if (newCompanyButton) {
+    populateCompanyForm();
+    openDialog(els.companyDialog);
+  }
+
+  const editCompanyButton = event.target.closest("[data-edit-company]");
+  if (editCompanyButton) {
+    populateCompanyForm(byId(state.companies, editCompanyButton.dataset.editCompany));
+    openDialog(els.companyDialog);
+  }
+
+  const subtaskButton = event.target.closest("#subtask-submit");
+  if (subtaskButton) addDraftSubtask();
+
+  const deleteSubtaskButton = event.target.closest("[data-delete-subtask]");
+  if (deleteSubtaskButton) deleteDraftSubtask(deleteSubtaskButton.dataset.deleteSubtask);
+
+  const previousMonthButton = event.target.closest("[data-calendar-shift]");
+  if (previousMonthButton) {
+    state.selectedCalendarMonth = shiftMonth(state.selectedCalendarMonth, Number(previousMonthButton.dataset.calendarShift));
+    saveState();
+    render();
+  }
+
+  const todayButton = event.target.closest("[data-calendar-today]");
+  if (todayButton) {
+    state.selectedCalendarMonth = new Date().toISOString().slice(0, 7);
+    saveState();
+    render();
+  }
+
   const projectTabButton = event.target.closest("[data-project-tab]");
   if (projectTabButton) {
     state.selectedProjectTab = projectTabButton.dataset.projectTab;
@@ -1934,6 +2224,18 @@ document.addEventListener("click", (event) => {
 
   const closeButton = event.target.closest("[data-close-dialog]");
   if (closeButton) closeDialog(document.querySelector(`#${closeButton.dataset.closeDialog}`));
+});
+
+document.addEventListener("change", (event) => {
+  const subtaskCheckbox = event.target.closest("[data-toggle-subtask]");
+  if (subtaskCheckbox) toggleDraftSubtask(subtaskCheckbox.dataset.toggleSubtask, subtaskCheckbox.checked);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" && event.target.closest("#subtask-title")) {
+    event.preventDefault();
+    addDraftSubtask();
+  }
 });
 
 document.querySelector("#new-task-button").addEventListener("click", () => {
@@ -2047,6 +2349,7 @@ els.taskForm.addEventListener("submit", (event) => {
     priority: document.querySelector("#task-priority").value,
     dueDate: document.querySelector("#task-due-date").value,
     tags: document.querySelector("#task-tags").value.split(",").map((tag) => tag.trim()).filter(Boolean),
+    subtasks: draftSubtasks,
     createdAt: existingTask?.createdAt || new Date().toISOString()
   };
 
@@ -2091,6 +2394,34 @@ els.projectForm.addEventListener("submit", (event) => {
   state.selectedProjectTab = "overview";
   saveState();
   closeDialog(els.projectDialog);
+  render();
+});
+
+els.companyForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const id = document.querySelector("#company-id").value || uid("company");
+  const existingCompany = byId(state.companies, id);
+  const company = {
+    id,
+    name: document.querySelector("#company-name").value.trim(),
+    description: document.querySelector("#company-description").value.trim(),
+    type: document.querySelector("#company-type").value,
+    owner: document.querySelector("#company-owner").value,
+    status: document.querySelector("#company-status").value
+  };
+
+  if (existingCompany) {
+    state.companies = state.companies.map((item) => item.id === id ? company : item);
+  } else {
+    state.companies = [company, ...state.companies];
+  }
+
+  state.selectedCompany = id;
+  state.filters.company = id;
+  state.selectedProject = "all";
+  state.selectedRoute = "company";
+  saveState();
+  closeDialog(els.companyDialog);
   render();
 });
 
