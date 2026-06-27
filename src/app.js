@@ -128,7 +128,9 @@ const seedData = {
       assignee: "mara",
       status: "doing",
       priority: "urgent",
+      startDate: "2026-06-27",
       dueDate: "2026-07-03",
+      blockedBy: [],
       tags: ["planning", "mvp"],
       subtasks: [
         { id: "subtask-1-1", title: "Confirm release pillars", done: true },
@@ -150,7 +152,9 @@ const seedData = {
       assignee: "eli",
       status: "todo",
       priority: "high",
+      startDate: "2026-07-04",
       dueDate: "2026-07-10",
+      blockedBy: ["task-1"],
       tags: ["docs", "ops"],
       subtasks: [
         { id: "subtask-2-1", title: "Outline local setup", done: true },
@@ -171,7 +175,9 @@ const seedData = {
       assignee: "sam",
       status: "done",
       priority: "normal",
+      startDate: "2026-06-27",
       dueDate: "2026-06-28",
+      blockedBy: [],
       tags: ["community"],
       subtasks: [
         { id: "subtask-3-1", title: "Add issue labels", done: true },
@@ -187,7 +193,9 @@ const seedData = {
       assignee: "sam",
       status: "review",
       priority: "high",
+      startDate: "2026-07-01",
       dueDate: "2026-07-12",
+      blockedBy: [],
       tags: ["template", "clients"],
       subtasks: [
         { id: "subtask-4-1", title: "Capture sales handoff", done: true },
@@ -208,7 +216,9 @@ const seedData = {
       assignee: "nina",
       status: "todo",
       priority: "normal",
+      startDate: "2026-07-13",
       dueDate: "2026-07-17",
+      blockedBy: ["task-4"],
       tags: ["template"],
       subtasks: [
         { id: "subtask-5-1", title: "Draft discovery section", done: false },
@@ -224,7 +234,9 @@ const seedData = {
       assignee: "nina",
       status: "doing",
       priority: "normal",
+      startDate: "2026-07-02",
       dueDate: "2026-07-08",
+      blockedBy: [],
       tags: ["design"],
       subtasks: [
         { id: "subtask-6-1", title: "Compare compact card metadata", done: true },
@@ -240,7 +252,9 @@ const seedData = {
       assignee: "mara",
       status: "todo",
       priority: "low",
+      startDate: "2026-07-09",
       dueDate: "2026-07-18",
+      blockedBy: ["task-6"],
       tags: ["ux"],
       subtasks: [
         { id: "subtask-7-1", title: "Write empty project state", done: false },
@@ -610,6 +624,8 @@ function normalizeState(nextState) {
     })),
     tasks: nextState.tasks.map((task) => ({
       ...task,
+      startDate: task.startDate || task.createdAt?.slice(0, 10) || "",
+      blockedBy: Array.isArray(task.blockedBy) ? task.blockedBy : [],
       subtasks: Array.isArray(task.subtasks) ? task.subtasks : [],
       customFields: task.customFields && typeof task.customFields === "object" ? task.customFields : {}
     }))
@@ -711,6 +727,7 @@ function isTaskVisibleForContext(task) {
     memberName(task.assignee),
     task.tags.join(" "),
     visibleTaskCustomFields(task).map((field) => `${field.name} ${field.value}`).join(" "),
+    taskDependencies(task).map((dependency) => dependency.title).join(" "),
     taskSubtasks(task).map((subtask) => subtask.title).join(" ")
   ].join(" ").toLowerCase();
 
@@ -955,6 +972,39 @@ function subtaskSummary(task) {
   const { total, done } = subtaskStats(task);
   if (!total) return "";
   return `${done}/${total} checklist`;
+}
+
+function taskDependencies(task) {
+  return (task?.blockedBy || []).map((taskId) => byId(state.tasks, taskId)).filter(Boolean);
+}
+
+function openTaskDependencies(task) {
+  return taskDependencies(task).filter((dependency) => dependency.status !== "done");
+}
+
+function isTaskBlocked(task) {
+  return openTaskDependencies(task).length > 0;
+}
+
+function tasksBlockedBy(taskId) {
+  return state.tasks.filter((task) => task.blockedBy?.includes(taskId));
+}
+
+function taskStartDate(task) {
+  return task.startDate || task.createdAt?.slice(0, 10) || task.dueDate || todayKey();
+}
+
+function daysBetween(startDate, endDate) {
+  const start = parseDateValue(startDate);
+  const end = parseDateValue(endDate);
+  if (!start || !end) return 0;
+  return Math.round((end - start) / 86400000);
+}
+
+function sameStringSet(first = [], second = []) {
+  if (first.length !== second.length) return false;
+  const secondSet = new Set(second);
+  return first.every((item) => secondSet.has(item));
 }
 
 function monthLabel(month) {
@@ -1241,12 +1291,21 @@ function recordTaskChanges(previous, next) {
     });
   }
 
-  if (previous.title !== next.title || previous.description !== next.description || previous.dueDate !== next.dueDate || previous.projectId !== next.projectId) {
+  if (previous.title !== next.title || previous.description !== next.description || previous.dueDate !== next.dueDate || previous.startDate !== next.startDate || previous.projectId !== next.projectId) {
     addActivity({
       projectId: next.projectId,
       taskId: next.id,
       type: "task_update",
       message: `updated ${next.title}`
+    });
+  }
+
+  if (!sameStringSet(previous.blockedBy || [], next.blockedBy || [])) {
+    addActivity({
+      projectId: next.projectId,
+      taskId: next.id,
+      type: "task_dependency",
+      message: `updated dependencies for ${next.title}`
     });
   }
 }
@@ -1924,6 +1983,7 @@ function renderProjectTasks(tasks) {
 function renderProjectTaskRow(task) {
   const checklist = subtaskSummary(task);
   const fields = renderTaskFieldChips(task);
+  const dependencies = renderTaskDependencyChips(task);
   return `
     <tr>
       <td>
@@ -1931,6 +1991,7 @@ function renderProjectTaskRow(task) {
           <strong>${escapeHtml(task.title)}</strong>
           <span>${escapeHtml(task.description)}</span>
           ${checklist ? `<span>${escapeHtml(checklist)}</span>` : ""}
+          ${dependencies}
           ${fields}
         </button>
       </td>
@@ -1966,6 +2027,7 @@ function renderProjectBoard(tasks) {
 function renderProjectTimeline(project, tasks, milestones) {
   const datedTasks = tasks.filter((task) => task.dueDate);
   const undatedTasks = tasks.filter((task) => !task.dueDate);
+  const gantt = renderProjectGantt(project, tasks, milestones);
   const timelineItems = [
     project.startDate ? {
       id: `${project.id}-start`,
@@ -2025,6 +2087,8 @@ function renderProjectTimeline(project, tasks, milestones) {
         </label>
       </div>
 
+      ${gantt}
+
       <div class="timeline-list">
         ${timelineItems.length ? timelineItems.map(renderTimelineItem).join("") : emptyState("Add dates to tasks or milestones to build this timeline.")}
       </div>
@@ -2041,6 +2105,89 @@ function renderProjectTimeline(project, tasks, milestones) {
         </div>
       ` : ""}
     </section>
+  `;
+}
+
+function renderProjectGantt(project, tasks, milestones) {
+  const scheduledTasks = tasks.filter((task) => task.dueDate);
+  if (!scheduledTasks.length) return emptyState("Add task start and due dates to build a Gantt chart.");
+
+  const dates = [
+    project.startDate,
+    project.dueDate,
+    ...scheduledTasks.flatMap((task) => [taskStartDate(task), task.dueDate]),
+    ...milestones.map((milestone) => milestone.dueDate)
+  ].filter(Boolean).sort();
+  const rangeStart = dates[0];
+  const rangeEnd = dates[dates.length - 1];
+  const totalDays = Math.max(1, daysBetween(rangeStart, rangeEnd));
+  const ticks = Array.from({ length: 5 }, (_, index) => shiftDate(rangeStart, Math.round((totalDays * index) / 4)));
+  const visibleMilestones = milestones.filter((milestone) => milestone.dueDate);
+
+  return `
+    <section class="gantt-panel" aria-label="Project Gantt schedule">
+      <div class="gantt-header">
+        <div>
+          <p class="eyebrow">Gantt</p>
+          <h3>Schedule and dependencies</h3>
+        </div>
+        <div class="meta-row">
+          <span>${formatDate(rangeStart)} - ${formatDate(rangeEnd)}</span>
+          <span>${scheduledTasks.filter(isTaskBlocked).length} blocked</span>
+        </div>
+      </div>
+      <div class="gantt-scale" aria-hidden="true">
+        <span></span>
+        <div>
+          ${ticks.map((tick) => `<span>${formatDate(tick)}</span>`).join("")}
+        </div>
+      </div>
+      <div class="gantt-list">
+        ${scheduledTasks
+          .sort((a, b) => taskStartDate(a).localeCompare(taskStartDate(b)))
+          .map((task) => renderGanttTaskRow(task, rangeStart, totalDays, visibleMilestones))
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderGanttTaskRow(task, rangeStart, totalDays, milestones) {
+  const start = taskStartDate(task);
+  const end = task.dueDate || start;
+  const offset = Math.max(0, daysBetween(rangeStart, start));
+  const duration = Math.max(1, daysBetween(start, end) + 1);
+  const left = Math.min(100, (offset / totalDays) * 100);
+  const width = Math.max(4, Math.min(100 - left, (duration / totalDays) * 100));
+  const dependencies = taskDependencies(task);
+  const openDependencies = openTaskDependencies(task);
+
+  return `
+    <article class="gantt-row ${openDependencies.length ? "is-blocked" : ""}">
+      <div class="gantt-label">
+        <button class="table-task-button" type="button" data-edit-task="${task.id}">
+          <strong>${escapeHtml(task.title)}</strong>
+          <span>${memberName(task.assignee)} - ${statusLabel(task.status)}</span>
+        </button>
+        <div class="gantt-date-controls">
+          <input type="date" value="${start}" data-task-start="${task.id}" aria-label="Change task start date">
+          <input type="date" value="${end}" data-task-date="${task.id}" aria-label="Change task due date">
+        </div>
+      </div>
+      <div class="gantt-track">
+        ${milestones.map((milestone) => {
+          const markerLeft = Math.min(100, Math.max(0, (daysBetween(rangeStart, milestone.dueDate) / totalDays) * 100));
+          return `<span class="gantt-marker" style="left: ${markerLeft}%" title="${escapeHtml(milestone.title)}"></span>`;
+        }).join("")}
+        <span class="gantt-bar priority-${task.priority}" style="left: ${left}%; width: ${width}%;">
+          <span>${formatDate(start)} - ${formatDate(end)}</span>
+        </span>
+      </div>
+      <div class="gantt-dependencies">
+        ${dependencies.length ? `Waits on ${dependencies.map((dependency) => escapeHtml(dependency.title)).join(", ")}` : "No blockers"}
+        ${openDependencies.length ? `<strong>${openDependencies.length} open</strong>` : ""}
+      </div>
+    </article>
   `;
 }
 
@@ -2303,6 +2450,63 @@ function renderTaskTimeTracking(taskId = "") {
           </div>
         ` : emptyState("No time has been logged for this task.")}
       </section>
+    </div>
+  `;
+}
+
+function renderTaskDependencies(task = null) {
+  const container = document.querySelector("#task-dependencies");
+  if (!container) return;
+
+  const selectedProjectId = document.querySelector("#task-project")?.value || task?.projectId || state.selectedProject;
+  const currentTaskId = task?.id || "";
+  const currentDependencies = new Set(task?.blockedBy || []);
+  const availableTasks = state.tasks
+    .filter((candidate) => candidate.id !== currentTaskId)
+    .filter((candidate) => selectedProjectId === "all" || candidate.projectId === selectedProjectId);
+  const openDependencies = task ? openTaskDependencies(task) : [];
+  const downstreamTasks = task ? tasksBlockedBy(task.id) : [];
+
+  container.innerHTML = `
+    <div class="dependency-panel">
+      <div class="collaboration-header">
+        <p class="eyebrow">Dependencies</p>
+        <span>${openDependencies.length}</span>
+      </div>
+      ${task && openDependencies.length ? `
+        <div class="dependency-alert">
+          Blocked by ${openDependencies.map((dependency) => escapeHtml(dependency.title)).join(", ")}
+        </div>
+      ` : ""}
+      <div class="dependency-grid">
+        <section>
+          <h3>Blocked by</h3>
+          <div class="dependency-option-list">
+            ${availableTasks.length ? availableTasks.map((candidate) => `
+              <label class="dependency-option">
+                <input type="checkbox" data-task-dependency value="${candidate.id}" ${currentDependencies.has(candidate.id) ? "checked" : ""}>
+                <span>
+                  <strong>${escapeHtml(candidate.title)}</strong>
+                  <small>${statusLabel(candidate.status)} - due ${formatDate(candidate.dueDate)}</small>
+                </span>
+              </label>
+            `).join("") : emptyState("No other project tasks can block this task yet.")}
+          </div>
+        </section>
+        <section>
+          <h3>Blocking</h3>
+          ${downstreamTasks.length ? `
+            <div class="dependency-stack">
+              ${downstreamTasks.map((blockedTask) => `
+                <button class="table-task-button dependency-linked-task" type="button" data-edit-task="${blockedTask.id}">
+                  <strong>${escapeHtml(blockedTask.title)}</strong>
+                  <span>${statusLabel(blockedTask.status)} - ${memberName(blockedTask.assignee)}</span>
+                </button>
+              `).join("")}
+            </div>
+          ` : emptyState(task ? "This task is not blocking other work." : "Save this task to see downstream blockers.")}
+        </section>
+      </div>
     </div>
   `;
 }
@@ -3015,8 +3219,9 @@ function renderTaskCard(task) {
   const company = projectCompany(task.projectId);
   const checklist = subtaskSummary(task);
   const fields = renderTaskFieldChips(task);
+  const dependencies = renderTaskDependencyChips(task);
   return `
-    <article class="task-card" draggable="true" data-task-id="${task.id}">
+    <article class="task-card ${isTaskBlocked(task) ? "is-blocked" : ""}" draggable="true" data-task-id="${task.id}">
       <button class="task-card-main" type="button" data-edit-task="${task.id}">
         <span class="task-project">${escapeHtml(company.name)} / ${escapeHtml(projectName(task.projectId))}</span>
         <strong>${escapeHtml(task.title)}</strong>
@@ -3028,6 +3233,7 @@ function renderTaskCard(task) {
         <span class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}</span>
         ${checklist ? `<span>${escapeHtml(checklist)}</span>` : ""}
       </div>
+      ${dependencies}
       <div class="tag-row">
         ${task.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
       </div>
@@ -3040,6 +3246,7 @@ function renderTaskRow(task) {
   const company = projectCompany(task.projectId);
   const checklist = subtaskSummary(task);
   const fields = renderTaskFieldChips(task);
+  const dependencies = renderTaskDependencyChips(task);
   return `
     <tr>
       <td>
@@ -3047,6 +3254,7 @@ function renderTaskRow(task) {
           <strong>${escapeHtml(task.title)}</strong>
           <span>${escapeHtml(task.description)}</span>
           ${checklist ? `<span>${escapeHtml(checklist)}</span>` : ""}
+          ${dependencies}
           ${fields}
         </button>
       </td>
@@ -3059,6 +3267,21 @@ function renderTaskRow(task) {
       <td>${selectControl("priority", task.id, task.priority, priorities)}</td>
       <td class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}</td>
     </tr>
+  `;
+}
+
+function renderTaskDependencyChips(task) {
+  const dependencies = taskDependencies(task);
+  const openDependencies = dependencies.filter((dependency) => dependency.status !== "done");
+  const downstreamCount = tasksBlockedBy(task.id).length;
+  if (!dependencies.length && !downstreamCount) return "";
+
+  return `
+    <span class="dependency-chip-row">
+      ${openDependencies.length ? `<span class="dependency-chip is-blocked">Blocked by ${openDependencies.length}</span>` : ""}
+      ${dependencies.length && !openDependencies.length ? "<span class=\"dependency-chip is-clear\">Dependencies clear</span>" : ""}
+      ${downstreamCount ? `<span class="dependency-chip">Blocks ${downstreamCount}</span>` : ""}
+    </span>
   `;
 }
 
@@ -3089,6 +3312,7 @@ function populateTaskForm(task = null) {
   document.querySelector("#task-id").value = task?.id || "";
   document.querySelector("#task-title").value = task?.title || "";
   document.querySelector("#task-description").value = task?.description || "";
+  document.querySelector("#task-start-date").value = task?.startDate || "";
   document.querySelector("#task-due-date").value = task?.dueDate || "";
   document.querySelector("#task-tags").value = task?.tags?.join(", ") || "";
   draftSubtasks = taskSubtasks(task || {}).map((subtask) => ({ ...subtask }));
@@ -3105,6 +3329,7 @@ function populateTaskForm(task = null) {
   fillSelect("#task-priority", priorities, task?.priority || "normal", "label");
   renderTaskCollaboration(task?.id || "");
   renderTaskSubtasks();
+  renderTaskDependencies(task);
   renderTaskCustomFields(task);
   renderTaskTimeTracking(task?.id || "");
 }
@@ -3338,7 +3563,9 @@ function convertSubmissionToTask(submissionId) {
     assignee: form.assignee,
     status: "todo",
     priority: submission.urgency === "High" ? "high" : "normal",
+    startDate: todayKey(),
     dueDate: "",
+    blockedBy: [],
     tags: ["intake"],
     subtasks: [],
     customFields: {
@@ -3570,6 +3797,12 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  const taskProjectSelect = event.target.closest("#task-project");
+  if (taskProjectSelect) {
+    const taskId = document.querySelector("#task-id")?.value;
+    renderTaskDependencies(taskId ? byId(state.tasks, taskId) : null);
+  }
+
   const subtaskCheckbox = event.target.closest("[data-toggle-subtask]");
   if (subtaskCheckbox) toggleDraftSubtask(subtaskCheckbox.dataset.toggleSubtask, subtaskCheckbox.checked);
 });
@@ -3658,6 +3891,12 @@ els.appView.addEventListener("change", (event) => {
     return;
   }
 
+  const taskStartInput = event.target.closest("[data-task-start]");
+  if (taskStartInput) {
+    updateTask(taskStartInput.dataset.taskStart, { startDate: taskStartInput.value });
+    return;
+  }
+
   const milestoneDateInput = event.target.closest("[data-milestone-date]");
   if (milestoneDateInput) {
     updateMilestoneDate(milestoneDateInput.dataset.milestoneDate, milestoneDateInput.value);
@@ -3709,7 +3948,9 @@ els.taskForm.addEventListener("submit", (event) => {
     assignee: document.querySelector("#task-assignee").value,
     status: document.querySelector("#task-status").value,
     priority: document.querySelector("#task-priority").value,
+    startDate: document.querySelector("#task-start-date").value,
     dueDate: document.querySelector("#task-due-date").value,
+    blockedBy: Array.from(document.querySelectorAll("[data-task-dependency]:checked")).map((input) => input.value),
     tags: document.querySelector("#task-tags").value.split(",").map((tag) => tag.trim()).filter(Boolean),
     subtasks: draftSubtasks,
     customFields: Array.from(document.querySelectorAll("[data-custom-field]")).reduce((values, input) => {
