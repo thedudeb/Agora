@@ -32,6 +32,7 @@ const routes = {
   calendar: "Calendar",
   "my-work": "My Work",
   time: "Time",
+  reports: "Reports",
   docs: "Docs & Files",
   intake: "Intake",
   fields: "Custom Fields",
@@ -1179,6 +1180,100 @@ function projectProgress(tasks) {
   return tasks.length ? Math.round((done / tasks.length) * 100) : 0;
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function dueSoonTasks(tasks, days = 7) {
+  const today = todayKey();
+  const limit = shiftDate(today, days);
+  return tasks.filter((task) => task.status !== "done" && task.dueDate && task.dueDate >= today && task.dueDate <= limit);
+}
+
+function reportHealthScore({ progress, overdue, blocked, openIntake }) {
+  return clamp(progress - overdue * 9 - blocked * 8 - openIntake * 4, 0, 100);
+}
+
+function visibleReportProjects() {
+  return state.projects.filter((project) => (
+    (state.filters.company === "all" || project.companyId === state.filters.company) &&
+    (state.selectedProject === "all" || project.id === state.selectedProject)
+  ));
+}
+
+function reportTaskScope() {
+  const tasks = getFilteredTasks();
+  const projects = visibleReportProjects();
+  const projectIds = new Set(projects.map((project) => project.id));
+  return {
+    tasks,
+    projects,
+    projectIds,
+    timeEntries: getFilteredTimeEntries().filter((entry) => projectIds.has(byId(state.tasks, entry.taskId)?.projectId)),
+    submissions: getVisibleIntakeSubmissions().filter((submission) => {
+      const form = byId(state.intakeForms, submission.formId);
+      return form && projectIds.has(form.projectId);
+    })
+  };
+}
+
+function projectReport(project, tasks, timeEntries, submissions) {
+  const projectTasks = tasks.filter((task) => task.projectId === project.id);
+  const openTasks = projectTasks.filter((task) => task.status !== "done");
+  const overdue = projectTasks.filter(isOverdue);
+  const blocked = projectTasks.filter(isTaskBlocked);
+  const dueSoon = dueSoonTasks(projectTasks);
+  const trackedMinutes = sumMinutes(timeEntries.filter((entry) => byId(state.tasks, entry.taskId)?.projectId === project.id));
+  const openIntake = submissions.filter((submission) => {
+    const form = byId(state.intakeForms, submission.formId);
+    return form?.projectId === project.id && !submission.taskId;
+  });
+  const progress = projectProgress(projectTasks);
+
+  return {
+    project,
+    tasks: projectTasks,
+    openTasks,
+    overdue,
+    blocked,
+    dueSoon,
+    openIntake,
+    trackedMinutes,
+    progress,
+    health: reportHealthScore({ progress, overdue: overdue.length, blocked: blocked.length, openIntake: openIntake.length })
+  };
+}
+
+function companyReport(company, tasks, timeEntries, submissions) {
+  const projectIds = new Set(getCompanyProjects(company.id).map((project) => project.id));
+  const companyTasks = tasks.filter((task) => projectIds.has(task.projectId));
+  const openTasks = companyTasks.filter((task) => task.status !== "done");
+  const overdue = companyTasks.filter(isOverdue);
+  const blocked = companyTasks.filter(isTaskBlocked);
+  const dueSoon = dueSoonTasks(companyTasks);
+  const companySubmissions = submissions.filter((submission) => {
+    const form = byId(state.intakeForms, submission.formId);
+    return form && projectIds.has(form.projectId);
+  });
+  const openIntake = companySubmissions.filter((submission) => !submission.taskId);
+  const trackedMinutes = sumMinutes(timeEntries.filter((entry) => projectIds.has(byId(state.tasks, entry.taskId)?.projectId)));
+  const progress = projectProgress(companyTasks);
+
+  return {
+    company,
+    projectCount: projectIds.size,
+    tasks: companyTasks,
+    openTasks,
+    overdue,
+    blocked,
+    dueSoon,
+    openIntake,
+    trackedMinutes,
+    progress,
+    health: reportHealthScore({ progress, overdue: overdue.length, blocked: blocked.length, openIntake: openIntake.length })
+  };
+}
+
 function milestoneProgress(milestone) {
   const linkedTasks = milestone.taskIds.map((taskId) => byId(state.tasks, taskId)).filter(Boolean);
   return projectProgress(linkedTasks);
@@ -1336,6 +1431,7 @@ function render() {
   if (state.selectedRoute === "calendar") renderCalendar();
   if (state.selectedRoute === "my-work") renderMyWork();
   if (state.selectedRoute === "time") renderTimeTracking();
+  if (state.selectedRoute === "reports") renderReports();
   if (state.selectedRoute === "docs") renderDocsAndFiles();
   if (state.selectedRoute === "intake") renderIntake();
   if (state.selectedRoute === "fields") renderCustomFields();
@@ -2770,6 +2866,192 @@ function renderMyWork() {
         `).join("")}
       </div>
     </section>
+  `;
+}
+
+function renderReports() {
+  const { tasks, projects, timeEntries, submissions } = reportTaskScope();
+  const projectRows = projects.map((project) => projectReport(project, tasks, timeEntries, submissions));
+  const visibleCompanies = state.filters.company === "all"
+    ? state.companies
+    : state.companies.filter((company) => company.id === state.filters.company);
+  const companyRows = visibleCompanies.map((company) => companyReport(company, tasks, timeEntries, submissions));
+  const openTasks = tasks.filter((task) => task.status !== "done");
+  const blockedTasks = tasks.filter(isTaskBlocked);
+  const overdueTasks = tasks.filter(isOverdue);
+  const openIntake = submissions.filter((submission) => !submission.taskId);
+  const averageHealth = projectRows.length
+    ? Math.round(projectRows.reduce((total, row) => total + row.health, 0) / projectRows.length)
+    : 100;
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Health", `${averageHealth}%`)}
+      ${metric("Open work", openTasks.length)}
+      ${metric("Blocked", blockedTasks.length)}
+      ${metric("Tracked", formatDuration(sumMinutes(timeEntries)))}
+    </div>
+
+    <div class="reports-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Project health</p>
+            <h2>Delivery risk</h2>
+          </div>
+        </div>
+        <div class="report-card-list">
+          ${projectRows.length ? projectRows
+            .sort((a, b) => a.health - b.health)
+            .map(renderProjectReportCard)
+            .join("") : emptyState("No projects match the current report filters.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Portfolio</p>
+            <h2>Company comparison</h2>
+          </div>
+        </div>
+        <div class="portfolio-report-list">
+          ${companyRows.length ? companyRows
+            .sort((a, b) => a.health - b.health)
+            .map(renderCompanyReportRow)
+            .join("") : emptyState("No companies match the current report filters.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">People</p>
+            <h2>Workload</h2>
+          </div>
+        </div>
+        <div class="workload-report-list">
+          ${members.map((member) => renderWorkloadReportRow(member, tasks, timeEntries)).join("")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Attention</p>
+            <h2>Risk queue</h2>
+          </div>
+        </div>
+        ${renderRiskQueue(overdueTasks, blockedTasks, openIntake)}
+      </section>
+    </div>
+  `;
+}
+
+function renderProjectReportCard(row) {
+  return `
+    <article class="report-card">
+      <div class="report-card-main">
+        <button class="table-task-button" type="button" data-project-id="${row.project.id}">
+          <strong>${escapeHtml(row.project.name)}</strong>
+          <span>${escapeHtml(companyName(row.project.companyId))} - ${memberName(row.project.owner)}</span>
+        </button>
+        ${renderHealthBar(row.health)}
+      </div>
+      <div class="report-metrics">
+        <span><strong>${row.openTasks.length}</strong> open</span>
+        <span><strong>${row.overdue.length}</strong> overdue</span>
+        <span><strong>${row.blocked.length}</strong> blocked</span>
+        <span><strong>${row.dueSoon.length}</strong> due soon</span>
+        <span><strong>${row.openIntake.length}</strong> intake</span>
+        <span><strong>${formatDuration(row.trackedMinutes)}</strong> tracked</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderCompanyReportRow(row) {
+  return `
+    <article class="portfolio-report-row">
+      <button class="table-task-button" type="button" data-company-id="${row.company.id}">
+        <strong>${escapeHtml(row.company.name)}</strong>
+        <span>${row.projectCount} ${row.projectCount === 1 ? "project" : "projects"} - owner ${memberName(row.company.owner)}</span>
+      </button>
+      ${renderHealthBar(row.health)}
+      <div class="portfolio-report-metrics">
+        <span>${row.openTasks.length} open</span>
+        <span>${row.overdue.length} overdue</span>
+        <span>${row.blocked.length} blocked</span>
+        <span>${formatDuration(row.trackedMinutes)}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderWorkloadReportRow(member, tasks, timeEntries) {
+  const assignedTasks = tasks.filter((task) => task.assignee === member.id);
+  const openTasks = assignedTasks.filter((task) => task.status !== "done");
+  const blockedTasks = assignedTasks.filter(isTaskBlocked);
+  const dueSoon = dueSoonTasks(assignedTasks);
+  const loggedMinutes = sumMinutes(timeEntries.filter((entry) => entry.memberId === member.id));
+  const loadScore = clamp(openTasks.length * 16 + dueSoon.length * 12 + blockedTasks.length * 10, 0, 100);
+
+  return `
+    <article class="workload-report-row">
+      <div>
+        <span class="avatar">${member.name.split(" ").map((part) => part[0]).join("")}</span>
+        <div>
+          <h3>${member.name}</h3>
+          <p>${member.role}</p>
+        </div>
+      </div>
+      <div class="workload-bar" aria-label="${loadScore}% workload">
+        <span style="width: ${loadScore}%"></span>
+      </div>
+      <div class="portfolio-report-metrics">
+        <span>${openTasks.length} open</span>
+        <span>${blockedTasks.length} blocked</span>
+        <span>${dueSoon.length} due soon</span>
+        <span>${formatDuration(loggedMinutes)}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderRiskQueue(overdueTasks, blockedTasks, openIntake) {
+  const risks = [
+    ...overdueTasks.map((task) => ({ type: "Overdue", tone: "red", title: task.title, detail: `${projectName(task.projectId)} - due ${formatDate(task.dueDate)}`, taskId: task.id })),
+    ...blockedTasks.map((task) => ({ type: "Blocked", tone: "amber", title: task.title, detail: `Waiting on ${openTaskDependencies(task).map((dependency) => dependency.title).join(", ")}`, taskId: task.id })),
+    ...openIntake.map((submission) => {
+      const form = byId(state.intakeForms, submission.formId);
+      return { type: "Intake", tone: "green", title: submission.title, detail: `${form?.title || "Request"} - ${submission.requester}`, submissionId: submission.id };
+    })
+  ];
+
+  if (!risks.length) return emptyState("No overdue, blocked, or open intake items match the current filters.");
+
+  return `
+    <div class="risk-list">
+      ${risks.slice(0, 8).map((risk) => `
+        <article class="risk-item">
+          <span class="status-pill inbox-${risk.tone}">${escapeHtml(risk.type)}</span>
+          <button class="table-task-button" type="button" ${risk.taskId ? `data-edit-task="${risk.taskId}"` : ""}>
+            <strong>${escapeHtml(risk.title)}</strong>
+            <span>${escapeHtml(risk.detail)}</span>
+          </button>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderHealthBar(score) {
+  const tone = score < 50 ? "danger" : score < 75 ? "warn" : "good";
+  return `
+    <div class="health-bar health-${tone}" aria-label="${score}% health">
+      <span style="width: ${score}%"></span>
+      <strong>${score}%</strong>
+    </div>
   `;
 }
 

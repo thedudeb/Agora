@@ -688,6 +688,143 @@ textarea:focus {
   border-radius: 999px;
 }
 
+.reports-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: 16px;
+}
+
+.report-card-list,
+.portfolio-report-list,
+.workload-report-list,
+.risk-list {
+  display: grid;
+  gap: 10px;
+}
+
+.report-card,
+.portfolio-report-row,
+.workload-report-row,
+.risk-item {
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.report-card {
+  display: grid;
+  gap: 12px;
+}
+
+.report-card-main,
+.portfolio-report-row {
+  display: grid;
+  gap: 10px;
+}
+
+.health-bar,
+.workload-bar {
+  position: relative;
+  min-height: 30px;
+  overflow: hidden;
+  background: #eee9df;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.health-bar span,
+.workload-bar span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--green);
+}
+
+.health-bar strong {
+  position: relative;
+  display: grid;
+  min-height: 30px;
+  place-items: center;
+  font-size: 0.78rem;
+}
+
+.health-warn span {
+  background: var(--amber);
+}
+
+.health-danger span {
+  background: var(--red);
+}
+
+.report-metrics,
+.portfolio-report-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.report-metrics span,
+.portfolio-report-metrics span {
+  display: grid;
+  gap: 3px;
+  min-height: 50px;
+  padding: 9px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.report-metrics strong {
+  color: var(--text);
+}
+
+.portfolio-report-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.portfolio-report-metrics span {
+  min-height: 34px;
+  place-items: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.workload-report-row {
+  display: grid;
+  gap: 10px;
+}
+
+.workload-report-row > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.workload-report-row h3 {
+  margin: 0;
+}
+
+.workload-report-row p {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+
+.workload-bar {
+  min-height: 16px;
+}
+
+.workload-bar span {
+  background: var(--blue);
+}
+
+.risk-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
 .time-grid {
   display: grid;
   grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
@@ -1898,6 +2035,7 @@ th {
   .daily-hero,
   .daily-layout,
   .time-grid,
+  .reports-grid,
   .docs-grid,
   .intake-grid,
   .fields-grid,
@@ -1948,6 +2086,7 @@ th {
   .daily-hero,
   .daily-layout,
   .time-grid,
+  .reports-grid,
   .company-grid,
   .company-detail-grid,
   .project-hero,
@@ -1965,6 +2104,12 @@ th {
   .timeline-controls,
   .nav-list,
   .project-list {
+    grid-template-columns: 1fr;
+  }
+
+  .report-metrics,
+  .portfolio-report-metrics,
+  .risk-item {
     grid-template-columns: 1fr;
   }
 
