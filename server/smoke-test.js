@@ -36,15 +36,84 @@ async function run() {
     });
     assert(saved.snapshot.workspace.name === "Smoke Test Studio", "workspace save failed");
 
+    const createdProject = await request(`${baseUrl}/api/projects`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        project: {
+          id: "project-smoke",
+          name: "Smoke Project",
+          companyId: "acme-studio",
+          owner: "mara"
+        }
+      }
+    });
+    assert(createdProject.project.name === "Smoke Project", "project create failed");
+
+    const updatedProject = await request(`${baseUrl}/api/projects/project-smoke`, {
+      method: "PUT",
+      token: login.token,
+      body: {
+        project: {
+          name: "Updated Smoke Project",
+          companyId: "acme-studio",
+          owner: "mara"
+        }
+      }
+    });
+    assert(updatedProject.project.name === "Updated Smoke Project", "project update failed");
+
+    const projects = await request(`${baseUrl}/api/projects`, {
+      token: login.token
+    });
+    assert(projects.projects.length === 1, "project list failed");
+
+    const createdTask = await request(`${baseUrl}/api/tasks`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        task: {
+          id: "task-smoke",
+          projectId: "project-smoke",
+          title: "Smoke Task",
+          assignee: "mara",
+          status: "todo",
+          priority: "normal"
+        }
+      }
+    });
+    assert(createdTask.task.title === "Smoke Task", "task create failed");
+
+    const updatedTask = await request(`${baseUrl}/api/tasks/task-smoke`, {
+      method: "PUT",
+      token: login.token,
+      body: {
+        task: {
+          projectId: "project-smoke",
+          title: "Updated Smoke Task",
+          status: "doing",
+          priority: "high"
+        }
+      }
+    });
+    assert(updatedTask.task.status === "doing", "task update failed");
+
+    const tasks = await request(`${baseUrl}/api/tasks?projectId=project-smoke`, {
+      token: login.token
+    });
+    assert(tasks.tasks.length === 1, "task list failed");
+
     const workspace = await request(`${baseUrl}/api/workspace`, {
       token: login.token
     });
     assert(workspace.snapshot.workspace.name === "Smoke Test Studio", "workspace load failed");
+    assert(workspace.snapshot.projects[0].name === "Updated Smoke Project", "project not stored in workspace");
+    assert(workspace.snapshot.tasks[0].title === "Updated Smoke Task", "task not stored in workspace");
 
     const audit = await request(`${baseUrl}/api/audit-log`, {
       token: login.token
     });
-    assert(audit.events.length === 1, "audit log was not written");
+    assert(audit.events.length === 5, "audit log was not written");
 
     console.log("API smoke test passed");
   } finally {

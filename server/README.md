@@ -33,6 +33,12 @@ Then open Settings, connect as a demo member, and use the Data page to save or l
 - `GET /api/workspace`: returns the latest saved workspace snapshot.
 - `PUT /api/workspace`: saves a workspace snapshot for admin/project-manager roles.
 - `POST /api/workspace/import`: imports a workspace snapshot for admins.
+- `GET /api/projects`: lists projects from the current workspace snapshot.
+- `POST /api/projects`: creates a project for admin/project-manager roles.
+- `PUT /api/projects/:id`: updates a project for admin/project-manager roles.
+- `GET /api/tasks`: lists tasks from the current workspace snapshot. Supports `?projectId=...`.
+- `POST /api/tasks`: creates a task for admin/project-manager roles.
+- `PUT /api/tasks/:id`: updates a task for admin/project-manager roles.
 - `GET /api/audit-log`: returns recent workspace audit events for admin/project-manager roles.
 
 Authenticated routes expect:

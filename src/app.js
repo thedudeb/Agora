@@ -1644,6 +1644,7 @@ function updateTask(id, updates) {
   saveState();
   render();
   showToast(`${next.title} updated`, "success");
+  syncTaskToApi(next, "Task synced to API");
 }
 
 function updateMilestoneDate(id, dueDate) {
@@ -1666,6 +1667,7 @@ function updateProjectDate(id, field, date) {
   if (!project || project[field] === date) return;
 
   state.projects = state.projects.map((item) => item.id === id ? { ...item, [field]: date } : item);
+  const nextProject = byId(state.projects, id);
   addActivity({
     projectId: id,
     type: "project_date",
@@ -1674,6 +1676,7 @@ function updateProjectDate(id, field, date) {
   saveState();
   render();
   showToast("Project date updated", "success");
+  syncProjectToApi(nextProject, "Project synced to API");
 }
 
 function recordTaskChanges(previous, next) {
@@ -4726,10 +4729,11 @@ function convertSubmissionToTask(submissionId) {
   const form = submission ? byId(state.intakeForms, submission.formId) : null;
   if (!submission || !form || submission.taskId) return;
 
-  createTaskFromSubmissionRecord(submission, form);
+  const task = createTaskFromSubmissionRecord(submission, form);
   saveState();
   render();
   showToast("Request converted to task", "success");
+  if (task) syncTaskToApi(task, "Task created in API", true);
 }
 
 function createProjectTemplateFromButton(button) {
@@ -4749,6 +4753,8 @@ function createProjectTemplateFromButton(button) {
   saveState();
   render();
   showToast("Project template applied", "success");
+  syncProjectToApi(created.project, "Project created in API", true);
+  created.tasks.forEach((task) => syncTaskToApi(task, "Template task synced to API", true));
 }
 
 function createTaskTemplateFromButton(button) {
@@ -4763,6 +4769,7 @@ function createTaskTemplateFromButton(button) {
   saveState();
   render();
   showToast("Task template applied", "success");
+  syncTaskToApi(task, "Task created in API", true);
 }
 
 function createProjectFromSubmission(submissionId) {
@@ -4786,6 +4793,8 @@ function createProjectFromSubmission(submissionId) {
   saveState();
   render();
   showToast("Project created from intake template", "success");
+  syncProjectToApi(created.project, "Project created in API", true);
+  created.tasks.forEach((task) => syncTaskToApi(task, "Template task synced to API", true));
 }
 
 function createCustomField() {
@@ -5046,6 +5055,34 @@ async function importWorkspaceToApi() {
     showToast("JSON imported to API", "success");
   } catch (error) {
     showToast(`API import failed: ${error.message}`, "info");
+  }
+}
+
+async function syncProjectToApi(project, action = "Project synced", isNew = false) {
+  if (!apiSession) return;
+
+  try {
+    await apiRequest(isNew ? "/api/projects" : `/api/projects/${encodeURIComponent(project.id)}`, {
+      method: isNew ? "POST" : "PUT",
+      body: { project }
+    });
+    showToast(action, "success");
+  } catch (error) {
+    showToast(`Local change saved. API project sync failed: ${error.message}`, "info");
+  }
+}
+
+async function syncTaskToApi(task, action = "Task synced", isNew = false) {
+  if (!apiSession) return;
+
+  try {
+    await apiRequest(isNew ? "/api/tasks" : `/api/tasks/${encodeURIComponent(task.id)}`, {
+      method: isNew ? "POST" : "PUT",
+      body: { task }
+    });
+    showToast(action, "success");
+  } catch (error) {
+    showToast(`Local change saved. API task sync failed: ${error.message}`, "info");
   }
 }
 
@@ -5464,6 +5501,7 @@ els.taskForm.addEventListener("submit", (event) => {
   closeDialog(els.taskDialog);
   render();
   showToast(existingTask ? "Task updated" : "Task created", "success");
+  syncTaskToApi(task, existingTask ? "Task synced to API" : "Task created in API", !existingTask);
 });
 
 els.projectForm.addEventListener("submit", (event) => {
@@ -5491,6 +5529,7 @@ els.projectForm.addEventListener("submit", (event) => {
   closeDialog(els.projectDialog);
   render();
   showToast("Project created", "success");
+  syncProjectToApi(project, "Project created in API", true);
 });
 
 els.companyForm.addEventListener("submit", (event) => {

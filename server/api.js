@@ -27,8 +27,8 @@ const demoMemberships = [
 ];
 
 const rolePermissions = {
-  admin: ["workspace:read", "workspace:write", "workspace:import", "audit:read", "members:write"],
-  manager: ["workspace:read", "workspace:write", "audit:read"],
+  admin: ["workspace:read", "workspace:write", "workspace:import", "audit:read", "members:write", "projects:write", "tasks:write"],
+  manager: ["workspace:read", "workspace:write", "audit:read", "projects:write", "tasks:write"],
   member: ["workspace:read"],
   client: ["workspace:read"]
 };
@@ -85,6 +85,74 @@ function createServer(options = {}) {
 
       if (request.method === "GET" && url.pathname === "/api/session") {
         sendJson(response, 200, session);
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/projects") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const snapshot = storage.loadWorkspaceSnapshot();
+        sendJson(response, 200, { projects: Array.isArray(snapshot.projects) ? snapshot.projects : [] });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/projects") {
+        if (!hasPermission(session, "projects:write")) {
+          sendError(response, 403, "Missing projects write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const project = upsertProject(storage, body.project || body, session, "project_create");
+        sendJson(response, 201, { project });
+        return;
+      }
+
+      const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+      if (projectMatch && request.method === "PUT") {
+        if (!hasPermission(session, "projects:write")) {
+          sendError(response, 403, "Missing projects write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const project = upsertProject(storage, { ...(body.project || body), id: decodeURIComponent(projectMatch[1]) }, session, "project_update");
+        sendJson(response, 200, { project });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/tasks") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const snapshot = storage.loadWorkspaceSnapshot();
+        const projectId = url.searchParams.get("projectId");
+        const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
+        sendJson(response, 200, { tasks: projectId ? tasks.filter((task) => task.projectId === projectId) : tasks });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/tasks") {
+        if (!hasPermission(session, "tasks:write")) {
+          sendError(response, 403, "Missing tasks write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const task = upsertTask(storage, body.task || body, session, "task_create");
+        sendJson(response, 201, { task });
+        return;
+      }
+
+      const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
+      if (taskMatch && request.method === "PUT") {
+        if (!hasPermission(session, "tasks:write")) {
+          sendError(response, 403, "Missing tasks write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const task = upsertTask(storage, { ...(body.task || body), id: decodeURIComponent(taskMatch[1]) }, session, "task_update");
+        sendJson(response, 200, { task });
         return;
       }
 
@@ -187,6 +255,108 @@ function saveWorkspaceSnapshot(storage, snapshot, session, action) {
   return document;
 }
 
+function upsertProject(storage, project, session, action) {
+  const incomingProject = requireRecord(project, "Project");
+  const snapshot = storage.loadWorkspaceSnapshot();
+  const projects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
+  const existingProject = projects.find((item) => item.id === incomingProject.id);
+  const nextProject = normalizeProject(existingProject ? { ...existingProject, ...incomingProject } : incomingProject);
+  const exists = Boolean(existingProject);
+  const nextProjects = exists
+    ? projects.map((item) => item.id === nextProject.id ? { ...item, ...nextProject } : item)
+    : [nextProject, ...projects];
+
+  storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    projects: nextProjects
+  }, {
+    storage: "json-file",
+    updatedBy: session.user.id,
+    action
+  });
+  storage.appendAuditEvent({
+    actorId: session.user.id,
+    action,
+    workspaceId: workspace.id,
+    detail: `${session.user.name} ${exists ? "updated" : "created"} project ${nextProject.name}`
+  });
+  return nextProjects.find((item) => item.id === nextProject.id);
+}
+
+function upsertTask(storage, task, session, action) {
+  const incomingTask = requireRecord(task, "Task");
+  const snapshot = storage.loadWorkspaceSnapshot();
+  const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
+  const existingTask = tasks.find((item) => item.id === incomingTask.id);
+  const nextTask = normalizeTask(existingTask ? { ...existingTask, ...incomingTask } : incomingTask);
+  const exists = Boolean(existingTask);
+  const nextTasks = exists
+    ? tasks.map((item) => item.id === nextTask.id ? { ...item, ...nextTask } : item)
+    : [nextTask, ...tasks];
+
+  storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    tasks: nextTasks
+  }, {
+    storage: "json-file",
+    updatedBy: session.user.id,
+    action
+  });
+  storage.appendAuditEvent({
+    actorId: session.user.id,
+    action,
+    workspaceId: workspace.id,
+    detail: `${session.user.name} ${exists ? "updated" : "created"} task ${nextTask.title}`
+  });
+  return nextTasks.find((item) => item.id === nextTask.id);
+}
+
+function normalizeProject(project) {
+  requireRecord(project, "Project");
+  if (!project.id || !project.name) {
+    publicError(400, "Project requires id and name");
+  }
+  return {
+    id: String(project.id),
+    name: String(project.name),
+    companyId: project.companyId ? String(project.companyId) : "",
+    description: project.description ? String(project.description) : "",
+    owner: project.owner ? String(project.owner) : "",
+    startDate: project.startDate ? String(project.startDate) : "",
+    dueDate: project.dueDate ? String(project.dueDate) : ""
+  };
+}
+
+function normalizeTask(task) {
+  requireRecord(task, "Task");
+  if (!task.id || !task.projectId) {
+    publicError(400, "Task requires id and projectId");
+  }
+  return {
+    id: String(task.id),
+    projectId: String(task.projectId),
+    title: task.title ? String(task.title) : "Untitled task",
+    description: task.description ? String(task.description) : "",
+    assignee: task.assignee ? String(task.assignee) : "",
+    status: task.status ? String(task.status) : "todo",
+    priority: task.priority ? String(task.priority) : "normal",
+    startDate: task.startDate ? String(task.startDate) : "",
+    dueDate: task.dueDate ? String(task.dueDate) : "",
+    blockedBy: Array.isArray(task.blockedBy) ? task.blockedBy.map(String) : [],
+    tags: Array.isArray(task.tags) ? task.tags.map(String) : [],
+    subtasks: Array.isArray(task.subtasks) ? task.subtasks : [],
+    customFields: task.customFields && typeof task.customFields === "object" && !Array.isArray(task.customFields) ? task.customFields : {},
+    createdAt: task.createdAt ? String(task.createdAt) : new Date().toISOString()
+  };
+}
+
+function requireRecord(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    publicError(400, `${label} must be an object`);
+  }
+  return value;
+}
+
 function validateSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
     const error = new Error("Workspace snapshot must be an object");
@@ -194,6 +364,13 @@ function validateSnapshot(snapshot) {
     error.publicMessage = "Workspace snapshot must be an object";
     throw error;
   }
+}
+
+function publicError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  error.publicMessage = message;
+  throw error;
 }
 
 function readJsonBody(request) {

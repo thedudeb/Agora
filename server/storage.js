@@ -36,6 +36,10 @@ function createStorage(options = {}) {
     return readJson("workspace.json", null);
   }
 
+  function loadWorkspaceSnapshot() {
+    return loadWorkspace()?.snapshot || {};
+  }
+
   function saveWorkspace(snapshot, metadata = {}) {
     const now = new Date().toISOString();
     const existing = loadWorkspace();
@@ -47,6 +51,10 @@ function createStorage(options = {}) {
       },
       snapshot
     });
+  }
+
+  function saveWorkspaceSnapshot(snapshot, metadata = {}) {
+    return saveWorkspace(snapshot, metadata).snapshot;
   }
 
   function loadAuditLog() {
@@ -67,7 +75,9 @@ function createStorage(options = {}) {
   return {
     dataDir,
     loadWorkspace,
+    loadWorkspaceSnapshot,
     saveWorkspace,
+    saveWorkspaceSnapshot,
     loadAuditLog,
     appendAuditEvent
   };
