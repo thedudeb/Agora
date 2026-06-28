@@ -92,6 +92,7 @@ const workspaceRoles = [
 const currentMemberId = "mara";
 
 const routes = {
+  landing: "Agora",
   dashboard: "Dashboard",
   portal: "Portal",
   daily: "Today",
@@ -116,7 +117,7 @@ const routes = {
 };
 
 const seedData = {
-  selectedRoute: "dashboard",
+  selectedRoute: "landing",
   selectedProject: "all",
   selectedCompany: "all",
   selectedInviteToken: "",
@@ -2282,7 +2283,7 @@ function render() {
     : state.selectedRoute === "company" && selectedCompany
       ? selectedCompany.name
       : routes[state.selectedRoute];
-  document.title = `${els.pageTitle.textContent} - Agora`;
+  document.title = state.selectedRoute === "landing" ? "Agora - Open Source Project Management" : `${els.pageTitle.textContent} - Agora`;
   if (els.routeStatus) els.routeStatus.textContent = `${els.pageTitle.textContent} view loaded.`;
   document.querySelectorAll("[data-route]").forEach((item) => {
     const isCompaniesRoute = item.dataset.route === "companies" && state.selectedRoute === "company";
@@ -2302,7 +2303,9 @@ function render() {
   renderNotificationBadges();
   renderPermissionChrome();
   document.querySelector(".brand small").textContent = state.workspace.name;
+  document.body.classList.toggle("is-landing-route", state.selectedRoute === "landing");
 
+  if (state.selectedRoute === "landing") renderLandingPage();
   if (state.selectedRoute === "portal") renderClientPortal();
   if (state.selectedRoute === "project") renderProjectPage();
   if (state.selectedRoute === "company") renderCompanyPage();
@@ -2328,7 +2331,7 @@ function render() {
 }
 
 function sidebarGroupForRoute(route) {
-  if (["dashboard", "portal", "daily", "inbox"].includes(route)) return "home";
+  if (["landing", "dashboard", "portal", "daily", "inbox"].includes(route)) return "home";
   if (["board", "list", "calendar", "my-work", "time"].includes(route)) return "work";
   if (["reports", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
   if (["data", "settings"].includes(route)) return "admin";
@@ -2480,6 +2483,88 @@ function renderMobileAppPanel() {
         </div>
       </div>
     </section>
+  `;
+}
+
+function renderLandingPage() {
+  els.appView.innerHTML = `
+    <article class="landing-page">
+      <section class="landing-hero" style="--landing-hero-image: url('./assets/agora-landing-hero.png');">
+        <nav class="landing-nav" aria-label="Landing">
+          <div class="landing-brand">
+            <img src="./assets/agora-mark.svg" alt="" width="38" height="38">
+            <strong>Agora</strong>
+          </div>
+          <div>
+            <button class="button button-secondary" type="button" data-route="dashboard">Open App</button>
+            <button class="button button-primary" type="button" data-route="settings">Connect API</button>
+          </div>
+        </nav>
+
+        <div class="landing-hero-copy">
+          <p class="eyebrow">Open source project management</p>
+          <h1>Agora</h1>
+          <p class="landing-lede">A self-hostable command center for projects, clients, daily work, files, approvals, and time tracking, built for teams that want clarity without surveillance or lock-in.</p>
+          <div class="landing-actions">
+            <button class="button button-primary" type="button" data-route="dashboard">Launch Workspace</button>
+            <button class="button button-secondary" type="button" data-route="portal">View Client Portal</button>
+          </div>
+          <div class="landing-proof-row" aria-label="Product promises">
+            <span>No ads</span>
+            <span>No trackers</span>
+            <span>Self-hostable</span>
+            <span>Open source</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="landing-section landing-problem">
+        <div>
+          <p class="eyebrow">The problem</p>
+          <h2>Project tools became noisy places to rent your own workflow.</h2>
+        </div>
+        <div class="landing-problem-grid">
+          <article>
+            <span>01</span>
+            <h3>Work is scattered</h3>
+            <p>Tasks, client updates, files, time, and approvals drift into separate tools, so managers spend the day reconciling instead of leading.</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>Teams lose context</h3>
+            <p>Stakeholders need visibility, but most tools either expose too much internal noise or force project managers to make status reports by hand.</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>Software watches back</h3>
+            <p>Ads, trackers, upsells, and closed data models turn operational software into another channel you do not fully control.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="landing-section landing-solution">
+        <div class="landing-solution-copy">
+          <p class="eyebrow">The answer</p>
+          <h2>A calmer operating layer for modern teams.</h2>
+          <p>Agora brings core project management into one workspace: portfolio views, boards, lists, calendars, daily planning, docs, files, intake, notifications, client portals, automations, and structured API storage.</p>
+          <button class="button button-primary" type="button" data-route="templates">Explore Templates</button>
+        </div>
+        <div class="landing-signal-stack" aria-label="Agora capabilities">
+          <article><strong>Client portals</strong><span>Company-scoped visibility for stakeholders.</span></article>
+          <article><strong>Daily planning</strong><span>Focus lanes inspired by personal task tools.</span></article>
+          <article><strong>Open data path</strong><span>Local JSON today, Supabase-backed records when ready.</span></article>
+          <article><strong>No ads, ever</strong><span>The workspace exists to organize work, not monetize attention.</span></article>
+        </div>
+      </section>
+
+      <section class="landing-section landing-no-ads">
+        <div>
+          <p class="eyebrow">The promise</p>
+          <h2>No ads. No trackers. No borrowed attention.</h2>
+        </div>
+        <p>Agora is designed as open source infrastructure for teams. Your project workspace should not become an ad surface, a behavioral data feed, or a hostage negotiation with your own exports.</p>
+      </section>
+    </article>
   `;
 }
 

@@ -86,6 +86,30 @@ button {
   min-height: 100vh;
 }
 
+.is-landing-route {
+  background: #101917;
+}
+
+.is-landing-route .app-shell {
+  grid-template-columns: 1fr;
+}
+
+.is-landing-route .sidebar,
+.is-landing-route .topbar,
+.is-landing-route .toolbar {
+  display: none;
+}
+
+.is-landing-route .main-content {
+  width: 100%;
+  max-width: none;
+  padding: 0;
+}
+
+.is-landing-route .view {
+  min-height: 100vh;
+}
+
 .sidebar {
   position: sticky;
   top: 0;
@@ -445,6 +469,190 @@ textarea:focus {
 
 .view {
   min-width: 0;
+}
+
+.landing-page {
+  color: #f7f5ef;
+  background: #101917;
+}
+
+.landing-hero {
+  position: relative;
+  display: grid;
+  min-height: min(760px, 100vh);
+  padding: 28px clamp(18px, 4vw, 64px) 72px;
+  overflow: hidden;
+  isolation: isolate;
+  background-image: linear-gradient(90deg, rgba(13, 20, 19, 0.94) 0%, rgba(13, 20, 19, 0.76) 43%, rgba(13, 20, 19, 0.2) 100%), var(--landing-hero-image);
+  background-size: cover;
+  background-position: center;
+}
+
+.landing-hero::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 190px;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(16, 25, 23, 0), #101917 78%);
+}
+
+.landing-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  align-self: start;
+}
+
+.landing-nav > div:last-child,
+.landing-actions,
+.landing-proof-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.landing-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.05rem;
+}
+
+.landing-brand img {
+  border-radius: 10px;
+}
+
+.landing-hero-copy {
+  align-self: center;
+  max-width: 790px;
+  padding: 96px 0 24px;
+}
+
+.landing-hero-copy h1 {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(4.5rem, 12vw, 10.5rem);
+  line-height: 0.84;
+}
+
+.landing-lede {
+  max-width: 700px;
+  margin: 28px 0 0;
+  color: rgba(247, 245, 239, 0.84);
+  font-size: clamp(1.15rem, 2vw, 1.55rem);
+  line-height: 1.45;
+}
+
+.landing-actions {
+  margin-top: 30px;
+}
+
+.landing-proof-row {
+  margin-top: 24px;
+}
+
+.landing-proof-row span {
+  padding: 8px 12px;
+  color: #f7f5ef;
+  font-weight: 800;
+  background: rgba(247, 245, 239, 0.08);
+  border: 1px solid rgba(247, 245, 239, 0.22);
+  border-radius: 999px;
+}
+
+.landing-section {
+  display: grid;
+  gap: 28px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 86px clamp(18px, 4vw, 64px);
+}
+
+.landing-section h2 {
+  max-width: 820px;
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(2.1rem, 5vw, 4.2rem);
+  line-height: 0.98;
+}
+
+.landing-section p {
+  color: rgba(247, 245, 239, 0.74);
+  line-height: 1.6;
+}
+
+.landing-problem-grid,
+.landing-signal-stack {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.landing-problem-grid article,
+.landing-signal-stack article,
+.landing-no-ads {
+  padding: 20px;
+  background: rgba(247, 245, 239, 0.08);
+  border: 1px solid rgba(247, 245, 239, 0.15);
+  border-radius: 8px;
+}
+
+.landing-problem-grid span {
+  color: #e2ba5b;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.landing-problem-grid h3,
+.landing-signal-stack strong {
+  display: block;
+  margin: 10px 0 0;
+  color: #ffffff;
+  font-size: 1.05rem;
+}
+
+.landing-solution {
+  grid-template-columns: minmax(0, 0.95fr) minmax(320px, 1fr);
+  align-items: center;
+}
+
+.landing-solution-copy {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.landing-signal-stack {
+  grid-template-columns: 1fr;
+}
+
+.landing-signal-stack article {
+  display: grid;
+  gap: 6px;
+}
+
+.landing-signal-stack span {
+  color: rgba(247, 245, 239, 0.72);
+}
+
+.landing-no-ads {
+  grid-template-columns: minmax(0, 0.9fr) minmax(260px, 0.7fr);
+  align-items: end;
+  margin-bottom: 36px;
+  background: #f7f5ef;
+}
+
+.landing-no-ads h2,
+.landing-no-ads .eyebrow {
+  color: #245a58;
+}
+
+.landing-no-ads p {
+  margin: 0;
+  color: #4f4a42;
+  font-size: 1.08rem;
 }
 
 .toast-region {
@@ -2772,6 +2980,12 @@ th {
     overflow-x: hidden;
   }
 
+  .landing-problem-grid,
+  .landing-solution,
+  .landing-no-ads {
+    grid-template-columns: 1fr;
+  }
+
   .sidebar {
     position: sticky;
     top: 0;
@@ -2908,6 +3122,37 @@ th {
 @media (max-width: 680px) {
   .main-content {
     padding: 16px;
+  }
+
+  .is-landing-route .main-content {
+    padding: 0;
+  }
+
+  .landing-hero {
+    min-height: 720px;
+    padding: 18px 16px 54px;
+    background-image: linear-gradient(180deg, rgba(13, 20, 19, 0.9) 0%, rgba(13, 20, 19, 0.78) 48%, rgba(13, 20, 19, 0.28) 100%), var(--landing-hero-image);
+    background-position: 56% center;
+  }
+
+  .landing-nav {
+    align-items: flex-start;
+  }
+
+  .landing-nav > div:last-child {
+    justify-content: flex-end;
+  }
+
+  .landing-hero-copy {
+    padding-top: 72px;
+  }
+
+  .landing-hero-copy h1 {
+    font-size: clamp(4.6rem, 24vw, 6.8rem);
+  }
+
+  .landing-section {
+    padding: 58px 16px;
   }
 
   .sidebar {

@@ -29,7 +29,7 @@
     <link rel="icon" href="./assets/agora-mark.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./assets/agora-mark.svg">
     <link rel="stylesheet" href="https://unpkg.com/lenis@1.3.25/dist/lenis.css">
-    <link rel="stylesheet" href="./src/styles.css?v=lenis">
+    <link rel="stylesheet" href="./src/styles.css?v=landing-page">
     <script>
       window.AGORA_CONFIG = {
         apiBaseUrl: window.localStorage.getItem("agora.api.baseUrl") || "http://127.0.0.1:8787"
@@ -40,7 +40,7 @@
     <a class="skip-link" href="#app-view">Skip to main content</a>
     <div class="app-shell">
       <aside class="sidebar" aria-label="Workspace navigation" data-lenis-prevent>
-        <a class="brand" href="#dashboard" data-route="dashboard" aria-label="Agora dashboard">
+        <a class="brand" href="#landing" data-route="landing" aria-label="Agora home">
           <img src="./assets/agora-mark.svg" alt="" width="36" height="36">
           <span>
             <strong>Agora</strong>
@@ -55,7 +55,8 @@
               <span class="nav-group-chevron" aria-hidden="true"></span>
             </button>
             <div class="nav-group-panel" id="nav-group-home">
-              <button class="nav-item is-active" type="button" data-route="dashboard">Dashboard</button>
+              <button class="nav-item is-active" type="button" data-route="landing">Overview</button>
+              <button class="nav-item" type="button" data-route="dashboard">Dashboard</button>
               <button class="nav-item" type="button" data-route="portal">Portal</button>
               <button class="nav-item" type="button" data-route="daily">Today</button>
               <button class="nav-item" type="button" data-route="inbox">
@@ -325,6 +326,6 @@
     </dialog>
 
     <script src="https://unpkg.com/lenis@1.3.25/dist/lenis.min.js"></script>
-    <script src="./src/app.js?v=lenis"></script>
+    <script src="./src/app.js?v=landing-page"></script>
   </body>
 </html>
