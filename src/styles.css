@@ -258,6 +258,21 @@ textarea:focus {
   border-color: var(--line-strong);
 }
 
+.button-danger {
+  color: var(--red);
+  border-color: rgba(185, 66, 66, 0.35);
+}
+
+.button-danger:hover {
+  background: rgba(185, 66, 66, 0.08);
+}
+
+.compact-button {
+  min-height: 30px;
+  padding: 5px 9px;
+  font-size: 0.78rem;
+}
+
 .notification-button {
   position: relative;
   display: inline-flex;
@@ -1164,6 +1179,13 @@ textarea:focus {
   color: var(--muted);
 }
 
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
 .project-progress-card {
   display: grid;
   align-content: center;
@@ -1773,6 +1795,11 @@ textarea:focus {
   text-align: left;
   background: transparent;
   border: 0;
+}
+
+.task-card-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .task-project {

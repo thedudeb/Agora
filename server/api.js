@@ -27,9 +27,9 @@ const demoMemberships = [
 ];
 
 const rolePermissions = {
-  admin: ["workspace:read", "workspace:write", "workspace:import", "audit:read", "members:write", "projects:write", "tasks:write"],
-  manager: ["workspace:read", "workspace:write", "audit:read", "projects:write", "tasks:write"],
-  member: ["workspace:read"],
+  admin: ["workspace:read", "workspace:write", "workspace:import", "audit:read", "members:write", "projects:write", "tasks:write", "comments:write", "activity:write", "attachments:write"],
+  manager: ["workspace:read", "workspace:write", "audit:read", "projects:write", "tasks:write", "comments:write", "activity:write", "attachments:write"],
+  member: ["workspace:read", "comments:write", "activity:write", "attachments:write"],
   client: ["workspace:read"]
 };
 
@@ -110,6 +110,17 @@ function createServer(options = {}) {
       }
 
       const projectMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+      const projectRestoreMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/restore$/);
+      if (projectRestoreMatch && request.method === "POST") {
+        if (!hasPermission(session, "projects:write")) {
+          sendError(response, 403, "Missing projects write permission");
+          return;
+        }
+        const project = archiveProject(storage, decodeURIComponent(projectRestoreMatch[1]), session, false);
+        sendJson(response, 200, { project });
+        return;
+      }
+
       if (projectMatch && request.method === "PUT") {
         if (!hasPermission(session, "projects:write")) {
           sendError(response, 403, "Missing projects write permission");
@@ -117,6 +128,16 @@ function createServer(options = {}) {
         }
         const body = await readJsonBody(request);
         const project = upsertProject(storage, { ...(body.project || body), id: decodeURIComponent(projectMatch[1]) }, session, "project_update");
+        sendJson(response, 200, { project });
+        return;
+      }
+
+      if (projectMatch && request.method === "DELETE") {
+        if (!hasPermission(session, "projects:write")) {
+          sendError(response, 403, "Missing projects write permission");
+          return;
+        }
+        const project = archiveProject(storage, decodeURIComponent(projectMatch[1]), session, true);
         sendJson(response, 200, { project });
         return;
       }
@@ -145,6 +166,17 @@ function createServer(options = {}) {
       }
 
       const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
+      const taskRestoreMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/restore$/);
+      if (taskRestoreMatch && request.method === "POST") {
+        if (!hasPermission(session, "tasks:write")) {
+          sendError(response, 403, "Missing tasks write permission");
+          return;
+        }
+        const task = archiveTask(storage, decodeURIComponent(taskRestoreMatch[1]), session, false);
+        sendJson(response, 200, { task });
+        return;
+      }
+
       if (taskMatch && request.method === "PUT") {
         if (!hasPermission(session, "tasks:write")) {
           sendError(response, 403, "Missing tasks write permission");
@@ -153,6 +185,111 @@ function createServer(options = {}) {
         const body = await readJsonBody(request);
         const task = upsertTask(storage, { ...(body.task || body), id: decodeURIComponent(taskMatch[1]) }, session, "task_update");
         sendJson(response, 200, { task });
+        return;
+      }
+
+      if (taskMatch && request.method === "DELETE") {
+        if (!hasPermission(session, "tasks:write")) {
+          sendError(response, 403, "Missing tasks write permission");
+          return;
+        }
+        const task = archiveTask(storage, decodeURIComponent(taskMatch[1]), session, true);
+        sendJson(response, 200, { task });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/comments") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const snapshot = storage.loadWorkspaceSnapshot();
+        const taskId = url.searchParams.get("taskId");
+        const comments = Array.isArray(snapshot.comments) ? snapshot.comments : [];
+        sendJson(response, 200, { comments: taskId ? comments.filter((comment) => comment.taskId === taskId) : comments });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/comments") {
+        if (!hasPermission(session, "comments:write")) {
+          sendError(response, 403, "Missing comments write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const comment = upsertCollectionItem(storage, "comments", body.comment || body, normalizeComment, session, "comment_create", (item) => `comment ${item.id}`);
+        sendJson(response, 201, { comment });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/activities") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const snapshot = storage.loadWorkspaceSnapshot();
+        const taskId = url.searchParams.get("taskId");
+        const projectId = url.searchParams.get("projectId");
+        let activities = Array.isArray(snapshot.activities) ? snapshot.activities : [];
+        if (taskId) activities = activities.filter((activity) => activity.taskId === taskId);
+        if (projectId) activities = activities.filter((activity) => activity.projectId === projectId);
+        sendJson(response, 200, { activities });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/activities") {
+        if (!hasPermission(session, "activity:write")) {
+          sendError(response, 403, "Missing activity write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const activity = upsertCollectionItem(storage, "activities", body.activity || body, normalizeActivity, session, "activity_create", (item) => `activity ${item.type}`);
+        sendJson(response, 201, { activity });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/documents") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const snapshot = storage.loadWorkspaceSnapshot();
+        const projectId = url.searchParams.get("projectId");
+        const documents = Array.isArray(snapshot.documents) ? snapshot.documents : [];
+        sendJson(response, 200, { documents: projectId ? documents.filter((document) => document.projectId === projectId) : documents });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/documents") {
+        if (!hasPermission(session, "attachments:write")) {
+          sendError(response, 403, "Missing attachments write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const document = upsertCollectionItem(storage, "documents", body.document || body, normalizeDocument, session, "document_create", (item) => `document ${item.title}`);
+        sendJson(response, 201, { document });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/files") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const snapshot = storage.loadWorkspaceSnapshot();
+        const projectId = url.searchParams.get("projectId");
+        const files = Array.isArray(snapshot.files) ? snapshot.files : [];
+        sendJson(response, 200, { files: projectId ? files.filter((file) => file.projectId === projectId) : files });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/files") {
+        if (!hasPermission(session, "attachments:write")) {
+          sendError(response, 403, "Missing attachments write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const file = upsertCollectionItem(storage, "files", body.file || body, normalizeFile, session, "file_create", (item) => `file ${item.title}`);
+        sendJson(response, 201, { file });
         return;
       }
 
@@ -311,6 +448,105 @@ function upsertTask(storage, task, session, action) {
   return nextTasks.find((item) => item.id === nextTask.id);
 }
 
+function archiveProject(storage, projectId, session, archived) {
+  const snapshot = storage.loadWorkspaceSnapshot();
+  const projects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
+  const project = projects.find((item) => item.id === projectId);
+  if (!project) publicError(404, "Project not found");
+
+  const timestamp = new Date().toISOString();
+  const nextProject = normalizeProject({
+    ...project,
+    archivedAt: archived ? timestamp : "",
+    archivedBy: archived ? session.user.id : "",
+    restoredAt: archived ? project.restoredAt || "" : timestamp
+  });
+  const nextProjects = projects.map((item) => item.id === projectId ? nextProject : item);
+  const nextTasks = archived
+    ? (Array.isArray(snapshot.tasks) ? snapshot.tasks : []).map((task) => task.projectId === projectId ? normalizeTask({
+      ...task,
+      archivedAt: task.archivedAt || timestamp,
+      archivedBy: task.archivedBy || session.user.id
+    }) : task)
+    : snapshot.tasks;
+
+  storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    projects: nextProjects,
+    tasks: nextTasks
+  }, {
+    storage: "json-file",
+    updatedBy: session.user.id,
+    action: archived ? "project_archive" : "project_restore"
+  });
+  storage.appendAuditEvent({
+    actorId: session.user.id,
+    action: archived ? "project_archive" : "project_restore",
+    workspaceId: workspace.id,
+    detail: `${session.user.name} ${archived ? "archived" : "restored"} project ${nextProject.name}`
+  });
+  return nextProject;
+}
+
+function archiveTask(storage, taskId, session, archived) {
+  const snapshot = storage.loadWorkspaceSnapshot();
+  const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
+  const task = tasks.find((item) => item.id === taskId);
+  if (!task) publicError(404, "Task not found");
+
+  const timestamp = new Date().toISOString();
+  const nextTask = normalizeTask({
+    ...task,
+    archivedAt: archived ? timestamp : "",
+    archivedBy: archived ? session.user.id : "",
+    restoredAt: archived ? task.restoredAt || "" : timestamp
+  });
+  const nextTasks = tasks.map((item) => item.id === taskId ? nextTask : item);
+
+  storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    tasks: nextTasks
+  }, {
+    storage: "json-file",
+    updatedBy: session.user.id,
+    action: archived ? "task_archive" : "task_restore"
+  });
+  storage.appendAuditEvent({
+    actorId: session.user.id,
+    action: archived ? "task_archive" : "task_restore",
+    workspaceId: workspace.id,
+    detail: `${session.user.name} ${archived ? "archived" : "restored"} task ${nextTask.title}`
+  });
+  return nextTask;
+}
+
+function upsertCollectionItem(storage, key, item, normalizer, session, action, detailLabel) {
+  const snapshot = storage.loadWorkspaceSnapshot();
+  const collection = Array.isArray(snapshot[key]) ? snapshot[key] : [];
+  const incomingItem = requireRecord(item, "Item");
+  const existingItem = collection.find((entry) => entry.id === incomingItem.id);
+  const nextItem = normalizer(existingItem ? { ...existingItem, ...incomingItem } : incomingItem);
+  const nextCollection = existingItem
+    ? collection.map((entry) => entry.id === nextItem.id ? { ...entry, ...nextItem } : entry)
+    : [nextItem, ...collection];
+
+  storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    [key]: nextCollection
+  }, {
+    storage: "json-file",
+    updatedBy: session.user.id,
+    action
+  });
+  storage.appendAuditEvent({
+    actorId: session.user.id,
+    action,
+    workspaceId: workspace.id,
+    detail: `${session.user.name} saved ${detailLabel(nextItem)}`
+  });
+  return nextCollection.find((entry) => entry.id === nextItem.id);
+}
+
 function normalizeProject(project) {
   requireRecord(project, "Project");
   if (!project.id || !project.name) {
@@ -323,7 +559,10 @@ function normalizeProject(project) {
     description: project.description ? String(project.description) : "",
     owner: project.owner ? String(project.owner) : "",
     startDate: project.startDate ? String(project.startDate) : "",
-    dueDate: project.dueDate ? String(project.dueDate) : ""
+    dueDate: project.dueDate ? String(project.dueDate) : "",
+    archivedAt: project.archivedAt ? String(project.archivedAt) : "",
+    archivedBy: project.archivedBy ? String(project.archivedBy) : "",
+    restoredAt: project.restoredAt ? String(project.restoredAt) : ""
   };
 }
 
@@ -346,7 +585,74 @@ function normalizeTask(task) {
     tags: Array.isArray(task.tags) ? task.tags.map(String) : [],
     subtasks: Array.isArray(task.subtasks) ? task.subtasks : [],
     customFields: task.customFields && typeof task.customFields === "object" && !Array.isArray(task.customFields) ? task.customFields : {},
-    createdAt: task.createdAt ? String(task.createdAt) : new Date().toISOString()
+    createdAt: task.createdAt ? String(task.createdAt) : new Date().toISOString(),
+    archivedAt: task.archivedAt ? String(task.archivedAt) : "",
+    archivedBy: task.archivedBy ? String(task.archivedBy) : "",
+    restoredAt: task.restoredAt ? String(task.restoredAt) : ""
+  };
+}
+
+function normalizeComment(comment) {
+  requireRecord(comment, "Comment");
+  if (!comment.id || !comment.taskId || !comment.body) {
+    publicError(400, "Comment requires id, taskId, and body");
+  }
+  return {
+    id: String(comment.id),
+    taskId: String(comment.taskId),
+    author: comment.author ? String(comment.author) : "",
+    body: String(comment.body),
+    createdAt: comment.createdAt ? String(comment.createdAt) : new Date().toISOString()
+  };
+}
+
+function normalizeActivity(activity) {
+  requireRecord(activity, "Activity");
+  if (!activity.id || !activity.projectId || !activity.type || !activity.message) {
+    publicError(400, "Activity requires id, projectId, type, and message");
+  }
+  return {
+    id: String(activity.id),
+    projectId: String(activity.projectId),
+    taskId: activity.taskId ? String(activity.taskId) : "",
+    memberId: activity.memberId ? String(activity.memberId) : "",
+    type: String(activity.type),
+    message: String(activity.message),
+    createdAt: activity.createdAt ? String(activity.createdAt) : new Date().toISOString()
+  };
+}
+
+function normalizeDocument(document) {
+  requireRecord(document, "Document");
+  if (!document.id || !document.projectId || !document.title) {
+    publicError(400, "Document requires id, projectId, and title");
+  }
+  return {
+    id: String(document.id),
+    projectId: String(document.projectId),
+    title: String(document.title),
+    type: document.type ? String(document.type) : "Note",
+    owner: document.owner ? String(document.owner) : "",
+    updatedAt: document.updatedAt ? String(document.updatedAt) : new Date().toISOString(),
+    body: document.body ? String(document.body) : ""
+  };
+}
+
+function normalizeFile(file) {
+  requireRecord(file, "File");
+  if (!file.id || !file.projectId || !file.title) {
+    publicError(400, "File requires id, projectId, and title");
+  }
+  return {
+    id: String(file.id),
+    projectId: String(file.projectId),
+    taskId: file.taskId ? String(file.taskId) : "",
+    title: String(file.title),
+    kind: file.kind ? String(file.kind) : "File",
+    size: file.size ? String(file.size) : "Unknown size",
+    owner: file.owner ? String(file.owner) : "",
+    updatedAt: file.updatedAt ? String(file.updatedAt) : new Date().toISOString(),
+    url: file.url ? String(file.url) : ""
   };
 }
 
@@ -409,7 +715,7 @@ function applyCors(request, response) {
   response.setHeader("Access-Control-Allow-Origin", origin);
   response.setHeader("Vary", "Origin");
   response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
+  response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
 }
 
 function sendJson(response, statusCode, value) {

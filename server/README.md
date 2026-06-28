@@ -36,9 +36,21 @@ Then open Settings, connect as a demo member, and use the Data page to save or l
 - `GET /api/projects`: lists projects from the current workspace snapshot.
 - `POST /api/projects`: creates a project for admin/project-manager roles.
 - `PUT /api/projects/:id`: updates a project for admin/project-manager roles.
+- `DELETE /api/projects/:id`: archives a project and its tasks for admin/project-manager roles.
+- `POST /api/projects/:id/restore`: restores an archived project for admin/project-manager roles.
 - `GET /api/tasks`: lists tasks from the current workspace snapshot. Supports `?projectId=...`.
 - `POST /api/tasks`: creates a task for admin/project-manager roles.
 - `PUT /api/tasks/:id`: updates a task for admin/project-manager roles.
+- `DELETE /api/tasks/:id`: archives a task for admin/project-manager roles.
+- `POST /api/tasks/:id/restore`: restores an archived task for admin/project-manager roles.
+- `GET /api/comments`: lists comments from the current workspace snapshot. Supports `?taskId=...`.
+- `POST /api/comments`: creates or updates a comment.
+- `GET /api/activities`: lists activity entries. Supports `?projectId=...` and `?taskId=...`.
+- `POST /api/activities`: creates or updates an activity entry.
+- `GET /api/documents`: lists documents. Supports `?projectId=...`.
+- `POST /api/documents`: creates or updates a project document.
+- `GET /api/files`: lists attachment records. Supports `?projectId=...`.
+- `POST /api/files`: creates or updates an attachment record.
 - `GET /api/audit-log`: returns recent workspace audit events for admin/project-manager roles.
 
 Authenticated routes expect:

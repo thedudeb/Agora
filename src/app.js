@@ -829,7 +829,16 @@ function normalizeState(nextState) {
       description: "",
       ...company
     })),
+    projects: nextState.projects.map((project) => ({
+      archivedAt: "",
+      archivedBy: "",
+      restoredAt: "",
+      ...project
+    })),
     tasks: nextState.tasks.map((task) => ({
+      archivedAt: "",
+      archivedBy: "",
+      restoredAt: "",
       ...task,
       startDate: task.startDate || task.createdAt?.slice(0, 10) || "",
       blockedBy: Array.isArray(task.blockedBy) ? task.blockedBy : [],
@@ -886,6 +895,22 @@ function byId(collection, id) {
   return collection.find((item) => item.id === id);
 }
 
+function isProjectArchived(project) {
+  return Boolean(project?.archivedAt);
+}
+
+function isTaskArchived(task) {
+  return Boolean(task?.archivedAt || isProjectArchived(byId(state.projects, task?.projectId)));
+}
+
+function activeProjects() {
+  return state.projects.filter((project) => !isProjectArchived(project));
+}
+
+function activeTasks() {
+  return state.tasks.filter((task) => !isTaskArchived(task));
+}
+
 function memberName(id) {
   return byId(members, id)?.name || "Unassigned";
 }
@@ -914,6 +939,8 @@ function priorityLabel(id) {
 function projectMatchesContext(projectId) {
   const project = byId(state.projects, projectId);
   return (
+    project &&
+    !isProjectArchived(project) &&
     (state.filters.company === "all" || project?.companyId === state.filters.company) &&
     (state.selectedProject === "all" || projectId === state.selectedProject)
   );
@@ -1030,13 +1057,15 @@ function backendReadinessItems() {
     { label: "Role model", done: true },
     { label: "JSON export/import", done: true },
     { label: "CSV task/time export", done: true },
-    { label: "API endpoints", done: false },
+    { label: "API endpoints", done: true },
     { label: "Database migrations", done: false },
     { label: "Authentication", done: false }
   ];
 }
 
 function isTaskVisibleForContext(task) {
+  if (isTaskArchived(task)) return false;
+
   const query = state.filters.query.trim().toLowerCase();
   const haystack = [
     task.title,
@@ -1126,7 +1155,7 @@ function dismissToast(id) {
 function getInboxItems({ includeArchived = false } = {}) {
   const today = todayKey();
   const dueSoon = shiftDate(today, 7);
-  const visibleTasks = state.tasks.filter(isTaskVisibleForContext);
+  const visibleTasks = activeTasks().filter(isTaskVisibleForContext);
   const visibleTaskIds = new Set(visibleTasks.map((task) => task.id));
   const items = [];
 
@@ -1254,7 +1283,7 @@ function unplanTask(taskId) {
 }
 
 function dailyLaneTasks(lane, date = state.selectedDailyDate) {
-  return state.tasks.filter((task) => dailyPlan(task.id)?.date === date && dailyPlan(task.id)?.lane === lane);
+  return activeTasks().filter((task) => dailyPlan(task.id)?.date === date && dailyPlan(task.id)?.lane === lane);
 }
 
 function smartDailyTasks(date = state.selectedDailyDate) {
@@ -1294,7 +1323,7 @@ function subtaskSummary(task) {
 }
 
 function taskDependencies(task) {
-  return (task?.blockedBy || []).map((taskId) => byId(state.tasks, taskId)).filter(Boolean);
+  return (task?.blockedBy || []).map((taskId) => byId(state.tasks, taskId)).filter((dependency) => dependency && !isTaskArchived(dependency));
 }
 
 function openTaskDependencies(task) {
@@ -1306,7 +1335,7 @@ function isTaskBlocked(task) {
 }
 
 function tasksBlockedBy(taskId) {
-  return state.tasks.filter((task) => task.blockedBy?.includes(taskId));
+  return activeTasks().filter((task) => task.blockedBy?.includes(taskId));
 }
 
 function taskStartDate(task) {
@@ -1393,7 +1422,7 @@ function escapeHtml(value) {
 
 function getFilteredTasks() {
   const query = state.filters.query.trim().toLowerCase();
-  return state.tasks.filter((task) => {
+  return activeTasks().filter((task) => {
     const haystack = [
       task.title,
       task.description,
@@ -1415,7 +1444,7 @@ function getFilteredTasks() {
 }
 
 function getProjectTasks(projectId, useFilters = true) {
-  const tasks = useFilters ? getFilteredTasks() : state.tasks;
+  const tasks = useFilters ? getFilteredTasks() : activeTasks();
   return tasks.filter((task) => task.projectId === projectId);
 }
 
@@ -1424,12 +1453,12 @@ function getProjectMilestones(projectId) {
 }
 
 function getCompanyProjects(companyId) {
-  return state.projects.filter((project) => project.companyId === companyId);
+  return activeProjects().filter((project) => project.companyId === companyId);
 }
 
 function getCompanyTasks(companyId) {
   const projectIds = new Set(getCompanyProjects(companyId).map((project) => project.id));
-  return state.tasks.filter((task) => projectIds.has(task.projectId));
+  return activeTasks().filter((task) => projectIds.has(task.projectId));
 }
 
 function getCompanyMilestones(companyId) {
@@ -1479,7 +1508,7 @@ function getTaskTimeEntries(taskId) {
 function getFilteredTimeEntries() {
   return state.timeEntries.filter((entry) => {
     const task = byId(state.tasks, entry.taskId);
-    if (!task) return false;
+    if (!task || isTaskArchived(task)) return false;
 
     return (
       (state.filters.company === "all" || projectCompany(task.projectId)?.id === state.filters.company) &&
@@ -1505,7 +1534,7 @@ function clamp(value, min, max) {
 function dueSoonTasks(tasks, days = 7) {
   const today = todayKey();
   const limit = shiftDate(today, days);
-  return tasks.filter((task) => task.status !== "done" && task.dueDate && task.dueDate >= today && task.dueDate <= limit);
+  return tasks.filter((task) => !isTaskArchived(task) && task.status !== "done" && task.dueDate && task.dueDate >= today && task.dueDate <= limit);
 }
 
 function reportHealthScore({ progress, overdue, blocked, openIntake }) {
@@ -1513,7 +1542,7 @@ function reportHealthScore({ progress, overdue, blocked, openIntake }) {
 }
 
 function visibleReportProjects() {
-  return state.projects.filter((project) => (
+  return activeProjects().filter((project) => (
     (state.filters.company === "all" || project.companyId === state.filters.company) &&
     (state.selectedProject === "all" || project.id === state.selectedProject)
   ));
@@ -1598,7 +1627,7 @@ function milestoneProgress(milestone) {
 }
 
 function addActivity({ projectId, taskId = "", memberId = currentMemberId, type, message }) {
-  state.activities = [{
+  const activity = {
     id: uid("activity"),
     projectId,
     taskId,
@@ -1606,7 +1635,63 @@ function addActivity({ projectId, taskId = "", memberId = currentMemberId, type,
     type,
     message,
     createdAt: new Date().toISOString()
-  }, ...state.activities];
+  };
+  state.activities = [activity, ...state.activities];
+  syncActivityToApi(activity);
+  return activity;
+}
+
+function archiveTask(taskId) {
+  const task = byId(state.tasks, taskId);
+  if (!task || isTaskArchived(task)) return;
+
+  const archivedAt = new Date().toISOString();
+  state.tasks = state.tasks.map((item) => item.id === taskId ? {
+    ...item,
+    archivedAt,
+    archivedBy: currentMemberId
+  } : item);
+  unplanTask(taskId);
+  addActivity({
+    projectId: task.projectId,
+    taskId,
+    type: "task_archive",
+    message: `archived ${task.title}`
+  });
+  saveState();
+  render();
+  showToast("Task archived", "success");
+  syncTaskArchiveToApi(taskId);
+}
+
+function archiveProject(projectId) {
+  const project = byId(state.projects, projectId);
+  if (!project || isProjectArchived(project)) return;
+
+  const archivedAt = new Date().toISOString();
+  const projectTaskIds = new Set(state.tasks.filter((task) => task.projectId === projectId).map((task) => task.id));
+  state.projects = state.projects.map((item) => item.id === projectId ? {
+    ...item,
+    archivedAt,
+    archivedBy: currentMemberId
+  } : item);
+  state.tasks = state.tasks.map((task) => projectTaskIds.has(task.id) ? {
+    ...task,
+    archivedAt: task.archivedAt || archivedAt,
+    archivedBy: task.archivedBy || currentMemberId
+  } : task);
+  projectTaskIds.forEach(unplanTask);
+  addActivity({
+    projectId,
+    type: "project_archive",
+    message: `archived project ${project.name}`
+  });
+  state.selectedProject = "all";
+  state.selectedRoute = "dashboard";
+  saveState();
+  render();
+  showToast("Project archived", "success");
+  syncProjectArchiveToApi(projectId);
 }
 
 function setRoute(route) {
@@ -1766,9 +1851,11 @@ function render() {
 }
 
 function renderSidebarProjects() {
-  const allCount = state.tasks.length;
-  const projectButtons = state.projects.map((project) => {
-    const taskCount = state.tasks.filter((task) => task.projectId === project.id).length;
+  const projects = activeProjects();
+  const tasks = activeTasks();
+  const allCount = tasks.length;
+  const projectButtons = projects.map((project) => {
+    const taskCount = tasks.filter((task) => task.projectId === project.id).length;
     return `
       <button class="project-pill ${state.selectedProject === project.id ? "is-active" : ""}" type="button" data-project-id="${project.id}">
         <span>${escapeHtml(project.name)}</span>
@@ -1788,8 +1875,8 @@ function renderSidebarProjects() {
 
 function renderFilters() {
   const projectOptions = state.filters.company === "all"
-    ? state.projects
-    : state.projects.filter((project) => project.companyId === state.filters.company);
+    ? activeProjects()
+    : activeProjects().filter((project) => project.companyId === state.filters.company);
 
   els.searchInput.value = state.filters.query;
   els.companyFilter.innerHTML = `
@@ -1823,8 +1910,8 @@ function renderFilters() {
 function renderDashboard() {
   const tasks = getFilteredTasks();
   const visibleProjects = state.filters.company === "all"
-    ? state.projects
-    : state.projects.filter((project) => project.companyId === state.filters.company);
+    ? activeProjects()
+    : activeProjects().filter((project) => project.companyId === state.filters.company);
   const openTasks = tasks.filter((task) => task.status !== "done");
   const completedTasks = tasks.filter((task) => task.status === "done");
   const overdueTasks = tasks.filter(isOverdue);
@@ -2225,7 +2312,7 @@ function metric(label, value) {
 }
 
 function renderProjectSummary(project) {
-  const projectTasks = state.tasks.filter((task) => task.projectId === project.id);
+  const projectTasks = activeTasks().filter((task) => task.projectId === project.id);
   const progress = projectProgress(projectTasks);
   return `
     <article class="project-summary">
@@ -2248,7 +2335,7 @@ function renderProjectSummary(project) {
 
 function renderProjectPage() {
   const project = byId(state.projects, state.selectedProject);
-  if (!project) {
+  if (!project || isProjectArchived(project)) {
     state.selectedProject = "all";
     state.selectedRoute = "dashboard";
     renderDashboard();
@@ -2279,6 +2366,9 @@ function renderProjectPage() {
           <span>Start ${formatDate(project.startDate)}</span>
           <span>Due ${formatDate(project.dueDate)}</span>
           <span>${milestones.length} ${milestones.length === 1 ? "milestone" : "milestones"}</span>
+        </div>
+        <div class="inline-actions">
+          <button class="button button-secondary button-danger" type="button" data-archive-project="${project.id}">Archive Project</button>
         </div>
       </div>
       <div class="project-progress-card">
@@ -2379,6 +2469,7 @@ function renderProjectTasks(tasks) {
           <p class="eyebrow">Project tasks</p>
           <h2>${tasks.length} matching ${tasks.length === 1 ? "task" : "tasks"}</h2>
         </div>
+        <button class="button button-secondary" type="button" id="new-task-button-project">New Task</button>
       </div>
       ${tasks.length ? `
         <div class="table-wrap">
@@ -2390,6 +2481,7 @@ function renderProjectTasks(tasks) {
                 <th>Status</th>
                 <th>Priority</th>
                 <th>Due</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -2421,6 +2513,7 @@ function renderProjectTaskRow(task) {
       <td>${selectControl("status", task.id, task.status, statuses)}</td>
       <td>${selectControl("priority", task.id, task.priority, priorities)}</td>
       <td class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}</td>
+      <td><button class="button button-secondary button-danger compact-button" type="button" data-archive-task="${task.id}">Archive</button></td>
     </tr>
   `;
 }
@@ -2883,7 +2976,7 @@ function renderTaskDependencies(task = null) {
   const selectedProjectId = document.querySelector("#task-project")?.value || task?.projectId || state.selectedProject;
   const currentTaskId = task?.id || "";
   const currentDependencies = new Set(task?.blockedBy || []);
-  const availableTasks = state.tasks
+  const availableTasks = activeTasks()
     .filter((candidate) => candidate.id !== currentTaskId)
     .filter((candidate) => selectedProjectId === "all" || candidate.projectId === selectedProjectId);
   const openDependencies = task ? openTaskDependencies(task) : [];
@@ -3047,6 +3140,7 @@ function renderList() {
                 <th>Status</th>
                 <th>Priority</th>
                 <th>Due</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -3458,7 +3552,7 @@ function renderProjectTemplateCard(template) {
 }
 
 function renderTaskTemplateCard(template) {
-  const defaultProject = state.selectedProject === "all" ? state.projects[0]?.id : state.selectedProject;
+  const defaultProject = state.selectedProject === "all" ? activeProjects()[0]?.id : state.selectedProject;
   return `
     <article class="template-card" data-task-template-card="${template.id}">
       <div>
@@ -3475,7 +3569,7 @@ function renderTaskTemplateCard(template) {
         <label class="wide-field">
           <span>Project</span>
           <select data-task-template-project>
-            ${state.projects.map((project) => `<option value="${project.id}" ${project.id === defaultProject ? "selected" : ""}>${escapeHtml(project.name)}</option>`).join("")}
+            ${activeProjects().map((project) => `<option value="${project.id}" ${project.id === defaultProject ? "selected" : ""}>${escapeHtml(project.name)}</option>`).join("")}
           </select>
         </label>
         <button class="button button-secondary" type="button" data-use-task-template="${template.id}">Create Task</button>
@@ -3658,8 +3752,8 @@ function renderDataManagement() {
 
   els.appView.innerHTML = `
     <div class="metric-grid">
-      ${metric("Projects", state.projects.length)}
-      ${metric("Tasks", state.tasks.length)}
+      ${metric("Projects", activeProjects().length)}
+      ${metric("Tasks", activeTasks().length)}
       ${metric("Time entries", state.timeEntries.length)}
       ${metric("Sync", apiSession ? "API connected" : "Browser only")}
     </div>
@@ -3818,7 +3912,7 @@ function renderDocsAndFiles() {
           <label>
             <span>Project</span>
             <select id="doc-project">
-              ${state.projects.map((project) => `<option value="${project.id}">${escapeHtml(project.name)}</option>`).join("")}
+              ${activeProjects().map((project) => `<option value="${project.id}">${escapeHtml(project.name)}</option>`).join("")}
             </select>
           </label>
           <label>
@@ -3853,7 +3947,7 @@ function renderDocsAndFiles() {
           <label>
             <span>Project</span>
             <select id="file-project">
-              ${state.projects.map((project) => `<option value="${project.id}">${escapeHtml(project.name)}</option>`).join("")}
+              ${activeProjects().map((project) => `<option value="${project.id}">${escapeHtml(project.name)}</option>`).join("")}
             </select>
           </label>
           <label>
@@ -4048,7 +4142,7 @@ function renderSubmissionCard(submission) {
 function renderCustomFields() {
   const fieldsWithUsage = state.customFields.map((field) => ({
     ...field,
-    usage: state.tasks.filter((task) => customFieldValue(task, field)).length
+    usage: activeTasks().filter((task) => customFieldValue(task, field)).length
   }));
 
   els.appView.innerHTML = `
@@ -4257,6 +4351,9 @@ function renderTaskCard(task) {
         ${task.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
       </div>
       ${fields}
+      <div class="task-card-actions">
+        <button class="button button-secondary button-danger compact-button" type="button" data-archive-task="${task.id}">Archive</button>
+      </div>
     </article>
   `;
 }
@@ -4285,6 +4382,7 @@ function renderTaskRow(task) {
       <td>${selectControl("status", task.id, task.status, statuses)}</td>
       <td>${selectControl("priority", task.id, task.priority, priorities)}</td>
       <td class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}</td>
+      <td><button class="button button-secondary button-danger compact-button" type="button" data-archive-task="${task.id}">Archive</button></td>
     </tr>
   `;
 }
@@ -4338,9 +4436,9 @@ function populateTaskForm(task = null) {
   els.taskFormTitle.textContent = task ? "Edit Task" : "New Task";
 
   const availableProjects = state.filters.company === "all"
-    ? state.projects
-    : state.projects.filter((project) => project.companyId === state.filters.company);
-  const projectOptions = availableProjects.length ? availableProjects : state.projects;
+    ? activeProjects()
+    : activeProjects().filter((project) => project.companyId === state.filters.company);
+  const projectOptions = availableProjects.length ? availableProjects : activeProjects();
   const selectedProject = task?.projectId || (state.selectedProject === "all" ? projectOptions[0]?.id : state.selectedProject);
   fillSelect("#task-project", projectOptions, selectedProject, "name");
   fillSelect("#task-assignee", members, task?.assignee || members[0].id, "name");
@@ -4402,13 +4500,14 @@ function addTaskComment() {
   const task = byId(state.tasks, taskId);
   if (!task || !body) return;
 
-  state.comments = [{
+  const comment = {
     id: uid("comment"),
     taskId,
     author: currentMemberId,
     body,
     createdAt: new Date().toISOString()
-  }, ...state.comments];
+  };
+  state.comments = [comment, ...state.comments];
 
   addActivity({
     projectId: task.projectId,
@@ -4421,6 +4520,7 @@ function addTaskComment() {
   renderTaskCollaboration(taskId);
   render();
   showToast("Comment added", "success");
+  syncCommentToApi(comment, "Comment synced to API");
 }
 
 function addTaskTimeEntry() {
@@ -4648,7 +4748,7 @@ function createDocument() {
   const body = document.querySelector("#doc-body")?.value.trim();
   if (!title || !projectId) return;
 
-  state.documents = [{
+  const document = {
     id: uid("doc"),
     projectId,
     title,
@@ -4656,7 +4756,8 @@ function createDocument() {
     owner: currentMemberId,
     updatedAt: new Date().toISOString(),
     body: body || "No summary yet."
-  }, ...state.documents];
+  };
+  state.documents = [document, ...state.documents];
 
   addActivity({
     projectId,
@@ -4666,6 +4767,7 @@ function createDocument() {
   saveState();
   render();
   showToast("Doc added", "success");
+  syncDocumentToApi(document, "Doc synced to API");
 }
 
 function createFileRecord() {
@@ -4675,7 +4777,7 @@ function createFileRecord() {
   const size = document.querySelector("#file-size")?.value.trim() || "Unknown size";
   if (!title || !projectId) return;
 
-  state.files = [{
+  const file = {
     id: uid("file"),
     projectId,
     title,
@@ -4683,7 +4785,8 @@ function createFileRecord() {
     size,
     owner: currentMemberId,
     updatedAt: new Date().toISOString()
-  }, ...state.files];
+  };
+  state.files = [file, ...state.files];
 
   addActivity({
     projectId,
@@ -4693,6 +4796,7 @@ function createFileRecord() {
   saveState();
   render();
   showToast("File added", "success");
+  syncFileToApi(file, "File synced to API");
 }
 
 function submitIntakeRequest(formId) {
@@ -4759,7 +4863,7 @@ function createProjectTemplateFromButton(button) {
 
 function createTaskTemplateFromButton(button) {
   const card = button.closest("[data-task-template-card]");
-  const projectId = card?.querySelector("[data-task-template-project]")?.value || state.projects[0]?.id;
+  const projectId = card?.querySelector("[data-task-template-project]")?.value || activeProjects()[0]?.id;
   const task = createTaskFromTemplate(button.dataset.useTaskTemplate, projectId);
   if (!task) return;
 
@@ -4865,7 +4969,7 @@ function runAutomation(ruleId) {
   }
 
   if (ruleId === "automation-due-risk") {
-    dueSoonTasks(state.tasks)
+    dueSoonTasks(activeTasks())
       .filter((task) => task.customFields?.risk !== "High")
       .forEach((task) => {
         state.tasks = state.tasks.map((item) => item.id === task.id ? {
@@ -5086,6 +5190,87 @@ async function syncTaskToApi(task, action = "Task synced", isNew = false) {
   }
 }
 
+async function syncTaskArchiveToApi(taskId) {
+  if (!apiSession) return;
+
+  try {
+    await apiRequest(`/api/tasks/${encodeURIComponent(taskId)}`, {
+      method: "DELETE"
+    });
+    showToast("Task archive synced to API", "success");
+  } catch (error) {
+    showToast(`Local change saved. API task archive failed: ${error.message}`, "info");
+  }
+}
+
+async function syncProjectArchiveToApi(projectId) {
+  if (!apiSession) return;
+
+  try {
+    await apiRequest(`/api/projects/${encodeURIComponent(projectId)}`, {
+      method: "DELETE"
+    });
+    showToast("Project archive synced to API", "success");
+  } catch (error) {
+    showToast(`Local change saved. API project archive failed: ${error.message}`, "info");
+  }
+}
+
+async function syncCommentToApi(comment, action = "Comment synced") {
+  if (!apiSession) return;
+
+  try {
+    await apiRequest("/api/comments", {
+      method: "POST",
+      body: { comment }
+    });
+    showToast(action, "success");
+  } catch (error) {
+    showToast(`Local change saved. API comment sync failed: ${error.message}`, "info");
+  }
+}
+
+async function syncActivityToApi(activity) {
+  if (!apiSession) return;
+
+  try {
+    await apiRequest("/api/activities", {
+      method: "POST",
+      body: { activity }
+    });
+  } catch (error) {
+    showToast(`Local change saved. API activity sync failed: ${error.message}`, "info");
+  }
+}
+
+async function syncDocumentToApi(document, action = "Doc synced") {
+  if (!apiSession) return;
+
+  try {
+    await apiRequest("/api/documents", {
+      method: "POST",
+      body: { document }
+    });
+    showToast(action, "success");
+  } catch (error) {
+    showToast(`Local change saved. API doc sync failed: ${error.message}`, "info");
+  }
+}
+
+async function syncFileToApi(file, action = "File synced") {
+  if (!apiSession) return;
+
+  try {
+    await apiRequest("/api/files", {
+      method: "POST",
+      body: { file }
+    });
+    showToast(action, "success");
+  } catch (error) {
+    showToast(`Local change saved. API file sync failed: ${error.message}`, "info");
+  }
+}
+
 document.addEventListener("click", (event) => {
   const toastDismissButton = event.target.closest("[data-toast-dismiss]");
   if (toastDismissButton) {
@@ -5153,6 +5338,18 @@ document.addEventListener("click", (event) => {
   const apiImportButton = event.target.closest("#api-import-workspace");
   if (apiImportButton) importWorkspaceToApi();
 
+  const archiveProjectButton = event.target.closest("[data-archive-project]");
+  if (archiveProjectButton) {
+    archiveProject(archiveProjectButton.dataset.archiveProject);
+    return;
+  }
+
+  const archiveTaskButton = event.target.closest("[data-archive-task]");
+  if (archiveTaskButton) {
+    archiveTask(archiveTaskButton.dataset.archiveTask);
+    return;
+  }
+
   const projectButton = event.target.closest("[data-project-id]");
   if (projectButton) setProject(projectButton.dataset.projectId);
 
@@ -5163,6 +5360,12 @@ document.addEventListener("click", (event) => {
   if (newCompanyButton) {
     populateCompanyForm();
     openDialog(els.companyDialog);
+  }
+
+  const newProjectTaskButton = event.target.closest("#new-task-button-project");
+  if (newProjectTaskButton) {
+    populateTaskForm();
+    openDialog(els.taskDialog);
   }
 
   const editCompanyButton = event.target.closest("[data-edit-company]");
