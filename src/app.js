@@ -1789,6 +1789,17 @@ function operatorBriefForProject(project) {
   const latestActivity = getProjectActivity(project.id, 1)[0];
   const progress = projectProgress(tasks);
   const health = reportHealthScore({ progress, overdue: overdue.length, blocked: blocked.length, openIntake: approvals.length });
+  const actionType = overdue[0]
+    ? "recover"
+    : blocked[0]
+      ? "unblock"
+      : approvals[0]
+        ? "approval"
+        : dueSoon[0]
+          ? "plan"
+          : openTasks[0]
+            ? "advance"
+            : "update";
   const nextAction = overdue[0]
     ? `Recover ${overdue[0].title}`
     : blocked[0]
@@ -1810,6 +1821,7 @@ function operatorBriefForProject(project) {
     dueSoon,
     approvals,
     latestActivity,
+    actionType,
     nextAction,
     summary: `${project.name} is ${progress}% complete with ${openTasks.length} open ${openTasks.length === 1 ? "task" : "tasks"}, ${blocked.length} blocked, and ${approvals.length} pending ${approvals.length === 1 ? "approval" : "approvals"}.`
   };
@@ -1840,6 +1852,31 @@ function collaborationPresenceForTask(taskId) {
     .map((memberId) => byId(members, memberId))
     .filter(Boolean)
     .slice(0, 4);
+}
+
+function workspacePulse() {
+  const recentActivity = [...state.activities]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 12);
+  const recentComments = [...state.comments]
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 8);
+  const activeMemberIds = new Set([
+    currentMemberId,
+    ...recentActivity.map((activity) => activity.memberId),
+    ...recentComments.map((comment) => comment.author)
+  ]);
+  const handoffs = activeTasks()
+    .filter((task) => task.status !== "done")
+    .filter((task) => getTaskComments(task.id).length || getTaskActivity(task.id, 2).length)
+    .sort((a, b) => new Date((getTaskActivity(b.id, 1)[0] || {}).createdAt || b.createdAt) - new Date((getTaskActivity(a.id, 1)[0] || {}).createdAt || a.createdAt))
+    .slice(0, 3);
+
+  return {
+    activeMembers: [...activeMemberIds].map((memberId) => byId(members, memberId)).filter(Boolean).slice(0, 5),
+    recentActivity,
+    handoffs
+  };
 }
 
 function automationSuggestions() {
@@ -2771,6 +2808,7 @@ function renderInbox() {
   const activityItems = items.filter((item) => item.type === "comment" || item.type === "activity");
   const approvalItems = items.filter((item) => item.type === "approval");
   const briefs = operatorBriefs(3);
+  const pulse = workspacePulse();
 
   els.appView.innerHTML = `
     <div class="metric-grid">
@@ -2803,14 +2841,40 @@ function renderInbox() {
       <section class="panel operator-panel">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">AI operator</p>
-            <h2>Project briefs</h2>
+            <p class="eyebrow">Live workspace</p>
+            <h2>Operator pulse</h2>
           </div>
         </div>
+        ${renderWorkspacePulse(pulse)}
         <div class="operator-brief-list">
           ${briefs.length ? briefs.map(renderOperatorBrief).join("") : emptyState("No active projects need attention.")}
         </div>
       </section>
+    </div>
+  `;
+}
+
+function renderWorkspacePulse(pulse) {
+  return `
+    <div class="workspace-pulse">
+      <div class="presence-row" aria-label="Active collaborators">
+        ${pulse.activeMembers.map((member) => `<span class="presence-pill"><span class="avatar">${member.name.split(" ").map((part) => part[0]).join("")}</span>${escapeHtml(member.name)}</span>`).join("")}
+      </div>
+      <div class="pulse-metrics">
+        <span><strong>${pulse.activeMembers.length}</strong> active</span>
+        <span><strong>${pulse.recentActivity.length}</strong> signals</span>
+        <span><strong>${pulse.handoffs.length}</strong> handoffs</span>
+      </div>
+      ${pulse.handoffs.length ? `
+        <div class="pulse-handoffs">
+          ${pulse.handoffs.map((task) => `
+            <button class="pulse-handoff" type="button" data-edit-task="${task.id}">
+              <span>${escapeHtml(projectName(task.projectId))}</span>
+              <strong>${escapeHtml(task.title)}</strong>
+            </button>
+          `).join("")}
+        </div>
+      ` : ""}
     </div>
   `;
 }
@@ -2841,6 +2905,10 @@ function renderOperatorBrief(brief) {
       <div class="operator-actions">
         <span>Next: ${escapeHtml(brief.nextAction)}</span>
         ${brief.latestActivity ? `<small>Last change ${formatTimestamp(brief.latestActivity.createdAt)}</small>` : "<small>No recent activity</small>"}
+      </div>
+      <div class="operator-action-row">
+        <button class="button button-primary" type="button" data-operator-action="${brief.actionType}" data-operator-project="${brief.project.id}">Run action</button>
+        <button class="button button-secondary" type="button" data-project-id="${brief.project.id}">Open project</button>
       </div>
       <div class="operator-metrics">
         <span><strong>${brief.blocked.length}</strong> blocked</span>
@@ -6198,6 +6266,136 @@ function draftCompanyUpdate(companyId) {
   syncDocumentToApi(document, "Client update synced to API");
 }
 
+function createOperatorTask({ project, sourceTask = null, title, description, assignee, priority = "high", dueOffset = 1, tags = [] }) {
+  const existing = activeTasks().find((task) => task.projectId === project.id && task.title === title && task.status !== "done");
+  if (existing) {
+    planTaskForDate(existing.id, "next", todayKey());
+    state.selectedRoute = "daily";
+    state.selectedDailyDate = todayKey();
+    saveState();
+    render();
+    showToast("Existing operator task planned for Today", "info");
+    return existing;
+  }
+
+  const task = {
+    id: uid("task"),
+    projectId: project.id,
+    title,
+    description,
+    assignee: assignee || project.owner || currentMemberId,
+    status: "todo",
+    priority,
+    startDate: todayKey(),
+    dueDate: shiftDate(todayKey(), dueOffset),
+    blockedBy: [],
+    tags: ["operator", ...tags],
+    subtasks: sourceTask ? [
+      { id: uid("subtask"), title: `Review ${sourceTask.title}`, done: false },
+      { id: uid("subtask"), title: "Post next owner and next date", done: false }
+    ] : [
+      { id: uid("subtask"), title: "Confirm owner", done: false },
+      { id: uid("subtask"), title: "Share update", done: false }
+    ],
+    customFields: {
+      effort: "Small",
+      risk: priority === "urgent" ? "High" : "Medium"
+    },
+    createdAt: new Date().toISOString()
+  };
+
+  state.tasks = [task, ...state.tasks];
+  planTaskForDate(task.id, "next", todayKey());
+  addActivity({
+    projectId: project.id,
+    taskId: sourceTask?.id || task.id,
+    type: "operator_action",
+    message: `created operator follow-up ${task.title}`
+  });
+  syncTaskToApi(task, "Operator task synced to API", true);
+  return task;
+}
+
+function addOperatorComment(task, body) {
+  const comment = {
+    id: uid("comment"),
+    taskId: task.id,
+    author: currentMemberId,
+    body,
+    createdAt: new Date().toISOString()
+  };
+  state.comments = [comment, ...state.comments];
+  addActivity({
+    projectId: task.projectId,
+    taskId: task.id,
+    type: "operator_comment",
+    message: `added an operator note to ${task.title}`
+  });
+  syncCommentToApi(comment, "Operator note synced to API");
+  return comment;
+}
+
+function runOperatorAction(actionType, projectId) {
+  const project = byId(state.projects, projectId);
+  if (!project) return;
+
+  const brief = operatorBriefForProject(project);
+  const company = projectCompany(project.id);
+  const sourceTask = brief.overdue[0] || brief.blocked[0] || brief.dueSoon[0] || getProjectTasks(project.id, false).find((task) => task.status !== "done");
+  const approval = brief.approvals[0];
+
+  if (actionType === "recover" && sourceTask) {
+    createOperatorTask({
+      project,
+      sourceTask,
+      title: `Recovery plan: ${sourceTask.title}`,
+      description: `Operator generated follow-up for overdue work in ${project.name}. Confirm the blocker, reset the due date, and post a recovery note.`,
+      assignee: sourceTask.assignee,
+      priority: "urgent",
+      dueOffset: 1,
+      tags: ["recovery"]
+    });
+  } else if (actionType === "unblock" && sourceTask) {
+    const blockers = openTaskDependencies(sourceTask).map((task) => task.title).join(", ") || "unconfirmed blocker";
+    createOperatorTask({
+      project,
+      sourceTask,
+      title: `Unblock: ${sourceTask.title}`,
+      description: `Operator generated unblock task. Current blocker: ${blockers}. Decide the next owner and remove the dependency once resolved.`,
+      assignee: project.owner || sourceTask.assignee,
+      priority: "high",
+      dueOffset: 1,
+      tags: ["unblock"]
+    });
+  } else if (actionType === "approval" && approval) {
+    createOperatorTask({
+      project,
+      sourceTask: sourceTask || byId(state.tasks, approval.taskId),
+      title: `Chase approval: ${approval.title}`,
+      description: `Operator generated approval chase for ${approval.reviewer}. Summary: ${approval.summary}`,
+      assignee: approval.requester || project.owner,
+      priority: "high",
+      dueOffset: 1,
+      tags: ["approval"]
+    });
+  } else if (actionType === "plan" && sourceTask) {
+    planTaskForDate(sourceTask.id, "now", todayKey());
+    addOperatorComment(sourceTask, `Operator planned this for Today because it is due ${formatDate(sourceTask.dueDate)}.`);
+  } else if (actionType === "advance" && sourceTask) {
+    addOperatorComment(sourceTask, `Operator next step: advance this task, confirm the next owner, and leave a short status update for ${project.name}.`);
+    planTaskForDate(sourceTask.id, "next", todayKey());
+  } else {
+    draftCompanyUpdate(company?.id || state.companies[0]?.id);
+    return;
+  }
+
+  state.selectedRoute = "daily";
+  state.selectedDailyDate = todayKey();
+  saveState();
+  render();
+  showToast("Operator action queued for Today", "success");
+}
+
 function logAutomationSuggestion(suggestionId) {
   const suggestion = automationSuggestions().find((item) => item.id === suggestionId);
   if (!suggestion) return;
@@ -6780,6 +6978,12 @@ document.addEventListener("click", (event) => {
 
   const automationSuggestionButton = event.target.closest("[data-automation-suggestion]");
   if (automationSuggestionButton) logAutomationSuggestion(automationSuggestionButton.dataset.automationSuggestion);
+
+  const operatorActionButton = event.target.closest("[data-operator-action]");
+  if (operatorActionButton) {
+    runOperatorAction(operatorActionButton.dataset.operatorAction, operatorActionButton.dataset.operatorProject);
+    return;
+  }
 
   const approvalActionButton = event.target.closest("[data-approval-action]");
   if (approvalActionButton) {

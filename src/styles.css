@@ -987,6 +987,72 @@ textarea:focus {
   line-height: 1.45;
 }
 
+.workspace-pulse {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  background: #f7f3e9;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.pulse-metrics,
+.operator-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.pulse-metrics span {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.pulse-metrics strong {
+  color: var(--text);
+}
+
+.pulse-handoffs {
+  display: grid;
+  gap: 8px;
+}
+
+.pulse-handoff {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 10px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.pulse-handoff:hover {
+  border-color: var(--green);
+}
+
+.pulse-handoff span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pulse-handoff strong {
+  color: var(--text);
+}
+
 .operator-actions,
 .operator-metrics,
 .approval-actions {
@@ -1000,6 +1066,12 @@ textarea:focus {
   justify-content: space-between;
   color: var(--muted);
   font-size: 0.84rem;
+}
+
+.operator-action-row .button {
+  min-height: 34px;
+  padding: 7px 10px;
+  font-size: 0.82rem;
 }
 
 .operator-metrics span {
@@ -3116,7 +3188,8 @@ th {
   .inbox-header-actions,
   .inbox-actions,
   .approval-actions,
-  .operator-actions {
+  .operator-actions,
+  .operator-action-row {
     justify-content: flex-start;
   }
 
@@ -3332,6 +3405,16 @@ th {
   .nav-list,
   .project-list {
     grid-template-columns: 1fr;
+  }
+
+  .operator-action-row {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .operator-action-row .button,
+  .pulse-handoff {
+    width: 100%;
   }
 
   .toolbar {
