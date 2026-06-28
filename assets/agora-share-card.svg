@@ -1,0 +1,54 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Agora social share card</title>
+  <desc id="desc">A branded preview card for Agora, open source project management.</desc>
+  <rect width="1200" height="630" fill="#F7F5EF"/>
+  <rect x="36" y="34" width="1128" height="562" rx="32" fill="#FFFFFF" stroke="#D9D2C4" stroke-width="2"/>
+  <path d="M36 386C180 323 281 342 409 405C547 473 666 483 822 398C956 325 1063 308 1164 341V596H36V386Z" fill="#E7F0EC"/>
+  <path d="M36 448C172 403 309 402 451 459C606 522 736 509 887 439C999 387 1095 377 1164 397V596H36V448Z" fill="#D6E5E1"/>
+
+  <g transform="translate(92 90)">
+    <rect width="82" height="82" rx="18" fill="#245A58"/>
+    <path d="M17 59H65" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round"/>
+    <path d="M24 52V31L41 20L58 31V52" stroke="#FFFFFF" stroke-width="7" stroke-linejoin="round"/>
+    <path d="M33 52V38H49V52" stroke="#FFFFFF" stroke-width="7" stroke-linejoin="round"/>
+  </g>
+
+  <text x="198" y="125" fill="#245A58" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="34" font-weight="800">Agora</text>
+  <text x="198" y="163" fill="#6F6A60" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="22" font-weight="700" letter-spacing="2">OPEN SOURCE PROJECT MANAGEMENT</text>
+
+  <text x="92" y="282" fill="#272521" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="72" font-weight="900">Projects, clients,</text>
+  <text x="92" y="364" fill="#272521" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="72" font-weight="900">and daily work.</text>
+  <text x="92" y="426" fill="#5C564C" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="30" font-weight="650">A self-hostable workspace for teams that want clarity without lock-in.</text>
+
+  <g transform="translate(92 488)">
+    <rect width="154" height="48" rx="24" fill="#245A58"/>
+    <text x="28" y="32" fill="#FFFFFF" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18" font-weight="800">Boards</text>
+    <rect x="168" width="178" height="48" rx="24" fill="#E2BA5B"/>
+    <text x="198" y="32" fill="#272521" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18" font-weight="850">Client portals</text>
+    <rect x="360" width="166" height="48" rx="24" fill="#B9D0C9"/>
+    <text x="390" y="32" fill="#245A58" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18" font-weight="850">Time tracking</text>
+  </g>
+
+  <g transform="translate(770 118)">
+    <rect width="300" height="374" rx="22" fill="#245A58"/>
+    <rect x="26" y="28" width="248" height="42" rx="10" fill="#F7F5EF"/>
+    <circle cx="52" cy="49" r="8" fill="#3E6D42"/>
+    <rect x="76" y="42" width="96" height="14" rx="7" fill="#8E877A"/>
+    <rect x="26" y="96" width="248" height="68" rx="14" fill="#FFFFFF"/>
+    <rect x="44" y="116" width="112" height="12" rx="6" fill="#245A58"/>
+    <rect x="44" y="140" width="196" height="10" rx="5" fill="#D9D2C4"/>
+    <rect x="26" y="184" width="248" height="68" rx="14" fill="#FFFFFF"/>
+    <rect x="44" y="204" width="140" height="12" rx="6" fill="#B64A3A"/>
+    <rect x="44" y="228" width="176" height="10" rx="5" fill="#D9D2C4"/>
+    <rect x="26" y="272" width="248" height="74" rx="14" fill="#FFFFFF"/>
+    <rect x="44" y="294" width="126" height="12" rx="6" fill="#E2BA5B"/>
+    <rect x="44" y="318" width="198" height="10" rx="5" fill="#D9D2C4"/>
+  </g>
+
+  <g transform="translate(1008 478)">
+    <circle cx="48" cy="48" r="48" fill="#FFFFFF" stroke="#D9D2C4" stroke-width="2"/>
+    <path d="M27 61H69" stroke="#245A58" stroke-width="6" stroke-linecap="round"/>
+    <path d="M33 56V37L48 27L63 37V56" stroke="#245A58" stroke-width="6" stroke-linejoin="round"/>
+    <path d="M41 56V44H55V56" stroke="#245A58" stroke-width="6" stroke-linejoin="round"/>
+  </g>
+</svg>

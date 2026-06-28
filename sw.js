@@ -1,10 +1,11 @@
-const CACHE_VERSION = "agora-pwa-v6";
+const CACHE_VERSION = "agora-pwa-v7";
 const APP_SHELL = [
   "./",
   "./index.html",
   "./offline.html",
   "./manifest.webmanifest",
   "./assets/agora-mark.svg",
+  "./assets/agora-share-card.png",
   "./src/styles.css?v=client-portal",
   "./src/app.js?v=client-portal"
 ];
