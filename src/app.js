@@ -863,6 +863,11 @@ const els = {
 let draftSubtasks = [];
 let toastTimers = new Map();
 let lastFocusedBeforeDialog = null;
+let lastPresenceSignature = "";
+let lastPresenceSyncedAt = 0;
+let liveRefreshInFlight = false;
+let taskEditSnapshots = new Map();
+let staleTaskOverrideId = "";
 
 function initSmoothScroll() {
   if (!window.Lenis || reducedMotionQuery?.matches) return;
@@ -934,6 +939,7 @@ function normalizeState(nextState) {
     dailyPlans: { ...seedData.dailyPlans, ...(nextState.dailyPlans || {}) },
     inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
     inboxArchived: Array.isArray(nextState.inboxArchived) ? nextState.inboxArchived : [],
+    presence: Array.isArray(nextState.presence) ? nextState.presence : [],
     approvals: Array.isArray(nextState.approvals) ? nextState.approvals : seedData.approvals,
     customFields: Array.isArray(nextState.customFields) ? nextState.customFields : seedData.customFields,
     documents: Array.isArray(nextState.documents) ? nextState.documents : seedData.documents,
@@ -962,6 +968,7 @@ function normalizeState(nextState) {
       restoredAt: "",
       ...task,
       startDate: task.startDate || task.createdAt?.slice(0, 10) || "",
+      updatedAt: task.updatedAt || task.createdAt || new Date().toISOString(),
       blockedBy: Array.isArray(task.blockedBy) ? task.blockedBy : [],
       subtasks: Array.isArray(task.subtasks) ? task.subtasks : [],
       customFields: task.customFields && typeof task.customFields === "object" ? task.customFields : {}
@@ -999,7 +1006,7 @@ function clearApiSession() {
   apiSessionStore.clear();
 }
 
-const structuredRecordCollections = ["companies", "approvals", "timeEntries", "comments", "activities", "documents", "files"];
+const structuredRecordCollections = ["companies", "approvals", "timeEntries", "comments", "activities", "documents", "files", "presence"];
 
 function mergeRecordsById(existingItems = [], incomingItems = []) {
   const next = new Map();
@@ -1128,6 +1135,112 @@ function workspaceMembers() {
 
 function memberName(id) {
   return byId(workspaceMembers(), id)?.name || "Unassigned";
+}
+
+function activeMemberId() {
+  return apiSession?.user?.id || currentMemberId;
+}
+
+function taskRevision(task) {
+  return task?.updatedAt || task?.createdAt || "";
+}
+
+function isPresenceActive(presence) {
+  const lastActive = new Date(presence.lastActiveAt || presence.updatedAt || 0).getTime();
+  return presence.status === "online" && Number.isFinite(lastActive) && Date.now() - lastActive < 120000;
+}
+
+function currentPresenceRecord({ taskId = "" } = {}) {
+  const memberId = activeMemberId();
+  const task = taskId ? byId(state.tasks, taskId) : null;
+  const projectId = task?.projectId || (state.selectedProject !== "all" ? state.selectedProject : "");
+  const routeLabel = routes[state.selectedRoute] || "Workspace";
+  const viewing = task
+    ? `Viewing ${task.title}`
+    : projectId
+      ? `Viewing ${projectName(projectId)}`
+      : `Viewing ${routeLabel}`;
+  const now = new Date().toISOString();
+
+  return {
+    id: `presence-${state.workspace.id}-${memberId}`,
+    memberId,
+    route: state.selectedRoute,
+    projectId,
+    taskId,
+    viewing,
+    status: document.hidden ? "away" : "online",
+    lastActiveAt: now,
+    updatedAt: now
+  };
+}
+
+function upsertLocalPresence(record) {
+  state.presence = [
+    record,
+    ...state.presence.filter((presence) => presence.id !== record.id)
+  ].slice(0, 50);
+}
+
+function heartbeatPresence({ force = false, taskId = "" } = {}) {
+  const record = currentPresenceRecord({ taskId });
+  const signature = `${record.memberId}:${record.route}:${record.projectId}:${record.taskId}:${record.status}`;
+  const shouldSync = force || signature !== lastPresenceSignature || Date.now() - lastPresenceSyncedAt > 25000;
+  if (!shouldSync) return;
+
+  lastPresenceSignature = signature;
+  lastPresenceSyncedAt = Date.now();
+  upsertLocalPresence(record);
+  saveState();
+  syncRecordToApi("presence", record, "Presence synced", false);
+}
+
+function livePresenceRecords({ taskId = "" } = {}) {
+  return state.presence
+    .filter(isPresenceActive)
+    .filter((presence) => presence.memberId !== activeMemberId())
+    .filter((presence) => !taskId || presence.taskId === taskId)
+    .sort((a, b) => new Date(b.lastActiveAt || b.updatedAt) - new Date(a.lastActiveAt || a.updatedAt));
+}
+
+function livePresenceMembers({ taskId = "" } = {}) {
+  return livePresenceRecords({ taskId })
+    .map((presence) => ({
+      presence,
+      member: byId(workspaceMembers(), presence.memberId)
+    }))
+    .filter((item) => item.member)
+    .slice(0, 5);
+}
+
+async function refreshLiveCollaborationFromApi({ rerender = false } = {}) {
+  if (!apiSession || liveRefreshInFlight) return false;
+  liveRefreshInFlight = true;
+
+  try {
+    let changed = false;
+    for (const collection of ["presence", "comments", "activities"]) {
+      const result = await apiRequest(`/api/records/${collection}`);
+      const incoming = Array.isArray(result.records) ? result.records : [];
+      if (!incoming.length) continue;
+      const nextItems = mergeRecordsById(state[collection], incoming);
+      if (JSON.stringify(nextItems) !== JSON.stringify(state[collection])) {
+        state[collection] = nextItems;
+        changed = true;
+      }
+    }
+    if (changed) {
+      saveState();
+      const openTaskId = document.querySelector("#task-dialog[open] #task-id")?.value || "";
+      if (openTaskId) renderTaskCollaboration(openTaskId);
+      if (rerender || ["dashboard", "inbox"].includes(state.selectedRoute)) render();
+    }
+    return changed;
+  } catch (error) {
+    return false;
+  } finally {
+    liveRefreshInFlight = false;
+  }
 }
 
 function projectName(id) {
@@ -1861,6 +1974,7 @@ function workspacePulse() {
   const recentComments = [...state.comments]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .slice(0, 8);
+  const liveMembers = livePresenceMembers().map((item) => item.member);
   const activeMemberIds = new Set([
     currentMemberId,
     ...recentActivity.map((activity) => activity.memberId),
@@ -1873,7 +1987,8 @@ function workspacePulse() {
     .slice(0, 3);
 
   return {
-    activeMembers: [...activeMemberIds].map((memberId) => byId(members, memberId)).filter(Boolean).slice(0, 5),
+    activeMembers: liveMembers.length ? liveMembers : [...activeMemberIds].map((memberId) => byId(workspaceMembers(), memberId)).filter(Boolean).slice(0, 5),
+    liveViewers: livePresenceRecords().slice(0, 5),
     recentActivity,
     handoffs
   };
@@ -2202,7 +2317,7 @@ function setCompany(companyId) {
 function updateTask(id, updates) {
   const previous = byId(state.tasks, id);
   if (!previous) return;
-  const next = { ...previous, ...updates };
+  const next = { ...previous, ...updates, updatedAt: new Date().toISOString() };
   state.tasks = state.tasks.map((task) => task.id === id ? next : task);
   recordTaskChanges(previous, next);
   saveState();
@@ -2342,28 +2457,43 @@ function render() {
   document.querySelector(".brand small").textContent = state.workspace.name;
   document.body.classList.toggle("is-landing-route", state.selectedRoute === "landing");
 
-  if (state.selectedRoute === "landing") renderLandingPage();
-  if (state.selectedRoute === "portal") renderClientPortal();
-  if (state.selectedRoute === "project") renderProjectPage();
-  if (state.selectedRoute === "company") renderCompanyPage();
-  if (state.selectedRoute === "daily") renderDailyTasks();
-  if (state.selectedRoute === "inbox") renderInbox();
-  if (state.selectedRoute === "board") renderBoard();
-  if (state.selectedRoute === "list") renderList();
-  if (state.selectedRoute === "calendar") renderCalendar();
-  if (state.selectedRoute === "my-work") renderMyWork();
-  if (state.selectedRoute === "time") renderTimeTracking();
-  if (state.selectedRoute === "reports") renderReports();
-  if (state.selectedRoute === "templates") renderTemplates();
-  if (state.selectedRoute === "automations") renderAutomations();
-  if (state.selectedRoute === "docs") renderDocsAndFiles();
-  if (state.selectedRoute === "intake") renderIntake();
-  if (state.selectedRoute === "fields") renderCustomFields();
-  if (state.selectedRoute === "data") renderDataManagement();
-  if (state.selectedRoute === "settings") renderSettings();
-  if (state.selectedRoute === "companies") renderCompanies();
-  if (state.selectedRoute === "invite") renderInviteAcceptance();
-  if (state.selectedRoute === "dashboard") renderDashboard();
+  const routeRenderers = {
+    landing: renderLandingPage,
+    portal: renderClientPortal,
+    project: renderProjectPage,
+    company: renderCompanyPage,
+    daily: renderDailyTasks,
+    inbox: renderInbox,
+    board: renderBoard,
+    list: renderList,
+    calendar: renderCalendar,
+    "my-work": renderMyWork,
+    time: renderTimeTracking,
+    reports: renderReports,
+    templates: renderTemplates,
+    automations: renderAutomations,
+    docs: renderDocsAndFiles,
+    intake: renderIntake,
+    fields: renderCustomFields,
+    data: renderDataManagement,
+    settings: renderSettings,
+    companies: renderCompanies,
+    invite: renderInviteAcceptance,
+    dashboard: renderDashboard
+  };
+
+  try {
+    routeRenderers[state.selectedRoute]?.();
+  } catch (error) {
+    els.appView.innerHTML = `
+      <section class="panel">
+        <p class="eyebrow">View error</p>
+        <h2>${escapeHtml(routes[state.selectedRoute] || "View")} could not render</h2>
+        <p>${escapeHtml(error.message || "Something went wrong while rendering this view.")}</p>
+      </section>
+    `;
+  }
+  heartbeatPresence();
   refreshSmoothScroll();
 }
 
@@ -2862,9 +2992,17 @@ function renderWorkspacePulse(pulse) {
       </div>
       <div class="pulse-metrics">
         <span><strong>${pulse.activeMembers.length}</strong> active</span>
+        <span><strong>${pulse.liveViewers.length}</strong> live now</span>
         <span><strong>${pulse.recentActivity.length}</strong> signals</span>
         <span><strong>${pulse.handoffs.length}</strong> handoffs</span>
       </div>
+      ${pulse.liveViewers.length ? `
+        <div class="live-viewer-list">
+          ${pulse.liveViewers.map((presence) => `
+            <span>${escapeHtml(memberName(presence.memberId))}: ${escapeHtml(presence.viewing)}</span>
+          `).join("")}
+        </div>
+      ` : ""}
       ${pulse.handoffs.length ? `
         <div class="pulse-handoffs">
           ${pulse.handoffs.map((task) => `
@@ -3832,6 +3970,7 @@ function renderTaskCollaboration(taskId = "") {
   const comments = getTaskComments(taskId);
   const activities = getTaskActivity(taskId, 5);
   const presence = collaborationPresenceForTask(taskId);
+  const liveViewers = livePresenceMembers({ taskId });
 
   container.innerHTML = `
     <div class="collaboration-grid">
@@ -3840,6 +3979,14 @@ function renderTaskCollaboration(taskId = "") {
           <p class="eyebrow">Comments</p>
           <span>${comments.length}</span>
         </div>
+        ${liveViewers.length ? `
+          <div class="live-viewer-row" aria-label="Viewing this task now">
+            ${liveViewers.map(({ member, presence: viewerPresence }) => `
+              <span class="presence-pill is-live"><span class="avatar">${member.name.split(" ").map((part) => part[0]).join("")}</span>${escapeHtml(member.name)} now</span>
+              <small>${escapeHtml(viewerPresence.viewing)}</small>
+            `).join("")}
+          </div>
+        ` : ""}
         <div class="presence-row" aria-label="Collaborators">
           ${presence.map((member) => `<span class="presence-pill"><span class="avatar">${member.name.split(" ").map((part) => part[0]).join("")}</span>${escapeHtml(member.name)}</span>`).join("")}
         </div>
@@ -5590,6 +5737,8 @@ function emptyState(message) {
 
 function populateTaskForm(task = null) {
   document.querySelector("#task-id").value = task?.id || "";
+  document.querySelector("#task-edit-warning").hidden = true;
+  document.querySelector("#task-edit-warning").innerHTML = "";
   document.querySelector("#task-title").value = task?.title || "";
   document.querySelector("#task-description").value = task?.description || "";
   document.querySelector("#task-start-date").value = task?.startDate || "";
@@ -5607,11 +5756,28 @@ function populateTaskForm(task = null) {
   fillSelect("#task-assignee", members, task?.assignee || members[0].id, "name");
   fillSelect("#task-status", statuses, task?.status || "todo", "label");
   fillSelect("#task-priority", priorities, task?.priority || "normal", "label");
+  if (task?.id) {
+    taskEditSnapshots.set(task.id, taskRevision(task));
+    staleTaskOverrideId = "";
+    heartbeatPresence({ force: true, taskId: task.id });
+  } else {
+    heartbeatPresence({ force: true });
+  }
   renderTaskCollaboration(task?.id || "");
   renderTaskSubtasks();
   renderTaskDependencies(task);
   renderTaskCustomFields(task);
   renderTaskTimeTracking(task?.id || "");
+}
+
+function showTaskEditWarning(task) {
+  const warning = document.querySelector("#task-edit-warning");
+  if (!warning || !task) return;
+  warning.hidden = false;
+  warning.innerHTML = `
+    <strong>This task changed since you opened it.</strong>
+    <span>Latest update: ${formatTimestamp(taskRevision(task))}. Review the latest activity, then press Save Task again to overwrite.</span>
+  `;
 }
 
 function fillSelect(selector, options, selectedValue, labelKey) {
@@ -5773,6 +5939,7 @@ function createTaskFromTemplate(templateId, projectId) {
   const project = byId(state.projects, projectId);
   if (!template || !project) return null;
 
+  const now = new Date().toISOString();
   const task = {
     id: uid("task"),
     projectId,
@@ -5787,7 +5954,8 @@ function createTaskFromTemplate(templateId, projectId) {
     tags: [...template.tags],
     subtasks: template.subtasks.map((title) => ({ id: uid("subtask"), title, done: false })),
     customFields: { ...template.customFields },
-    createdAt: new Date().toISOString()
+    createdAt: now,
+    updatedAt: now
   };
 
   state.tasks = [task, ...state.tasks];
@@ -5817,6 +5985,7 @@ function createProjectFromTemplate(templateId, { companyId, name, startDate = to
   const taskIdsByKey = {};
   const tasks = template.tasks.map((templateTask) => {
     const taskId = uid("task");
+    const now = new Date().toISOString();
     taskIdsByKey[templateTask.key] = taskId;
     return {
       id: taskId,
@@ -5836,7 +6005,8 @@ function createProjectFromTemplate(templateId, { companyId, name, startDate = to
         risk: templateTask.priority === "urgent" ? "High" : "Medium",
         budget: "0"
       },
-      createdAt: new Date().toISOString()
+      createdAt: now,
+      updatedAt: now
     };
   }).map((task, index) => ({
     ...task,
@@ -5889,6 +6059,7 @@ function createProjectFromTemplate(templateId, { companyId, name, startDate = to
 }
 
 function createTaskFromSubmissionRecord(submission, form) {
+  const now = new Date().toISOString();
   const task = {
     id: uid("task"),
     projectId: form.projectId,
@@ -5905,7 +6076,8 @@ function createTaskFromSubmissionRecord(submission, form) {
     customFields: {
       risk: submission.urgency === "High" ? "High" : "Medium"
     },
-    createdAt: new Date().toISOString()
+    createdAt: now,
+    updatedAt: now
   };
 
   state.tasks = [task, ...state.tasks];
@@ -6278,6 +6450,7 @@ function createOperatorTask({ project, sourceTask = null, title, description, as
     return existing;
   }
 
+  const now = new Date().toISOString();
   const task = {
     id: uid("task"),
     projectId: project.id,
@@ -6301,7 +6474,8 @@ function createOperatorTask({ project, sourceTask = null, title, description, as
       effort: "Small",
       risk: priority === "urgent" ? "High" : "Medium"
     },
-    createdAt: new Date().toISOString()
+    createdAt: now,
+    updatedAt: now
   };
 
   state.tasks = [task, ...state.tasks];
@@ -7275,7 +7449,15 @@ document.querySelector("#new-project-button").addEventListener("click", () => {
 });
 
 [els.taskDialog, els.projectDialog, els.companyDialog].filter(Boolean).forEach((dialog) => {
-  dialog.addEventListener("close", restoreDialogFocus);
+  dialog.addEventListener("close", () => {
+    if (dialog === els.taskDialog) {
+      const taskId = document.querySelector("#task-id")?.value || "";
+      if (taskId) taskEditSnapshots.delete(taskId);
+      staleTaskOverrideId = "";
+      heartbeatPresence({ force: true });
+    }
+    restoreDialogFocus();
+  });
 });
 
 document.querySelector("#seed-reset").addEventListener("click", () => {
@@ -7394,6 +7576,13 @@ els.taskForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const id = document.querySelector("#task-id").value || uid("task");
   const existingTask = byId(state.tasks, id);
+  if (existingTask && staleTaskOverrideId !== id && taskEditSnapshots.get(id) && taskEditSnapshots.get(id) !== taskRevision(existingTask)) {
+    staleTaskOverrideId = id;
+    showTaskEditWarning(existingTask);
+    showToast("Task changed since you opened it", "info");
+    return;
+  }
+  const now = new Date().toISOString();
   const task = {
     id,
     projectId: document.querySelector("#task-project").value,
@@ -7411,7 +7600,8 @@ els.taskForm.addEventListener("submit", (event) => {
       if (input.value !== "") values[input.dataset.customField] = input.value;
       return values;
     }, {}),
-    createdAt: existingTask?.createdAt || new Date().toISOString()
+    createdAt: existingTask?.createdAt || now,
+    updatedAt: now
   };
 
   if (existingTask) {
@@ -7428,6 +7618,8 @@ els.taskForm.addEventListener("submit", (event) => {
   }
 
   saveState();
+  taskEditSnapshots.delete(id);
+  staleTaskOverrideId = "";
   closeDialog(els.taskDialog);
   render();
   showToast(existingTask ? "Task updated" : "Task created", "success");
@@ -7496,6 +7688,15 @@ window.addEventListener("hashchange", () => {
   routeInviteFromLocation({ shouldRender: true });
 });
 
+window.addEventListener("focus", () => {
+  heartbeatPresence({ force: true });
+  refreshLiveCollaborationFromApi({ rerender: ["dashboard", "inbox"].includes(state.selectedRoute) });
+});
+
+document.addEventListener("visibilitychange", () => {
+  heartbeatPresence({ force: true });
+});
+
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
   pwaInstallPrompt = event;
@@ -7518,6 +7719,11 @@ if (reducedMotionQuery?.addEventListener) {
 
 initSmoothScroll();
 registerServiceWorker();
+window.setInterval(() => {
+  const taskId = document.querySelector("#task-dialog[open] #task-id")?.value || "";
+  heartbeatPresence({ taskId });
+  refreshLiveCollaborationFromApi();
+}, 15000);
 
 if (!routeInviteFromLocation()) {
   openSidebarGroupForRoute(state.selectedRoute);

@@ -69,7 +69,7 @@ npm run dev:api
 
 Keep `SUPABASE_SERVICE_ROLE_KEY` on the server only. The browser app still talks to Agora's local API, never directly to Supabase.
 
-The migration creates the snapshot/audit tables plus structured record tables for `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, and `files`. The JSON driver stores those records inside the workspace snapshot for local development; the Supabase driver writes them to dedicated `agora_*` tables through the same `/api/records/:collection` API.
+The migration creates the snapshot/audit tables plus structured record tables for `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, and `presence`. The JSON driver stores those records inside the workspace snapshot for local development; the Supabase driver writes them to dedicated `agora_*` tables through the same `/api/records/:collection` API.
 
 ## Endpoints
 
@@ -86,7 +86,7 @@ The migration creates the snapshot/audit tables plus structured record tables fo
 - `GET /api/invitations/:token`: returns public invitation details for an invite acceptance screen.
 - `POST /api/invitations/:token/accept`: accepts an invitation and creates a session. Body: `{ "name": "Jordan Lee", "password": "optional 8+ characters" }`.
 - `GET /api/records`: returns structured collections from the active storage adapter. When no structured rows exist yet, the response includes `snapshotFallback` for bootstrap compatibility.
-- `GET /api/records/:collection`: returns a structured collection such as `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, or `files`. Supports filters like `?projectId=...`, `?taskId=...`, `?companyId=...`, and `?memberId=...`.
+- `GET /api/records/:collection`: returns a structured collection such as `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, or `presence`. Supports filters like `?projectId=...`, `?taskId=...`, `?companyId=...`, and `?memberId=...`.
 - `POST /api/records/:collection`: creates or updates one structured record for supported collections.
 - `GET /api/workspace`: returns the latest saved workspace snapshot.
 - `PUT /api/workspace`: saves a workspace snapshot for admin/project-manager roles.

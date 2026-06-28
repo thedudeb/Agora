@@ -78,6 +78,9 @@ alter table public.agora_documents alter column collection_key set default 'docu
 create table if not exists public.agora_files (like public.agora_companies including all);
 alter table public.agora_files alter column collection_key set default 'files';
 
+create table if not exists public.agora_presence (like public.agora_companies including all);
+alter table public.agora_presence alter column collection_key set default 'presence';
+
 create index if not exists idx_agora_companies_workspace_updated on public.agora_companies(workspace_id, updated_at desc);
 create index if not exists idx_agora_approvals_workspace_project on public.agora_approvals(workspace_id, project_id, updated_at desc);
 create index if not exists idx_agora_approvals_company on public.agora_approvals(workspace_id, company_id, updated_at desc);
@@ -86,6 +89,8 @@ create index if not exists idx_agora_comments_task on public.agora_comments(work
 create index if not exists idx_agora_activities_project on public.agora_activities(workspace_id, project_id, updated_at desc);
 create index if not exists idx_agora_documents_project on public.agora_documents(workspace_id, project_id, updated_at desc);
 create index if not exists idx_agora_files_project on public.agora_files(workspace_id, project_id, updated_at desc);
+create index if not exists idx_agora_presence_member on public.agora_presence(workspace_id, member_id, updated_at desc);
+create index if not exists idx_agora_presence_task on public.agora_presence(workspace_id, task_id, updated_at desc);
 
 drop trigger if exists trg_agora_companies_updated_at on public.agora_companies;
 create trigger trg_agora_companies_updated_at before update on public.agora_companies for each row execute function public.agora_set_updated_at();
@@ -108,6 +113,9 @@ create trigger trg_agora_documents_updated_at before update on public.agora_docu
 drop trigger if exists trg_agora_files_updated_at on public.agora_files;
 create trigger trg_agora_files_updated_at before update on public.agora_files for each row execute function public.agora_set_updated_at();
 
+drop trigger if exists trg_agora_presence_updated_at on public.agora_presence;
+create trigger trg_agora_presence_updated_at before update on public.agora_presence for each row execute function public.agora_set_updated_at();
+
 alter table public.agora_companies enable row level security;
 alter table public.agora_approvals enable row level security;
 alter table public.agora_time_entries enable row level security;
@@ -115,3 +123,4 @@ alter table public.agora_comments enable row level security;
 alter table public.agora_activities enable row level security;
 alter table public.agora_documents enable row level security;
 alter table public.agora_files enable row level security;
+alter table public.agora_presence enable row level security;

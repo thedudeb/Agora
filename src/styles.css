@@ -1026,6 +1026,23 @@ textarea:focus {
   gap: 8px;
 }
 
+.live-viewer-list,
+.live-viewer-row {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  background: #ecf4ef;
+  border: 1px solid #bfd8c8;
+  border-radius: 8px;
+}
+
+.live-viewer-list span,
+.live-viewer-row small {
+  color: var(--green);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
 .pulse-handoff {
   display: grid;
   gap: 3px;
@@ -2731,6 +2748,24 @@ th {
   gap: 10px;
 }
 
+.task-edit-warning {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  color: var(--amber);
+  background: #f8edd9;
+  border: 1px solid #dfc38e;
+  border-radius: 8px;
+}
+
+.task-edit-warning[hidden] {
+  display: none;
+}
+
+.task-edit-warning span {
+  color: #6c5a34;
+}
+
 .collaboration-panel {
   padding-top: 4px;
   border-top: 1px solid var(--line);
@@ -2788,6 +2823,12 @@ th {
   border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 800;
+}
+
+.presence-pill.is-live {
+  color: var(--green);
+  background: #e1eee1;
+  border-color: #bfd8c8;
 }
 
 .comment-item,

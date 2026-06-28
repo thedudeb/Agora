@@ -45,7 +45,8 @@ const recordCollections = {
   comments: { writePermission: "comments:write", normalizer: normalizeComment, label: "comment" },
   activities: { writePermission: "activity:write", normalizer: normalizeActivity, label: "activity" },
   documents: { writePermission: "attachments:write", normalizer: normalizeDocument, label: "document" },
-  files: { writePermission: "attachments:write", normalizer: normalizeFile, label: "file" }
+  files: { writePermission: "attachments:write", normalizer: normalizeFile, label: "file" },
+  presence: { writePermission: "workspace:read", normalizer: normalizePresence, label: "presence" }
 };
 
 const sessions = new Map();
@@ -544,6 +545,7 @@ function scopedSnapshot(snapshot = {}, session) {
       files: [],
       comments: [],
       activities: [],
+      presence: [],
       timeEntries: [],
       milestones: [],
       intakeForms: [],
@@ -571,6 +573,7 @@ function scopedSnapshot(snapshot = {}, session) {
     files: filterByProject(Array.isArray(snapshot.files) ? snapshot.files : []),
     comments: filterByTask(Array.isArray(snapshot.comments) ? snapshot.comments : []),
     activities: filterByProject(filterByTask(Array.isArray(snapshot.activities) ? snapshot.activities : [])),
+    presence: filterByProject(filterByTask(Array.isArray(snapshot.presence) ? snapshot.presence : [])),
     timeEntries: filterByTask(Array.isArray(snapshot.timeEntries) ? snapshot.timeEntries : []),
     milestones: filterByProject(Array.isArray(snapshot.milestones) ? snapshot.milestones : []),
     intakeForms: filterByProject(Array.isArray(snapshot.intakeForms) ? snapshot.intakeForms : []),
@@ -1199,6 +1202,7 @@ function normalizeTask(task) {
     subtasks: Array.isArray(task.subtasks) ? task.subtasks : [],
     customFields: task.customFields && typeof task.customFields === "object" && !Array.isArray(task.customFields) ? task.customFields : {},
     createdAt: task.createdAt ? String(task.createdAt) : new Date().toISOString(),
+    updatedAt: task.updatedAt ? String(task.updatedAt) : new Date().toISOString(),
     archivedAt: task.archivedAt ? String(task.archivedAt) : "",
     archivedBy: task.archivedBy ? String(task.archivedBy) : "",
     restoredAt: task.restoredAt ? String(task.restoredAt) : ""
@@ -1232,6 +1236,24 @@ function normalizeActivity(activity) {
     type: String(activity.type),
     message: String(activity.message),
     createdAt: activity.createdAt ? String(activity.createdAt) : new Date().toISOString()
+  };
+}
+
+function normalizePresence(presence) {
+  requireRecord(presence, "Presence");
+  if (!presence.id || !presence.memberId) {
+    publicError(400, "Presence requires id and memberId");
+  }
+  return {
+    id: String(presence.id),
+    memberId: String(presence.memberId),
+    route: presence.route ? String(presence.route) : "dashboard",
+    projectId: presence.projectId ? String(presence.projectId) : "",
+    taskId: presence.taskId ? String(presence.taskId) : "",
+    viewing: presence.viewing ? String(presence.viewing) : "",
+    status: presence.status ? String(presence.status) : "online",
+    lastActiveAt: presence.lastActiveAt ? String(presence.lastActiveAt) : new Date().toISOString(),
+    updatedAt: presence.updatedAt ? String(presence.updatedAt) : new Date().toISOString()
   };
 }
 

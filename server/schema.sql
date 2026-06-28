@@ -156,6 +156,19 @@ create table notifications (
   created_at timestamptz not null default now()
 );
 
+create table presence (
+  id text primary key,
+  workspace_id text not null references workspaces(id) on delete cascade,
+  user_id text references users(id) on delete cascade,
+  route text not null default 'dashboard',
+  project_id text references projects(id) on delete set null,
+  task_id text references tasks(id) on delete set null,
+  viewing text not null default '',
+  status text not null default 'online',
+  last_active_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table documents (
   id text primary key,
   workspace_id text not null references workspaces(id) on delete cascade,
@@ -241,6 +254,8 @@ create index idx_time_entries_workspace_date on time_entries(workspace_id, entry
 create index idx_approvals_workspace_project on approvals(workspace_id, project_id);
 create index idx_approvals_company_status on approvals(company_id, status);
 create index idx_notifications_user_unread on notifications(user_id, read_at) where archived_at is null;
+create index idx_presence_workspace_user on presence(workspace_id, user_id, updated_at desc);
+create index idx_presence_task on presence(workspace_id, task_id, updated_at desc);
 create index idx_audit_events_workspace_created on audit_events(workspace_id, created_at desc);
 
 alter table workspaces enable row level security;
@@ -255,6 +270,7 @@ alter table comments enable row level security;
 alter table milestones enable row level security;
 alter table time_entries enable row level security;
 alter table notifications enable row level security;
+alter table presence enable row level security;
 alter table documents enable row level security;
 alter table files enable row level security;
 alter table approvals enable row level security;

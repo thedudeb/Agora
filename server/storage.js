@@ -11,7 +11,8 @@ const recordTables = {
   comments: "agora_comments",
   activities: "agora_activities",
   documents: "agora_documents",
-  files: "agora_files"
+  files: "agora_files",
+  presence: "agora_presence"
 };
 
 function createStorage(options = {}) {
