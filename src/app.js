@@ -33,6 +33,8 @@ const routes = {
   "my-work": "My Work",
   time: "Time",
   reports: "Reports",
+  templates: "Templates",
+  automations: "Automations",
   docs: "Docs & Files",
   intake: "Intake",
   fields: "Custom Fields",
@@ -504,6 +506,136 @@ const seedData = {
       createdAt: "2026-07-06T09:30:00.000Z"
     }
   ],
+  projectTemplates: [
+    {
+      id: "template-client-onboarding",
+      name: "Client Onboarding",
+      category: "Agency",
+      description: "A ready-to-run client kickoff workspace with discovery, delivery, review, docs, intake, and milestones.",
+      owner: "sam",
+      durationDays: 30,
+      tasks: [
+        { key: "kickoff", title: "Run client kickoff", description: "Confirm goals, stakeholders, constraints, and success measures.", assignee: "sam", priority: "high", startOffset: 0, dueOffset: 3, tags: ["client", "kickoff"], blockedBy: [], subtasks: ["Confirm stakeholders", "Share agenda", "Capture success metrics"] },
+        { key: "discovery", title: "Complete discovery brief", description: "Document client needs, constraints, risks, and open questions.", assignee: "mara", priority: "high", startOffset: 3, dueOffset: 8, tags: ["discovery"], blockedBy: ["kickoff"], subtasks: ["Interview owner", "Map risks", "Share brief"] },
+        { key: "delivery", title: "Build delivery plan", description: "Turn the approved brief into milestones, owners, and delivery checkpoints.", assignee: "eli", priority: "normal", startOffset: 8, dueOffset: 16, tags: ["planning"], blockedBy: ["discovery"], subtasks: ["Create milestone map", "Assign owners"] },
+        { key: "handoff", title: "Prepare stakeholder handoff", description: "Package decisions, files, timeline, and next steps for client stakeholders.", assignee: "nina", priority: "normal", startOffset: 16, dueOffset: 24, tags: ["handoff"], blockedBy: ["delivery"], subtasks: ["Collect files", "Write summary", "Schedule review"] }
+      ],
+      milestones: [
+        { title: "Discovery approved", description: "Client goals, risks, and plan are aligned.", owner: "sam", dueOffset: 10, status: "planned", taskKeys: ["kickoff", "discovery"] },
+        { title: "Delivery plan ready", description: "The working plan is staffed, sequenced, and ready to run.", owner: "eli", dueOffset: 20, status: "planned", taskKeys: ["delivery", "handoff"] }
+      ],
+      docs: [
+        { title: "Client Kickoff Brief", type: "Template", body: "Goals, stakeholders, risks, decisions, and launch checklist for a new client workspace." },
+        { title: "Delivery Plan", type: "Brief", body: "Milestones, dependencies, timeline, owners, and open decisions." }
+      ],
+      intakeForm: {
+        title: "Client Change Request",
+        assignee: "sam",
+        description: "Capture new client asks after kickoff."
+      }
+    },
+    {
+      id: "template-software-launch",
+      name: "Software Launch",
+      category: "Product",
+      description: "Launch planning for a software release with scope, docs, QA, community, and release readiness.",
+      owner: "mara",
+      durationDays: 42,
+      tasks: [
+        { key: "scope", title: "Lock release scope", description: "Confirm release pillars, deferred work, risks, and owner decisions.", assignee: "mara", priority: "urgent", startOffset: 0, dueOffset: 5, tags: ["launch", "scope"], blockedBy: [], subtasks: ["Confirm pillars", "Cut deferred scope", "Share release brief"] },
+        { key: "docs", title: "Draft release docs", description: "Write setup, changelog, migration, and contributor notes.", assignee: "eli", priority: "high", startOffset: 5, dueOffset: 14, tags: ["docs"], blockedBy: ["scope"], subtasks: ["Setup guide", "Changelog", "FAQ"] },
+        { key: "qa", title: "Run release QA", description: "Check core paths, empty states, responsive layouts, and smoke tests.", assignee: "nina", priority: "high", startOffset: 12, dueOffset: 24, tags: ["qa"], blockedBy: ["scope"], subtasks: ["Desktop smoke", "Mobile smoke", "Regression pass"] },
+        { key: "announce", title: "Prepare launch announcement", description: "Draft announcement, screenshots, community notes, and launch checklist.", assignee: "sam", priority: "normal", startOffset: 20, dueOffset: 32, tags: ["community"], blockedBy: ["docs", "qa"], subtasks: ["Draft post", "Collect screenshots", "Schedule release"] }
+      ],
+      milestones: [
+        { title: "Scope locked", description: "Release scope is approved and ready for implementation.", owner: "mara", dueOffset: 6, status: "planned", taskKeys: ["scope"] },
+        { title: "Release candidate ready", description: "Docs, QA, and launch assets are ready for release review.", owner: "eli", dueOffset: 30, status: "planned", taskKeys: ["docs", "qa", "announce"] }
+      ],
+      docs: [
+        { title: "Release Brief", type: "Brief", body: "Audience, promise, release scope, deferred scope, risks, and acceptance bar." },
+        { title: "Launch Checklist", type: "Template", body: "Final QA, docs, messaging, issue labels, announcement, and post-launch monitoring." }
+      ],
+      intakeForm: {
+        title: "Launch Feedback",
+        assignee: "eli",
+        description: "Route release feedback, bugs, and follow-up requests."
+      }
+    }
+  ],
+  taskTemplates: [
+    {
+      id: "task-template-client-review",
+      name: "Client Review Task",
+      description: "A repeatable review task with checklist, client risk, budget, and handoff tags.",
+      assignee: "sam",
+      priority: "high",
+      durationDays: 5,
+      tags: ["client", "review"],
+      customFields: { effort: "Medium", risk: "Medium", budget: "1200" },
+      subtasks: ["Collect feedback", "Resolve open questions", "Send recap"]
+    },
+    {
+      id: "task-template-release-check",
+      name: "Release Readiness Check",
+      description: "A launch QA task for docs, layout checks, and release confidence.",
+      assignee: "eli",
+      priority: "urgent",
+      durationDays: 4,
+      tags: ["launch", "qa"],
+      customFields: { effort: "Large", risk: "High", budget: "0" },
+      subtasks: ["Run smoke test", "Check docs", "Verify mobile", "Capture release notes"]
+    },
+    {
+      id: "task-template-design-pass",
+      name: "Design Polish Pass",
+      description: "A focused design pass for dense UI, empty states, and mobile responsiveness.",
+      assignee: "nina",
+      priority: "normal",
+      durationDays: 3,
+      tags: ["design", "polish"],
+      customFields: { effort: "Small", risk: "Low", budget: "800" },
+      subtasks: ["Review desktop", "Review mobile", "Document adjustments"]
+    }
+  ],
+  automations: [
+    {
+      id: "automation-high-intake",
+      name: "Convert high urgency intake",
+      trigger: "Open intake urgency is High",
+      action: "Create a task in the intake form project",
+      enabled: true,
+      lastRun: "",
+      runCount: 0
+    },
+    {
+      id: "automation-blocked-alert",
+      name: "Flag blocked work",
+      trigger: "Task has open dependencies",
+      action: "Record an activity alert for the task owner",
+      enabled: true,
+      lastRun: "",
+      runCount: 0
+    },
+    {
+      id: "automation-due-risk",
+      name: "Escalate due-soon risk",
+      trigger: "Open task is due within 7 days",
+      action: "Set Risk custom field to High",
+      enabled: true,
+      lastRun: "",
+      runCount: 0
+    },
+    {
+      id: "automation-milestone-watch",
+      name: "Watch upcoming milestones",
+      trigger: "Milestone is due within 14 days",
+      action: "Record a milestone watch activity",
+      enabled: true,
+      lastRun: "",
+      runCount: 0
+    }
+  ],
+  automationHistory: [],
   timeEntries: [
     {
       id: "time-1",
@@ -617,6 +749,10 @@ function normalizeState(nextState) {
     files: Array.isArray(nextState.files) ? nextState.files : seedData.files,
     intakeForms: Array.isArray(nextState.intakeForms) ? nextState.intakeForms : seedData.intakeForms,
     intakeSubmissions: Array.isArray(nextState.intakeSubmissions) ? nextState.intakeSubmissions : seedData.intakeSubmissions,
+    projectTemplates: Array.isArray(nextState.projectTemplates) ? nextState.projectTemplates : seedData.projectTemplates,
+    taskTemplates: Array.isArray(nextState.taskTemplates) ? nextState.taskTemplates : seedData.taskTemplates,
+    automations: Array.isArray(nextState.automations) ? nextState.automations : seedData.automations,
+    automationHistory: Array.isArray(nextState.automationHistory) ? nextState.automationHistory : [],
     companies: nextState.companies.map((company) => ({
       type: "Client",
       status: "active",
@@ -1432,6 +1568,8 @@ function render() {
   if (state.selectedRoute === "my-work") renderMyWork();
   if (state.selectedRoute === "time") renderTimeTracking();
   if (state.selectedRoute === "reports") renderReports();
+  if (state.selectedRoute === "templates") renderTemplates();
+  if (state.selectedRoute === "automations") renderAutomations();
   if (state.selectedRoute === "docs") renderDocsAndFiles();
   if (state.selectedRoute === "intake") renderIntake();
   if (state.selectedRoute === "fields") renderCustomFields();
@@ -3055,6 +3193,184 @@ function renderHealthBar(score) {
   `;
 }
 
+function renderTemplates() {
+  const projectTemplateTaskCount = state.projectTemplates.reduce((total, template) => total + template.tasks.length, 0);
+  const projectTemplateDocCount = state.projectTemplates.reduce((total, template) => total + template.docs.length, 0);
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Project templates", state.projectTemplates.length)}
+      ${metric("Task templates", state.taskTemplates.length)}
+      ${metric("Template tasks", projectTemplateTaskCount)}
+      ${metric("Template docs", projectTemplateDocCount)}
+    </div>
+
+    <div class="templates-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Starter packs</p>
+            <h2>Project templates</h2>
+          </div>
+        </div>
+        <div class="template-list">
+          ${state.projectTemplates.map(renderProjectTemplateCard).join("")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Reusable work</p>
+            <h2>Task templates</h2>
+          </div>
+        </div>
+        <div class="template-list">
+          ${state.taskTemplates.map(renderTaskTemplateCard).join("")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderProjectTemplateCard(template) {
+  const defaultCompany = state.filters.company === "all" ? state.companies[0]?.id : state.filters.company;
+  return `
+    <article class="template-card" data-project-template-card="${template.id}">
+      <div>
+        <span class="status-pill inbox-blue">${escapeHtml(template.category)}</span>
+        <h3>${escapeHtml(template.name)}</h3>
+        <p>${escapeHtml(template.description)}</p>
+        <div class="template-meta">
+          <span>${template.tasks.length} tasks</span>
+          <span>${template.milestones.length} milestones</span>
+          <span>${template.docs.length} docs</span>
+          <span>${template.durationDays} days</span>
+        </div>
+      </div>
+      <div class="template-controls">
+        <label>
+          <span>Company</span>
+          <select data-template-company>
+            ${state.companies.map((company) => `<option value="${company.id}" ${company.id === defaultCompany ? "selected" : ""}>${escapeHtml(company.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Start</span>
+          <input type="date" data-template-start value="${todayKey()}">
+        </label>
+        <label class="wide-field">
+          <span>Project name</span>
+          <input data-template-name placeholder="${escapeHtml(template.name)}">
+        </label>
+        <button class="button button-primary" type="button" data-use-project-template="${template.id}">Create Project</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderTaskTemplateCard(template) {
+  const defaultProject = state.selectedProject === "all" ? state.projects[0]?.id : state.selectedProject;
+  return `
+    <article class="template-card" data-task-template-card="${template.id}">
+      <div>
+        <span class="status-pill inbox-green">${escapeHtml(priorityLabel(template.priority))}</span>
+        <h3>${escapeHtml(template.name)}</h3>
+        <p>${escapeHtml(template.description)}</p>
+        <div class="template-meta">
+          <span>${memberName(template.assignee)}</span>
+          <span>${template.durationDays} days</span>
+          <span>${template.subtasks.length} checklist</span>
+        </div>
+      </div>
+      <div class="template-controls">
+        <label class="wide-field">
+          <span>Project</span>
+          <select data-task-template-project>
+            ${state.projects.map((project) => `<option value="${project.id}" ${project.id === defaultProject ? "selected" : ""}>${escapeHtml(project.name)}</option>`).join("")}
+          </select>
+        </label>
+        <button class="button button-secondary" type="button" data-use-task-template="${template.id}">Create Task</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderAutomations() {
+  const enabled = state.automations.filter((automation) => automation.enabled);
+  const recentHistory = state.automationHistory.slice(0, 8);
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Rules", state.automations.length)}
+      ${metric("Enabled", enabled.length)}
+      ${metric("Runs", state.automations.reduce((total, automation) => total + Number(automation.runCount || 0), 0))}
+      ${metric("Recent changes", recentHistory.reduce((total, run) => total + Number(run.changedCount || 0), 0))}
+    </div>
+
+    <div class="automation-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Rules</p>
+            <h2>Automations</h2>
+          </div>
+          <button class="button button-primary" type="button" id="automation-run-all" ${enabled.length ? "" : "disabled"}>Run Enabled</button>
+        </div>
+        <div class="automation-list">
+          ${state.automations.map(renderAutomationCard).join("")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Audit</p>
+            <h2>Run history</h2>
+          </div>
+        </div>
+        <div class="automation-history-list">
+          ${recentHistory.length ? recentHistory.map(renderAutomationHistory).join("") : emptyState("Automations have not run yet.")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderAutomationCard(automation) {
+  return `
+    <article class="automation-card ${automation.enabled ? "is-enabled" : "is-disabled"}">
+      <div>
+        <span class="status-pill ${automation.enabled ? "inbox-green" : "inbox-neutral"}">${automation.enabled ? "enabled" : "paused"}</span>
+        <h3>${escapeHtml(automation.name)}</h3>
+        <p><strong>When:</strong> ${escapeHtml(automation.trigger)}</p>
+        <p><strong>Then:</strong> ${escapeHtml(automation.action)}</p>
+        <div class="meta-row">
+          <span>${automation.runCount || 0} runs</span>
+          <span>${automation.lastRun ? formatTimestamp(automation.lastRun) : "Never run"}</span>
+        </div>
+      </div>
+      <div class="automation-actions">
+        <button class="button button-secondary" type="button" data-toggle-automation="${automation.id}">${automation.enabled ? "Pause" : "Enable"}</button>
+        <button class="button button-primary" type="button" data-run-automation="${automation.id}" ${automation.enabled ? "" : "disabled"}>Run</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderAutomationHistory(run) {
+  const automation = byId(state.automations, run.automationId);
+  return `
+    <article class="automation-history-item">
+      <div>
+        <strong>${escapeHtml(automation?.name || "Automation")}</strong>
+        <span>${formatTimestamp(run.createdAt)}</span>
+      </div>
+      <span>${run.changedCount} ${run.changedCount === 1 ? "change" : "changes"}</span>
+    </article>
+  `;
+}
+
 function renderDocsAndFiles() {
   const documents = getVisibleDocuments();
   const files = getVisibleFiles();
@@ -3302,7 +3618,10 @@ function renderSubmissionCard(submission) {
       ${task ? `
         <button class="button button-secondary" type="button" data-edit-task="${task.id}">Open Task</button>
       ` : `
-        <button class="button button-primary" type="button" data-convert-submission="${submission.id}">Create Task</button>
+        <div class="submission-actions">
+          <button class="button button-secondary" type="button" data-template-submission="${submission.id}">Use Template</button>
+          <button class="button button-primary" type="button" data-convert-submission="${submission.id}">Create Task</button>
+        </div>
       `}
     </article>
   `;
@@ -3749,6 +4068,161 @@ function addQuickDailyTime(taskId, minutes = 30) {
   showToast(`Logged ${formatDuration(minutes)} for today`, "success");
 }
 
+function templateCompanyId(card) {
+  return card?.querySelector("[data-template-company]")?.value || (state.filters.company === "all" ? state.companies[0].id : state.filters.company);
+}
+
+function createTaskFromTemplate(templateId, projectId) {
+  const template = byId(state.taskTemplates, templateId);
+  const project = byId(state.projects, projectId);
+  if (!template || !project) return null;
+
+  const task = {
+    id: uid("task"),
+    projectId,
+    title: template.name,
+    description: template.description,
+    assignee: template.assignee,
+    status: "todo",
+    priority: template.priority,
+    startDate: todayKey(),
+    dueDate: shiftDate(todayKey(), template.durationDays),
+    blockedBy: [],
+    tags: [...template.tags],
+    subtasks: template.subtasks.map((title) => ({ id: uid("subtask"), title, done: false })),
+    customFields: { ...template.customFields },
+    createdAt: new Date().toISOString()
+  };
+
+  state.tasks = [task, ...state.tasks];
+  addActivity({
+    projectId,
+    taskId: task.id,
+    type: "template_task",
+    message: `created ${task.title} from a task template`
+  });
+  return task;
+}
+
+function createProjectFromTemplate(templateId, { companyId, name, startDate = todayKey() } = {}) {
+  const template = byId(state.projectTemplates, templateId);
+  const targetCompanyId = companyId || (state.filters.company === "all" ? state.companies[0].id : state.filters.company);
+  if (!template || !targetCompanyId) return null;
+
+  const project = {
+    id: uid("project"),
+    name: name || template.name,
+    companyId: targetCompanyId,
+    description: template.description,
+    owner: template.owner,
+    startDate,
+    dueDate: shiftDate(startDate, template.durationDays)
+  };
+  const taskIdsByKey = {};
+  const tasks = template.tasks.map((templateTask) => {
+    const taskId = uid("task");
+    taskIdsByKey[templateTask.key] = taskId;
+    return {
+      id: taskId,
+      projectId: project.id,
+      title: templateTask.title,
+      description: templateTask.description,
+      assignee: templateTask.assignee,
+      status: "todo",
+      priority: templateTask.priority,
+      startDate: shiftDate(startDate, templateTask.startOffset),
+      dueDate: shiftDate(startDate, templateTask.dueOffset),
+      blockedBy: [],
+      tags: [...templateTask.tags],
+      subtasks: templateTask.subtasks.map((title) => ({ id: uid("subtask"), title, done: false })),
+      customFields: {
+        effort: templateTask.priority === "urgent" || templateTask.priority === "high" ? "Large" : "Medium",
+        risk: templateTask.priority === "urgent" ? "High" : "Medium",
+        budget: "0"
+      },
+      createdAt: new Date().toISOString()
+    };
+  }).map((task, index) => ({
+    ...task,
+    blockedBy: (template.tasks[index].blockedBy || []).map((key) => taskIdsByKey[key]).filter(Boolean)
+  }));
+  const milestones = template.milestones.map((milestone) => ({
+    id: uid("milestone"),
+    projectId: project.id,
+    title: milestone.title,
+    description: milestone.description,
+    dueDate: shiftDate(startDate, milestone.dueOffset),
+    owner: milestone.owner,
+    status: milestone.status,
+    taskIds: milestone.taskKeys.map((key) => taskIdsByKey[key]).filter(Boolean)
+  }));
+  const documents = template.docs.map((document) => ({
+    id: uid("doc"),
+    projectId: project.id,
+    title: document.title,
+    type: document.type,
+    owner: template.owner,
+    updatedAt: new Date().toISOString(),
+    body: document.body
+  }));
+  const intakeForm = {
+    id: uid("form"),
+    title: template.intakeForm.title,
+    projectId: project.id,
+    assignee: template.intakeForm.assignee,
+    description: template.intakeForm.description,
+    fields: [
+      { id: "requester", label: "Requester", type: "text", required: true },
+      { id: "company", label: "Company / area", type: "text", required: true },
+      { id: "urgency", label: "Urgency", type: "select", options: ["Low", "Normal", "High"], required: true },
+      { id: "details", label: "Request details", type: "textarea", required: true }
+    ]
+  };
+
+  state.projects = [project, ...state.projects];
+  state.tasks = [...tasks, ...state.tasks];
+  state.milestones = [...milestones, ...state.milestones];
+  state.documents = [...documents, ...state.documents];
+  state.intakeForms = [intakeForm, ...state.intakeForms];
+  addActivity({
+    projectId: project.id,
+    type: "template_project",
+    message: `created project ${project.name} from ${template.name}`
+  });
+  return { project, tasks, milestones, documents, intakeForm };
+}
+
+function createTaskFromSubmissionRecord(submission, form) {
+  const task = {
+    id: uid("task"),
+    projectId: form.projectId,
+    title: submission.title,
+    description: `${submission.details}\n\nRequester: ${submission.requester}\nSource: ${form.title}`,
+    assignee: form.assignee,
+    status: "todo",
+    priority: submission.urgency === "High" ? "high" : "normal",
+    startDate: todayKey(),
+    dueDate: "",
+    blockedBy: [],
+    tags: ["intake"],
+    subtasks: [],
+    customFields: {
+      risk: submission.urgency === "High" ? "High" : "Medium"
+    },
+    createdAt: new Date().toISOString()
+  };
+
+  state.tasks = [task, ...state.tasks];
+  state.intakeSubmissions = state.intakeSubmissions.map((item) => item.id === submission.id ? { ...item, taskId: task.id } : item);
+  addActivity({
+    projectId: task.projectId,
+    taskId: task.id,
+    type: "intake_convert",
+    message: `converted request ${submission.title} to a task`
+  });
+  return task;
+}
+
 function createDocument() {
   const title = document.querySelector("#doc-title")?.value.trim();
   const projectId = document.querySelector("#doc-project")?.value;
@@ -3837,36 +4311,66 @@ function convertSubmissionToTask(submissionId) {
   const form = submission ? byId(state.intakeForms, submission.formId) : null;
   if (!submission || !form || submission.taskId) return;
 
-  const task = {
-    id: uid("task"),
-    projectId: form.projectId,
-    title: submission.title,
-    description: `${submission.details}\n\nRequester: ${submission.requester}\nSource: ${form.title}`,
-    assignee: form.assignee,
-    status: "todo",
-    priority: submission.urgency === "High" ? "high" : "normal",
-    startDate: todayKey(),
-    dueDate: "",
-    blockedBy: [],
-    tags: ["intake"],
-    subtasks: [],
-    customFields: {
-      risk: submission.urgency === "High" ? "High" : "Medium"
-    },
-    createdAt: new Date().toISOString()
-  };
-
-  state.tasks = [task, ...state.tasks];
-  state.intakeSubmissions = state.intakeSubmissions.map((item) => item.id === submissionId ? { ...item, taskId: task.id } : item);
-  addActivity({
-    projectId: task.projectId,
-    taskId: task.id,
-    type: "intake_convert",
-    message: `converted request ${submission.title} to a task`
-  });
+  createTaskFromSubmissionRecord(submission, form);
   saveState();
   render();
   showToast("Request converted to task", "success");
+}
+
+function createProjectTemplateFromButton(button) {
+  const card = button.closest("[data-project-template-card]");
+  const templateId = button.dataset.useProjectTemplate;
+  const created = createProjectFromTemplate(templateId, {
+    companyId: templateCompanyId(card),
+    name: card?.querySelector("[data-template-name]")?.value.trim() || undefined,
+    startDate: card?.querySelector("[data-template-start]")?.value || todayKey()
+  });
+  if (!created) return;
+
+  state.selectedProject = created.project.id;
+  state.selectedRoute = "project";
+  state.selectedProjectTab = "overview";
+  state.filters.company = created.project.companyId;
+  saveState();
+  render();
+  showToast("Project template applied", "success");
+}
+
+function createTaskTemplateFromButton(button) {
+  const card = button.closest("[data-task-template-card]");
+  const projectId = card?.querySelector("[data-task-template-project]")?.value || state.projects[0]?.id;
+  const task = createTaskFromTemplate(button.dataset.useTaskTemplate, projectId);
+  if (!task) return;
+
+  state.selectedProject = projectId;
+  state.selectedRoute = "project";
+  state.selectedProjectTab = "tasks";
+  saveState();
+  render();
+  showToast("Task template applied", "success");
+}
+
+function createProjectFromSubmission(submissionId) {
+  const submission = byId(state.intakeSubmissions, submissionId);
+  if (!submission || submission.taskId) return;
+
+  const matchedCompany = state.companies.find((company) => company.name.toLowerCase() === submission.company.toLowerCase());
+  const templateId = submission.formId === "form-client-request" ? "template-client-onboarding" : "template-software-launch";
+  const created = createProjectFromTemplate(templateId, {
+    companyId: matchedCompany?.id || (state.filters.company === "all" ? state.companies[0].id : state.filters.company),
+    name: submission.title,
+    startDate: todayKey()
+  });
+  if (!created) return;
+
+  state.intakeSubmissions = state.intakeSubmissions.map((item) => item.id === submissionId ? { ...item, taskId: created.tasks[0]?.id || "" } : item);
+  state.selectedProject = created.project.id;
+  state.selectedRoute = "project";
+  state.selectedProjectTab = "overview";
+  state.filters.company = created.project.companyId;
+  saveState();
+  render();
+  showToast("Project created from intake template", "success");
 }
 
 function createCustomField() {
@@ -3890,6 +4394,107 @@ function createCustomField() {
   saveState();
   render();
   showToast("Custom field added", "success");
+}
+
+function updateAutomationRun(ruleId, changedCount) {
+  const now = new Date().toISOString();
+  state.automations = state.automations.map((automation) => automation.id === ruleId
+    ? { ...automation, lastRun: now, runCount: Number(automation.runCount || 0) + 1 }
+    : automation);
+  state.automationHistory = [{
+    id: uid("automation-run"),
+    automationId: ruleId,
+    changedCount,
+    createdAt: now
+  }, ...state.automationHistory].slice(0, 20);
+}
+
+function runAutomation(ruleId) {
+  const automation = byId(state.automations, ruleId);
+  if (!automation || !automation.enabled) return 0;
+
+  let changedCount = 0;
+  if (ruleId === "automation-high-intake") {
+    state.intakeSubmissions
+      .filter((submission) => !submission.taskId && submission.urgency === "High")
+      .forEach((submission) => {
+        const form = byId(state.intakeForms, submission.formId);
+        if (!form) return;
+        createTaskFromSubmissionRecord(submission, form);
+        changedCount += 1;
+      });
+  }
+
+  if (ruleId === "automation-blocked-alert") {
+    state.tasks
+      .filter((task) => task.status !== "done" && isTaskBlocked(task))
+      .forEach((task) => {
+        addActivity({
+          projectId: task.projectId,
+          taskId: task.id,
+          memberId: task.assignee,
+          type: "automation_blocked",
+          message: `flagged blocked work on ${task.title}`
+        });
+        changedCount += 1;
+      });
+  }
+
+  if (ruleId === "automation-due-risk") {
+    dueSoonTasks(state.tasks)
+      .filter((task) => task.customFields?.risk !== "High")
+      .forEach((task) => {
+        state.tasks = state.tasks.map((item) => item.id === task.id ? {
+          ...item,
+          customFields: { ...(item.customFields || {}), risk: "High" }
+        } : item);
+        addActivity({
+          projectId: task.projectId,
+          taskId: task.id,
+          type: "automation_risk",
+          message: `escalated risk for ${task.title}`
+        });
+        changedCount += 1;
+      });
+  }
+
+  if (ruleId === "automation-milestone-watch") {
+    const today = todayKey();
+    const limit = shiftDate(today, 14);
+    state.milestones
+      .filter((milestone) => milestone.status !== "completed" && milestone.dueDate >= today && milestone.dueDate <= limit)
+      .forEach((milestone) => {
+        addActivity({
+          projectId: milestone.projectId,
+          memberId: milestone.owner,
+          type: "automation_milestone",
+          message: `flagged upcoming milestone ${milestone.title}`
+        });
+        changedCount += 1;
+      });
+  }
+
+  updateAutomationRun(ruleId, changedCount);
+  saveState();
+  render();
+  showToast(changedCount ? `Automation ran on ${changedCount} ${changedCount === 1 ? "item" : "items"}` : "Automation ran with no changes", changedCount ? "success" : "info");
+  return changedCount;
+}
+
+function toggleAutomation(ruleId) {
+  state.automations = state.automations.map((automation) => automation.id === ruleId ? { ...automation, enabled: !automation.enabled } : automation);
+  saveState();
+  render();
+  showToast("Automation updated", "success");
+}
+
+function runAllAutomations() {
+  const enabledIds = state.automations.filter((automation) => automation.enabled).map((automation) => automation.id);
+  let total = 0;
+  enabledIds.forEach((id) => {
+    total += runAutomation(id);
+  });
+  showToast(total ? `Automations ran on ${total} ${total === 1 ? "item" : "items"}` : "Automations ran with no changes", total ? "success" : "info");
 }
 
 document.addEventListener("click", (event) => {
@@ -3916,6 +4521,24 @@ document.addEventListener("click", (event) => {
 
   const createFieldButton = event.target.closest("#field-create");
   if (createFieldButton) createCustomField();
+
+  const useProjectTemplateButton = event.target.closest("[data-use-project-template]");
+  if (useProjectTemplateButton) createProjectTemplateFromButton(useProjectTemplateButton);
+
+  const useTaskTemplateButton = event.target.closest("[data-use-task-template]");
+  if (useTaskTemplateButton) createTaskTemplateFromButton(useTaskTemplateButton);
+
+  const templateSubmissionButton = event.target.closest("[data-template-submission]");
+  if (templateSubmissionButton) createProjectFromSubmission(templateSubmissionButton.dataset.templateSubmission);
+
+  const runAutomationButton = event.target.closest("[data-run-automation]");
+  if (runAutomationButton) runAutomation(runAutomationButton.dataset.runAutomation);
+
+  const toggleAutomationButton = event.target.closest("[data-toggle-automation]");
+  if (toggleAutomationButton) toggleAutomation(toggleAutomationButton.dataset.toggleAutomation);
+
+  const runAllAutomationsButton = event.target.closest("#automation-run-all");
+  if (runAllAutomationsButton) runAllAutomations();
 
   const projectButton = event.target.closest("[data-project-id]");
   if (projectButton) setProject(projectButton.dataset.projectId);

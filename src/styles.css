@@ -825,6 +825,105 @@ textarea:focus {
   align-items: start;
 }
 
+.templates-grid,
+.automation-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
+  gap: 16px;
+}
+
+.template-list,
+.automation-list,
+.automation-history-list {
+  display: grid;
+  gap: 10px;
+}
+
+.template-card,
+.automation-card,
+.automation-history-item {
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.template-card,
+.automation-card {
+  display: grid;
+  gap: 12px;
+}
+
+.template-card h3,
+.automation-card h3 {
+  margin: 8px 0 4px;
+}
+
+.template-card p,
+.automation-card p {
+  margin: 0 0 8px;
+  color: var(--muted);
+}
+
+.template-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.template-meta span {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.template-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.template-controls .button {
+  grid-column: 1 / -1;
+}
+
+.automation-card.is-disabled {
+  opacity: 0.72;
+}
+
+.automation-actions,
+.submission-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.automation-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.automation-history-item div {
+  display: grid;
+  gap: 3px;
+}
+
+.automation-history-item span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
 .time-grid {
   display: grid;
   grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
@@ -2036,6 +2135,8 @@ th {
   .daily-layout,
   .time-grid,
   .reports-grid,
+  .templates-grid,
+  .automation-grid,
   .docs-grid,
   .intake-grid,
   .fields-grid,
@@ -2087,6 +2188,8 @@ th {
   .daily-layout,
   .time-grid,
   .reports-grid,
+  .templates-grid,
+  .automation-grid,
   .company-grid,
   .company-detail-grid,
   .project-hero,
@@ -2097,6 +2200,7 @@ th {
   .doc-composer,
   .file-composer,
   .field-composer,
+  .template-controls,
   .intake-field-grid,
   .custom-field-grid,
   .dependency-grid,
@@ -2109,7 +2213,8 @@ th {
 
   .report-metrics,
   .portfolio-report-metrics,
-  .risk-item {
+  .risk-item,
+  .submission-card {
     grid-template-columns: 1fr;
   }
 
