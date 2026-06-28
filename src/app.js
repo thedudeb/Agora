@@ -883,6 +883,19 @@ function apiConnectionLabel() {
   return `${apiSession.user.name} / ${apiSession.membership.role}`;
 }
 
+function apiBackendLabel() {
+  if (!apiSession) return state.workspace.storageMode;
+  const storage = apiSession.storageDriver || apiSession.apiHealth?.storage || apiSession.lastStorage || "";
+  if (storage === "supabase") return "Supabase connected";
+  if (storage === "json-file") return "JSON API connected";
+  return "API connected";
+}
+
+function apiStatusLabel(offlineLabel = "browser only") {
+  if (!apiSession) return offlineLabel;
+  return apiBackendLabel().replace(" connected", "");
+}
+
 function apiConnectionTone() {
   return apiSession ? "inbox-green" : "inbox-neutral";
 }
@@ -3635,7 +3648,7 @@ function renderSettings() {
       ${metric("Members", memberships.length)}
       ${metric("Roles", workspaceRoles.length)}
       ${metric("Companies", state.companies.length)}
-      ${metric("Storage", apiSession ? "API connected" : state.workspace.storageMode)}
+      ${metric("Storage", apiBackendLabel())}
     </div>
 
     <div class="settings-grid">
@@ -3645,7 +3658,7 @@ function renderSettings() {
             <p class="eyebrow">Connection</p>
             <h2>API sync</h2>
           </div>
-          <span class="status-pill ${apiConnectionTone()}">${apiSession ? "connected" : "browser only"}</span>
+          <span class="status-pill ${apiConnectionTone()}">${escapeHtml(apiStatusLabel())}</span>
         </div>
         <div class="api-sync-card">
           <div>
@@ -3661,6 +3674,10 @@ function renderSettings() {
             </label>
             <button class="button button-primary" type="button" id="api-connect">${apiSession ? "Switch User" : "Connect to API"}</button>
             <button class="button button-secondary" type="button" id="api-disconnect" ${apiSession ? "" : "disabled"}>Disconnect</button>
+          </div>
+          <div class="data-actions">
+            <button class="button button-primary" type="button" id="api-save-workspace" ${apiSession ? "" : "disabled"}>Save to API</button>
+            <button class="button button-secondary" type="button" id="api-load-workspace" ${apiSession ? "" : "disabled"}>Load from API</button>
           </div>
         </div>
       </section>
@@ -3755,7 +3772,7 @@ function renderDataManagement() {
       ${metric("Projects", activeProjects().length)}
       ${metric("Tasks", activeTasks().length)}
       ${metric("Time entries", state.timeEntries.length)}
-      ${metric("Sync", apiSession ? "API connected" : "Browser only")}
+      ${metric("Sync", apiSession ? apiBackendLabel() : "Browser only")}
     </div>
 
     <div class="data-grid">
@@ -3765,7 +3782,7 @@ function renderDataManagement() {
             <p class="eyebrow">Backend</p>
             <h2>API sync</h2>
           </div>
-          <span class="status-pill ${apiConnectionTone()}">${apiSession ? "connected" : "offline"}</span>
+          <span class="status-pill ${apiConnectionTone()}">${escapeHtml(apiStatusLabel("offline"))}</span>
         </div>
         <div class="api-sync-card">
           <div>
@@ -5076,11 +5093,16 @@ async function connectApiSession() {
   const memberId = document.querySelector("#api-member")?.value || currentMemberId;
 
   try {
+    const health = await apiRequest("/api/health");
     const session = await apiRequest("/api/auth/demo-login", {
       method: "POST",
       body: { memberId }
     });
-    saveApiSession(session);
+    saveApiSession({
+      ...session,
+      apiHealth: health,
+      storageDriver: health.storage
+    });
     render();
     showToast(`Connected to API as ${session.user.name}`, "success");
   } catch (error) {
@@ -5107,7 +5129,7 @@ async function saveWorkspaceToApi() {
       method: "PUT",
       body: { snapshot: workspaceSnapshot() }
     });
-    saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt });
+    saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, storageDriver: document.metadata.storage || apiSession.storageDriver });
     render();
     showToast("Workspace saved to API", "success");
   } catch (error) {
@@ -5128,7 +5150,7 @@ async function loadWorkspaceFromApi() {
       return;
     }
     applyWorkspaceSnapshot(document.snapshot);
-    saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt });
+    saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, storageDriver: document.metadata.storage || apiSession.storageDriver });
     render();
     showToast("Workspace loaded from API", "success");
   } catch (error) {
@@ -5154,7 +5176,7 @@ async function importWorkspaceToApi() {
       method: "POST",
       body: { snapshot }
     });
-    saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt });
+    saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, storageDriver: document.metadata.storage || apiSession.storageDriver });
     render();
     showToast("JSON imported to API", "success");
   } catch (error) {
