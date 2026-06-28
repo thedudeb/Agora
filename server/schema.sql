@@ -4,6 +4,10 @@ create table users (
   id text primary key,
   name text not null,
   email text not null unique,
+  password_hash text,
+  password_salt text,
+  password_key_length integer,
+  password_cost integer,
   avatar_url text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -177,6 +181,22 @@ create table files (
   updated_at timestamptz not null default now()
 );
 
+create table approvals (
+  id text primary key,
+  workspace_id text not null references workspaces(id) on delete cascade,
+  company_id text references companies(id) on delete cascade,
+  project_id text not null references projects(id) on delete cascade,
+  task_id text references tasks(id) on delete set null,
+  title text not null,
+  requester_id text references users(id),
+  reviewer text not null default '',
+  status text not null default 'requested',
+  due_date date,
+  summary text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table intake_forms (
   id text primary key,
   workspace_id text not null references workspaces(id) on delete cascade,
@@ -218,5 +238,47 @@ create index idx_projects_workspace on projects(workspace_id);
 create index idx_tasks_workspace_project on tasks(workspace_id, project_id);
 create index idx_tasks_assignee on tasks(assignee_id);
 create index idx_time_entries_workspace_date on time_entries(workspace_id, entry_date);
+create index idx_approvals_workspace_project on approvals(workspace_id, project_id);
+create index idx_approvals_company_status on approvals(company_id, status);
 create index idx_notifications_user_unread on notifications(user_id, read_at) where archived_at is null;
 create index idx_audit_events_workspace_created on audit_events(workspace_id, created_at desc);
+
+alter table workspaces enable row level security;
+alter table workspace_memberships enable row level security;
+alter table workspace_invitations enable row level security;
+alter table companies enable row level security;
+alter table projects enable row level security;
+alter table tasks enable row level security;
+alter table task_dependencies enable row level security;
+alter table subtasks enable row level security;
+alter table comments enable row level security;
+alter table milestones enable row level security;
+alter table time_entries enable row level security;
+alter table notifications enable row level security;
+alter table documents enable row level security;
+alter table files enable row level security;
+alter table approvals enable row level security;
+alter table intake_forms enable row level security;
+alter table intake_submissions enable row level security;
+alter table audit_events enable row level security;
+
+-- Supabase Auth production policy sketch. Replace auth.uid()::text with the
+-- provider-specific user id mapping if self-hosting without Supabase Auth.
+create policy workspace_member_read on workspaces
+  for select using (
+    exists (
+      select 1 from workspace_memberships
+      where workspace_memberships.workspace_id = workspaces.id
+      and workspace_memberships.user_id = auth.uid()::text
+      and workspace_memberships.status = 'active'
+    )
+  );
+
+create policy workspace_member_rows on workspace_memberships
+  for select using (
+    workspace_id in (
+      select workspace_id from workspace_memberships as own_memberships
+      where own_memberships.user_id = auth.uid()::text
+      and own_memberships.status = 'active'
+    )
+  );

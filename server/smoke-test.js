@@ -254,9 +254,125 @@ async function run() {
     });
     assert(audit.events.length === 14, "audit log was not written");
 
+    await testAccountAuth();
     await testSupabaseStorageAdapter();
 
     console.log("API smoke test passed");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+}
+
+async function testAccountAuth() {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-auth-"));
+  const server = createServer({ storage: createStorage({ dataDir }) });
+
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const signup = await request(`${baseUrl}/api/auth/signup`, {
+      method: "POST",
+      body: {
+        name: "Owner Person",
+        email: "owner@example.test",
+        password: "super-secret",
+        workspaceName: "Owner Workspace",
+        workspaceSlug: "owner-workspace"
+      }
+    });
+    assert(signup.token, "signup did not create a session");
+    assert(signup.membership.role === "admin", "first signup did not create an admin");
+    assert(signup.user.hasPassword === true, "signup did not return password status");
+    assert(!signup.user.passwordHash, "signup leaked password hash");
+
+    const duplicateSignup = await requestError(`${baseUrl}/api/auth/signup`, {
+      method: "POST",
+      body: {
+        name: "Second Owner",
+        email: "second@example.test",
+        password: "super-secret"
+      }
+    });
+    assert(duplicateSignup.status === 403, "second open signup should be blocked");
+
+    const passwordLogin = await request(`${baseUrl}/api/auth/password-login`, {
+      method: "POST",
+      body: {
+        email: "owner@example.test",
+        password: "super-secret"
+      }
+    });
+    assert(passwordLogin.user.id === signup.user.id, "password login did not return owner");
+
+    const members = await request(`${baseUrl}/api/members`, {
+      token: signup.token
+    });
+    const owner = members.users.find((user) => user.email === "owner@example.test");
+    assert(owner && owner.hasPassword === true, "members did not include password status");
+    assert(!owner.passwordHash && !owner.passwordSalt, "members leaked password fields");
+
+    const company = await request(`${baseUrl}/api/records/companies`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        record: {
+          id: "company-record",
+          name: "Record Company",
+          owner: "owner"
+        }
+      }
+    });
+    assert(company.record.name === "Record Company", "record company upsert failed");
+
+    const approval = await request(`${baseUrl}/api/records/approvals`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        record: {
+          id: "approval-record",
+          companyId: "company-record",
+          projectId: "project-record",
+          title: "Record Approval",
+          status: "requested"
+        }
+      }
+    });
+    assert(approval.record.title === "Record Approval", "record approval upsert failed");
+
+    const records = await request(`${baseUrl}/api/records/approvals?companyId=company-record`, {
+      token: signup.token
+    });
+    assert(records.records.length === 1, "record approval filter failed");
+
+    const invitation = await request(`${baseUrl}/api/invitations`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        name: "Client User",
+        email: "client@example.test",
+        role: "client"
+      }
+    });
+    const accepted = await request(`${baseUrl}/api/invitations/${invitation.invitation.token}/accept`, {
+      method: "POST",
+      body: {
+        name: "Client User",
+        password: "client-secret"
+      }
+    });
+    assert(accepted.membership.role === "client", "invite password accept did not preserve role");
+
+    const clientLogin = await request(`${baseUrl}/api/auth/password-login`, {
+      method: "POST",
+      body: {
+        email: "client@example.test",
+        password: "client-secret"
+      }
+    });
+    assert(clientLogin.user.email === "client@example.test", "invited password login failed");
   } finally {
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(dataDir, { recursive: true, force: true });
@@ -358,6 +474,22 @@ async function request(url, options = {}) {
     throw new Error(`${response.status} ${body.error || "Request failed"}`);
   }
   return body;
+}
+
+async function requestError(url, options = {}) {
+  const response = await fetch(url, {
+    method: options.method || "GET",
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+  const body = await response.json();
+  if (response.ok) {
+    throw new Error(`Expected request to fail: ${url}`);
+  }
+  return { status: response.status, body };
 }
 
 function assert(condition, message) {

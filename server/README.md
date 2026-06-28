@@ -22,7 +22,7 @@ To test sync from the browser prototype, run the app in a second terminal:
 npm run dev
 ```
 
-Then open Settings, connect as a demo member, and use the Data page to save or load the workspace snapshot.
+Then open Settings, create the first workspace owner account or connect as a demo member, and use the Data page to save or load the workspace snapshot.
 
 ## Supabase Storage
 
@@ -50,15 +50,20 @@ Keep `SUPABASE_SERVICE_ROLE_KEY` on the server only. The browser app still talks
 ## Endpoints
 
 - `GET /api/health`: service health and active workspace metadata.
+- `POST /api/auth/signup`: creates the first workspace owner account, or accepts a pending invited account. Body: `{ "name": "Mara Chen", "email": "mara@example.com", "password": "8+ characters" }`.
 - `POST /api/auth/demo-login`: creates a demo session. Body: `{ "memberId": "mara" }`.
 - `POST /api/auth/login`: creates a passwordless session for an accepted workspace user. Body: `{ "email": "jordan@example.com" }`.
+- `POST /api/auth/password-login`: creates a session with email and password. Body: `{ "email": "jordan@example.com", "password": "8+ characters" }`.
 - `POST /api/auth/logout`: clears the current session.
 - `GET /api/session`: returns the current authenticated session.
 - `GET /api/members`: returns workspace users, memberships, and invitations.
 - `GET /api/invitations`: lists workspace invitations for admins.
 - `POST /api/invitations`: creates or refreshes an invitation for admins. Body: `{ "email": "jordan@example.com", "name": "Jordan Lee", "role": "member" }`.
 - `GET /api/invitations/:token`: returns public invitation details for an invite acceptance screen.
-- `POST /api/invitations/:token/accept`: accepts an invitation and creates a session. Body: `{ "name": "Jordan Lee" }`.
+- `POST /api/invitations/:token/accept`: accepts an invitation and creates a session. Body: `{ "name": "Jordan Lee", "password": "optional 8+ characters" }`.
+- `GET /api/records`: returns table-shaped collections currently backed by the workspace snapshot.
+- `GET /api/records/:collection`: returns a structured collection such as `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, or `files`. Supports filters like `?projectId=...`, `?taskId=...`, `?companyId=...`, and `?memberId=...`.
+- `POST /api/records/:collection`: creates or updates one structured record for supported collections.
 - `GET /api/workspace`: returns the latest saved workspace snapshot.
 - `PUT /api/workspace`: saves a workspace snapshot for admin/project-manager roles.
 - `POST /api/workspace/import`: imports a workspace snapshot for admins.

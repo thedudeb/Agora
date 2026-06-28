@@ -5,6 +5,8 @@ const { createStorage } = require("./storage");
 
 const PORT = Number(process.env.AGORA_API_PORT || 8787);
 const BODY_LIMIT_BYTES = 5 * 1024 * 1024;
+const PASSWORD_KEY_LENGTH = 64;
+const PASSWORD_SCRYPT_COST = 16384;
 
 const workspace = {
   id: "workspace-acme",
@@ -31,6 +33,16 @@ const rolePermissions = {
   manager: ["workspace:read", "workspace:write", "audit:read", "projects:write", "tasks:write", "comments:write", "activity:write", "attachments:write"],
   member: ["workspace:read", "comments:write", "activity:write", "attachments:write"],
   client: ["workspace:read"]
+};
+
+const recordCollections = {
+  companies: { writePermission: "projects:write", normalizer: normalizeCompany, label: "company" },
+  approvals: { writePermission: "tasks:write", normalizer: normalizeApproval, label: "approval" },
+  timeEntries: { writePermission: "tasks:write", normalizer: normalizeTimeEntry, label: "time entry" },
+  comments: { writePermission: "comments:write", normalizer: normalizeComment, label: "comment" },
+  activities: { writePermission: "activity:write", normalizer: normalizeActivity, label: "activity" },
+  documents: { writePermission: "attachments:write", normalizer: normalizeDocument, label: "document" },
+  files: { writePermission: "attachments:write", normalizer: normalizeFile, label: "file" }
 };
 
 const sessions = new Map();
@@ -81,10 +93,24 @@ function createServer(options = {}) {
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/auth/password-login") {
+        const body = await readJsonBody(request);
+        const session = await createPasswordSession(storage, body.email, body.password);
+        sendJson(response, 200, session);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/auth/signup") {
+        const body = await readJsonBody(request);
+        const session = await createOwnerAccount(storage, body);
+        sendJson(response, 201, session);
+        return;
+      }
+
       const invitationAcceptMatch = url.pathname.match(/^\/api\/invitations\/([^/]+)\/accept$/);
       if (invitationAcceptMatch && request.method === "POST") {
         const body = await readJsonBody(request);
-        const session = await acceptInvitation(storage, decodeURIComponent(invitationAcceptMatch[1]), body.name);
+        const session = await acceptInvitation(storage, decodeURIComponent(invitationAcceptMatch[1]), body.name, body.password);
         sendJson(response, 200, session);
         return;
       }
@@ -117,7 +143,7 @@ function createServer(options = {}) {
         }
         const snapshot = await storage.loadWorkspaceSnapshot();
         sendJson(response, 200, {
-          users: workspaceUsers(snapshot),
+          users: publicUsers(workspaceUsers(snapshot)),
           memberships: workspaceMemberships(snapshot),
           invitations: workspaceInvitations(snapshot)
         });
@@ -142,6 +168,62 @@ function createServer(options = {}) {
         const body = await readJsonBody(request);
         const invitation = await createInvitation(storage, body, session);
         sendJson(response, 201, { invitation });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/records") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const snapshot = await storage.loadWorkspaceSnapshot();
+        sendJson(response, 200, {
+          collections: Object.keys(recordCollections),
+          records: Object.fromEntries(Object.keys(recordCollections).map((key) => [key, Array.isArray(snapshot[key]) ? snapshot[key] : []]))
+        });
+        return;
+      }
+
+      const recordMatch = url.pathname.match(/^\/api\/records\/([^/]+)$/);
+      if (recordMatch && request.method === "GET") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const collectionKey = decodeURIComponent(recordMatch[1]);
+        const config = recordCollections[collectionKey];
+        if (!config) {
+          sendError(response, 404, "Record collection not found");
+          return;
+        }
+        const snapshot = await storage.loadWorkspaceSnapshot();
+        const records = filterRecords(collectionKey, Array.isArray(snapshot[collectionKey]) ? snapshot[collectionKey] : [], url);
+        sendJson(response, 200, { collection: collectionKey, records });
+        return;
+      }
+
+      if (recordMatch && (request.method === "POST" || request.method === "PUT")) {
+        const collectionKey = decodeURIComponent(recordMatch[1]);
+        const config = recordCollections[collectionKey];
+        if (!config) {
+          sendError(response, 404, "Record collection not found");
+          return;
+        }
+        if (!hasPermission(session, config.writePermission)) {
+          sendError(response, 403, `Missing ${config.writePermission} permission`);
+          return;
+        }
+        const body = await readJsonBody(request);
+        const record = await upsertCollectionItem(
+          storage,
+          collectionKey,
+          body.record || body[config.label.replace(" ", "")] || body,
+          config.normalizer,
+          session,
+          `${collectionKey}_upsert`,
+          (item) => `${config.label} ${item.title || item.name || item.id}`
+        );
+        sendJson(response, request.method === "POST" ? 201 : 200, { collection: collectionKey, record });
         return;
       }
 
@@ -408,7 +490,7 @@ function createSession(user, membership) {
   const token = crypto.randomUUID();
   const session = {
     token,
-    user,
+    user: publicUser(user),
     workspace,
     membership,
     permissions: rolePermissions[membership.role] || [],
@@ -441,6 +523,84 @@ async function createEmailSession(storage, email) {
 
   const membership = workspaceMemberships(snapshot).find((item) => item.memberId === user.id && item.status === "active");
   if (!membership) publicError(401, "No active workspace membership found for that email");
+
+  return createSession(user, membership);
+}
+
+async function createPasswordSession(storage, email, password) {
+  const normalizedEmail = normalizeEmail(email);
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const user = workspaceUsers(snapshot).find((item) => normalizeEmail(item.email) === normalizedEmail);
+  if (!user || !verifyPassword(password, user)) publicError(401, "Invalid email or password");
+
+  const membership = workspaceMemberships(snapshot).find((item) => item.memberId === user.id && item.status === "active");
+  if (!membership) publicError(401, "No active workspace membership found for that email");
+
+  return createSession(user, membership);
+}
+
+async function createOwnerAccount(storage, body) {
+  const email = normalizeEmail(body.email);
+  const name = cleanString(body.name) || email.split("@")[0];
+  const passwordFields = createPasswordFields(body.password);
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const storedUsers = snapshotUsersOnly(snapshot);
+  const existingUser = workspaceUsers(snapshot).find((item) => normalizeEmail(item.email) === email);
+  if (existingUser) publicError(409, "An account already exists for that email");
+
+  const pendingInvitation = workspaceInvitations(snapshot).find((item) => normalizeEmail(item.email) === email && item.status === "pending");
+  if (storedUsers.length > 0 && !pendingInvitation) {
+    publicError(403, "Workspace already has an owner. Ask an admin for an invitation.");
+  }
+
+  const now = new Date().toISOString();
+  const user = {
+    id: createUserId(email),
+    name,
+    email,
+    role: "Workspace owner",
+    createdAt: now,
+    ...passwordFields
+  };
+  const membership = {
+    memberId: user.id,
+    role: pendingInvitation?.role || "admin",
+    status: "active",
+    invitedBy: pendingInvitation?.invitedBy || "",
+    joinedAt: now
+  };
+  const nextInvitations = pendingInvitation
+    ? workspaceInvitations(snapshot).map((item) => item.id === pendingInvitation.id ? {
+      ...item,
+      status: "accepted",
+      acceptedAt: now,
+      acceptedBy: user.id
+    } : item)
+    : workspaceInvitations(snapshot);
+  const nextWorkspace = {
+    ...workspace,
+    ...(snapshot.workspace || {}),
+    name: cleanString(body.workspaceName) || snapshot.workspace?.name || workspace.name,
+    slug: cleanString(body.workspaceSlug) || snapshot.workspace?.slug || workspace.slug
+  };
+
+  await storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    workspace: nextWorkspace,
+    users: [user, ...storedUsers],
+    memberships: [membership, ...snapshotMembershipsOnly(snapshot).filter((item) => item.memberId !== user.id)],
+    invitations: nextInvitations
+  }, {
+    storage: storage.driver || "json-file",
+    updatedBy: user.id,
+    action: pendingInvitation ? "member_accept_invite" : "account_signup"
+  });
+  await storage.appendAuditEvent({
+    actorId: user.id,
+    action: pendingInvitation ? "member_accept_invite" : "account_signup",
+    workspaceId: workspace.id,
+    detail: `${user.name} created a password account`
+  });
 
   return createSession(user, membership);
 }
@@ -496,7 +656,7 @@ async function getInvitation(storage, token) {
   return publicInvitation(invitation);
 }
 
-async function acceptInvitation(storage, token, name) {
+async function acceptInvitation(storage, token, name, password) {
   const snapshot = await storage.loadWorkspaceSnapshot();
   const invitations = workspaceInvitations(snapshot);
   const invitation = invitations.find((item) => item.token === token && item.status === "pending");
@@ -513,9 +673,10 @@ async function acceptInvitation(storage, token, name) {
     role: "Team",
     createdAt: now
   };
+  const passwordFields = password ? createPasswordFields(password) : {};
   const nextUsers = existingUser
-    ? users.map((item) => item.id === existingUser.id ? { ...item, name: cleanString(name) || item.name } : item)
-    : [user, ...users];
+    ? users.map((item) => item.id === existingUser.id ? { ...item, name: cleanString(name) || item.name, ...passwordFields } : item)
+    : [{ ...user, ...passwordFields }, ...users];
   const nextMembership = {
     memberId: user.id,
     role: invitation.role,
@@ -550,7 +711,7 @@ async function acceptInvitation(storage, token, name) {
     detail: `${user.name} accepted an invitation`
   });
 
-  return createSession(user, nextMembership);
+  return createSession({ ...user, ...passwordFields }, nextMembership);
 }
 
 function workspaceUsers(snapshot = {}) {
@@ -558,6 +719,21 @@ function workspaceUsers(snapshot = {}) {
   demoUsers.forEach((user) => users.set(user.id, user));
   snapshotUsersOnly(snapshot).forEach((user) => users.set(user.id, user));
   return Array.from(users.values());
+}
+
+function publicUser(user = {}) {
+  return {
+    id: cleanString(user.id),
+    name: cleanString(user.name),
+    email: normalizeEmail(user.email),
+    role: cleanString(user.role) || "Team",
+    createdAt: cleanString(user.createdAt),
+    hasPassword: Boolean(user.passwordHash && user.passwordSalt)
+  };
+}
+
+function publicUsers(users) {
+  return users.map(publicUser);
 }
 
 function workspaceMemberships(snapshot = {}) {
@@ -595,7 +771,7 @@ function mergeSnapshotAccess(existingSnapshot = {}, incomingSnapshot = {}) {
 function mergeById(existingItems, incomingItems, key) {
   const next = new Map();
   existingItems.forEach((item) => next.set(item[key], item));
-  incomingItems.forEach((item) => next.set(item[key], item));
+  incomingItems.forEach((item) => next.set(item[key], { ...(next.get(item[key]) || {}), ...item }));
   return Array.from(next.values());
 }
 
@@ -641,7 +817,11 @@ function normalizeStoredUser(user) {
     name: cleanString(user.name) || cleanString(user.email),
     email: normalizeEmail(user.email),
     role: cleanString(user.role) || "Team",
-    createdAt: cleanString(user.createdAt)
+    createdAt: cleanString(user.createdAt),
+    passwordHash: cleanString(user.passwordHash),
+    passwordSalt: cleanString(user.passwordSalt),
+    passwordKeyLength: Number(user.passwordKeyLength || 0),
+    passwordCost: Number(user.passwordCost || 0)
   };
 }
 
@@ -676,6 +856,30 @@ function cleanString(value) {
 function createUserId(email) {
   const base = normalizeEmail(email).split("@")[0].replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "user";
   return `${base}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+function createPasswordFields(password) {
+  const value = cleanString(password);
+  if (value.length < 8) publicError(400, "Password must be at least 8 characters");
+
+  const salt = crypto.randomBytes(16).toString("hex");
+  return {
+    passwordHash: hashPassword(value, salt),
+    passwordSalt: salt,
+    passwordKeyLength: PASSWORD_KEY_LENGTH,
+    passwordCost: PASSWORD_SCRYPT_COST
+  };
+}
+
+function hashPassword(password, salt) {
+  return crypto.scryptSync(password, salt, PASSWORD_KEY_LENGTH, { N: PASSWORD_SCRYPT_COST }).toString("hex");
+}
+
+function verifyPassword(password, user) {
+  if (!user?.passwordHash || !user?.passwordSalt) return false;
+  const expected = Buffer.from(user.passwordHash, "hex");
+  const actual = Buffer.from(hashPassword(cleanString(password), user.passwordSalt), "hex");
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
 async function saveWorkspaceSnapshot(storage, snapshot, session, action) {
@@ -870,6 +1074,21 @@ function normalizeProject(project) {
   };
 }
 
+function normalizeCompany(company) {
+  requireRecord(company, "Company");
+  if (!company.id || !company.name) {
+    publicError(400, "Company requires id and name");
+  }
+  return {
+    id: String(company.id),
+    name: String(company.name),
+    type: company.type ? String(company.type) : "Client",
+    owner: company.owner ? String(company.owner) : "",
+    status: company.status ? String(company.status) : "active",
+    description: company.description ? String(company.description) : ""
+  };
+}
+
 function normalizeTask(task) {
   requireRecord(task, "Task");
   if (!task.id || !task.projectId) {
@@ -958,6 +1177,60 @@ function normalizeFile(file) {
     updatedAt: file.updatedAt ? String(file.updatedAt) : new Date().toISOString(),
     url: file.url ? String(file.url) : ""
   };
+}
+
+function normalizeApproval(approval) {
+  requireRecord(approval, "Approval");
+  if (!approval.id || !approval.projectId || !approval.title) {
+    publicError(400, "Approval requires id, projectId, and title");
+  }
+  return {
+    id: String(approval.id),
+    companyId: approval.companyId ? String(approval.companyId) : "",
+    projectId: String(approval.projectId),
+    taskId: approval.taskId ? String(approval.taskId) : "",
+    title: String(approval.title),
+    requester: approval.requester ? String(approval.requester) : "",
+    reviewer: approval.reviewer ? String(approval.reviewer) : "",
+    status: approval.status ? String(approval.status) : "requested",
+    dueDate: approval.dueDate ? String(approval.dueDate) : "",
+    summary: approval.summary ? String(approval.summary) : "",
+    createdAt: approval.createdAt ? String(approval.createdAt) : new Date().toISOString(),
+    updatedAt: approval.updatedAt ? String(approval.updatedAt) : ""
+  };
+}
+
+function normalizeTimeEntry(entry) {
+  requireRecord(entry, "Time entry");
+  if (!entry.id || !entry.taskId || !entry.memberId) {
+    publicError(400, "Time entry requires id, taskId, and memberId");
+  }
+  const minutes = Number(entry.minutes || 0);
+  if (!Number.isFinite(minutes) || minutes <= 0) publicError(400, "Time entry minutes must be greater than zero");
+  return {
+    id: String(entry.id),
+    taskId: String(entry.taskId),
+    memberId: String(entry.memberId),
+    date: entry.date ? String(entry.date) : new Date().toISOString().slice(0, 10),
+    minutes,
+    note: entry.note ? String(entry.note) : "",
+    billable: Boolean(entry.billable),
+    createdAt: entry.createdAt ? String(entry.createdAt) : new Date().toISOString()
+  };
+}
+
+function filterRecords(collectionKey, records, url) {
+  const projectId = url.searchParams.get("projectId");
+  const taskId = url.searchParams.get("taskId");
+  const companyId = url.searchParams.get("companyId");
+  const memberId = url.searchParams.get("memberId");
+
+  return records.filter((record) => (
+    (!projectId || record.projectId === projectId) &&
+    (!taskId || record.taskId === taskId) &&
+    (!companyId || record.companyId === companyId || (collectionKey === "companies" && record.id === companyId)) &&
+    (!memberId || record.memberId === memberId || record.owner === memberId || record.author === memberId || record.requester === memberId)
+  ));
 }
 
 function requireRecord(value, label) {

@@ -4264,13 +4264,23 @@ function renderSettings() {
         <div class="api-sync-card">
           <div>
             <strong>${escapeHtml(apiConnectionLabel())}</strong>
-            <p>${apiSession ? `Last synced ${escapeHtml(apiLastSyncedLabel())}` : "Start the API server, connect as a demo member, then sync this workspace."}</p>
+            <p>${apiSession ? `Last synced ${escapeHtml(apiLastSyncedLabel())}` : "Start the API server, create the workspace owner account, or connect as a demo member."}</p>
           </div>
           <div class="api-sync-form">
+            <label>
+              <span>Name</span>
+              <input id="api-account-name" placeholder="Workspace owner" value="${escapeHtml(apiSession?.user?.name || "")}">
+            </label>
             <label>
               <span>Email</span>
               <input id="api-email" type="email" placeholder="teammate@company.com" value="${escapeHtml(apiSession?.user?.email || "")}">
             </label>
+            <label>
+              <span>Password</span>
+              <input id="api-password" type="password" placeholder="8+ characters">
+            </label>
+            <button class="button button-primary" type="button" id="api-password-signup">Create Owner</button>
+            <button class="button button-secondary" type="button" id="api-password-login">Password Sign In</button>
             <button class="button button-secondary" type="button" id="api-email-login">Sign In</button>
             <label>
               <span>Demo member</span>
@@ -4450,6 +4460,10 @@ function renderInviteAcceptance() {
           <label>
             <span>Name</span>
             <input id="invite-accept-name" placeholder="Your name" value="${escapeHtml(preview?.name || "")}" ${canAcceptInvite ? "" : "disabled"}>
+          </label>
+          <label>
+            <span>Password</span>
+            <input id="invite-accept-password" type="password" placeholder="Optional, 8+ characters" ${canAcceptInvite ? "" : "disabled"}>
           </label>
           <button class="button button-primary" type="button" id="invite-accept" ${canAcceptInvite ? "" : "disabled"}>Accept Invite</button>
           <button class="button button-secondary" type="button" data-route="settings">Back to Settings</button>
@@ -5922,6 +5936,68 @@ async function signInWithEmail() {
   }
 }
 
+async function signUpWithPassword() {
+  const name = document.querySelector("#api-account-name")?.value.trim();
+  const email = document.querySelector("#api-email")?.value.trim();
+  const password = document.querySelector("#api-password")?.value;
+  if (!name || !email || !password) {
+    showToast("Enter name, email, and password", "info");
+    return;
+  }
+
+  try {
+    const health = await apiRequest("/api/health");
+    const session = await apiRequest("/api/auth/signup", {
+      method: "POST",
+      body: {
+        name,
+        email,
+        password,
+        workspaceName: state.workspace.name,
+        workspaceSlug: state.workspace.slug
+      }
+    });
+    saveApiSession({
+      ...session,
+      apiHealth: health,
+      storageDriver: health.storage
+    });
+    await syncAccessFromApi();
+    await saveWorkspaceToApi({ silent: true });
+    render();
+    showToast(`Owner account created for ${session.user.name}`, "success");
+  } catch (error) {
+    showToast(`Account setup failed: ${error.message}`, "info");
+  }
+}
+
+async function signInWithPassword() {
+  const email = document.querySelector("#api-email")?.value.trim();
+  const password = document.querySelector("#api-password")?.value;
+  if (!email || !password) {
+    showToast("Enter email and password", "info");
+    return;
+  }
+
+  try {
+    const health = await apiRequest("/api/health");
+    const session = await apiRequest("/api/auth/password-login", {
+      method: "POST",
+      body: { email, password }
+    });
+    saveApiSession({
+      ...session,
+      apiHealth: health,
+      storageDriver: health.storage
+    });
+    await syncAccessFromApi();
+    render();
+    showToast(`Signed in as ${session.user.name}`, "success");
+  } catch (error) {
+    showToast(`Password sign in failed: ${error.message}`, "info");
+  }
+}
+
 function disconnectApiSession() {
   clearApiSession();
   render();
@@ -5998,6 +6074,7 @@ async function loadInvitationPreview(token) {
 async function acceptWorkspaceInvite() {
   const token = state.selectedInviteToken;
   const name = document.querySelector("#invite-accept-name")?.value.trim() || invitePreview?.name || "";
+  const password = document.querySelector("#invite-accept-password")?.value || "";
   if (!token) {
     showToast("Invite token is missing", "info");
     return;
@@ -6011,7 +6088,7 @@ async function acceptWorkspaceInvite() {
     const health = await apiRequest("/api/health");
     const session = await apiRequest(`/api/invitations/${encodeURIComponent(token)}/accept`, {
       method: "POST",
-      body: { name }
+      body: { name, password }
     });
     saveApiSession({
       ...session,
@@ -6032,9 +6109,9 @@ async function acceptWorkspaceInvite() {
   }
 }
 
-async function saveWorkspaceToApi() {
+async function saveWorkspaceToApi(options = {}) {
   if (!apiSession) {
-    showToast("Connect to the API from Settings first", "info");
+    if (!options.silent) showToast("Connect to the API from Settings first", "info");
     return;
   }
 
@@ -6044,10 +6121,13 @@ async function saveWorkspaceToApi() {
       body: { snapshot: workspaceSnapshot() }
     });
     saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, storageDriver: document.metadata.storage || apiSession.storageDriver });
-    render();
-    showToast("Workspace saved to API", "success");
+    if (!options.silent) {
+      render();
+      showToast("Workspace saved to API", "success");
+    }
   } catch (error) {
-    showToast(`API save failed: ${error.message}`, "info");
+    if (!options.silent) showToast(`API save failed: ${error.message}`, "info");
+    throw error;
   }
 }
 
@@ -6359,6 +6439,12 @@ document.addEventListener("click", (event) => {
 
   const apiEmailLoginButton = event.target.closest("#api-email-login");
   if (apiEmailLoginButton) signInWithEmail();
+
+  const apiPasswordSignupButton = event.target.closest("#api-password-signup");
+  if (apiPasswordSignupButton) signUpWithPassword();
+
+  const apiPasswordLoginButton = event.target.closest("#api-password-login");
+  if (apiPasswordLoginButton) signInWithPassword();
 
   const apiDisconnectButton = event.target.closest("#api-disconnect");
   if (apiDisconnectButton) disconnectApiSession();
