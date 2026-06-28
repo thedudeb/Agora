@@ -7,6 +7,7 @@ dist/
 build/
 .next/
 out/
+server/data/
 
 # Environment
 .env
@@ -24,4 +25,3 @@ pnpm-debug.log*
 .DS_Store
 .idea/
 .vscode/
-

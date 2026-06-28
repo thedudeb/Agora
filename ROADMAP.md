@@ -9,10 +9,14 @@ This roadmap describes the intended direction for Agora. It will evolve as the p
 - Add development setup documentation.
 - Define contribution standards and issue labels.
 - Publish a small set of design principles and core user flows.
+- Establish the first API, auth, and persistence foundation.
+- Draft the database schema for self-hosted deployments.
 
 ## Phase 1: MVP
 
 - Workspace creation and member invitations.
+- Role-aware authentication and session management.
+- API-backed workspace persistence.
 - Project creation with configurable statuses.
 - Task creation, assignment, due dates, priorities, comments, and attachments.
 - List and board project views.
@@ -45,4 +49,3 @@ This roadmap describes the intended direction for Agora. It will evolve as the p
 - Native mobile apps.
 - Deeper third-party integrations.
 - Hosted cloud option, if the community and maintainers decide to pursue it.
-

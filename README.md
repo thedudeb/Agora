@@ -6,7 +6,7 @@ Agora is a self-hostable project management workspace inspired by tools like Asa
 
 ## Status
 
-Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, workspace settings, member roles, data import/export, a storage adapter foundation, company portfolios, editable companies, daily task planning, inbox notifications, notification badges and toasts, reporting dashboards, project and task templates, automations, project docs and files, intake forms, custom task fields, task dependencies, Gantt-style timelines, project filters, task creation, subtasks, comments, activity, employee time tracking, list view, board view, calendar view, project workspaces, milestones, project timelines, and a My Work view.
+Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, workspace settings, member roles, data import/export, a storage adapter foundation, a dependency-free API scaffold, demo auth, a PostgreSQL schema draft, company portfolios, editable companies, daily task planning, inbox notifications, notification badges and toasts, reporting dashboards, project and task templates, automations, project docs and files, intake forms, custom task fields, task dependencies, Gantt-style timelines, project filters, task creation, subtasks, comments, activity, employee time tracking, list view, board view, calendar view, project workspaces, milestones, project timelines, and a My Work view.
 
 ## Run Locally
 
@@ -17,6 +17,14 @@ npm run dev
 Then open `http://localhost:5174`.
 
 The prototype stores changes in browser local storage. Use "Reset sample data" in the sidebar to restore the seeded workspace.
+
+Run the API scaffold separately:
+
+```sh
+npm run dev:api
+```
+
+Then open `http://127.0.0.1:8787/api/health`.
 
 ## Product Principles
 
@@ -39,6 +47,7 @@ The prototype stores changes in browser local storage. Use "Reset sample data" i
 - `prds/` contains product requirements and planning documents.
 - `index.html` contains the first browser prototype shell.
 - `src/` contains prototype application logic and styles.
+- `server/` contains the first API scaffold, JSON development storage, and PostgreSQL schema draft.
 - `assets/` contains brand and interface assets.
 - `ROADMAP.md` outlines the release direction.
 - `CONTRIBUTING.md` explains how to contribute.
