@@ -146,7 +146,13 @@ const seedData = {
     visibility: "Private",
     defaultRole: "member",
     storageMode: "Browser local storage",
-    backendTarget: "API + PostgreSQL"
+    backendTarget: "API + PostgreSQL",
+    ai: {
+      provider: "local",
+      model: "Agora deterministic operator",
+      baseUrl: "",
+      keySource: "Server environment"
+    }
   },
   memberships: [
     { memberId: "mara", role: "admin", status: "active" },
@@ -931,7 +937,14 @@ function normalizeState(nextState) {
     selectedInviteToken: nextState.selectedInviteToken || "",
     selectedCalendarMonth: nextState.selectedCalendarMonth || seedData.selectedCalendarMonth,
     selectedDailyDate: nextState.selectedDailyDate || todayKey(),
-    workspace: { ...seedData.workspace, ...(nextState.workspace || {}) },
+    workspace: {
+      ...seedData.workspace,
+      ...(nextState.workspace || {}),
+      ai: {
+        ...seedData.workspace.ai,
+        ...((nextState.workspace || {}).ai || {})
+      }
+    },
     memberships: Array.isArray(nextState.memberships) ? nextState.memberships : seedData.memberships,
     users: Array.isArray(nextState.users) ? nextState.users : [],
     invitations: Array.isArray(nextState.invitations) ? nextState.invitations : [],
@@ -1091,6 +1104,20 @@ function pwaInstallHelp() {
 function notificationStatusLabel() {
   if (notificationPermissionState === "unsupported") return "Notifications unsupported";
   return `Notifications ${notificationPermissionState}`;
+}
+
+function aiSettings() {
+  return {
+    ...seedData.workspace.ai,
+    ...(state.workspace.ai || {})
+  };
+}
+
+function aiProviderLabel() {
+  const settings = aiSettings();
+  return settings.provider === "local"
+    ? "Local deterministic"
+    : `${settings.provider}${settings.model ? ` / ${settings.model}` : ""}`;
 }
 
 function apiLastSyncedLabel() {
@@ -1262,6 +1289,49 @@ function statusLabel(id) {
 
 function priorityLabel(id) {
   return byId(priorities, id)?.label || id;
+}
+
+function operatorTaskScore(task, date = todayKey()) {
+  let score = 0;
+  if (isOverdue(task)) score += 100;
+  if (isTaskBlocked(task)) score += 80;
+  if (task.dueDate === date) score += 70;
+  if (task.assignee === activeMemberId()) score += 40;
+  if (task.priority === "urgent") score += 35;
+  if (task.priority === "high") score += 25;
+  if (task.dueDate && task.dueDate <= shiftDate(date, 7)) score += 20;
+  score += getTaskComments(task.id).length * 3;
+  score += getTaskActivity(task.id, 3).length * 2;
+  return score;
+}
+
+function operatorReasonForTask(task, date = todayKey()) {
+  if (isOverdue(task)) return `Overdue since ${formatDate(task.dueDate)}`;
+  if (isTaskBlocked(task)) return `Blocked by ${openTaskDependencies(task).map((item) => item.title).join(", ")}`;
+  if (task.dueDate === date) return "Due today";
+  if (task.priority === "urgent" || task.priority === "high") return `${priorityLabel(task.priority)} priority`;
+  if (task.assignee === activeMemberId()) return "Assigned to you";
+  return "Relevant workspace signal";
+}
+
+function dailyOperatorPlan(date = state.selectedDailyDate) {
+  const candidates = activeTasks()
+    .filter((task) => task.status !== "done")
+    .filter((task) => !isPlannedForDate(task, date))
+    .map((task) => ({
+      task,
+      score: operatorTaskScore(task, date),
+      reason: operatorReasonForTask(task, date)
+    }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6);
+
+  return {
+    now: candidates.slice(0, 1),
+    next: candidates.slice(1, 3),
+    later: candidates.slice(3, 6)
+  };
 }
 
 function projectMatchesContext(projectId) {
@@ -2802,6 +2872,8 @@ function renderDashboard() {
 function renderDailyTasks() {
   const date = state.selectedDailyDate;
   const smartTasks = smartDailyTasks(date);
+  const operatorPlan = dailyOperatorPlan(date);
+  const operatorSuggestionCount = operatorPlan.now.length + operatorPlan.next.length + operatorPlan.later.length;
   const plannedTasks = ["now", "next", "later"].flatMap((lane) => dailyLaneTasks(lane, date));
   const plannedIds = new Set(plannedTasks.map((task) => task.id));
   const unplannedSmartTasks = smartTasks.filter((task) => !plannedIds.has(task.id));
@@ -2818,6 +2890,7 @@ function renderDailyTasks() {
           <button class="icon-button" type="button" data-daily-shift="-1" aria-label="Previous day">&lt;</button>
           <input type="date" value="${date}" data-daily-date aria-label="Daily task date">
           <button class="button button-secondary" type="button" data-daily-today>Today</button>
+          <button class="button button-primary" type="button" id="ai-generate-today" ${operatorSuggestionCount ? "" : "disabled"}>Generate Today</button>
           <button class="icon-button" type="button" data-daily-shift="1" aria-label="Next day">&gt;</button>
         </div>
       </div>
@@ -2852,14 +2925,38 @@ function renderDailyTasks() {
       <section class="panel">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Suggested</p>
-            <h2>Smart inbox</h2>
+            <p class="eyebrow">AI operator</p>
+            <h2>Daily plan</h2>
           </div>
+          <span class="status-pill inbox-blue">${escapeHtml(aiProviderLabel())}</span>
         </div>
+        ${renderDailyOperatorPreview(operatorPlan)}
         <div class="daily-smart-list">
           ${unplannedSmartTasks.length ? unplannedSmartTasks.map(renderDailySmartTask).join("") : emptyState("No unplanned work is asking for attention.")}
         </div>
       </section>
+    </div>
+  `;
+}
+
+function renderDailyOperatorPreview(plan) {
+  const items = [
+    ...plan.now.map((item) => ({ ...item, lane: "Now" })),
+    ...plan.next.map((item) => ({ ...item, lane: "Next" })),
+    ...plan.later.map((item) => ({ ...item, lane: "Later" }))
+  ];
+
+  if (!items.length) return emptyState("The operator does not see unplanned high-signal work for this day.");
+
+  return `
+    <div class="ai-plan-preview">
+      ${items.map(({ task, reason, lane }) => `
+        <article class="ai-plan-item">
+          <span>${escapeHtml(lane)}</span>
+          <strong>${escapeHtml(task.title)}</strong>
+          <small>${escapeHtml(reason)}</small>
+        </article>
+      `).join("")}
     </div>
   `;
 }
@@ -3033,6 +3130,7 @@ function renderInboxLane(title, items) {
 
 function renderOperatorBrief(brief) {
   const tone = brief.health < 45 ? "red" : brief.health < 70 ? "amber" : "green";
+  const company = projectCompany(brief.project.id);
   return `
     <article class="operator-brief">
       <div>
@@ -3046,6 +3144,8 @@ function renderOperatorBrief(brief) {
       </div>
       <div class="operator-action-row">
         <button class="button button-primary" type="button" data-operator-action="${brief.actionType}" data-operator-project="${brief.project.id}">Run action</button>
+        <button class="button button-secondary" type="button" data-ai-project-brief="${brief.project.id}">Draft brief</button>
+        ${company?.type === "Client" ? `<button class="button button-secondary" type="button" data-company-update="${company.id}">Client update</button>` : ""}
         <button class="button button-secondary" type="button" data-project-id="${brief.project.id}">Open project</button>
       </div>
       <div class="operator-metrics">
@@ -4801,6 +4901,7 @@ function renderAutomationSuggestion(suggestion) {
 function renderSettings() {
   const roleById = Object.fromEntries(workspaceRoles.map((role) => [role.id, role]));
   const teamMembers = workspaceMembers();
+  const ai = aiSettings();
   const pendingInvitations = state.invitations.filter((invitation) => invitation.status === "pending");
   const memberships = teamMembers.map((member) => ({
     ...member,
@@ -4907,6 +5008,45 @@ function renderSettings() {
             <input id="workspace-backend-target" value="${escapeHtml(state.workspace.backendTarget)}">
           </label>
           <button class="button button-primary" type="button" id="workspace-save">Save Settings</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Bring your own AI</p>
+            <h2>Operator provider</h2>
+          </div>
+          <span class="status-pill inbox-blue">${escapeHtml(aiProviderLabel())}</span>
+        </div>
+        <div class="settings-form">
+          <label>
+            <span>Provider</span>
+            <select id="ai-provider">
+              ${[
+                ["local", "Local deterministic"],
+                ["openai", "OpenAI-compatible"],
+                ["ollama", "Ollama"],
+                ["custom", "Custom endpoint"]
+              ].map(([value, label]) => `<option value="${value}" ${ai.provider === value ? "selected" : ""}>${label}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Model</span>
+            <input id="ai-model" value="${escapeHtml(ai.model)}" placeholder="gpt-4.1-mini, llama3.1, local">
+          </label>
+          <label>
+            <span>Base URL</span>
+            <input id="ai-base-url" value="${escapeHtml(ai.baseUrl)}" placeholder="https://api.openai.com/v1 or http://localhost:11434">
+          </label>
+          <label>
+            <span>API key source</span>
+            <select id="ai-key-source">
+              ${["Server environment", "Self-hosted secret store", "Not required"].map((option) => `<option value="${option}" ${ai.keySource === option ? "selected" : ""}>${option}</option>`).join("")}
+            </select>
+          </label>
+          <p class="settings-help">Agora uses the local deterministic operator by default. External providers should be called from the server so API keys never live in browser storage.</p>
+          <button class="button button-primary" type="button" id="ai-save-settings">Save AI Settings</button>
         </div>
       </section>
 
@@ -6509,6 +6649,100 @@ function addOperatorComment(task, body) {
   return comment;
 }
 
+function generateTodayPlan() {
+  const date = state.selectedDailyDate;
+  const plan = dailyOperatorPlan(date);
+  const laneEntries = [
+    ...plan.now.map((item) => ({ ...item, lane: "now" })),
+    ...plan.next.map((item) => ({ ...item, lane: "next" })),
+    ...plan.later.map((item) => ({ ...item, lane: "later" }))
+  ];
+
+  if (!laneEntries.length) {
+    showToast("No high-signal work to plan", "info");
+    return;
+  }
+
+  laneEntries.forEach(({ task, lane }) => {
+    planTaskForDate(task.id, lane, date);
+  });
+
+  const noteLines = [
+    `AI operator plan (${aiProviderLabel()})`,
+    ...laneEntries.map(({ task, lane, reason }) => `- ${lane.toUpperCase()}: ${task.title} - ${reason}`)
+  ];
+  state.dailyNotes = {
+    ...state.dailyNotes,
+    [date]: [state.dailyNotes?.[date], noteLines.join("\n")].filter(Boolean).join("\n\n")
+  };
+
+  addActivity({
+    projectId: laneEntries[0].task.projectId,
+    type: "ai_daily_plan",
+    message: `generated a daily operator plan for ${formatFullDate(date)}`
+  });
+  saveState();
+  render();
+  showToast(`Generated ${laneEntries.length} planned ${laneEntries.length === 1 ? "task" : "tasks"}`, "success");
+}
+
+function projectOperatorBriefBody(project) {
+  const brief = operatorBriefForProject(project);
+  const tasks = getProjectTasks(project.id, false);
+  const recentActivity = getProjectActivity(project.id, 5);
+  const approvals = getProjectApprovals(project.id).filter((approval) => approval.status !== "approved");
+  const liveViewers = livePresenceRecords({}).filter((presence) => presence.projectId === project.id);
+
+  return [
+    `${project.name} operator brief`,
+    `Generated by ${aiProviderLabel()}.`,
+    "",
+    brief.summary,
+    `Next action: ${brief.nextAction}.`,
+    "",
+    "Signals",
+    `- Health: ${brief.health}%`,
+    `- Progress: ${brief.progress}%`,
+    `- Open tasks: ${tasks.filter((task) => task.status !== "done").length}`,
+    `- Blocked: ${brief.blocked.length}`,
+    `- Due soon: ${brief.dueSoon.length}`,
+    `- Pending approvals: ${approvals.length}`,
+    liveViewers.length ? `- Live viewers: ${liveViewers.map((presence) => memberName(presence.memberId)).join(", ")}` : "- Live viewers: none right now",
+    "",
+    "Recommended actions",
+    ...[brief.blocked[0], brief.overdue[0], brief.dueSoon[0]].filter(Boolean).map((task) => `- ${task.title}: ${operatorReasonForTask(task)}.`),
+    approvals[0] ? `- Approval: follow up on ${approvals[0].title} with ${approvals[0].reviewer}.` : "- Approval: no pending approval chase needed.",
+    "",
+    "Recent activity",
+    ...(recentActivity.length ? recentActivity.map((activity) => `- ${formatTimestamp(activity.createdAt)}: ${memberName(activity.memberId)} ${activity.message}.`) : ["- No recent activity."])
+  ].join("\n");
+}
+
+function generateProjectBrief(projectId) {
+  const project = byId(state.projects, projectId);
+  if (!project) return;
+
+  const document = {
+    id: uid("doc-brief"),
+    projectId,
+    title: `${project.name} operator brief`,
+    type: "Operator Brief",
+    owner: activeMemberId(),
+    updatedAt: new Date().toISOString(),
+    body: projectOperatorBriefBody(project)
+  };
+  state.documents = [document, ...state.documents];
+  addActivity({
+    projectId,
+    type: "ai_project_brief",
+    message: `generated an operator brief for ${project.name}`
+  });
+  saveState();
+  render();
+  showToast("Project brief drafted in Docs", "success");
+  syncDocumentToApi(document, "Operator brief synced to API");
+}
+
 function runOperatorAction(actionType, projectId) {
   const project = byId(state.projects, projectId);
   if (!project) return;
@@ -6613,6 +6847,26 @@ function saveWorkspaceSettings() {
   saveState();
   render();
   showToast("Workspace settings saved", "success");
+}
+
+function saveAiSettings() {
+  const provider = document.querySelector("#ai-provider")?.value || "local";
+  const model = document.querySelector("#ai-model")?.value.trim() || (provider === "local" ? "Agora deterministic operator" : "");
+  const baseUrl = document.querySelector("#ai-base-url")?.value.trim() || "";
+  const keySource = document.querySelector("#ai-key-source")?.value || "Server environment";
+
+  state.workspace = {
+    ...state.workspace,
+    ai: {
+      provider,
+      model,
+      baseUrl,
+      keySource
+    }
+  };
+  saveState();
+  render();
+  showToast("AI operator settings saved", "success");
 }
 
 function updateMemberRole(memberId, role) {
@@ -7153,6 +7407,18 @@ document.addEventListener("click", (event) => {
   const automationSuggestionButton = event.target.closest("[data-automation-suggestion]");
   if (automationSuggestionButton) logAutomationSuggestion(automationSuggestionButton.dataset.automationSuggestion);
 
+  const generateTodayButton = event.target.closest("#ai-generate-today");
+  if (generateTodayButton) {
+    generateTodayPlan();
+    return;
+  }
+
+  const projectBriefButton = event.target.closest("[data-ai-project-brief]");
+  if (projectBriefButton) {
+    generateProjectBrief(projectBriefButton.dataset.aiProjectBrief);
+    return;
+  }
+
   const operatorActionButton = event.target.closest("[data-operator-action]");
   if (operatorActionButton) {
     runOperatorAction(operatorActionButton.dataset.operatorAction, operatorActionButton.dataset.operatorProject);
@@ -7170,10 +7436,19 @@ document.addEventListener("click", (event) => {
   }
 
   const companyUpdateButton = event.target.closest("[data-company-update]");
-  if (companyUpdateButton) draftCompanyUpdate(companyUpdateButton.dataset.companyUpdate);
+  if (companyUpdateButton) {
+    draftCompanyUpdate(companyUpdateButton.dataset.companyUpdate);
+    return;
+  }
 
   const workspaceSaveButton = event.target.closest("#workspace-save");
   if (workspaceSaveButton) saveWorkspaceSettings();
+
+  const aiSaveButton = event.target.closest("#ai-save-settings");
+  if (aiSaveButton) {
+    saveAiSettings();
+    return;
+  }
 
   const pwaInstallButton = event.target.closest("#pwa-install");
   if (pwaInstallButton) installPwa();

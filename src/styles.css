@@ -807,6 +807,32 @@ textarea:focus {
   gap: 10px;
 }
 
+.ai-plan-preview {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ai-plan-item {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  background: #eef4f4;
+  border: 1px solid rgba(36, 90, 88, 0.2);
+  border-radius: 8px;
+}
+
+.ai-plan-item span {
+  color: var(--green);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.ai-plan-item small {
+  color: var(--muted);
+}
+
 .daily-task-card,
 .daily-smart-card {
   display: grid;
@@ -1498,6 +1524,13 @@ textarea:focus {
 .settings-form .button {
   grid-column: 1 / -1;
   justify-self: end;
+}
+
+.settings-help {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .member-role-list,
