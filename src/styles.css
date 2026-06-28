@@ -28,6 +28,7 @@ body {
   margin: 0;
   color: var(--text);
   background: var(--bg);
+  overflow-x: hidden;
 }
 
 button,
@@ -88,6 +89,11 @@ button {
 .project-list {
   display: grid;
   gap: 6px;
+}
+
+.sidebar-section {
+  display: grid;
+  gap: 8px;
 }
 
 .nav-section-label {
@@ -1685,6 +1691,8 @@ textarea:focus {
   gap: 12px;
   align-items: start;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
   padding-bottom: 8px;
 }
 
@@ -1830,6 +1838,8 @@ textarea:focus {
 
 .table-wrap {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 table {
@@ -1880,6 +1890,8 @@ th {
   grid-template-columns: repeat(4, minmax(210px, 1fr));
   gap: 12px;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
 }
 
 .empty-state {
@@ -2223,16 +2235,81 @@ th {
 @media (max-width: 1040px) {
   .app-shell {
     grid-template-columns: 1fr;
+    overflow-x: hidden;
   }
 
   .sidebar {
-    position: static;
+    position: sticky;
+    top: 0;
+    z-index: 15;
+    gap: 12px;
     height: auto;
+    max-width: 100vw;
+    padding: 14px 18px;
+    overflow-x: hidden;
+    overflow-y: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 12px 30px rgba(35, 31, 25, 0.08);
   }
 
   .nav-list,
   .project-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    margin: 0 -4px;
+    padding: 0 4px 5px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+  }
+
+  .nav-section-label,
+  .section-title {
+    display: none;
+  }
+
+  .nav-item,
+  .project-pill {
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 42px;
+    scroll-snap-align: start;
+  }
+
+  .nav-item {
+    min-width: 112px;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .project-pill {
+    min-width: 180px;
+  }
+
+  .secondary-action {
+    align-self: flex-start;
+    margin-top: 0;
+    min-height: 36px;
+  }
+
+  .main-content {
+    width: 100%;
+    max-width: 100vw;
+    padding: 24px;
+  }
+
+  .toolbar {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .dashboard-grid,
@@ -2249,8 +2326,7 @@ th {
   .fields-grid,
   .company-grid,
   .company-detail-grid,
-  .project-hero,
-  .metric-grid {
+  .project-hero {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2272,24 +2348,88 @@ th {
     overflow-x: auto;
   }
 
-  .toolbar {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 680px) {
   .main-content {
-    padding: 18px;
+    padding: 16px;
   }
 
-  .topbar,
+  .sidebar {
+    gap: 10px;
+    padding: 12px max(12px, env(safe-area-inset-right)) 12px max(12px, env(safe-area-inset-left));
+  }
+
+  .brand {
+    min-height: 38px;
+  }
+
+  .brand img {
+    width: 32px;
+    height: 32px;
+  }
+
+  .nav-item {
+    min-width: 96px;
+    min-height: 40px;
+    padding: 7px 10px;
+    font-size: 0.88rem;
+  }
+
+  .project-pill {
+    min-width: 168px;
+    min-height: 40px;
+    padding: 7px 10px;
+  }
+
+  .secondary-action {
+    width: auto;
+    min-height: 34px;
+    padding: 7px 10px;
+    font-size: 0.84rem;
+  }
+
+  .topbar {
+    display: grid;
+    gap: 14px;
+    justify-content: stretch;
+    margin-bottom: 14px;
+  }
+
+  .topbar h1 {
+    font-size: 1.55rem;
+  }
+
   .topbar-actions {
     display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
     justify-content: stretch;
   }
 
+  .search-control {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+
+  .notification-button {
+    width: 42px;
+    min-height: 42px;
+  }
+
+  .button,
+  .icon-button,
+  input,
+  select,
+  textarea {
+    min-height: 42px;
+  }
+
+  .button {
+    padding: 8px 10px;
+  }
+
   .toolbar,
-  .metric-grid,
   .dashboard-grid,
   .daily-hero,
   .daily-layout,
@@ -2322,6 +2462,36 @@ th {
   .nav-list,
   .project-list {
     grid-template-columns: 1fr;
+  }
+
+  .toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+    padding: 12px;
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .metric {
+    min-height: 84px;
+    padding: 12px;
+  }
+
+  .metric strong {
+    font-size: 1.55rem;
+  }
+
+  .panel {
+    padding: 14px;
+  }
+
+  .panel-header {
+    display: grid;
   }
 
   .report-metrics,
@@ -2392,5 +2562,21 @@ th {
   .board,
   .work-lanes {
     grid-template-columns: minmax(260px, 1fr);
+  }
+}
+
+@media (max-width: 360px) {
+  .topbar-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .notification-button,
+  .topbar-actions .button {
+    width: 100%;
+  }
+
+  .toolbar,
+  .metric-grid {
+    grid-template-columns: 1fr;
   }
 }
