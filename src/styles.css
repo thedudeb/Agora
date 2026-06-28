@@ -90,6 +90,20 @@ button {
   gap: 6px;
 }
 
+.nav-section-label {
+  grid-column: 1 / -1;
+  margin: 14px 6px 2px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.nav-section-label:first-child {
+  margin-top: 0;
+}
+
 .nav-item,
 .project-pill,
 .secondary-action {
@@ -826,7 +840,9 @@ textarea:focus {
 }
 
 .templates-grid,
-.automation-grid {
+.automation-grid,
+.settings-grid,
+.data-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
   gap: 16px;
@@ -922,6 +938,95 @@ textarea:focus {
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 800;
+}
+
+.settings-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-form .button {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+.member-role-list,
+.backend-checklist,
+.export-stack,
+.import-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.member-role-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.36fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.member-role-row > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.member-role-row h3 {
+  margin: 0;
+}
+
+.member-role-row p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.backend-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.backend-item span {
+  display: inline-grid;
+  width: 34px;
+  height: 28px;
+  place-items: center;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 900;
+  background: var(--green);
+  border-radius: 999px;
+}
+
+.backend-item.is-pending span {
+  color: var(--muted);
+  background: #ede9df;
+}
+
+.export-textarea {
+  min-height: 180px;
+  color: var(--text);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre;
+  background: var(--surface-strong);
+}
+
+.import-panel .button {
+  justify-self: end;
 }
 
 .time-grid {
@@ -2137,6 +2242,8 @@ th {
   .reports-grid,
   .templates-grid,
   .automation-grid,
+  .settings-grid,
+  .data-grid,
   .docs-grid,
   .intake-grid,
   .fields-grid,
@@ -2190,6 +2297,11 @@ th {
   .reports-grid,
   .templates-grid,
   .automation-grid,
+  .settings-grid,
+  .data-grid,
+  .docs-grid,
+  .intake-grid,
+  .fields-grid,
   .company-grid,
   .company-detail-grid,
   .project-hero,
@@ -2201,6 +2313,7 @@ th {
   .file-composer,
   .field-composer,
   .template-controls,
+  .settings-form,
   .intake-field-grid,
   .custom-field-grid,
   .dependency-grid,
@@ -2256,7 +2369,8 @@ th {
   }
 
   .timeline-card,
-  .undated-task {
+  .undated-task,
+  .member-role-row {
     grid-template-columns: 1fr;
   }
 

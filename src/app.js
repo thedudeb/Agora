@@ -1,5 +1,17 @@
 const STORAGE_KEY = "agora.workspace.v1";
 
+const workspaceStore = {
+  load() {
+    return window.localStorage.getItem(STORAGE_KEY);
+  },
+  save(nextState) {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+  },
+  clear() {
+    window.localStorage.removeItem(STORAGE_KEY);
+  }
+};
+
 const statuses = [
   { id: "todo", label: "To do" },
   { id: "doing", label: "Doing" },
@@ -21,6 +33,13 @@ const members = [
   { id: "sam", name: "Sam Rivera", role: "Operations" }
 ];
 
+const workspaceRoles = [
+  { id: "admin", label: "Admin", description: "Can manage settings, members, templates, automations, and data exports." },
+  { id: "manager", label: "Project Manager", description: "Can manage companies, projects, tasks, intake, reports, and delivery workflows." },
+  { id: "member", label: "Member", description: "Can update assigned work, comments, docs, time, and daily planning." },
+  { id: "client", label: "Client / Guest", description: "Can submit intake, review shared work, and follow selected project updates." }
+];
+
 const currentMemberId = "mara";
 
 const routes = {
@@ -38,6 +57,8 @@ const routes = {
   docs: "Docs & Files",
   intake: "Intake",
   fields: "Custom Fields",
+  data: "Data",
+  settings: "Settings",
   companies: "Companies",
   company: "Company",
   project: "Project"
@@ -65,6 +86,21 @@ const seedData = {
     "task-2": { date: "2026-06-27", lane: "next" },
     "task-7": { date: "2026-06-27", lane: "later" }
   },
+  workspace: {
+    id: "workspace-acme",
+    name: "Acme Studio",
+    slug: "acme-studio",
+    visibility: "Private",
+    defaultRole: "member",
+    storageMode: "Browser local storage",
+    backendTarget: "API + PostgreSQL"
+  },
+  memberships: [
+    { memberId: "mara", role: "admin", status: "active" },
+    { memberId: "eli", role: "manager", status: "active" },
+    { memberId: "nina", role: "member", status: "active" },
+    { memberId: "sam", role: "manager", status: "active" }
+  ],
   inboxRead: [],
   inboxArchived: [],
   companies: [
@@ -719,7 +755,7 @@ let draftSubtasks = [];
 let toastTimers = new Map();
 
 function loadState() {
-  const stored = window.localStorage.getItem(STORAGE_KEY);
+  const stored = workspaceStore.load();
   if (!stored) return structuredClone(seedData);
 
   try {
@@ -740,6 +776,8 @@ function normalizeState(nextState) {
     ...nextState,
     selectedCalendarMonth: nextState.selectedCalendarMonth || seedData.selectedCalendarMonth,
     selectedDailyDate: nextState.selectedDailyDate || todayKey(),
+    workspace: { ...seedData.workspace, ...(nextState.workspace || {}) },
+    memberships: Array.isArray(nextState.memberships) ? nextState.memberships : seedData.memberships,
     dailyNotes: { ...seedData.dailyNotes, ...(nextState.dailyNotes || {}) },
     dailyPlans: { ...seedData.dailyPlans, ...(nextState.dailyPlans || {}) },
     inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
@@ -770,7 +808,7 @@ function normalizeState(nextState) {
 }
 
 function saveState() {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  workspaceStore.save(state);
 }
 
 function byId(collection, id) {
@@ -852,6 +890,85 @@ function visibleTaskCustomFields(task) {
   return state.customFields
     .map((field) => ({ ...field, value: customFieldValue(task, field) }))
     .filter((field) => field.value);
+}
+
+function workspaceSnapshot() {
+  return {
+    ...state,
+    exportedAt: new Date().toISOString(),
+    exportVersion: 1
+  };
+}
+
+function exportWorkspaceJson() {
+  return JSON.stringify(workspaceSnapshot(), null, 2);
+}
+
+function csvValue(value) {
+  const text = value === undefined || value === null ? "" : String(value);
+  return `"${text.replaceAll('"', '""')}"`;
+}
+
+function exportTasksCsv() {
+  const headers = ["id", "title", "project", "company", "assignee", "status", "priority", "startDate", "dueDate", "blockedBy", "tags"];
+  const rows = state.tasks.map((task) => [
+    task.id,
+    task.title,
+    projectName(task.projectId),
+    companyName(projectCompany(task.projectId)?.id),
+    memberName(task.assignee),
+    statusLabel(task.status),
+    priorityLabel(task.priority),
+    task.startDate,
+    task.dueDate,
+    taskDependencies(task).map((dependency) => dependency.title).join("; "),
+    task.tags.join("; ")
+  ]);
+
+  return [headers, ...rows].map((row) => row.map(csvValue).join(",")).join("\n");
+}
+
+function exportTimeCsv() {
+  const headers = ["id", "date", "employee", "task", "project", "minutes", "billable", "note"];
+  const rows = state.timeEntries.map((entry) => {
+    const task = byId(state.tasks, entry.taskId);
+    return [
+      entry.id,
+      entry.date,
+      memberName(entry.memberId),
+      task?.title || "Unknown task",
+      task ? projectName(task.projectId) : "Unknown project",
+      entry.minutes,
+      entry.billable ? "yes" : "no",
+      entry.note
+    ];
+  });
+
+  return [headers, ...rows].map((row) => row.map(csvValue).join(",")).join("\n");
+}
+
+function importWorkspaceJson(rawJson) {
+  const parsed = JSON.parse(rawJson);
+  const base = structuredClone(seedData);
+  state = normalizeState({
+    ...base,
+    ...parsed,
+    filters: { ...base.filters, ...(parsed.filters || {}) }
+  });
+  saveState();
+}
+
+function backendReadinessItems() {
+  return [
+    { label: "Storage adapter", done: true },
+    { label: "Workspace metadata", done: true },
+    { label: "Role model", done: true },
+    { label: "JSON export/import", done: true },
+    { label: "CSV task/time export", done: true },
+    { label: "API endpoints", done: false },
+    { label: "Database migrations", done: false },
+    { label: "Authentication", done: false }
+  ];
 }
 
 function isTaskVisibleForContext(task) {
@@ -1557,6 +1674,7 @@ function render() {
   renderSidebarProjects();
   renderFilters();
   renderNotificationBadges();
+  document.querySelector(".brand small").textContent = state.workspace.name;
 
   if (state.selectedRoute === "project") renderProjectPage();
   if (state.selectedRoute === "company") renderCompanyPage();
@@ -1573,6 +1691,8 @@ function render() {
   if (state.selectedRoute === "docs") renderDocsAndFiles();
   if (state.selectedRoute === "intake") renderIntake();
   if (state.selectedRoute === "fields") renderCustomFields();
+  if (state.selectedRoute === "data") renderDataManagement();
+  if (state.selectedRoute === "settings") renderSettings();
   if (state.selectedRoute === "companies") renderCompanies();
   if (state.selectedRoute === "dashboard") renderDashboard();
 }
@@ -3337,6 +3457,189 @@ function renderAutomations() {
   `;
 }
 
+function renderSettings() {
+  const roleById = Object.fromEntries(workspaceRoles.map((role) => [role.id, role]));
+  const memberships = members.map((member) => ({
+    ...member,
+    membership: state.memberships.find((item) => item.memberId === member.id) || {
+      memberId: member.id,
+      role: state.workspace.defaultRole,
+      status: "active"
+    }
+  }));
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Members", memberships.length)}
+      ${metric("Roles", workspaceRoles.length)}
+      ${metric("Companies", state.companies.length)}
+      ${metric("Storage", state.workspace.storageMode)}
+    </div>
+
+    <div class="settings-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Workspace</p>
+            <h2>Settings</h2>
+          </div>
+        </div>
+        <div class="settings-form">
+          <label>
+            <span>Name</span>
+            <input id="workspace-name" value="${escapeHtml(state.workspace.name)}">
+          </label>
+          <label>
+            <span>Slug</span>
+            <input id="workspace-slug" value="${escapeHtml(state.workspace.slug)}">
+          </label>
+          <label>
+            <span>Visibility</span>
+            <select id="workspace-visibility">
+              ${["Private", "Invite only", "Public"].map((option) => `<option value="${option}" ${option === state.workspace.visibility ? "selected" : ""}>${option}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Default role</span>
+            <select id="workspace-default-role">
+              ${workspaceRoles.map((role) => `<option value="${role.id}" ${role.id === state.workspace.defaultRole ? "selected" : ""}>${escapeHtml(role.label)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Storage mode</span>
+            <input value="${escapeHtml(state.workspace.storageMode)}" disabled>
+          </label>
+          <label>
+            <span>Backend target</span>
+            <input id="workspace-backend-target" value="${escapeHtml(state.workspace.backendTarget)}">
+          </label>
+          <button class="button button-primary" type="button" id="workspace-save">Save Settings</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Access</p>
+            <h2>Members and roles</h2>
+          </div>
+        </div>
+        <div class="member-role-list">
+          ${memberships.map((member) => {
+            const role = roleById[member.membership.role] || roleById[state.workspace.defaultRole];
+            return `
+              <article class="member-role-row">
+                <div>
+                  <span class="avatar">${member.name.split(" ").map((part) => part[0]).join("")}</span>
+                  <div>
+                    <h3>${escapeHtml(member.name)}</h3>
+                    <p>${escapeHtml(member.role)} - ${escapeHtml(role?.description || "")}</p>
+                  </div>
+                </div>
+                <select data-member-role="${member.id}" aria-label="Role for ${escapeHtml(member.name)}">
+                  ${workspaceRoles.map((option) => `<option value="${option.id}" ${option.id === member.membership.role ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+                </select>
+              </article>
+            `;
+          }).join("")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Migration</p>
+            <h2>Backend readiness</h2>
+          </div>
+        </div>
+        ${renderBackendChecklist()}
+      </section>
+    </div>
+  `;
+}
+
+function renderDataManagement() {
+  const taskCsv = exportTasksCsv();
+  const timeCsv = exportTimeCsv();
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Projects", state.projects.length)}
+      ${metric("Tasks", state.tasks.length)}
+      ${metric("Time entries", state.timeEntries.length)}
+      ${metric("Export version", "1")}
+    </div>
+
+    <div class="data-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Portable workspace</p>
+            <h2>JSON export</h2>
+          </div>
+          <button class="button button-secondary" type="button" id="refresh-export">Refresh</button>
+        </div>
+        <textarea class="export-textarea" id="json-export" rows="18" readonly>${escapeHtml(exportWorkspaceJson())}</textarea>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Tables</p>
+            <h2>CSV exports</h2>
+          </div>
+        </div>
+        <div class="export-stack">
+          <label>
+            <span>Tasks CSV</span>
+            <textarea class="export-textarea" id="task-csv-export" rows="8" readonly>${escapeHtml(taskCsv)}</textarea>
+          </label>
+          <label>
+            <span>Time CSV</span>
+            <textarea class="export-textarea" id="time-csv-export" rows="8" readonly>${escapeHtml(timeCsv)}</textarea>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Restore</p>
+            <h2>Import JSON</h2>
+          </div>
+        </div>
+        <div class="import-panel">
+          <textarea id="json-import" rows="12" placeholder="Paste an Agora JSON export"></textarea>
+          <button class="button button-primary" type="button" id="import-json">Import Workspace</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Migration</p>
+            <h2>Backend readiness</h2>
+          </div>
+        </div>
+        ${renderBackendChecklist()}
+      </section>
+    </div>
+  `;
+}
+
+function renderBackendChecklist() {
+  return `
+    <div class="backend-checklist">
+      ${backendReadinessItems().map((item) => `
+        <article class="backend-item ${item.done ? "is-done" : "is-pending"}">
+          <span>${item.done ? "OK" : ""}</span>
+          <strong>${escapeHtml(item.label)}</strong>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderAutomationCard(automation) {
   return `
     <article class="automation-card ${automation.enabled ? "is-enabled" : "is-disabled"}">
@@ -4497,6 +4800,53 @@ function runAllAutomations() {
   showToast(total ? `Automations ran on ${total} ${total === 1 ? "item" : "items"}` : "Automations ran with no changes", total ? "success" : "info");
 }
 
+function saveWorkspaceSettings() {
+  const name = document.querySelector("#workspace-name")?.value.trim();
+  const slug = document.querySelector("#workspace-slug")?.value.trim();
+  const visibility = document.querySelector("#workspace-visibility")?.value || state.workspace.visibility;
+  const defaultRole = document.querySelector("#workspace-default-role")?.value || state.workspace.defaultRole;
+  const backendTarget = document.querySelector("#workspace-backend-target")?.value.trim();
+  if (!name || !slug) return;
+
+  state.workspace = {
+    ...state.workspace,
+    name,
+    slug,
+    visibility,
+    defaultRole,
+    backendTarget: backendTarget || state.workspace.backendTarget
+  };
+  saveState();
+  render();
+  showToast("Workspace settings saved", "success");
+}
+
+function updateMemberRole(memberId, role) {
+  if (!members.some((member) => member.id === memberId) || !workspaceRoles.some((item) => item.id === role)) return;
+
+  const existing = state.memberships.some((membership) => membership.memberId === memberId);
+  state.memberships = existing
+    ? state.memberships.map((membership) => membership.memberId === memberId ? { ...membership, role } : membership)
+    : [...state.memberships, { memberId, role, status: "active" }];
+  saveState();
+  render();
+  showToast("Member role updated", "success");
+}
+
+function importWorkspaceFromTextarea() {
+  const textarea = document.querySelector("#json-import");
+  const rawJson = textarea?.value.trim();
+  if (!rawJson) return;
+
+  try {
+    importWorkspaceJson(rawJson);
+    render();
+    showToast("Workspace imported", "success");
+  } catch (error) {
+    showToast("Import failed: check the JSON format", "info");
+  }
+}
+
 document.addEventListener("click", (event) => {
   const toastDismissButton = event.target.closest("[data-toast-dismiss]");
   if (toastDismissButton) {
@@ -4539,6 +4889,15 @@ document.addEventListener("click", (event) => {
 
   const runAllAutomationsButton = event.target.closest("#automation-run-all");
   if (runAllAutomationsButton) runAllAutomations();
+
+  const workspaceSaveButton = event.target.closest("#workspace-save");
+  if (workspaceSaveButton) saveWorkspaceSettings();
+
+  const importJsonButton = event.target.closest("#import-json");
+  if (importJsonButton) importWorkspaceFromTextarea();
+
+  const refreshExportButton = event.target.closest("#refresh-export");
+  if (refreshExportButton) renderDataManagement();
 
   const projectButton = event.target.closest("[data-project-id]");
   if (projectButton) setProject(projectButton.dataset.projectId);
@@ -4702,6 +5061,12 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  const memberRoleSelect = event.target.closest("[data-member-role]");
+  if (memberRoleSelect) {
+    updateMemberRole(memberRoleSelect.dataset.memberRole, memberRoleSelect.value);
+    return;
+  }
+
   const taskProjectSelect = event.target.closest("#task-project");
   if (taskProjectSelect) {
     const taskId = document.querySelector("#task-id")?.value;
