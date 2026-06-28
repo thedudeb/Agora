@@ -1,4 +1,4 @@
-const CACHE_VERSION = "agora-pwa-v7";
+const CACHE_VERSION = "agora-pwa-v8";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -6,8 +6,8 @@ const APP_SHELL = [
   "./manifest.webmanifest",
   "./assets/agora-mark.svg",
   "./assets/agora-share-card.png",
-  "./src/styles.css?v=client-portal",
-  "./src/app.js?v=client-portal"
+  "./src/styles.css?v=accessibility",
+  "./src/app.js?v=accessibility"
 ];
 
 self.addEventListener("install", (event) => {

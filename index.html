@@ -28,7 +28,7 @@
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./assets/agora-mark.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./assets/agora-mark.svg">
-    <link rel="stylesheet" href="./src/styles.css?v=client-portal">
+    <link rel="stylesheet" href="./src/styles.css?v=accessibility">
     <script>
       window.AGORA_CONFIG = {
         apiBaseUrl: window.localStorage.getItem("agora.api.baseUrl") || "http://127.0.0.1:8787"
@@ -36,6 +36,7 @@
     </script>
   </head>
   <body>
+    <a class="skip-link" href="#app-view">Skip to main content</a>
     <div class="app-shell">
       <aside class="sidebar" aria-label="Workspace navigation">
         <a class="brand" href="#dashboard" data-route="dashboard" aria-label="Agora dashboard">
@@ -117,7 +118,7 @@
         <button class="secondary-action" type="button" id="seed-reset">Reset sample data</button>
       </aside>
 
-      <main class="main-content">
+      <main class="main-content" id="main-content" tabindex="-1">
         <header class="topbar">
           <div>
             <p class="eyebrow">Open source project management</p>
@@ -160,13 +161,14 @@
           </label>
         </section>
 
-        <section id="app-view" class="view" aria-live="polite"></section>
+        <p class="sr-only" id="route-status" aria-live="polite" aria-atomic="true">Dashboard view loaded.</p>
+        <section id="app-view" class="view" tabindex="-1" aria-labelledby="page-title"></section>
       </main>
     </div>
 
     <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
-    <dialog class="modal" id="task-dialog">
+    <dialog class="modal" id="task-dialog" aria-labelledby="task-form-title">
       <form method="dialog" id="task-form" class="modal-form">
         <div class="modal-header">
           <div>
@@ -229,12 +231,12 @@
       </form>
     </dialog>
 
-    <dialog class="modal" id="project-dialog">
+    <dialog class="modal" id="project-dialog" aria-labelledby="project-form-title">
       <form method="dialog" id="project-form" class="modal-form">
         <div class="modal-header">
           <div>
             <p class="eyebrow">Project</p>
-            <h2>New Project</h2>
+            <h2 id="project-form-title">New Project</h2>
           </div>
           <button class="icon-button" type="button" data-close-dialog="project-dialog" aria-label="Close">x</button>
         </div>
@@ -272,7 +274,7 @@
       </form>
     </dialog>
 
-    <dialog class="modal" id="company-dialog">
+    <dialog class="modal" id="company-dialog" aria-labelledby="company-form-title">
       <form method="dialog" id="company-form" class="modal-form">
         <div class="modal-header">
           <div>
@@ -321,6 +323,6 @@
       </form>
     </dialog>
 
-    <script src="./src/app.js?v=client-portal"></script>
+    <script src="./src/app.js?v=accessibility"></script>
   </body>
 </html>

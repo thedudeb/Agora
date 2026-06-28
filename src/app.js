@@ -833,7 +833,9 @@ let notificationPermissionState = typeof Notification === "undefined" ? "unsuppo
 
 const els = {
   appView: document.querySelector("#app-view"),
+  mainContent: document.querySelector("#main-content"),
   pageTitle: document.querySelector("#page-title"),
+  routeStatus: document.querySelector("#route-status"),
   projectList: document.querySelector("#project-list"),
   projectSectionCount: document.querySelector("#project-section-count"),
   navInboxCount: document.querySelector("#nav-inbox-count"),
@@ -857,6 +859,7 @@ const els = {
 
 let draftSubtasks = [];
 let toastTimers = new Map();
+let lastFocusedBeforeDialog = null;
 
 function loadState() {
   const stored = workspaceStore.load();
@@ -1295,6 +1298,14 @@ function renderNotificationBadges() {
     badge.textContent = count > 99 ? "99+" : String(count);
     badge.hidden = count === 0;
   });
+  const notificationButton = document.querySelector("#notification-button");
+  if (notificationButton) {
+    notificationButton.setAttribute("aria-label", count ? `Open notifications, ${count} unread` : "Open notifications");
+  }
+  const inboxItem = document.querySelector('[data-route="inbox"]');
+  if (inboxItem) {
+    inboxItem.setAttribute("aria-label", count ? `Inbox, ${count} unread` : "Inbox");
+  }
 }
 
 function showToast(message, tone = "info") {
@@ -1304,6 +1315,7 @@ function showToast(message, tone = "info") {
   const toast = document.createElement("div");
   toast.className = `toast toast-${tone}`;
   toast.dataset.toastId = id;
+  toast.setAttribute("role", tone === "success" ? "status" : "alert");
 
   const text = document.createElement("span");
   text.textContent = message;
@@ -2239,9 +2251,18 @@ function render() {
     : state.selectedRoute === "company" && selectedCompany
       ? selectedCompany.name
       : routes[state.selectedRoute];
+  document.title = `${els.pageTitle.textContent} - Agora`;
+  if (els.routeStatus) els.routeStatus.textContent = `${els.pageTitle.textContent} view loaded.`;
   document.querySelectorAll("[data-route]").forEach((item) => {
     const isCompaniesRoute = item.dataset.route === "companies" && state.selectedRoute === "company";
-    item.classList.toggle("is-active", item.dataset.route === state.selectedRoute || isCompaniesRoute);
+    const isActive = item.dataset.route === state.selectedRoute || isCompaniesRoute;
+    item.classList.toggle("is-active", isActive);
+    if (item.classList.contains("brand")) return;
+    if (isActive) {
+      item.setAttribute("aria-current", "page");
+    } else {
+      item.removeAttribute("aria-current");
+    }
   });
   renderSidebarGroups();
 
@@ -2346,8 +2367,9 @@ function renderSidebarProjects() {
   const allCount = tasks.length;
   const projectButtons = projects.map((project) => {
     const taskCount = tasks.filter((task) => task.projectId === project.id).length;
+    const isSelected = state.selectedProject === project.id;
     return `
-      <button class="project-pill ${state.selectedProject === project.id ? "is-active" : ""}" type="button" data-project-id="${project.id}">
+      <button class="project-pill ${isSelected ? "is-active" : ""}" type="button" data-project-id="${project.id}" ${isSelected ? 'aria-current="page"' : ""} aria-label="${escapeHtml(project.name)}, ${taskCount} active ${taskCount === 1 ? "task" : "tasks"}">
         <span>${escapeHtml(project.name)}</span>
         <small>${taskCount}</small>
       </button>
@@ -2355,7 +2377,7 @@ function renderSidebarProjects() {
   }).join("");
 
   els.projectList.innerHTML = `
-    <button class="project-pill ${state.selectedProject === "all" ? "is-active" : ""}" type="button" data-project-id="all">
+    <button class="project-pill ${state.selectedProject === "all" ? "is-active" : ""}" type="button" data-project-id="all" ${state.selectedProject === "all" ? 'aria-current="page"' : ""} aria-label="All projects, ${allCount} active ${allCount === 1 ? "task" : "tasks"}">
       <span>All projects</span>
       <small>${allCount}</small>
     </button>
@@ -5434,15 +5456,26 @@ function populateCompanyForm(company = null) {
 }
 
 function openDialog(dialog) {
+  lastFocusedBeforeDialog = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   if (typeof dialog.showModal === "function") {
     dialog.showModal();
   } else {
     dialog.setAttribute("open", "");
   }
+  window.setTimeout(() => {
+    const focusTarget = dialog.querySelector("[autofocus], input:not([type='hidden']):not([disabled]), select:not([disabled]), textarea:not([disabled])")
+      || dialog.querySelector("button:not([disabled])");
+    focusTarget?.focus();
+  }, 0);
 }
 
 function closeDialog(dialog) {
   dialog.close();
+}
+
+function restoreDialogFocus() {
+  if (lastFocusedBeforeDialog?.isConnected) lastFocusedBeforeDialog.focus();
+  lastFocusedBeforeDialog = null;
 }
 
 function uid(prefix) {
@@ -6918,6 +6951,10 @@ document.querySelector("#new-task-button").addEventListener("click", () => {
 document.querySelector("#new-project-button").addEventListener("click", () => {
   populateProjectForm();
   openDialog(els.projectDialog);
+});
+
+[els.taskDialog, els.projectDialog, els.companyDialog].filter(Boolean).forEach((dialog) => {
+  dialog.addEventListener("close", restoreDialogFocus);
 });
 
 document.querySelector("#seed-reset").addEventListener("click", () => {
