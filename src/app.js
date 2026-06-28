@@ -1,7 +1,7 @@
 const STORAGE_KEY = "agora.workspace.v1";
 const API_SESSION_KEY = "agora.api.session.v1";
 const SIDEBAR_STATE_KEY = "agora.sidebar.v1";
-const API_BASE_URL = "http://127.0.0.1:8787";
+const API_BASE_URL = (window.AGORA_API_BASE_URL || window.AGORA_CONFIG?.apiBaseUrl || "http://127.0.0.1:8787").replace(/\/+$/, "");
 
 const workspaceStore = {
   load() {
@@ -93,6 +93,7 @@ const currentMemberId = "mara";
 
 const routes = {
   dashboard: "Dashboard",
+  portal: "Portal",
   daily: "Today",
   inbox: "Inbox",
   board: "Board",
@@ -963,6 +964,33 @@ function clearApiSession() {
   apiSessionStore.clear();
 }
 
+const structuredRecordCollections = ["companies", "approvals", "timeEntries", "comments", "activities", "documents", "files"];
+
+function mergeRecordsById(existingItems = [], incomingItems = []) {
+  const next = new Map();
+  existingItems.forEach((item) => next.set(item.id, item));
+  incomingItems.forEach((item) => next.set(item.id, { ...(next.get(item.id) || {}), ...item }));
+  return Array.from(next.values());
+}
+
+async function loadStructuredRecordsFromApi() {
+  if (!apiSession) return false;
+
+  const result = await apiRequest("/api/records");
+  const records = result.records || {};
+  let changed = false;
+
+  structuredRecordCollections.forEach((collection) => {
+    const incoming = Array.isArray(records[collection]) ? records[collection] : [];
+    if (!incoming.length) return;
+    state[collection] = mergeRecordsById(state[collection], incoming);
+    changed = true;
+  });
+
+  if (changed) saveState();
+  return changed;
+}
+
 function apiConnectionLabel() {
   if (!apiSession) return "Browser storage";
   return `${apiSession.user.name} / ${apiSession.membership.role}`;
@@ -983,6 +1011,28 @@ function apiStatusLabel(offlineLabel = "browser only") {
 
 function apiConnectionTone() {
   return apiSession ? "inbox-green" : "inbox-neutral";
+}
+
+function isClientSession() {
+  return apiSession?.membership?.role === "client";
+}
+
+function clientCompanyId() {
+  return apiSession?.membership?.companyId || apiSession?.user?.companyId || state.companies.find((company) => company.type === "Client")?.id || state.companies[0]?.id || "";
+}
+
+function clientAllowedRoutes() {
+  return new Set(["portal", "invite"]);
+}
+
+function canAccessRoute(route) {
+  if (!isClientSession()) return true;
+  return clientAllowedRoutes().has(route);
+}
+
+function routeFallback(route) {
+  if (canAccessRoute(route)) return route;
+  return isClientSession() ? "portal" : "dashboard";
 }
 
 function pwaStatusLabel() {
@@ -2009,11 +2059,11 @@ function archiveProject(projectId) {
 }
 
 function setRoute(route) {
-  state.selectedRoute = route;
+  state.selectedRoute = routeFallback(route);
   if (route !== "invite") state.selectedInviteToken = "";
   if (route !== "project") state.selectedProjectTab = "overview";
   if (route !== "company") state.selectedCompany = "all";
-  openSidebarGroupForRoute(route);
+  openSidebarGroupForRoute(state.selectedRoute);
   saveState();
   render();
 }
@@ -2041,6 +2091,10 @@ function routeInviteFromLocation({ shouldRender = false } = {}) {
 }
 
 function setProject(projectId) {
+  if (isClientSession()) {
+    setRoute("portal");
+    return;
+  }
   state.selectedProject = projectId;
   state.selectedRoute = projectId === "all" ? "dashboard" : "project";
   state.selectedProjectTab = "overview";
@@ -2051,6 +2105,10 @@ function setProject(projectId) {
 }
 
 function setCompany(companyId) {
+  if (isClientSession()) {
+    setRoute("portal");
+    return;
+  }
   state.selectedCompany = companyId;
   state.selectedRoute = companyId === "all" ? "companies" : "company";
   state.filters.company = companyId;
@@ -2167,6 +2225,13 @@ function recordTaskChanges(previous, next) {
 }
 
 function render() {
+  const allowedRoute = routeFallback(state.selectedRoute);
+  if (allowedRoute !== state.selectedRoute) {
+    state.selectedRoute = allowedRoute;
+    state.selectedProject = "all";
+    state.selectedCompany = isClientSession() ? clientCompanyId() : state.selectedCompany;
+    saveState();
+  }
   const selectedProject = byId(state.projects, state.selectedProject);
   const selectedCompany = byId(state.companies, state.selectedCompany);
   els.pageTitle.textContent = state.selectedRoute === "project" && selectedProject
@@ -2183,8 +2248,10 @@ function render() {
   renderSidebarProjects();
   renderFilters();
   renderNotificationBadges();
+  renderPermissionChrome();
   document.querySelector(".brand small").textContent = state.workspace.name;
 
+  if (state.selectedRoute === "portal") renderClientPortal();
   if (state.selectedRoute === "project") renderProjectPage();
   if (state.selectedRoute === "company") renderCompanyPage();
   if (state.selectedRoute === "daily") renderDailyTasks();
@@ -2208,13 +2275,32 @@ function render() {
 }
 
 function sidebarGroupForRoute(route) {
-  if (["dashboard", "daily", "inbox"].includes(route)) return "home";
+  if (["dashboard", "portal", "daily", "inbox"].includes(route)) return "home";
   if (["board", "list", "calendar", "my-work", "time"].includes(route)) return "work";
   if (["reports", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
   if (["data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
   if (route === "invite") return "";
   return "";
+}
+
+function renderPermissionChrome() {
+  const client = isClientSession();
+  document.body.classList.toggle("is-client-session", client);
+  document.querySelectorAll("[data-route]").forEach((item) => {
+    if (item.classList.contains("brand")) {
+      item.hidden = false;
+      return;
+    }
+    item.hidden = client && !canAccessRoute(item.dataset.route);
+  });
+  document.querySelectorAll("[data-nav-group]").forEach((group) => {
+    group.hidden = client && !group.querySelector(".nav-item:not([hidden])");
+  });
+  ["#new-project-button", "#new-task-button", "#notification-button"].forEach((selector) => {
+    const element = document.querySelector(selector);
+    if (element) element.hidden = client;
+  });
 }
 
 function renderSidebarGroups() {
@@ -2776,6 +2862,133 @@ function renderCompanyPortal(company) {
         </div>
       </div>
     </section>
+  `;
+}
+
+function renderClientPortal() {
+  const companyId = clientCompanyId();
+  const company = byId(state.companies, companyId);
+  if (!company) {
+    els.appView.innerHTML = `
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Client portal</p>
+            <h2>Portal unavailable</h2>
+          </div>
+        </div>
+        ${emptyState("No company is assigned to this client account yet.")}
+      </section>
+    `;
+    return;
+  }
+
+  const portal = companyPortalSnapshot(company.id);
+  const visibleTasks = portal.tasks.filter((task) => task.status !== "done").slice(0, 6);
+  const sharedAssets = [...portal.documents, ...portal.files]
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+    .slice(0, 6);
+
+  els.appView.innerHTML = `
+    <section class="project-hero portal-hero">
+      <div>
+        <p class="eyebrow">Client portal</p>
+        <h2>${escapeHtml(company.name)}</h2>
+        <p>${escapeHtml(company.description || "Shared project visibility, approvals, files, and updates.")}</p>
+        <div class="meta-row">
+          <span>${portal.projects.length} ${portal.projects.length === 1 ? "project" : "projects"}</span>
+          <span>${portal.pendingApprovals.length} pending approvals</span>
+          <span>${portal.progress}% complete</span>
+        </div>
+      </div>
+      <div class="project-progress-card">
+        <span>Portal status</span>
+        <strong>${portal.pendingApprovals.length ? "Needs review" : "On track"}</strong>
+        <span>${portal.updatedAt ? `Updated ${formatTimestamp(portal.updatedAt)}` : "No recent updates"}</span>
+        <button class="button button-secondary" type="button" id="api-disconnect">Sign Out</button>
+      </div>
+    </section>
+
+    <div class="metric-grid">
+      ${metric("Open tasks", portal.openTasks.length)}
+      ${metric("Approvals", portal.pendingApprovals.length)}
+      ${metric("Shared assets", sharedAssets.length)}
+      ${metric("Progress", `${portal.progress}%`)}
+    </div>
+
+    <div class="client-portal-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Approvals</p>
+            <h2>Review queue</h2>
+          </div>
+        </div>
+        <div class="portal-list">
+          ${portal.approvals.length ? portal.approvals.map(renderApprovalRow).join("") : emptyState("No approvals are waiting on you.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Shared work</p>
+            <h2>Docs & files</h2>
+          </div>
+        </div>
+        <div class="portal-list">
+          ${sharedAssets.length ? sharedAssets.map((asset) => `
+            <article class="portal-asset-row">
+              <div>
+                <strong>${escapeHtml(asset.title)}</strong>
+                <span>${escapeHtml(asset.type || asset.kind)} / ${escapeHtml(projectName(asset.projectId))}</span>
+              </div>
+              <small>${formatTimestamp(asset.updatedAt)}</small>
+            </article>
+          `).join("") : emptyState("No shared assets yet.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Projects</p>
+            <h2>Status summary</h2>
+          </div>
+        </div>
+        <div class="project-summary-list">
+          ${portal.projects.length ? portal.projects.map(renderProjectSummary).join("") : emptyState("No shared projects yet.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Next up</p>
+            <h2>Open work</h2>
+          </div>
+        </div>
+        <div class="task-stack">
+          ${visibleTasks.length ? visibleTasks.map(renderClientTaskSummary).join("") : emptyState("No open work is visible right now.")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderClientTaskSummary(task) {
+  return `
+    <article class="client-task-summary">
+      <div>
+        <strong>${escapeHtml(task.title)}</strong>
+        <p>${escapeHtml(task.description)}</p>
+        <div class="meta-row">
+          <span>${escapeHtml(projectName(task.projectId))}</span>
+          <span>${statusLabel(task.status)}</span>
+          <span>${formatDate(task.dueDate)}</span>
+        </div>
+      </div>
+    </article>
   `;
 }
 
@@ -4267,6 +4480,11 @@ function renderSettings() {
             <p>${apiSession ? `Last synced ${escapeHtml(apiLastSyncedLabel())}` : "Start the API server, create the workspace owner account, or connect as a demo member."}</p>
           </div>
           <div class="api-sync-form">
+            <label class="api-url-field">
+              <span>API URL</span>
+              <input id="api-base-url" value="${escapeHtml(API_BASE_URL)}" placeholder="http://127.0.0.1:8787">
+            </label>
+            <button class="button button-secondary" type="button" id="api-url-save">Save API URL</button>
             <label>
               <span>Name</span>
               <input id="api-account-name" placeholder="Workspace owner" value="${escapeHtml(apiSession?.user?.name || "")}">
@@ -4391,6 +4609,13 @@ function renderSettings() {
               ${workspaceRoles.map((role) => `<option value="${role.id}" ${role.id === state.workspace.defaultRole ? "selected" : ""}>${escapeHtml(role.label)}</option>`).join("")}
             </select>
           </label>
+          <label>
+            <span>Company access</span>
+            <select id="invite-company">
+              <option value="">Workspace-wide</option>
+              ${state.companies.map((company) => `<option value="${company.id}">${escapeHtml(company.name)}</option>`).join("")}
+            </select>
+          </label>
           <button class="button button-primary" type="button" id="invite-member" ${apiSession ? "" : "disabled"}>Send Invite</button>
         </div>
         <div class="invitation-list">
@@ -4415,12 +4640,13 @@ function renderInvitationRow(invitation, roleById) {
   const role = roleById[invitation.role]?.label || invitation.role || "Member";
   const invitedBy = invitation.invitedBy ? memberName(invitation.invitedBy) : "Workspace admin";
   const date = invitation.acceptedAt || invitation.updatedAt || invitation.createdAt || "";
+  const company = invitation.companyId ? companyName(invitation.companyId) : "Workspace-wide";
 
   return `
     <article class="invitation-row">
       <div>
         <h3>${escapeHtml(invitation.name || invitation.email)}</h3>
-        <p>${escapeHtml(invitation.email)} - ${escapeHtml(role)} - invited by ${escapeHtml(invitedBy)}</p>
+        <p>${escapeHtml(invitation.email)} - ${escapeHtml(role)} - ${escapeHtml(company)} - invited by ${escapeHtml(invitedBy)}</p>
         ${invitation.status === "pending" ? `<code>${escapeHtml(invitation.acceptUrl || `#invite/${invitation.token || ""}`)}</code>` : ""}
       </div>
       <div>
@@ -5264,7 +5490,7 @@ function addTaskTimeEntry() {
 
   if (!task || !date || minutes <= 0) return;
 
-  state.timeEntries = [{
+  const entry = {
     id: uid("time"),
     taskId,
     memberId,
@@ -5273,7 +5499,8 @@ function addTaskTimeEntry() {
     note,
     billable,
     createdAt: new Date().toISOString()
-  }, ...state.timeEntries];
+  };
+  state.timeEntries = [entry, ...state.timeEntries];
 
   addActivity({
     projectId: task.projectId,
@@ -5288,13 +5515,14 @@ function addTaskTimeEntry() {
   renderTaskCollaboration(taskId);
   render();
   showToast(`Logged ${formatDuration(minutes)}`, "success");
+  syncRecordToApi("timeEntries", entry, "Time entry synced to API");
 }
 
 function addQuickDailyTime(taskId, minutes = 30) {
   const task = byId(state.tasks, taskId);
   if (!task) return;
 
-  state.timeEntries = [{
+  const entry = {
     id: uid("time"),
     taskId,
     memberId: currentMemberId,
@@ -5303,7 +5531,8 @@ function addQuickDailyTime(taskId, minutes = 30) {
     note: "Daily focus block",
     billable: false,
     createdAt: new Date().toISOString()
-  }, ...state.timeEntries];
+  };
+  state.timeEntries = [entry, ...state.timeEntries];
 
   addActivity({
     projectId: task.projectId,
@@ -5314,6 +5543,7 @@ function addQuickDailyTime(taskId, minutes = 30) {
   saveState();
   render();
   showToast(`Logged ${formatDuration(minutes)} for today`, "success");
+  syncRecordToApi("timeEntries", entry, "Time entry synced to API");
 }
 
 function templateCompanyId(card) {
@@ -5759,11 +5989,12 @@ function updateApprovalStatus(approvalId, status, inboxId = "") {
   const approval = byId(state.approvals, approvalId);
   if (!approval || !["approved", "needs-changes", "requested"].includes(status)) return;
 
-  state.approvals = state.approvals.map((item) => item.id === approvalId ? {
-    ...item,
+  const nextApproval = {
+    ...approval,
     status,
     updatedAt: new Date().toISOString()
-  } : item);
+  };
+  state.approvals = state.approvals.map((item) => item.id === approvalId ? nextApproval : item);
 
   addActivity({
     projectId: approval.projectId,
@@ -5776,6 +6007,7 @@ function updateApprovalStatus(approvalId, status, inboxId = "") {
   saveState();
   render();
   showToast(status === "approved" ? "Approval marked approved" : "Approval marked needs changes", "success");
+  syncRecordToApi("approvals", nextApproval, "Approval synced to API");
 }
 
 function draftCompanyUpdate(companyId) {
@@ -5813,6 +6045,7 @@ function draftCompanyUpdate(companyId) {
   saveState();
   render();
   showToast("Client update drafted in Docs", "success");
+  syncDocumentToApi(document, "Client update synced to API");
 }
 
 function logAutomationSuggestion(suggestionId) {
@@ -6004,6 +6237,24 @@ function disconnectApiSession() {
   showToast("API session disconnected", "success");
 }
 
+function saveApiBaseUrl() {
+  const rawUrl = document.querySelector("#api-base-url")?.value.trim() || "";
+  if (!rawUrl) {
+    showToast("API URL is required", "info");
+    return;
+  }
+
+  try {
+    const url = new URL(rawUrl);
+    const normalizedUrl = url.origin.replace(/\/+$/, "");
+    localStorage.setItem("agora.api.baseUrl", normalizedUrl);
+    showToast("API URL saved. Reloading Agora.", "success");
+    window.setTimeout(() => window.location.reload(), 400);
+  } catch (error) {
+    showToast("Enter a valid API URL, like http://127.0.0.1:8787", "info");
+  }
+}
+
 async function syncAccessFromApi() {
   if (!apiSession) return;
 
@@ -6025,6 +6276,7 @@ async function inviteWorkspaceMember() {
   const name = document.querySelector("#invite-name")?.value.trim() || "";
   const email = document.querySelector("#invite-email")?.value.trim() || "";
   const role = document.querySelector("#invite-role")?.value || state.workspace.defaultRole;
+  const companyId = document.querySelector("#invite-company")?.value || "";
   if (!email) {
     showToast("Invite requires an email address", "info");
     return;
@@ -6033,7 +6285,7 @@ async function inviteWorkspaceMember() {
   try {
     const result = await apiRequest("/api/invitations", {
       method: "POST",
-      body: { name, email, role }
+      body: { name, email, role, companyId }
     });
     const invitation = result.invitation;
     state.invitations = [
@@ -6144,6 +6396,7 @@ async function loadWorkspaceFromApi() {
       return;
     }
     applyWorkspaceSnapshot(document.snapshot);
+    await loadStructuredRecordsFromApi();
     saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, storageDriver: document.metadata.storage || apiSession.storageDriver });
     render();
     showToast("Workspace loaded from API", "success");
@@ -6232,59 +6485,34 @@ async function syncProjectArchiveToApi(projectId) {
   }
 }
 
-async function syncCommentToApi(comment, action = "Comment synced") {
+async function syncRecordToApi(collection, record, action = "Record synced", showSuccess = true) {
   if (!apiSession) return;
 
   try {
-    await apiRequest("/api/comments", {
+    await apiRequest(`/api/records/${encodeURIComponent(collection)}`, {
       method: "POST",
-      body: { comment }
+      body: { record }
     });
-    showToast(action, "success");
+    if (showSuccess) showToast(action, "success");
   } catch (error) {
-    showToast(`Local change saved. API comment sync failed: ${error.message}`, "info");
+    showToast(`Local change saved. API ${collection} sync failed: ${error.message}`, "info");
   }
+}
+
+async function syncCommentToApi(comment, action = "Comment synced") {
+  await syncRecordToApi("comments", comment, action);
 }
 
 async function syncActivityToApi(activity) {
-  if (!apiSession) return;
-
-  try {
-    await apiRequest("/api/activities", {
-      method: "POST",
-      body: { activity }
-    });
-  } catch (error) {
-    showToast(`Local change saved. API activity sync failed: ${error.message}`, "info");
-  }
+  await syncRecordToApi("activities", activity, "Activity synced", false);
 }
 
 async function syncDocumentToApi(document, action = "Doc synced") {
-  if (!apiSession) return;
-
-  try {
-    await apiRequest("/api/documents", {
-      method: "POST",
-      body: { document }
-    });
-    showToast(action, "success");
-  } catch (error) {
-    showToast(`Local change saved. API doc sync failed: ${error.message}`, "info");
-  }
+  await syncRecordToApi("documents", document, action);
 }
 
 async function syncFileToApi(file, action = "File synced") {
-  if (!apiSession) return;
-
-  try {
-    await apiRequest("/api/files", {
-      method: "POST",
-      body: { file }
-    });
-    showToast(action, "success");
-  } catch (error) {
-    showToast(`Local change saved. API file sync failed: ${error.message}`, "info");
-  }
+  await syncRecordToApi("files", file, action);
 }
 
 function registerServiceWorker() {
@@ -6436,6 +6664,9 @@ document.addEventListener("click", (event) => {
 
   const apiConnectButton = event.target.closest("#api-connect");
   if (apiConnectButton) connectApiSession();
+
+  const apiUrlSaveButton = event.target.closest("#api-url-save");
+  if (apiUrlSaveButton) saveApiBaseUrl();
 
   const apiEmailLoginButton = event.target.closest("#api-email-login");
   if (apiEmailLoginButton) signInWithEmail();
@@ -6900,6 +7131,7 @@ els.companyForm.addEventListener("submit", (event) => {
   closeDialog(els.companyDialog);
   render();
   showToast(existingCompany ? "Company updated" : "Company created", "success");
+  syncRecordToApi("companies", company, existingCompany ? "Company synced to API" : "Company created in API");
 });
 
 window.addEventListener("hashchange", () => {

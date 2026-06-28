@@ -1192,9 +1192,13 @@ textarea:focus {
   flex: 1 1 220px;
 }
 
+.api-url-field {
+  flex-basis: 320px;
+}
+
 .invite-form {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
   gap: 10px;
   align-items: end;
   margin-bottom: 12px;
@@ -1483,6 +1487,16 @@ textarea:focus {
   gap: 12px;
 }
 
+.client-portal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.portal-hero {
+  background: linear-gradient(135deg, rgba(36, 90, 88, 0.1), rgba(247, 246, 241, 0.95));
+}
+
 .portal-status-card {
   display: grid;
   align-content: start;
@@ -1525,6 +1539,31 @@ textarea:focus {
 .portal-asset-row div {
   display: grid;
   gap: 3px;
+}
+
+.client-task-summary {
+  padding: 14px 0;
+  border-top: 1px solid var(--line);
+}
+
+.client-task-summary:first-child {
+  border-top: 0;
+}
+
+.client-task-summary strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.client-task-summary p {
+  margin: 0 0 8px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.is-client-session .toolbar,
+.is-client-session .secondary-action {
+  display: none;
 }
 
 .project-hero {
@@ -2792,6 +2831,7 @@ th {
   .company-grid,
   .company-detail-grid,
   .portal-grid,
+  .client-portal-grid,
   .project-hero {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2914,6 +2954,7 @@ th {
   .company-grid,
   .company-detail-grid,
   .portal-grid,
+  .client-portal-grid,
   .project-hero,
   .form-grid,
   .collaboration-grid,

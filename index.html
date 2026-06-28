@@ -13,7 +13,12 @@
     <link rel="manifest" href="./manifest.webmanifest">
     <link rel="icon" href="./assets/agora-mark.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./assets/agora-mark.svg">
-    <link rel="stylesheet" href="./src/styles.css?v=auth-records">
+    <link rel="stylesheet" href="./src/styles.css?v=client-portal">
+    <script>
+      window.AGORA_CONFIG = {
+        apiBaseUrl: window.localStorage.getItem("agora.api.baseUrl") || "http://127.0.0.1:8787"
+      };
+    </script>
   </head>
   <body>
     <div class="app-shell">
@@ -34,6 +39,7 @@
             </button>
             <div class="nav-group-panel" id="nav-group-home">
               <button class="nav-item is-active" type="button" data-route="dashboard">Dashboard</button>
+              <button class="nav-item" type="button" data-route="portal">Portal</button>
               <button class="nav-item" type="button" data-route="daily">Today</button>
               <button class="nav-item" type="button" data-route="inbox">
                 <span>Inbox</span>
@@ -300,6 +306,6 @@
       </form>
     </dialog>
 
-    <script src="./src/app.js?v=auth-records"></script>
+    <script src="./src/app.js?v=client-portal"></script>
   </body>
 </html>

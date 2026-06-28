@@ -22,7 +22,7 @@ To test sync from the browser prototype, run the app in a second terminal:
 npm run dev
 ```
 
-Then open Settings, create the first workspace owner account or connect as a demo member, and use the Data page to save or load the workspace snapshot.
+Then open Settings, create the first workspace owner account or connect as a demo member, and use the Data page to save or load the workspace snapshot. If the API is not running at the default address, set the API URL in Settings and reload the app.
 
 ## Supabase Storage
 
@@ -47,6 +47,8 @@ npm run dev:api
 
 Keep `SUPABASE_SERVICE_ROLE_KEY` on the server only. The browser app still talks to Agora's local API, never directly to Supabase.
 
+The migration creates the snapshot/audit tables plus structured record tables for `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, and `files`. The JSON driver stores those records inside the workspace snapshot for local development; the Supabase driver writes them to dedicated `agora_*` tables through the same `/api/records/:collection` API.
+
 ## Endpoints
 
 - `GET /api/health`: service health and active workspace metadata.
@@ -58,7 +60,7 @@ Keep `SUPABASE_SERVICE_ROLE_KEY` on the server only. The browser app still talks
 - `GET /api/session`: returns the current authenticated session.
 - `GET /api/members`: returns workspace users, memberships, and invitations.
 - `GET /api/invitations`: lists workspace invitations for admins.
-- `POST /api/invitations`: creates or refreshes an invitation for admins. Body: `{ "email": "jordan@example.com", "name": "Jordan Lee", "role": "member" }`.
+- `POST /api/invitations`: creates or refreshes an invitation for admins. Body: `{ "email": "jordan@example.com", "name": "Jordan Lee", "role": "member", "companyId": "optional-company-id" }`.
 - `GET /api/invitations/:token`: returns public invitation details for an invite acceptance screen.
 - `POST /api/invitations/:token/accept`: accepts an invitation and creates a session. Body: `{ "name": "Jordan Lee", "password": "optional 8+ characters" }`.
 - `GET /api/records`: returns table-shaped collections currently backed by the workspace snapshot.
@@ -98,8 +100,10 @@ Authorization: Bearer <token>
 - `admin`: read/write/import workspace data, read audit log, manage members.
 - `manager`: read/write workspace data, read audit log.
 - `member`: read workspace data.
-- `client`: read workspace data.
+- `client`: read scoped workspace data, add comments/activity, and respond to approvals.
+
+Client memberships can include `companyId`. When present, workspace snapshots and structured record reads are scoped to that company before they are returned to the browser.
 
 ## Database Target
 
-`schema.sql` is the normalized PostgreSQL target for the self-hosted backend. `migrations/001_supabase_storage.sql` is the first runnable Supabase migration and stores the current workspace snapshot plus audit log in Postgres. The JSON storage adapter remains the low-friction local default while Supabase provides the production-ready persistence path.
+`schema.sql` is the normalized PostgreSQL target for the self-hosted backend. `migrations/001_supabase_storage.sql` is the first runnable Supabase migration and stores the current workspace snapshot, audit log, and structured record collections in Postgres. The JSON storage adapter remains the low-friction local default while Supabase provides the production-ready persistence path.

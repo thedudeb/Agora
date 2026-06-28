@@ -327,6 +327,19 @@ async function testAccountAuth() {
     });
     assert(company.record.name === "Record Company", "record company upsert failed");
 
+    const otherCompany = await request(`${baseUrl}/api/records/companies`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        record: {
+          id: "other-company",
+          name: "Other Company",
+          owner: "owner"
+        }
+      }
+    });
+    assert(otherCompany.record.name === "Other Company", "second record company upsert failed");
+
     const approval = await request(`${baseUrl}/api/records/approvals`, {
       method: "POST",
       token: signup.token,
@@ -342,6 +355,21 @@ async function testAccountAuth() {
     });
     assert(approval.record.title === "Record Approval", "record approval upsert failed");
 
+    const otherApproval = await request(`${baseUrl}/api/records/approvals`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        record: {
+          id: "approval-other",
+          companyId: "other-company",
+          projectId: "other-project",
+          title: "Other Approval",
+          status: "requested"
+        }
+      }
+    });
+    assert(otherApproval.record.title === "Other Approval", "second record approval upsert failed");
+
     const records = await request(`${baseUrl}/api/records/approvals?companyId=company-record`, {
       token: signup.token
     });
@@ -353,7 +381,8 @@ async function testAccountAuth() {
       body: {
         name: "Client User",
         email: "client@example.test",
-        role: "client"
+        role: "client",
+        companyId: "company-record"
       }
     });
     const accepted = await request(`${baseUrl}/api/invitations/${invitation.invitation.token}/accept`, {
@@ -364,6 +393,8 @@ async function testAccountAuth() {
       }
     });
     assert(accepted.membership.role === "client", "invite password accept did not preserve role");
+    assert(accepted.membership.companyId === "company-record", "accepted client invite did not keep company scope");
+    assert(accepted.user.companyId === "company-record", "accepted client user did not keep company scope");
 
     const clientLogin = await request(`${baseUrl}/api/auth/password-login`, {
       method: "POST",
@@ -373,6 +404,13 @@ async function testAccountAuth() {
       }
     });
     assert(clientLogin.user.email === "client@example.test", "invited password login failed");
+    assert(clientLogin.membership.companyId === "company-record", "client password login dropped company scope");
+
+    const clientApprovals = await request(`${baseUrl}/api/records/approvals`, {
+      token: clientLogin.token
+    });
+    assert(clientApprovals.records.length === 1, "client record scope did not filter approvals");
+    assert(clientApprovals.records[0].id === "approval-record", "client record scope returned another company's approval");
   } finally {
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(dataDir, { recursive: true, force: true });
@@ -382,6 +420,7 @@ async function testAccountAuth() {
 async function testSupabaseStorageAdapter() {
   const originalFetch = global.fetch;
   const snapshots = new Map();
+  const records = new Map();
   const auditEvents = [];
 
   global.fetch = async (url, options = {}) => {
@@ -416,6 +455,26 @@ async function testSupabaseStorageAdapter() {
       return mockResponse([body]);
     }
 
+    if (table.startsWith("agora_") && table !== "agora_workspace_snapshots" && table !== "agora_audit_events" && (!options.method || options.method === "GET")) {
+      const workspaceId = parsed.searchParams.get("workspace_id")?.replace(/^eq\./, "");
+      const projectId = parsed.searchParams.get("project_id")?.replace(/^eq\./, "");
+      const rows = [...(records.get(table)?.values() || [])]
+        .filter((row) => !workspaceId || row.workspace_id === workspaceId)
+        .filter((row) => !projectId || row.project_id === projectId);
+      return mockResponse(rows);
+    }
+
+    if (table.startsWith("agora_") && table !== "agora_workspace_snapshots" && table !== "agora_audit_events" && options.method === "POST") {
+      if (!records.has(table)) records.set(table, new Map());
+      const row = {
+        created_at: body.created_at || "2026-06-28T00:00:00.000Z",
+        updated_at: body.updated_at || "2026-06-28T00:00:00.000Z",
+        ...body
+      };
+      records.get(table).set(row.id, row);
+      return mockResponse([row]);
+    }
+
     return mockResponse({ message: "Unexpected Supabase request" }, false, 404);
   };
 
@@ -447,6 +506,21 @@ async function testSupabaseStorageAdapter() {
     });
     const auditLog = await storage.loadAuditLog();
     assert(auditLog.length === 1 && auditLog[0].action === "workspace_update", "supabase audit failed");
+
+    const savedRecord = await storage.upsertRecord("comments", {
+      id: "comment-supabase",
+      taskId: "task-supabase",
+      projectId: "project-supabase",
+      author: "mara",
+      body: "Stored as a Supabase record",
+      createdAt: "2026-06-28T12:00:00.000Z"
+    }, {
+      action: "comment_create"
+    });
+    assert(savedRecord.body === "Stored as a Supabase record", "supabase record save failed");
+
+    const loadedRecords = await storage.loadRecords("comments", { projectId: "project-supabase" });
+    assert(loadedRecords.length === 1 && loadedRecords[0].id === "comment-supabase", "supabase record load failed");
   } finally {
     global.fetch = originalFetch;
   }

@@ -4,6 +4,16 @@ const path = require("node:path");
 const DEFAULT_DATA_DIR = path.join(__dirname, "data");
 const DEFAULT_WORKSPACE_ID = "workspace-acme";
 
+const recordTables = {
+  companies: "agora_companies",
+  approvals: "agora_approvals",
+  timeEntries: "agora_time_entries",
+  comments: "agora_comments",
+  activities: "agora_activities",
+  documents: "agora_documents",
+  files: "agora_files"
+};
+
 function createStorage(options = {}) {
   const driver = options.driver || process.env.AGORA_STORAGE_DRIVER || "json";
   if (driver === "supabase") return createSupabaseStorage(options);
@@ -75,6 +85,26 @@ function createJsonStorage(options = {}) {
     return nextEvent;
   }
 
+  async function loadRecords(collectionKey, filters = {}) {
+    const snapshot = await loadWorkspaceSnapshot();
+    const records = Array.isArray(snapshot[collectionKey]) ? snapshot[collectionKey] : [];
+    return filterRecords(records, filters);
+  }
+
+  async function upsertRecord(collectionKey, record, metadata = {}) {
+    const snapshot = await loadWorkspaceSnapshot();
+    const records = Array.isArray(snapshot[collectionKey]) ? snapshot[collectionKey] : [];
+    const existing = records.find((item) => item.id === record.id);
+    const nextRecords = existing
+      ? records.map((item) => item.id === record.id ? { ...item, ...record } : item)
+      : [record, ...records];
+    await saveWorkspaceSnapshot({
+      ...snapshot,
+      [collectionKey]: nextRecords
+    }, metadata);
+    return nextRecords.find((item) => item.id === record.id);
+  }
+
   return {
     dataDir,
     driver: "json-file",
@@ -83,7 +113,9 @@ function createJsonStorage(options = {}) {
     saveWorkspace,
     saveWorkspaceSnapshot,
     loadAuditLog,
-    appendAuditEvent
+    appendAuditEvent,
+    loadRecords,
+    upsertRecord
   };
 }
 
@@ -200,6 +232,29 @@ function createSupabaseStorage(options = {}) {
     return fromSupabaseAuditEvent(Array.isArray(rows) ? rows[0] : nextEvent);
   }
 
+  async function loadRecords(collectionKey, filters = {}) {
+    const table = recordTables[collectionKey];
+    if (!table) throw new Error(`Unsupported record collection: ${collectionKey}`);
+
+    const query = recordQuery(workspaceId, filters);
+    const rows = await request(table, query);
+    return Array.isArray(rows) ? rows.map(fromSupabaseRecordRow).filter(Boolean) : [];
+  }
+
+  async function upsertRecord(collectionKey, record, metadata = {}) {
+    const table = recordTables[collectionKey];
+    if (!table) throw new Error(`Unsupported record collection: ${collectionKey}`);
+
+    const rows = await request(table, "", {
+      method: "POST",
+      headers: {
+        Prefer: "resolution=merge-duplicates,return=representation"
+      },
+      body: toSupabaseRecordRow(workspaceId, collectionKey, record, metadata)
+    });
+    return fromSupabaseRecordRow(Array.isArray(rows) ? rows[0] : null) || record;
+  }
+
   return {
     driver: "supabase",
     workspaceId,
@@ -208,8 +263,54 @@ function createSupabaseStorage(options = {}) {
     saveWorkspace,
     saveWorkspaceSnapshot,
     loadAuditLog,
-    appendAuditEvent
+    appendAuditEvent,
+    loadRecords,
+    upsertRecord
   };
+}
+
+function filterRecords(records, filters = {}) {
+  return records.filter((record) => (
+    (!filters.projectId || record.projectId === filters.projectId) &&
+    (!filters.taskId || record.taskId === filters.taskId) &&
+    (!filters.companyId || record.companyId === filters.companyId || record.id === filters.companyId) &&
+    (!filters.memberId || record.memberId === filters.memberId || record.owner === filters.memberId || record.author === filters.memberId || record.requester === filters.memberId)
+  ));
+}
+
+function recordQuery(workspaceId, filters = {}) {
+  const params = new URLSearchParams();
+  params.set("workspace_id", `eq.${workspaceId}`);
+  params.set("select", "*");
+  params.set("order", "updated_at.desc");
+  if (filters.projectId) params.set("project_id", `eq.${filters.projectId}`);
+  if (filters.taskId) params.set("task_id", `eq.${filters.taskId}`);
+  if (filters.companyId) params.set("company_id", `eq.${filters.companyId}`);
+  if (filters.memberId) params.set("member_id", `eq.${filters.memberId}`);
+  return `?${params.toString()}`;
+}
+
+function toSupabaseRecordRow(workspaceId, collectionKey, record, metadata = {}) {
+  const now = new Date().toISOString();
+  return {
+    id: record.id,
+    workspace_id: workspaceId,
+    collection_key: collectionKey,
+    project_id: record.projectId || null,
+    task_id: record.taskId || null,
+    company_id: record.companyId || (collectionKey === "companies" ? record.id : null),
+    member_id: record.memberId || record.owner || record.author || record.requester || null,
+    title: record.title || record.name || "",
+    record,
+    metadata: metadata.metadata || {},
+    updated_at: record.updatedAt || now,
+    created_at: record.createdAt || now
+  };
+}
+
+function fromSupabaseRecordRow(row = {}) {
+  if (!row) return null;
+  return row.record || {};
 }
 
 function normalizeAuditEvent(event) {

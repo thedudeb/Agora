@@ -29,15 +29,15 @@ const demoMemberships = [
 ];
 
 const rolePermissions = {
-  admin: ["workspace:read", "workspace:write", "workspace:import", "audit:read", "members:write", "projects:write", "tasks:write", "comments:write", "activity:write", "attachments:write"],
-  manager: ["workspace:read", "workspace:write", "audit:read", "projects:write", "tasks:write", "comments:write", "activity:write", "attachments:write"],
+  admin: ["workspace:read", "workspace:write", "workspace:import", "audit:read", "members:write", "projects:write", "tasks:write", "comments:write", "activity:write", "attachments:write", "approvals:write"],
+  manager: ["workspace:read", "workspace:write", "audit:read", "projects:write", "tasks:write", "comments:write", "activity:write", "attachments:write", "approvals:write"],
   member: ["workspace:read", "comments:write", "activity:write", "attachments:write"],
-  client: ["workspace:read"]
+  client: ["workspace:read", "comments:write", "activity:write", "approvals:write"]
 };
 
 const recordCollections = {
   companies: { writePermission: "projects:write", normalizer: normalizeCompany, label: "company" },
-  approvals: { writePermission: "tasks:write", normalizer: normalizeApproval, label: "approval" },
+  approvals: { writePermission: "approvals:write", normalizer: normalizeApproval, label: "approval" },
   timeEntries: { writePermission: "tasks:write", normalizer: normalizeTimeEntry, label: "time entry" },
   comments: { writePermission: "comments:write", normalizer: normalizeComment, label: "comment" },
   activities: { writePermission: "activity:write", normalizer: normalizeActivity, label: "activity" },
@@ -141,7 +141,7 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        const snapshot = await storage.loadWorkspaceSnapshot();
+        const snapshot = scopedSnapshot(await storage.loadWorkspaceSnapshot(), session);
         sendJson(response, 200, {
           users: publicUsers(workspaceUsers(snapshot)),
           memberships: workspaceMemberships(snapshot),
@@ -176,10 +176,15 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        const snapshot = await storage.loadWorkspaceSnapshot();
+        const snapshot = scopedSnapshot(await storage.loadWorkspaceSnapshot(), session);
+        const records = Object.fromEntries(await Promise.all(Object.keys(recordCollections).map(async (key) => [
+          key,
+          await storage.loadRecords(key, scopedRecordFilters(session, {}))
+        ])));
         sendJson(response, 200, {
           collections: Object.keys(recordCollections),
-          records: Object.fromEntries(Object.keys(recordCollections).map((key) => [key, Array.isArray(snapshot[key]) ? snapshot[key] : []]))
+          records,
+          snapshotFallback: !Object.values(records).some((items) => items.length) ? snapshot : undefined
         });
         return;
       }
@@ -196,8 +201,7 @@ function createServer(options = {}) {
           sendError(response, 404, "Record collection not found");
           return;
         }
-        const snapshot = await storage.loadWorkspaceSnapshot();
-        const records = filterRecords(collectionKey, Array.isArray(snapshot[collectionKey]) ? snapshot[collectionKey] : [], url);
+        const records = await storage.loadRecords(collectionKey, scopedRecordFilters(session, recordFiltersFromUrl(url)));
         sendJson(response, 200, { collection: collectionKey, records });
         return;
       }
@@ -232,7 +236,7 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        const snapshot = await storage.loadWorkspaceSnapshot();
+        const snapshot = scopedSnapshot(await storage.loadWorkspaceSnapshot(), session);
         sendJson(response, 200, { projects: Array.isArray(snapshot.projects) ? snapshot.projects : [] });
         return;
       }
@@ -286,7 +290,7 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        const snapshot = await storage.loadWorkspaceSnapshot();
+        const snapshot = scopedSnapshot(await storage.loadWorkspaceSnapshot(), session);
         const projectId = url.searchParams.get("projectId");
         const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
         sendJson(response, 200, { tasks: projectId ? tasks.filter((task) => task.projectId === projectId) : tasks });
@@ -342,10 +346,9 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        const snapshot = await storage.loadWorkspaceSnapshot();
         const taskId = url.searchParams.get("taskId");
-        const comments = Array.isArray(snapshot.comments) ? snapshot.comments : [];
-        sendJson(response, 200, { comments: taskId ? comments.filter((comment) => comment.taskId === taskId) : comments });
+        const comments = await storage.loadRecords("comments", scopedRecordFilters(session, { taskId }));
+        sendJson(response, 200, { comments });
         return;
       }
 
@@ -365,12 +368,9 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        const snapshot = await storage.loadWorkspaceSnapshot();
         const taskId = url.searchParams.get("taskId");
         const projectId = url.searchParams.get("projectId");
-        let activities = Array.isArray(snapshot.activities) ? snapshot.activities : [];
-        if (taskId) activities = activities.filter((activity) => activity.taskId === taskId);
-        if (projectId) activities = activities.filter((activity) => activity.projectId === projectId);
+        const activities = await storage.loadRecords("activities", scopedRecordFilters(session, { taskId, projectId }));
         sendJson(response, 200, { activities });
         return;
       }
@@ -391,10 +391,9 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        const snapshot = await storage.loadWorkspaceSnapshot();
         const projectId = url.searchParams.get("projectId");
-        const documents = Array.isArray(snapshot.documents) ? snapshot.documents : [];
-        sendJson(response, 200, { documents: projectId ? documents.filter((document) => document.projectId === projectId) : documents });
+        const documents = await storage.loadRecords("documents", scopedRecordFilters(session, { projectId }));
+        sendJson(response, 200, { documents });
         return;
       }
 
@@ -414,10 +413,9 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        const snapshot = await storage.loadWorkspaceSnapshot();
         const projectId = url.searchParams.get("projectId");
-        const files = Array.isArray(snapshot.files) ? snapshot.files : [];
-        sendJson(response, 200, { files: projectId ? files.filter((file) => file.projectId === projectId) : files });
+        const files = await storage.loadRecords("files", scopedRecordFilters(session, { projectId }));
+        sendJson(response, 200, { files });
         return;
       }
 
@@ -437,7 +435,12 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        sendJson(response, 200, await storage.loadWorkspace() || {
+        const document = await storage.loadWorkspace();
+        if (document?.snapshot) {
+          sendJson(response, 200, { ...document, snapshot: scopedSnapshot(document.snapshot, session) });
+          return;
+        }
+        sendJson(response, 200, document || {
           metadata: {
             createdAt: null,
             updatedAt: null,
@@ -515,6 +518,74 @@ function hasPermission(session, permission) {
   return session.permissions.includes(permission);
 }
 
+function isClientSession(session) {
+  return session?.membership?.role === "client";
+}
+
+function sessionCompanyId(session) {
+  return cleanString(session?.membership?.companyId || session?.user?.companyId);
+}
+
+function scopedSnapshot(snapshot = {}, session) {
+  if (!isClientSession(session)) return snapshot;
+
+  const companyId = sessionCompanyId(session);
+  if (!companyId) {
+    return {
+      ...snapshot,
+      companies: [],
+      projects: [],
+      tasks: [],
+      approvals: [],
+      documents: [],
+      files: [],
+      comments: [],
+      activities: [],
+      timeEntries: [],
+      milestones: [],
+      intakeForms: [],
+      intakeSubmissions: [],
+      users: [session.user],
+      memberships: [session.membership],
+      invitations: []
+    };
+  }
+
+  const projects = (Array.isArray(snapshot.projects) ? snapshot.projects : []).filter((project) => project.companyId === companyId);
+  const projectIds = new Set(projects.map((project) => project.id));
+  const tasks = (Array.isArray(snapshot.tasks) ? snapshot.tasks : []).filter((task) => projectIds.has(task.projectId));
+  const taskIds = new Set(tasks.map((task) => task.id));
+  const filterByProject = (items = []) => items.filter((item) => !item.projectId || projectIds.has(item.projectId));
+  const filterByTask = (items = []) => items.filter((item) => !item.taskId || taskIds.has(item.taskId));
+
+  return {
+    ...snapshot,
+    companies: (Array.isArray(snapshot.companies) ? snapshot.companies : []).filter((company) => company.id === companyId),
+    projects,
+    tasks,
+    approvals: filterByProject((Array.isArray(snapshot.approvals) ? snapshot.approvals : []).filter((approval) => !approval.companyId || approval.companyId === companyId)),
+    documents: filterByProject(Array.isArray(snapshot.documents) ? snapshot.documents : []),
+    files: filterByProject(Array.isArray(snapshot.files) ? snapshot.files : []),
+    comments: filterByTask(Array.isArray(snapshot.comments) ? snapshot.comments : []),
+    activities: filterByProject(filterByTask(Array.isArray(snapshot.activities) ? snapshot.activities : [])),
+    timeEntries: filterByTask(Array.isArray(snapshot.timeEntries) ? snapshot.timeEntries : []),
+    milestones: filterByProject(Array.isArray(snapshot.milestones) ? snapshot.milestones : []),
+    intakeForms: filterByProject(Array.isArray(snapshot.intakeForms) ? snapshot.intakeForms : []),
+    intakeSubmissions: [],
+    users: publicUsers(workspaceUsers(snapshot)).filter((user) => user.id === session.user.id),
+    memberships: workspaceMemberships(snapshot).filter((membership) => membership.memberId === session.user.id),
+    invitations: []
+  };
+}
+
+function scopedRecordFilters(session, filters = {}) {
+  if (!isClientSession(session)) return filters;
+  return {
+    ...filters,
+    companyId: sessionCompanyId(session) || filters.companyId || ""
+  };
+}
+
 async function createEmailSession(storage, email) {
   const normalizedEmail = normalizeEmail(email);
   const snapshot = await storage.loadWorkspaceSnapshot();
@@ -559,6 +630,7 @@ async function createOwnerAccount(storage, body) {
     name,
     email,
     role: "Workspace owner",
+    companyId: pendingInvitation?.companyId || "",
     createdAt: now,
     ...passwordFields
   };
@@ -566,6 +638,7 @@ async function createOwnerAccount(storage, body) {
     memberId: user.id,
     role: pendingInvitation?.role || "admin",
     status: "active",
+    companyId: pendingInvitation?.companyId || "",
     invitedBy: pendingInvitation?.invitedBy || "",
     joinedAt: now
   };
@@ -623,6 +696,7 @@ async function createInvitation(storage, body, session) {
     ...pending,
     name: invitation.name || pending.name,
     role: invitation.role,
+    companyId: invitation.companyId,
     invitedBy: session.user.id,
     updatedAt: new Date().toISOString()
   } : invitation;
@@ -671,16 +745,18 @@ async function acceptInvitation(storage, token, name, password) {
     name: cleanString(name) || invitation.name || invitation.email.split("@")[0],
     email: invitation.email,
     role: "Team",
+    companyId: invitation.companyId,
     createdAt: now
   };
   const passwordFields = password ? createPasswordFields(password) : {};
   const nextUsers = existingUser
-    ? users.map((item) => item.id === existingUser.id ? { ...item, name: cleanString(name) || item.name, ...passwordFields } : item)
+    ? users.map((item) => item.id === existingUser.id ? { ...item, name: cleanString(name) || item.name, companyId: invitation.companyId || item.companyId || "", ...passwordFields } : item)
     : [{ ...user, ...passwordFields }, ...users];
   const nextMembership = {
     memberId: user.id,
     role: invitation.role,
     status: "active",
+    companyId: invitation.companyId,
     invitedBy: invitation.invitedBy,
     joinedAt: now
   };
@@ -727,6 +803,7 @@ function publicUser(user = {}) {
     name: cleanString(user.name),
     email: normalizeEmail(user.email),
     role: cleanString(user.role) || "Team",
+    companyId: cleanString(user.companyId),
     createdAt: cleanString(user.createdAt),
     hasPassword: Boolean(user.passwordHash && user.passwordSalt)
   };
@@ -787,6 +864,7 @@ function normalizeInvitationInput(body, session) {
     email,
     name: cleanString(body.name),
     role,
+    companyId: cleanString(body.companyId),
     status: "pending",
     invitedBy: session.user.id,
     createdAt: now,
@@ -801,6 +879,7 @@ function normalizeStoredInvitation(invitation) {
     email: normalizeEmail(invitation.email),
     name: cleanString(invitation.name),
     role: rolePermissions[invitation.role] ? invitation.role : "member",
+    companyId: cleanString(invitation.companyId),
     status: cleanString(invitation.status) || "pending",
     invitedBy: cleanString(invitation.invitedBy),
     acceptedBy: cleanString(invitation.acceptedBy),
@@ -817,6 +896,7 @@ function normalizeStoredUser(user) {
     name: cleanString(user.name) || cleanString(user.email),
     email: normalizeEmail(user.email),
     role: cleanString(user.role) || "Team",
+    companyId: cleanString(user.companyId),
     createdAt: cleanString(user.createdAt),
     passwordHash: cleanString(user.passwordHash),
     passwordSalt: cleanString(user.passwordSalt),
@@ -831,6 +911,7 @@ function normalizeStoredMembership(membership) {
     memberId: cleanString(membership.memberId),
     role: rolePermissions[membership.role] ? membership.role : "member",
     status: cleanString(membership.status) || "active",
+    companyId: cleanString(membership.companyId),
     invitedBy: cleanString(membership.invitedBy),
     joinedAt: cleanString(membership.joinedAt)
   };
@@ -1029,19 +1110,12 @@ async function archiveTask(storage, taskId, session, archived) {
 }
 
 async function upsertCollectionItem(storage, key, item, normalizer, session, action, detailLabel) {
-  const snapshot = await storage.loadWorkspaceSnapshot();
-  const collection = Array.isArray(snapshot[key]) ? snapshot[key] : [];
   const incomingItem = requireRecord(item, "Item");
-  const existingItem = collection.find((entry) => entry.id === incomingItem.id);
-  const nextItem = normalizer(existingItem ? { ...existingItem, ...incomingItem } : incomingItem);
-  const nextCollection = existingItem
-    ? collection.map((entry) => entry.id === nextItem.id ? { ...entry, ...nextItem } : entry)
-    : [nextItem, ...collection];
-
-  await storage.saveWorkspaceSnapshot({
-    ...snapshot,
-    [key]: nextCollection
-  }, {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const existingItems = await storage.loadRecords(key, {});
+  const existingItem = existingItems.find((entry) => entry.id === incomingItem.id);
+  const nextItem = enrichRecordScopeFields(normalizer(existingItem ? { ...existingItem, ...incomingItem } : incomingItem), snapshot);
+  const savedItem = await storage.upsertRecord(key, nextItem, {
     storage: storage.driver || "json-file",
     updatedBy: session.user.id,
     action
@@ -1050,9 +1124,22 @@ async function upsertCollectionItem(storage, key, item, normalizer, session, act
     actorId: session.user.id,
     action,
     workspaceId: workspace.id,
-    detail: `${session.user.name} saved ${detailLabel(nextItem)}`
+    detail: `${session.user.name} saved ${detailLabel(savedItem)}`
   });
-  return nextCollection.find((entry) => entry.id === nextItem.id);
+  return savedItem;
+}
+
+function enrichRecordScopeFields(record, snapshot = {}) {
+  const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
+  const projects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
+  const task = record.taskId ? tasks.find((item) => item.id === record.taskId) : null;
+  const projectId = record.projectId || task?.projectId || "";
+  const project = projectId ? projects.find((item) => item.id === projectId) : null;
+  return {
+    ...record,
+    projectId: projectId || record.projectId || "",
+    companyId: record.companyId || project?.companyId || ""
+  };
 }
 
 function normalizeProject(project) {
@@ -1219,18 +1306,13 @@ function normalizeTimeEntry(entry) {
   };
 }
 
-function filterRecords(collectionKey, records, url) {
-  const projectId = url.searchParams.get("projectId");
-  const taskId = url.searchParams.get("taskId");
-  const companyId = url.searchParams.get("companyId");
-  const memberId = url.searchParams.get("memberId");
-
-  return records.filter((record) => (
-    (!projectId || record.projectId === projectId) &&
-    (!taskId || record.taskId === taskId) &&
-    (!companyId || record.companyId === companyId || (collectionKey === "companies" && record.id === companyId)) &&
-    (!memberId || record.memberId === memberId || record.owner === memberId || record.author === memberId || record.requester === memberId)
-  ));
+function recordFiltersFromUrl(url) {
+  return {
+    projectId: url.searchParams.get("projectId") || "",
+    taskId: url.searchParams.get("taskId") || "",
+    companyId: url.searchParams.get("companyId") || "",
+    memberId: url.searchParams.get("memberId") || ""
+  };
 }
 
 function requireRecord(value, label) {
