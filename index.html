@@ -6,7 +6,7 @@
     <title>Agora</title>
     <meta name="description" content="Open source project management for teams that want clarity without lock-in.">
     <link rel="icon" href="./assets/agora-mark.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="./src/styles.css">
+    <link rel="stylesheet" href="./src/styles.css?v=sidebar-cleanup">
   </head>
   <body>
     <div class="app-shell">
@@ -20,38 +20,70 @@
         </a>
 
         <nav class="nav-list" aria-label="Primary">
-          <div class="nav-section-label">Home</div>
-          <button class="nav-item is-active" type="button" data-route="dashboard">Dashboard</button>
-          <button class="nav-item" type="button" data-route="daily">Today</button>
-          <button class="nav-item" type="button" data-route="inbox">
-            <span>Inbox</span>
-            <small class="notification-badge" id="nav-inbox-count" hidden>0</small>
-          </button>
+          <section class="nav-group is-open" data-nav-group="home">
+            <button class="nav-group-toggle" type="button" data-sidebar-toggle="home" aria-expanded="true" aria-controls="nav-group-home">
+              <span>Home</span>
+              <span class="nav-group-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="nav-group-panel" id="nav-group-home">
+              <button class="nav-item is-active" type="button" data-route="dashboard">Dashboard</button>
+              <button class="nav-item" type="button" data-route="daily">Today</button>
+              <button class="nav-item" type="button" data-route="inbox">
+                <span>Inbox</span>
+                <small class="notification-badge" id="nav-inbox-count" hidden>0</small>
+              </button>
+            </div>
+          </section>
 
-          <div class="nav-section-label">Work</div>
-          <button class="nav-item" type="button" data-route="board">Board</button>
-          <button class="nav-item" type="button" data-route="list">List</button>
-          <button class="nav-item" type="button" data-route="calendar">Calendar</button>
-          <button class="nav-item" type="button" data-route="my-work">My Work</button>
-          <button class="nav-item" type="button" data-route="time">Time</button>
+          <section class="nav-group is-open" data-nav-group="work">
+            <button class="nav-group-toggle" type="button" data-sidebar-toggle="work" aria-expanded="true" aria-controls="nav-group-work">
+              <span>Work</span>
+              <span class="nav-group-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="nav-group-panel" id="nav-group-work">
+              <button class="nav-item" type="button" data-route="board">Board</button>
+              <button class="nav-item" type="button" data-route="list">List</button>
+              <button class="nav-item" type="button" data-route="calendar">Calendar</button>
+              <button class="nav-item" type="button" data-route="my-work">My Work</button>
+              <button class="nav-item" type="button" data-route="time">Time</button>
+            </div>
+          </section>
 
-          <div class="nav-section-label">Manage</div>
-          <button class="nav-item" type="button" data-route="reports">Reports</button>
-          <button class="nav-item" type="button" data-route="templates">Templates</button>
-          <button class="nav-item" type="button" data-route="automations">Automations</button>
-          <button class="nav-item" type="button" data-route="docs">Docs</button>
-          <button class="nav-item" type="button" data-route="intake">Intake</button>
-          <button class="nav-item" type="button" data-route="fields">Fields</button>
-          <button class="nav-item" type="button" data-route="companies">Companies</button>
+          <section class="nav-group" data-nav-group="manage">
+            <button class="nav-group-toggle" type="button" data-sidebar-toggle="manage" aria-expanded="false" aria-controls="nav-group-manage">
+              <span>Manage</span>
+              <span class="nav-group-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="nav-group-panel" id="nav-group-manage">
+              <button class="nav-item" type="button" data-route="reports">Reports</button>
+              <button class="nav-item" type="button" data-route="templates">Templates</button>
+              <button class="nav-item" type="button" data-route="automations">Automations</button>
+              <button class="nav-item" type="button" data-route="docs">Docs</button>
+              <button class="nav-item" type="button" data-route="intake">Intake</button>
+              <button class="nav-item" type="button" data-route="fields">Fields</button>
+              <button class="nav-item" type="button" data-route="companies">Companies</button>
+            </div>
+          </section>
 
-          <div class="nav-section-label">Admin</div>
-          <button class="nav-item" type="button" data-route="data">Data</button>
-          <button class="nav-item" type="button" data-route="settings">Settings</button>
+          <section class="nav-group" data-nav-group="admin">
+            <button class="nav-group-toggle" type="button" data-sidebar-toggle="admin" aria-expanded="false" aria-controls="nav-group-admin">
+              <span>Admin</span>
+              <span class="nav-group-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="nav-group-panel" id="nav-group-admin">
+              <button class="nav-item" type="button" data-route="data">Data</button>
+              <button class="nav-item" type="button" data-route="settings">Settings</button>
+            </div>
+          </section>
         </nav>
 
-        <section class="sidebar-section" aria-labelledby="projects-heading">
-          <div class="section-title" id="projects-heading">Projects</div>
-          <div class="project-list" id="project-list"></div>
+        <section class="sidebar-section nav-group" data-nav-group="projects" aria-labelledby="projects-heading">
+          <button class="nav-group-toggle" id="projects-heading" type="button" data-sidebar-toggle="projects" aria-expanded="false" aria-controls="project-list">
+            <span>Projects</span>
+            <small id="project-section-count">0</small>
+            <span class="nav-group-chevron" aria-hidden="true"></span>
+          </button>
+          <div class="project-list nav-group-panel" id="project-list"></div>
         </section>
 
         <button class="secondary-action" type="button" id="seed-reset">Reset sample data</button>
@@ -261,6 +293,6 @@
       </form>
     </dialog>
 
-    <script src="./src/app.js"></script>
+    <script src="./src/app.js?v=sidebar-cleanup"></script>
   </body>
 </html>

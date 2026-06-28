@@ -1,5 +1,6 @@
 const STORAGE_KEY = "agora.workspace.v1";
 const API_SESSION_KEY = "agora.api.session.v1";
+const SIDEBAR_STATE_KEY = "agora.sidebar.v1";
 const API_BASE_URL = "http://127.0.0.1:8787";
 
 const workspaceStore = {
@@ -32,6 +33,29 @@ const apiSessionStore = {
     window.localStorage.removeItem(API_SESSION_KEY);
   }
 };
+
+const sidebarDefaults = {
+  home: true,
+  work: true,
+  manage: false,
+  admin: false,
+  projects: false
+};
+
+function loadSidebarState() {
+  const stored = window.localStorage.getItem(SIDEBAR_STATE_KEY);
+  if (!stored) return { ...sidebarDefaults };
+
+  try {
+    return { ...sidebarDefaults, ...JSON.parse(stored) };
+  } catch {
+    return { ...sidebarDefaults };
+  }
+}
+
+function saveSidebarState() {
+  window.localStorage.setItem(SIDEBAR_STATE_KEY, JSON.stringify(sidebarState));
+}
 
 const statuses = [
   { id: "todo", label: "To do" },
@@ -749,11 +773,13 @@ const seedData = {
 
 let state = loadState();
 let apiSession = apiSessionStore.load();
+let sidebarState = loadSidebarState();
 
 const els = {
   appView: document.querySelector("#app-view"),
   pageTitle: document.querySelector("#page-title"),
   projectList: document.querySelector("#project-list"),
+  projectSectionCount: document.querySelector("#project-section-count"),
   navInboxCount: document.querySelector("#nav-inbox-count"),
   notificationCount: document.querySelector("#notification-count"),
   toastRegion: document.querySelector("#toast-region"),
@@ -1836,6 +1862,7 @@ function render() {
     const isCompaniesRoute = item.dataset.route === "companies" && state.selectedRoute === "company";
     item.classList.toggle("is-active", item.dataset.route === state.selectedRoute || isCompaniesRoute);
   });
+  renderSidebarGroups();
 
   renderSidebarProjects();
   renderFilters();
@@ -1863,6 +1890,28 @@ function render() {
   if (state.selectedRoute === "dashboard") renderDashboard();
 }
 
+function sidebarGroupForRoute(route) {
+  if (["dashboard", "daily", "inbox"].includes(route)) return "home";
+  if (["board", "list", "calendar", "my-work", "time"].includes(route)) return "work";
+  if (["reports", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
+  if (["data", "settings"].includes(route)) return "admin";
+  if (route === "project") return "projects";
+  return "";
+}
+
+function renderSidebarGroups() {
+  const activeGroup = sidebarGroupForRoute(state.selectedRoute);
+
+  document.querySelectorAll("[data-nav-group]").forEach((group) => {
+    const groupId = group.dataset.navGroup;
+    const isOpen = Boolean(sidebarState[groupId]) || groupId === activeGroup;
+    const toggle = group.querySelector("[data-sidebar-toggle]");
+
+    group.classList.toggle("is-open", isOpen);
+    if (toggle) toggle.setAttribute("aria-expanded", String(isOpen));
+  });
+}
+
 function renderSidebarProjects() {
   const projects = activeProjects();
   const tasks = activeTasks();
@@ -1884,6 +1933,7 @@ function renderSidebarProjects() {
     </button>
     ${projectButtons}
   `;
+  if (els.projectSectionCount) els.projectSectionCount.textContent = String(projects.length);
 }
 
 function renderFilters() {
@@ -5297,6 +5347,15 @@ document.addEventListener("click", (event) => {
   const toastDismissButton = event.target.closest("[data-toast-dismiss]");
   if (toastDismissButton) {
     dismissToast(toastDismissButton.dataset.toastDismiss);
+    return;
+  }
+
+  const sidebarToggle = event.target.closest("[data-sidebar-toggle]");
+  if (sidebarToggle) {
+    const groupId = sidebarToggle.dataset.sidebarToggle;
+    sidebarState[groupId] = !sidebarState[groupId];
+    saveSidebarState();
+    renderSidebarGroups();
     return;
   }
 
