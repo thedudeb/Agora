@@ -830,6 +830,8 @@ let invitePreviewLoading = false;
 let pwaInstallPrompt = null;
 let pwaInstallReady = false;
 let notificationPermissionState = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
+let lenis = null;
+const reducedMotionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)");
 
 const els = {
   appView: document.querySelector("#app-view"),
@@ -860,6 +862,35 @@ const els = {
 let draftSubtasks = [];
 let toastTimers = new Map();
 let lastFocusedBeforeDialog = null;
+
+function initSmoothScroll() {
+  if (!window.Lenis || reducedMotionQuery?.matches) return;
+
+  lenis = new window.Lenis({
+    autoRaf: true,
+    anchors: true,
+    lerp: 0.12,
+    wheelMultiplier: 0.9,
+    touchMultiplier: 1,
+    prevent: (node) => Boolean(node?.closest?.("[data-lenis-prevent]"))
+  });
+  document.documentElement.classList.add("has-lenis");
+}
+
+function destroySmoothScroll() {
+  lenis?.destroy();
+  lenis = null;
+  document.documentElement.classList.remove("has-lenis");
+}
+
+function handleReducedMotionChange() {
+  destroySmoothScroll();
+  if (!reducedMotionQuery?.matches) initSmoothScroll();
+}
+
+function refreshSmoothScroll() {
+  window.requestAnimationFrame(() => lenis?.resize?.());
+}
 
 function loadState() {
   const stored = workspaceStore.load();
@@ -2293,6 +2324,7 @@ function render() {
   if (state.selectedRoute === "companies") renderCompanies();
   if (state.selectedRoute === "invite") renderInviteAcceptance();
   if (state.selectedRoute === "dashboard") renderDashboard();
+  refreshSmoothScroll();
 }
 
 function sidebarGroupForRoute(route) {
@@ -7189,6 +7221,13 @@ window.addEventListener("appinstalled", () => {
   if (state.selectedRoute === "settings") render();
 });
 
+if (reducedMotionQuery?.addEventListener) {
+  reducedMotionQuery.addEventListener("change", handleReducedMotionChange);
+} else if (reducedMotionQuery?.addListener) {
+  reducedMotionQuery.addListener(handleReducedMotionChange);
+}
+
+initSmoothScroll();
 registerServiceWorker();
 
 if (!routeInviteFromLocation()) {
