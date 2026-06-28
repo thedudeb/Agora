@@ -1,7 +1,10 @@
 const http = require("node:http");
 const crypto = require("node:crypto");
 const { URL } = require("node:url");
+const { loadEnvFile } = require("./env");
 const { createStorage } = require("./storage");
+
+loadEnvFile();
 
 const PORT = Number(process.env.AGORA_API_PORT || 8787);
 const BODY_LIMIT_BYTES = 5 * 1024 * 1024;

@@ -1,16 +1,20 @@
 # Roadmap
 
-This roadmap describes the intended direction for Agora. It will evolve as the project moves from product definition into implementation.
+This roadmap describes the intended direction for Agora. It will evolve as the prototype turns into a self-hostable product.
+
+## Current Prototype
+
+Agora currently includes a dependency-free browser app, local app server, API scaffold, JSON storage, optional Supabase storage, account signup/login, invitations, role permissions, project/task views, company and client portals, docs/files, intake, templates, automations, notifications, time tracking, import/export, accessibility basics, and PWA shell support.
 
 ## Phase 0: Project Foundation
 
 - Finalize product requirements.
-- Choose initial technical architecture.
-- Add development setup documentation.
+- Choose initial technical architecture. ✅
+- Add development setup documentation. ✅
 - Define contribution standards and issue labels.
 - Publish a small set of design principles and core user flows.
-- Establish the first API, auth, and persistence foundation.
-- Draft the database schema for self-hosted deployments.
+- Establish the first API, auth, and persistence foundation. ✅
+- Draft the database schema for self-hosted deployments. ✅
 
 ## Phase 1: MVP
 

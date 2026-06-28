@@ -27,7 +27,28 @@ Thanks for your interest in contributing. Agora is early, so thoughtful question
 - Update docs when behavior changes.
 - Add tests when code exists and the change has meaningful behavior.
 
+## Local Checks
+
+Agora has no package dependencies right now. Copy the example environment file once:
+
+```sh
+cp .env.example .env
+```
+
+Use these commands before opening a PR:
+
+```sh
+npm run check
+npm run test:api
+```
+
+For manual testing, run the app and API in separate terminals:
+
+```sh
+npm run dev
+npm run dev:api
+```
+
 ## Code of Conduct
 
 Be direct, generous, and respectful. Assume good intent, make room for different experience levels, and keep discussion focused on making Agora better.
-

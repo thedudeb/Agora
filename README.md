@@ -8,17 +8,36 @@ Agora is a self-hostable project management workspace inspired by tools like Asa
 
 Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, PWA installability, an offline app shell, mobile task actions, workspace settings, member roles, team invitations, first-owner signup, password login, passwordless API sessions, structured records endpoints, data import/export, API snapshot sync, a storage adapter foundation, optional Supabase snapshot and structured record persistence, a dependency-free API scaffold, demo auth, a PostgreSQL schema draft, command-center inbox lanes, AI-style operator briefs, client/company portals, client approvals, collaboration presence, automation recommendations, company portfolios, editable companies, daily task planning, inbox notifications, notification badges and toasts, reporting dashboards, project and task templates, automations, project docs and files, intake forms, custom task fields, task dependencies, Gantt-style timelines, project filters, task creation, subtasks, comments, activity, employee time tracking, list view, board view, calendar view, project workspaces, milestones, project timelines, and a My Work view.
 
-## Run Locally
+## Quick Start
+
+Agora currently runs without package dependencies. You only need Node.js 18+ and npm.
+
+1. Clone the repo and enter it.
+
+```sh
+git clone https://github.com/thedudeb/Agora.git
+cd Agora
+```
+
+2. Copy the environment template.
+
+```sh
+cp .env.example .env
+```
+
+The default `.env` uses local JSON storage and serves the app at `http://127.0.0.1:5174`.
+
+3. Start the web app.
 
 ```sh
 npm run dev
 ```
 
-Then open `http://localhost:5174`.
+Then open `http://127.0.0.1:5174`.
 
 The prototype stores changes in browser local storage. Use "Reset sample data" in the sidebar to restore the seeded workspace.
 
-Run the API scaffold separately:
+4. Start the API in a second terminal.
 
 ```sh
 npm run dev:api
@@ -28,7 +47,34 @@ Then open `http://127.0.0.1:8787/api/health`.
 
 With both processes running, open Settings in the app and create the first owner account or use "Connect to API" for a demo session. API-connected users can sync the workspace from the Data page. If the API is hosted somewhere other than `http://127.0.0.1:8787`, update the API URL in Settings.
 
-To use Supabase for API persistence, run `server/migrations/001_supabase_storage.sql` in Supabase and set `AGORA_STORAGE_DRIVER=supabase`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` for the API process.
+## Useful Commands
+
+```sh
+npm run dev       # serve the browser app
+npm run dev:api   # start the local API
+npm run check     # syntax-check app and server files
+npm run test:api  # run the dependency-free API smoke test
+```
+
+To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`.
+
+## Supabase Storage
+
+Agora works out of the box with local JSON API storage. To use Supabase for API persistence:
+
+1. Create a Supabase project.
+2. Run `server/migrations/001_supabase_storage.sql` in the Supabase SQL editor.
+3. Set these values in `.env`:
+
+```sh
+AGORA_STORAGE_DRIVER=supabase
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+4. Restart `npm run dev:api`.
+
+Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Do not paste it into browser settings or client code.
 
 Client invitations can be assigned to a company. Accepted client accounts land in the Portal view and only receive the company-scoped workspace records they are allowed to see.
 
@@ -53,7 +99,7 @@ Client invitations can be assigned to a company. Accepted client accounts land i
 - `prds/` contains product requirements and planning documents.
 - `index.html` contains the first browser prototype shell.
 - `src/` contains prototype application logic and styles.
-- `server/` contains the first API scaffold, JSON development storage, and PostgreSQL schema draft.
+- `server/` contains the dependency-free app server, API scaffold, JSON development storage, Supabase migration, and PostgreSQL schema draft.
 - `docs/mobile-strategy.md` outlines the PWA-first path toward a dedicated mobile app.
 - `assets/` contains brand and interface assets.
 - `ROADMAP.md` outlines the release direction.

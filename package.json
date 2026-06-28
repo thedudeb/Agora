@@ -4,10 +4,10 @@
   "private": true,
   "description": "Open source project management for teams that want clarity without lock-in.",
   "scripts": {
-    "dev": "python3 -m http.server 5174 --bind 127.0.0.1",
-    "dev:app": "python3 -m http.server 5174 --bind 127.0.0.1",
+    "dev": "node server/static.js",
+    "dev:app": "node server/static.js",
     "dev:api": "node server/api.js",
-    "check": "node --check src/app.js && node --check server/api.js && node --check server/storage.js && node --check server/smoke-test.js",
+    "check": "node --check src/app.js && node --check server/api.js && node --check server/storage.js && node --check server/static.js && node --check server/env.js && node --check server/smoke-test.js",
     "test:api": "node server/smoke-test.js"
   },
   "license": "AGPL-3.0-only"

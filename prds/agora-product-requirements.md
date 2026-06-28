@@ -4,6 +4,8 @@
 
 Build Agora, an open source project management platform for teams that want Asana or Nifty-like project clarity without vendor lock-in. The first release should make it easy to self-host, create workspaces and projects, plan work across multiple views, collaborate on tasks, and track progress with enough polish for day-to-day team use.
 
+Current prototype note: Agora now has a dependency-free browser app, local API, JSON storage, optional Supabase persistence, account auth, invitations, roles, client portals, project/task views, time tracking, notifications, templates, automations, import/export, PWA shell support, and baseline accessibility features.
+
 ## Background
 
 - Modern teams often rely on SaaS tools such as Asana, Nifty, ClickUp, Monday, or Jira to manage projects, tasks, milestones, and collaboration.
@@ -102,7 +104,6 @@ Build Agora, an open source project management platform for teams that want Asan
 
 - Should the first release prioritize calendar or timeline as the third project view?
 - Should guests be included in the MVP, or deferred until core member collaboration is proven?
-- What license best supports the community and business model: MIT, Apache 2.0, AGPL, or another option?
 - Should the project include a hosted cloud offering at launch, or focus exclusively on self-hosting first?
 - How opinionated should statuses and workflows be across templates versus fully customizable from day one?
 
@@ -115,3 +116,11 @@ Build Agora, an open source project management platform for teams that want Asan
 | List, board, and calendar/timeline views are enough for the first release. | Medium |
 | Admins will expect Docker-based deployment documentation early. | Medium |
 | Open source users will value exportability and integration hooks before deep built-in automations. | Medium |
+
+## Decisions Made
+
+| Decision | Outcome |
+| --- | --- |
+| License | AGPL-3.0-only |
+| First mobile path | PWA-first, with native app consideration later |
+| Initial persistence path | Local JSON for development, Supabase Postgres as the first production-ready adapter |

@@ -6,7 +6,7 @@ const { createStorage, createSupabaseStorage } = require("./storage");
 
 async function run() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-api-"));
-  const server = createServer({ storage: createStorage({ dataDir }) });
+  const server = createServer({ storage: createStorage({ dataDir, driver: "json" }) });
 
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
@@ -266,7 +266,7 @@ async function run() {
 
 async function testAccountAuth() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-auth-"));
-  const server = createServer({ storage: createStorage({ dataDir }) });
+  const server = createServer({ storage: createStorage({ dataDir, driver: "json" }) });
 
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();

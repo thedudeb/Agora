@@ -4,6 +4,14 @@ This directory contains the first backend foundation for Agora. It is intentiona
 
 ## Run
 
+Copy the environment template once:
+
+```sh
+cp .env.example .env
+```
+
+The API loads `.env` automatically and defaults to local JSON storage.
+
 ```sh
 npm run dev:api
 ```
@@ -24,13 +32,27 @@ npm run dev
 
 Then open Settings, create the first workspace owner account or connect as a demo member, and use the Data page to save or load the workspace snapshot. If the API is not running at the default address, set the API URL in Settings and reload the app.
 
+## App Server
+
+The browser app is served by the same dependency-free Node foundation:
+
+```sh
+npm run dev
+```
+
+It listens on `http://127.0.0.1:5174` by default. Override with:
+
+```sh
+AGORA_APP_PORT=5175 npm run dev
+```
+
 ## Supabase Storage
 
 Agora can use Supabase Postgres for API persistence without adding a Node dependency. The storage adapter talks to Supabase through PostgREST using server-only credentials.
 
 1. Create a Supabase project.
 2. Run [`migrations/001_supabase_storage.sql`](./migrations/001_supabase_storage.sql) in the Supabase SQL editor.
-3. Copy `.env.example` to `.env` and set:
+3. Set these values in `.env`:
 
 ```sh
 AGORA_STORAGE_DRIVER=supabase
@@ -39,7 +61,7 @@ SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
-4. Start the API with those variables loaded:
+4. Restart the API:
 
 ```sh
 npm run dev:api
@@ -63,7 +85,7 @@ The migration creates the snapshot/audit tables plus structured record tables fo
 - `POST /api/invitations`: creates or refreshes an invitation for admins. Body: `{ "email": "jordan@example.com", "name": "Jordan Lee", "role": "member", "companyId": "optional-company-id" }`.
 - `GET /api/invitations/:token`: returns public invitation details for an invite acceptance screen.
 - `POST /api/invitations/:token/accept`: accepts an invitation and creates a session. Body: `{ "name": "Jordan Lee", "password": "optional 8+ characters" }`.
-- `GET /api/records`: returns table-shaped collections currently backed by the workspace snapshot.
+- `GET /api/records`: returns structured collections from the active storage adapter. When no structured rows exist yet, the response includes `snapshotFallback` for bootstrap compatibility.
 - `GET /api/records/:collection`: returns a structured collection such as `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, or `files`. Supports filters like `?projectId=...`, `?taskId=...`, `?companyId=...`, and `?memberId=...`.
 - `POST /api/records/:collection`: creates or updates one structured record for supported collections.
 - `GET /api/workspace`: returns the latest saved workspace snapshot.
@@ -79,13 +101,13 @@ The migration creates the snapshot/audit tables plus structured record tables fo
 - `PUT /api/tasks/:id`: updates a task for admin/project-manager roles.
 - `DELETE /api/tasks/:id`: archives a task for admin/project-manager roles.
 - `POST /api/tasks/:id/restore`: restores an archived task for admin/project-manager roles.
-- `GET /api/comments`: lists comments from the current workspace snapshot. Supports `?taskId=...`.
+- `GET /api/comments`: lists comments from structured storage. Supports `?taskId=...`.
 - `POST /api/comments`: creates or updates a comment.
-- `GET /api/activities`: lists activity entries. Supports `?projectId=...` and `?taskId=...`.
+- `GET /api/activities`: lists activity entries from structured storage. Supports `?projectId=...` and `?taskId=...`.
 - `POST /api/activities`: creates or updates an activity entry.
-- `GET /api/documents`: lists documents. Supports `?projectId=...`.
+- `GET /api/documents`: lists documents from structured storage. Supports `?projectId=...`.
 - `POST /api/documents`: creates or updates a project document.
-- `GET /api/files`: lists attachment records. Supports `?projectId=...`.
+- `GET /api/files`: lists attachment records from structured storage. Supports `?projectId=...`.
 - `POST /api/files`: creates or updates an attachment record.
 - `GET /api/audit-log`: returns recent workspace audit events for admin/project-manager roles.
 
@@ -97,9 +119,9 @@ Authorization: Bearer <token>
 
 ## Roles
 
-- `admin`: read/write/import workspace data, read audit log, manage members.
-- `manager`: read/write workspace data, read audit log.
-- `member`: read workspace data.
+- `admin`: read/write/import workspace data, read audit log, manage members, and respond to approvals.
+- `manager`: read/write workspace data, read audit log, and respond to approvals.
+- `member`: read workspace data, add comments/activity, and add attachments.
 - `client`: read scoped workspace data, add comments/activity, and respond to approvals.
 
 Client memberships can include `companyId`. When present, workspace snapshots and structured record reads are scoped to that company before they are returned to the browser.
