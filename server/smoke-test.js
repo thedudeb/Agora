@@ -270,6 +270,7 @@ async function run() {
     assert(audit.events.length === 14, "audit log was not written");
 
     await testAccountAuth();
+    await testSupabaseAuthBridge();
     await testSupabaseStorageAdapter();
 
     console.log("API smoke test passed");
@@ -432,6 +433,82 @@ async function testAccountAuth() {
   }
 }
 
+async function testSupabaseAuthBridge() {
+  const originalFetch = global.fetch;
+  const originalEnv = {
+    AGORA_AUTH_DRIVER: process.env.AGORA_AUTH_DRIVER,
+    SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY
+  };
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-supabase-auth-"));
+  process.env.AGORA_AUTH_DRIVER = "supabase";
+  process.env.SUPABASE_URL = "https://example.supabase.co";
+  process.env.SUPABASE_ANON_KEY = "anon-key";
+
+  global.fetch = async (url, options = {}) => {
+    const parsed = new URL(url);
+    if (parsed.hostname === "example.supabase.co" && parsed.pathname === "/auth/v1/user") {
+      if (options.headers?.Authorization !== "Bearer supabase-token") {
+        return mockResponse({ message: "Invalid token" }, false, 401);
+      }
+      return mockResponse({
+        id: "00000000-0000-4000-8000-000000000001",
+        email: "supabase@example.test",
+        created_at: "2026-06-28T12:00:00.000Z",
+        user_metadata: {
+          full_name: "Supabase User"
+        }
+      });
+    }
+    return originalFetch(url, options);
+  };
+
+  const server = createServer({ storage: createStorage({ dataDir, driver: "json" }) });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const health = await request(`${baseUrl}/api/health`);
+    assert(health.auth === "supabase", "health did not expose supabase auth mode");
+
+    const exchange = await request(`${baseUrl}/api/auth/supabase-login`, {
+      method: "POST",
+      body: { accessToken: "supabase-token" }
+    });
+    assert(exchange.token, "supabase login did not return an Agora session token");
+    assert(exchange.user.email === "supabase@example.test", "supabase login did not return Supabase user");
+    assert(exchange.user.authProvider === "supabase", "supabase login did not mark auth provider");
+    assert(exchange.membership.role === "admin", "first Supabase user did not bootstrap as admin");
+
+    const members = await request(`${baseUrl}/api/members`, {
+      token: exchange.token
+    });
+    assert(members.users.some((user) => user.email === "supabase@example.test"), "supabase user was not saved to access list");
+
+    const directSession = await request(`${baseUrl}/api/session`, {
+      token: "supabase-token"
+    });
+    assert(directSession.user.email === "supabase@example.test", "direct Supabase bearer token was not accepted");
+
+    const invalid = await requestError(`${baseUrl}/api/session`, {
+      token: "invalid-token"
+    });
+    assert(invalid.status === 401, "invalid Supabase bearer token should be rejected");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(dataDir, { recursive: true, force: true });
+    global.fetch = originalFetch;
+    Object.entries(originalEnv).forEach(([key, value]) => {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    });
+  }
+}
+
 async function testSupabaseStorageAdapter() {
   const originalFetch = global.fetch;
   const snapshots = new Map();
@@ -536,6 +613,16 @@ async function testSupabaseStorageAdapter() {
 
     const loadedRecords = await storage.loadRecords("comments", { projectId: "project-supabase" });
     assert(loadedRecords.length === 1 && loadedRecords[0].id === "comment-supabase", "supabase record load failed");
+
+    const savedMembership = await storage.upsertAuthMembership({
+      workspaceId: "workspace-smoke",
+      userId: "00000000-0000-4000-8000-000000000002",
+      role: "admin",
+      status: "active",
+      companyId: "",
+      joinedAt: "2026-06-28T12:00:00.000Z"
+    });
+    assert(savedMembership.userId === "00000000-0000-4000-8000-000000000002", "supabase auth membership save failed");
   } finally {
     global.fetch = originalFetch;
   }
@@ -545,6 +632,7 @@ function mockResponse(body, ok = true, status = 200) {
   return {
     ok,
     status,
+    json: async () => body,
     text: async () => JSON.stringify(body)
   };
 }

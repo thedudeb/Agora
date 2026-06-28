@@ -116,7 +116,8 @@ function createJsonStorage(options = {}) {
     loadAuditLog,
     appendAuditEvent,
     loadRecords,
-    upsertRecord
+    upsertRecord,
+    upsertAuthMembership: async (membership) => membership
   };
 }
 
@@ -256,6 +257,19 @@ function createSupabaseStorage(options = {}) {
     return fromSupabaseRecordRow(Array.isArray(rows) ? rows[0] : null) || record;
   }
 
+  async function upsertAuthMembership(membership) {
+    if (!membership?.workspaceId || !membership?.userId) return membership;
+
+    const rows = await request("agora_workspace_memberships", "", {
+      method: "POST",
+      headers: {
+        Prefer: "resolution=merge-duplicates,return=representation"
+      },
+      body: toSupabaseMembershipRow(membership)
+    });
+    return fromSupabaseMembershipRow(Array.isArray(rows) ? rows[0] : null) || membership;
+  }
+
   return {
     driver: "supabase",
     workspaceId,
@@ -266,7 +280,8 @@ function createSupabaseStorage(options = {}) {
     loadAuditLog,
     appendAuditEvent,
     loadRecords,
-    upsertRecord
+    upsertRecord,
+    upsertAuthMembership
   };
 }
 
@@ -336,6 +351,35 @@ function toSupabaseAuditEvent(event) {
     metadata: event.metadata || {},
     created_at: event.createdAt
   };
+}
+
+function toSupabaseMembershipRow(membership) {
+  return {
+    workspace_id: membership.workspaceId,
+    user_id: membership.userId,
+    role: membership.role || "member",
+    status: membership.status || "active",
+    company_id: membership.companyId || "",
+    invited_by: isUuid(membership.invitedBy) ? membership.invitedBy : null,
+    joined_at: membership.joinedAt || new Date().toISOString()
+  };
+}
+
+function fromSupabaseMembershipRow(row) {
+  if (!row) return null;
+  return {
+    workspaceId: row.workspace_id,
+    userId: row.user_id,
+    role: row.role,
+    status: row.status,
+    companyId: row.company_id || "",
+    invitedBy: row.invited_by || "",
+    joinedAt: row.joined_at || ""
+  };
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ""));
 }
 
 function fromSupabaseAuditEvent(row = {}) {

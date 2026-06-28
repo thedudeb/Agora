@@ -51,13 +51,15 @@ AGORA_APP_PORT=5175 npm run dev
 Agora can use Supabase Postgres for API persistence without adding a Node dependency. The storage adapter talks to Supabase through PostgREST using server-only credentials.
 
 1. Create a Supabase project.
-2. Run [`migrations/001_supabase_storage.sql`](./migrations/001_supabase_storage.sql) in the Supabase SQL editor.
+2. Run [`migrations/001_supabase_storage.sql`](./migrations/001_supabase_storage.sql) and [`migrations/002_supabase_auth_rls.sql`](./migrations/002_supabase_auth_rls.sql) in the Supabase SQL editor.
 3. Set these values in `.env`:
 
 ```sh
 AGORA_STORAGE_DRIVER=supabase
+AGORA_AUTH_DRIVER=supabase
 AGORA_WORKSPACE_ID=workspace-acme
 SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
@@ -67,9 +69,9 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 npm run dev:api
 ```
 
-Keep `SUPABASE_SERVICE_ROLE_KEY` on the server only. The browser app still talks to Agora's local API, never directly to Supabase.
+Keep `SUPABASE_SERVICE_ROLE_KEY` on the server only. `SUPABASE_ANON_KEY` is used by the API to validate Supabase Auth access tokens.
 
-The migration creates the snapshot/audit tables plus structured record tables for `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, and `presence`. The JSON driver stores those records inside the workspace snapshot for local development; the Supabase driver writes them to dedicated `agora_*` tables through the same `/api/records/:collection` API.
+The first migration creates the snapshot/audit tables plus structured record tables for `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, and `presence`. The second migration creates `agora_workspace_memberships`, RLS helper functions, and policies for Supabase Auth users. The JSON driver stores records inside the workspace snapshot for local development; the Supabase driver writes them to dedicated `agora_*` tables through the same `/api/records/:collection` API.
 
 ## Endpoints
 
@@ -78,6 +80,7 @@ The migration creates the snapshot/audit tables plus structured record tables fo
 - `POST /api/auth/demo-login`: creates a demo session. Body: `{ "memberId": "mara" }`.
 - `POST /api/auth/login`: creates a passwordless session for an accepted workspace user. Body: `{ "email": "jordan@example.com" }`.
 - `POST /api/auth/password-login`: creates a session with email and password. Body: `{ "email": "jordan@example.com", "password": "8+ characters" }`.
+- `POST /api/auth/supabase-login`: exchanges a Supabase Auth access token for an Agora API session when `AGORA_AUTH_DRIVER=supabase`. Body: `{ "accessToken": "supabase-access-token" }`.
 - `POST /api/auth/logout`: clears the current session.
 - `GET /api/session`: returns the current authenticated session.
 - `GET /api/members`: returns workspace users, memberships, and invitations.
@@ -128,4 +131,4 @@ Client memberships can include `companyId`. When present, workspace snapshots an
 
 ## Database Target
 
-`schema.sql` is the normalized PostgreSQL target for the self-hosted backend. `migrations/001_supabase_storage.sql` is the first runnable Supabase migration and stores the current workspace snapshot, audit log, and structured record collections in Postgres. The JSON storage adapter remains the low-friction local default while Supabase provides the production-ready persistence path.
+`schema.sql` is the normalized PostgreSQL target for the self-hosted backend. `migrations/001_supabase_storage.sql` stores the current workspace snapshot, audit log, and structured record collections in Postgres. `migrations/002_supabase_auth_rls.sql` adds the Supabase Auth membership/RLS layer. The JSON storage adapter remains the low-friction local default while Supabase provides the production-ready persistence path.

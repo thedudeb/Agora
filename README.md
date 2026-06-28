@@ -63,18 +63,22 @@ To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`
 Agora works out of the box with local JSON API storage. To use Supabase for API persistence:
 
 1. Create a Supabase project.
-2. Run `server/migrations/001_supabase_storage.sql` in the Supabase SQL editor.
+2. Run `server/migrations/001_supabase_storage.sql` and `server/migrations/002_supabase_auth_rls.sql` in the Supabase SQL editor.
 3. Set these values in `.env`:
 
 ```sh
 AGORA_STORAGE_DRIVER=supabase
+AGORA_AUTH_DRIVER=supabase
 SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
 4. Restart `npm run dev:api`.
 
-Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Do not paste it into browser settings or client code.
+Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Do not paste it into browser settings or client code. `SUPABASE_ANON_KEY` is safe for browser-based Supabase Auth clients, but Agora's API still reads it from the server environment when validating access tokens.
+
+`002_supabase_auth_rls.sql` adds `public.agora_workspace_memberships`, helper functions around `auth.uid()`, and RLS policies for snapshots, audit events, and structured record tables. The API can exchange a Supabase Auth `access_token` through Settings, or accept that token directly as a Bearer token when `AGORA_AUTH_DRIVER=supabase`.
 
 Client invitations can be assigned to a company. Accepted client accounts land in the Portal view and only receive the company-scoped workspace records they are allowed to see.
 

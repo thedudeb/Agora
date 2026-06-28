@@ -907,7 +907,7 @@ function refreshSmoothScroll() {
 
 function loadState() {
   const stored = workspaceStore.load();
-  if (!stored) return structuredClone(seedData);
+  if (!stored) return normalizeState(structuredClone(seedData));
 
   try {
     const parsed = JSON.parse(stored);
@@ -918,7 +918,7 @@ function loadState() {
       filters: { ...base.filters, ...parsed.filters }
     });
   } catch {
-    return structuredClone(seedData);
+    return normalizeState(structuredClone(seedData));
   }
 }
 
@@ -1272,9 +1272,10 @@ function currentPresenceRecord({ taskId = "" } = {}) {
 }
 
 function upsertLocalPresence(record) {
+  const presence = Array.isArray(state.presence) ? state.presence : [];
   state.presence = [
     record,
-    ...state.presence.filter((presence) => presence.id !== record.id)
+    ...presence.filter((presenceItem) => presenceItem.id !== record.id)
   ].slice(0, 50);
 }
 
@@ -1292,7 +1293,7 @@ function heartbeatPresence({ force = false, taskId = "" } = {}) {
 }
 
 function livePresenceRecords({ taskId = "" } = {}) {
-  return state.presence
+  return (Array.isArray(state.presence) ? state.presence : [])
     .filter(isPresenceActive)
     .filter((presence) => presence.memberId !== activeMemberId())
     .filter((presence) => !taskId || presence.taskId === taskId)
@@ -5151,6 +5152,11 @@ function renderSettings() {
             <button class="button button-primary" type="button" id="api-password-signup">Create Owner</button>
             <button class="button button-secondary" type="button" id="api-password-login">Password Sign In</button>
             <button class="button button-secondary" type="button" id="api-email-login">Sign In</button>
+            <label class="wide-field">
+              <span>Supabase access token</span>
+              <textarea id="api-supabase-token" rows="2" placeholder="Paste a Supabase Auth access_token"></textarea>
+            </label>
+            <button class="button button-secondary" type="button" id="api-supabase-login">Use Supabase Auth</button>
             <label>
               <span>Demo member</span>
               <select id="api-member">
@@ -7261,6 +7267,32 @@ async function signInWithPassword() {
   }
 }
 
+async function signInWithSupabaseToken() {
+  const accessToken = document.querySelector("#api-supabase-token")?.value.trim();
+  if (!accessToken) {
+    showToast("Paste a Supabase access token", "info");
+    return;
+  }
+
+  try {
+    const health = await apiRequest("/api/health");
+    const session = await apiRequest("/api/auth/supabase-login", {
+      method: "POST",
+      body: { accessToken }
+    });
+    saveApiSession({
+      ...session,
+      apiHealth: health,
+      storageDriver: health.storage
+    });
+    await syncAccessFromApi();
+    render();
+    showToast(`Connected with Supabase Auth as ${session.user.name}`, "success");
+  } catch (error) {
+    showToast(`Supabase auth failed: ${error.message}`, "info");
+  }
+}
+
 function disconnectApiSession() {
   clearApiSession();
   render();
@@ -7739,6 +7771,9 @@ document.addEventListener("click", (event) => {
 
   const apiPasswordLoginButton = event.target.closest("#api-password-login");
   if (apiPasswordLoginButton) signInWithPassword();
+
+  const apiSupabaseLoginButton = event.target.closest("#api-supabase-login");
+  if (apiSupabaseLoginButton) signInWithSupabaseToken();
 
   const apiDisconnectButton = event.target.closest("#api-disconnect");
   if (apiDisconnectButton) disconnectApiSession();

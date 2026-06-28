@@ -70,6 +70,7 @@ function createServer(options = {}) {
           ok: true,
           service: "agora-api",
           storage: storage.driver || "json-file",
+          auth: authDriverLabel(),
           workspace
         });
         return;
@@ -111,6 +112,13 @@ function createServer(options = {}) {
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/auth/supabase-login") {
+        const body = await readJsonBody(request);
+        const session = await createSupabaseSessionFromAccessToken(storage, body.accessToken);
+        sendJson(response, 200, session);
+        return;
+      }
+
       const invitationAcceptMatch = url.pathname.match(/^\/api\/invitations\/([^/]+)\/accept$/);
       if (invitationAcceptMatch && request.method === "POST") {
         const body = await readJsonBody(request);
@@ -126,7 +134,7 @@ function createServer(options = {}) {
         return;
       }
 
-      const session = requireSession(request, response);
+      const session = await requireSession(request, response, storage);
       if (!session) return;
 
       if (request.method === "POST" && url.pathname === "/api/auth/logout") {
@@ -712,7 +720,13 @@ function aiActionsForMode(mode, context) {
 
 function createSession(user, membership) {
   const token = crypto.randomUUID();
-  const session = {
+  const session = buildSession(user, membership, token);
+  sessions.set(token, session);
+  return session;
+}
+
+function buildSession(user, membership, token) {
+  return {
     token,
     user: publicUser(user),
     workspace,
@@ -720,19 +734,29 @@ function createSession(user, membership) {
     permissions: rolePermissions[membership.role] || [],
     createdAt: new Date().toISOString()
   };
-  sessions.set(token, session);
-  return session;
 }
 
-function requireSession(request, response) {
+async function requireSession(request, response, storage) {
   const header = request.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
   const session = sessions.get(token);
-  if (!session) {
-    sendError(response, 401, "Authentication required");
-    return null;
+  if (session) return session;
+
+  if (token && supabaseAuthEnabled()) {
+    return createSupabaseSessionFromAccessToken(storage, token, { persist: false });
   }
-  return session;
+
+  sendError(response, 401, "Authentication required");
+  return null;
+}
+
+function supabaseAuthEnabled() {
+  const driver = cleanString(process.env.AGORA_AUTH_DRIVER || "local").toLowerCase();
+  return driver === "supabase" || driver === "hybrid";
+}
+
+function authDriverLabel() {
+  return supabaseAuthEnabled() ? "supabase" : "local";
 }
 
 function hasPermission(session, permission) {
@@ -831,6 +855,118 @@ async function createPasswordSession(storage, email, password) {
   if (!membership) publicError(401, "No active workspace membership found for that email");
 
   return createSession(user, membership);
+}
+
+async function createSupabaseSessionFromAccessToken(storage, accessToken, options = {}) {
+  const token = cleanString(accessToken);
+  if (!token) publicError(401, "Supabase access token is required");
+
+  const supabaseUser = await fetchSupabaseUser(token);
+  const { user, membership } = await syncSupabaseAuthUser(storage, supabaseUser);
+  return options.persist === false
+    ? buildSession(user, membership, token)
+    : createSession(user, membership);
+}
+
+async function fetchSupabaseUser(accessToken) {
+  const supabaseUrl = cleanString(process.env.SUPABASE_URL || process.env.AGORA_SUPABASE_URL).replace(/\/+$/, "");
+  const anonKey = cleanString(process.env.SUPABASE_ANON_KEY || process.env.AGORA_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.AGORA_SUPABASE_SERVICE_ROLE_KEY);
+  if (!supabaseUrl || !anonKey) {
+    publicError(500, "Supabase auth requires SUPABASE_URL and SUPABASE_ANON_KEY on the API server");
+  }
+
+  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    publicError(401, body.msg || body.message || "Supabase access token is invalid");
+  }
+  if (!body.id || !body.email) {
+    publicError(401, "Supabase user response did not include id and email");
+  }
+  return body;
+}
+
+async function syncSupabaseAuthUser(storage, supabaseUser) {
+  const email = normalizeEmail(supabaseUser.email);
+  const now = new Date().toISOString();
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const storedUsers = snapshotUsersOnly(snapshot);
+  const memberships = snapshotMembershipsOnly(snapshot);
+  const invitations = workspaceInvitations(snapshot);
+  const existingUser = workspaceUsers(snapshot).find((item) => item.id === supabaseUser.id || normalizeEmail(item.email) === email);
+  const pendingInvitation = invitations.find((item) => normalizeEmail(item.email) === email && item.status === "pending");
+  const existingMembership = memberships.find((item) => item.memberId === supabaseUser.id || (existingUser && item.memberId === existingUser.id));
+  const canBootstrapOwner = storedUsers.length === 0 && memberships.length === 0;
+
+  if (!existingMembership && !pendingInvitation && !canBootstrapOwner) {
+    publicError(403, "No active Agora membership exists for this Supabase user");
+  }
+
+  const metadata = supabaseUser.user_metadata || {};
+  const user = {
+    ...(existingUser || {}),
+    id: supabaseUser.id,
+    name: cleanString(metadata.full_name || metadata.name || existingUser?.name) || email.split("@")[0],
+    email,
+    role: "Supabase Auth",
+    companyId: pendingInvitation?.companyId || existingUser?.companyId || existingMembership?.companyId || "",
+    createdAt: existingUser?.createdAt || supabaseUser.created_at || now,
+    authProvider: "supabase"
+  };
+  const membership = {
+    memberId: user.id,
+    role: existingMembership?.role || pendingInvitation?.role || "admin",
+    status: "active",
+    companyId: pendingInvitation?.companyId || existingMembership?.companyId || "",
+    invitedBy: pendingInvitation?.invitedBy || existingMembership?.invitedBy || "",
+    joinedAt: existingMembership?.joinedAt || now,
+    authProvider: "supabase"
+  };
+  const nextInvitations = pendingInvitation
+    ? invitations.map((item) => item.id === pendingInvitation.id ? {
+      ...item,
+      status: "accepted",
+      acceptedAt: now,
+      acceptedBy: user.id
+    } : item)
+    : invitations;
+  const nextUsers = [user, ...storedUsers.filter((item) => item.id !== user.id && normalizeEmail(item.email) !== email)];
+  const nextMemberships = [membership, ...memberships.filter((item) => item.memberId !== user.id && item.memberId !== existingUser?.id)];
+
+  await storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    users: nextUsers,
+    memberships: nextMemberships,
+    invitations: nextInvitations
+  }, {
+    storage: storage.driver || "json-file",
+    updatedBy: user.id,
+    action: pendingInvitation ? "supabase_member_accept_invite" : canBootstrapOwner ? "supabase_owner_bootstrap" : "supabase_auth_login"
+  });
+  if (typeof storage.upsertAuthMembership === "function") {
+    await storage.upsertAuthMembership({
+      workspaceId: storage.workspaceId || workspace.id,
+      userId: user.id,
+      role: membership.role,
+      status: membership.status,
+      companyId: membership.companyId,
+      invitedBy: membership.invitedBy,
+      joinedAt: membership.joinedAt
+    });
+  }
+  await storage.appendAuditEvent({
+    actorId: user.id,
+    action: pendingInvitation ? "supabase_member_accept_invite" : canBootstrapOwner ? "supabase_owner_bootstrap" : "supabase_auth_login",
+    workspaceId: workspace.id,
+    detail: `${user.name} signed in with Supabase Auth`
+  });
+
+  return { user, membership };
 }
 
 async function createOwnerAccount(storage, body) {
@@ -1028,6 +1164,7 @@ function publicUser(user = {}) {
     role: cleanString(user.role) || "Team",
     companyId: cleanString(user.companyId),
     createdAt: cleanString(user.createdAt),
+    authProvider: cleanString(user.authProvider),
     hasPassword: Boolean(user.passwordHash && user.passwordSalt)
   };
 }
@@ -1124,7 +1261,8 @@ function normalizeStoredUser(user) {
     passwordHash: cleanString(user.passwordHash),
     passwordSalt: cleanString(user.passwordSalt),
     passwordKeyLength: Number(user.passwordKeyLength || 0),
-    passwordCost: Number(user.passwordCost || 0)
+    passwordCost: Number(user.passwordCost || 0),
+    authProvider: cleanString(user.authProvider)
   };
 }
 
@@ -1136,7 +1274,8 @@ function normalizeStoredMembership(membership) {
     status: cleanString(membership.status) || "active",
     companyId: cleanString(membership.companyId),
     invitedBy: cleanString(membership.invitedBy),
-    joinedAt: cleanString(membership.joinedAt)
+    joinedAt: cleanString(membership.joinedAt),
+    authProvider: cleanString(membership.authProvider)
   };
 }
 
