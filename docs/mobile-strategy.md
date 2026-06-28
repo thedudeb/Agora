@@ -1,0 +1,54 @@
+# Agora Mobile Strategy
+
+Agora should ship mobile value in layers. The current recommendation is to make the web app installable and touch-friendly first, then move to a dedicated app only when the product needs native capabilities that the PWA cannot comfortably provide.
+
+## 1. PWA first
+
+The PWA path keeps Agora on one codebase while adding mobile-app behavior:
+
+- Install from supported browsers.
+- Launch in standalone mode.
+- Cache the app shell for offline reloads.
+- Keep local workspace data available through browser storage.
+- Prepare notification permission and service worker hooks.
+- Preserve fast iteration while the product model is still changing.
+
+## 2. Mobile task workflows
+
+The highest-value mobile use cases are short actions:
+
+- Open assigned work.
+- Plan a task for Today.
+- Mark a task done.
+- Triage inbox alerts.
+- Log quick time.
+- Review project status on tablet.
+
+These should stay available in the PWA before a native app is considered.
+
+## 3. Notification groundwork
+
+Agora now has the browser-side pieces needed for notification readiness:
+
+- Service worker registration.
+- Notification permission UI.
+- Test notification action.
+- Notification click routing back into the app.
+
+The next backend step is a durable push subscription model tied to users and workspace memberships.
+
+## 4. Dedicated app decision
+
+Move beyond the PWA when at least two of these are true:
+
+- Teams need reliable push notifications across iOS and Android.
+- Offline editing and background sync become core workflows.
+- File upload/share-sheet capture becomes a primary use case.
+- Mobile usage is high enough to justify app-store release work.
+- Native integrations become important, such as calendar, contacts, widgets, or biometric unlock.
+
+Recommended paths:
+
+- **Capacitor**: best first dedicated-app wrapper if the web app remains the primary product.
+- **Expo / React Native**: best if mobile becomes a peer product with deeper native interaction.
+- **Swift/Kotlin**: only if Agora needs platform-specific performance or native-only capabilities.

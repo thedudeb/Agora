@@ -6,7 +6,7 @@ Agora is a self-hostable project management workspace inspired by tools like Asa
 
 ## Status
 
-Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, workspace settings, member roles, data import/export, API snapshot sync, a storage adapter foundation, optional Supabase snapshot persistence, a dependency-free API scaffold, demo auth, a PostgreSQL schema draft, company portfolios, editable companies, daily task planning, inbox notifications, notification badges and toasts, reporting dashboards, project and task templates, automations, project docs and files, intake forms, custom task fields, task dependencies, Gantt-style timelines, project filters, task creation, subtasks, comments, activity, employee time tracking, list view, board view, calendar view, project workspaces, milestones, project timelines, and a My Work view.
+Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, PWA installability, an offline app shell, mobile task actions, workspace settings, member roles, team invitations, passwordless API sessions, data import/export, API snapshot sync, a storage adapter foundation, optional Supabase snapshot persistence, a dependency-free API scaffold, demo auth, a PostgreSQL schema draft, command-center inbox lanes, AI-style operator briefs, client/company portals, client approvals, collaboration presence, automation recommendations, company portfolios, editable companies, daily task planning, inbox notifications, notification badges and toasts, reporting dashboards, project and task templates, automations, project docs and files, intake forms, custom task fields, task dependencies, Gantt-style timelines, project filters, task creation, subtasks, comments, activity, employee time tracking, list view, board view, calendar view, project workspaces, milestones, project timelines, and a My Work view.
 
 ## Run Locally
 
@@ -52,6 +52,7 @@ To use Supabase for API persistence, run `server/migrations/001_supabase_storage
 - `index.html` contains the first browser prototype shell.
 - `src/` contains prototype application logic and styles.
 - `server/` contains the first API scaffold, JSON development storage, and PostgreSQL schema draft.
+- `docs/mobile-strategy.md` outlines the PWA-first path toward a dedicated mobile app.
 - `assets/` contains brand and interface assets.
 - `ROADMAP.md` outlines the release direction.
 - `CONTRIBUTING.md` explains how to contribute.

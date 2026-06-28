@@ -57,6 +57,10 @@ function saveSidebarState() {
   window.localStorage.setItem(SIDEBAR_STATE_KEY, JSON.stringify(sidebarState));
 }
 
+function isCompactSidebarViewport() {
+  return window.matchMedia?.("(max-width: 680px)").matches;
+}
+
 const statuses = [
   { id: "todo", label: "To do" },
   { id: "doing", label: "Doing" },
@@ -106,13 +110,15 @@ const routes = {
   settings: "Settings",
   companies: "Companies",
   company: "Company",
-  project: "Project"
+  project: "Project",
+  invite: "Accept Invite"
 };
 
 const seedData = {
   selectedRoute: "dashboard",
   selectedProject: "all",
   selectedCompany: "all",
+  selectedInviteToken: "",
   selectedProjectTab: "overview",
   selectedCalendarMonth: "2026-07",
   selectedDailyDate: "2026-06-27",
@@ -146,8 +152,51 @@ const seedData = {
     { memberId: "nina", role: "member", status: "active" },
     { memberId: "sam", role: "manager", status: "active" }
   ],
+  users: [],
+  invitations: [],
   inboxRead: [],
   inboxArchived: [],
+  approvals: [
+    {
+      id: "approval-kickoff-checklist",
+      companyId: "northstar-labs",
+      projectId: "client-delivery",
+      taskId: "task-4",
+      title: "Kickoff checklist approval",
+      requester: "sam",
+      reviewer: "Jordan Lee",
+      status: "requested",
+      dueDate: "2026-07-08",
+      summary: "Confirm the shared kickoff checklist before the first client delivery call.",
+      createdAt: "2026-07-05T15:20:00.000Z"
+    },
+    {
+      id: "approval-design-density",
+      companyId: "brightline-health",
+      projectId: "design-system",
+      taskId: "task-6",
+      title: "Task card density signoff",
+      requester: "nina",
+      reviewer: "Priya Shah",
+      status: "needs-changes",
+      dueDate: "2026-07-09",
+      summary: "Client wants one more pass on compact metadata before approving the design system direction.",
+      createdAt: "2026-07-06T10:45:00.000Z"
+    },
+    {
+      id: "approval-launch-scope",
+      companyId: "acme-studio",
+      projectId: "launch",
+      taskId: "task-1",
+      title: "MVP scope approval",
+      requester: "mara",
+      reviewer: "Core team",
+      status: "approved",
+      dueDate: "2026-07-03",
+      summary: "Release pillars approved for the public MVP scope.",
+      createdAt: "2026-06-28T12:30:00.000Z"
+    }
+  ],
   companies: [
     {
       id: "acme-studio",
@@ -774,6 +823,12 @@ const seedData = {
 let state = loadState();
 let apiSession = apiSessionStore.load();
 let sidebarState = loadSidebarState();
+let invitePreview = null;
+let invitePreviewToken = "";
+let invitePreviewLoading = false;
+let pwaInstallPrompt = null;
+let pwaInstallReady = false;
+let notificationPermissionState = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
 
 const els = {
   appView: document.querySelector("#app-view"),
@@ -832,14 +887,18 @@ function applyWorkspaceSnapshot(snapshot) {
 function normalizeState(nextState) {
   return {
     ...nextState,
+    selectedInviteToken: nextState.selectedInviteToken || "",
     selectedCalendarMonth: nextState.selectedCalendarMonth || seedData.selectedCalendarMonth,
     selectedDailyDate: nextState.selectedDailyDate || todayKey(),
     workspace: { ...seedData.workspace, ...(nextState.workspace || {}) },
     memberships: Array.isArray(nextState.memberships) ? nextState.memberships : seedData.memberships,
+    users: Array.isArray(nextState.users) ? nextState.users : [],
+    invitations: Array.isArray(nextState.invitations) ? nextState.invitations : [],
     dailyNotes: { ...seedData.dailyNotes, ...(nextState.dailyNotes || {}) },
     dailyPlans: { ...seedData.dailyPlans, ...(nextState.dailyPlans || {}) },
     inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
     inboxArchived: Array.isArray(nextState.inboxArchived) ? nextState.inboxArchived : [],
+    approvals: Array.isArray(nextState.approvals) ? nextState.approvals : seedData.approvals,
     customFields: Array.isArray(nextState.customFields) ? nextState.customFields : seedData.customFields,
     documents: Array.isArray(nextState.documents) ? nextState.documents : seedData.documents,
     files: Array.isArray(nextState.files) ? nextState.files : seedData.files,
@@ -926,6 +985,22 @@ function apiConnectionTone() {
   return apiSession ? "inbox-green" : "inbox-neutral";
 }
 
+function pwaStatusLabel() {
+  if (window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone) return "installed";
+  return pwaInstallReady ? "ready" : "browser";
+}
+
+function pwaInstallHelp() {
+  if (pwaStatusLabel() === "installed") return "Agora is running in app mode from this device.";
+  if (pwaInstallReady) return "Install Agora to your home screen for a focused mobile workspace.";
+  return "Use your browser's Add to Home Screen action if the install prompt is not available.";
+}
+
+function notificationStatusLabel() {
+  if (notificationPermissionState === "unsupported") return "Notifications unsupported";
+  return `Notifications ${notificationPermissionState}`;
+}
+
 function apiLastSyncedLabel() {
   return apiSession?.lastSyncedAt ? formatTimestamp(apiSession.lastSyncedAt) : "Not synced";
 }
@@ -950,8 +1025,24 @@ function activeTasks() {
   return state.tasks.filter((task) => !isTaskArchived(task));
 }
 
+function workspaceMembers() {
+  const customUsers = Array.isArray(state.users) ? state.users : [];
+  const userById = new Map();
+
+  [...members, ...customUsers].forEach((member) => {
+    if (!member?.id) return;
+    userById.set(member.id, {
+      role: "Team",
+      ...member,
+      name: member.name || member.email || "Invited member"
+    });
+  });
+
+  return Array.from(userById.values());
+}
+
 function memberName(id) {
-  return byId(members, id)?.name || "Unassigned";
+  return byId(workspaceMembers(), id)?.name || "Unassigned";
 }
 
 function projectName(id) {
@@ -1276,6 +1367,24 @@ function getInboxItems({ includeArchived = false } = {}) {
       });
     });
 
+  state.approvals
+    .filter((approval) => approval.status !== "approved")
+    .filter((approval) => projectMatchesContext(approval.projectId))
+    .forEach((approval) => {
+      items.push({
+        id: `approval-${approval.id}`,
+        type: "approval",
+        tone: approvalTone(approval.status),
+        title: approval.title,
+        message: `${approval.reviewer} ${approval.status === "needs-changes" ? "requested changes" : "needs to review"}: ${approval.summary}`,
+        taskId: approval.taskId,
+        projectId: approval.projectId,
+        approvalId: approval.id,
+        createdAt: approval.createdAt,
+        urgency: approval.status === "needs-changes" ? 4 : 3
+      });
+    });
+
   return items
     .filter((item) => includeArchived || !isInboxArchived(item.id))
     .sort((a, b) => {
@@ -1518,6 +1627,172 @@ function getCompanyActivity(companyId, limit = 6) {
     .slice(0, limit);
 }
 
+function approvalStatusLabel(status) {
+  return {
+    requested: "Requested",
+    "needs-changes": "Needs changes",
+    approved: "Approved"
+  }[status] || status || "Requested";
+}
+
+function approvalTone(status) {
+  if (status === "approved") return "green";
+  if (status === "needs-changes") return "amber";
+  return "blue";
+}
+
+function getPendingApprovals() {
+  return state.approvals.filter((approval) => approval.status !== "approved");
+}
+
+function getProjectApprovals(projectId) {
+  return state.approvals
+    .filter((approval) => approval.projectId === projectId)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+function getCompanyApprovals(companyId) {
+  const projectIds = new Set(getCompanyProjects(companyId).map((project) => project.id));
+  return state.approvals
+    .filter((approval) => approval.companyId === companyId || projectIds.has(approval.projectId))
+    .sort((a, b) => {
+      const statusSort = Number(a.status === "approved") - Number(b.status === "approved");
+      if (statusSort !== 0) return statusSort;
+      return (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31");
+    });
+}
+
+function companyPortalSnapshot(companyId) {
+  const projects = getCompanyProjects(companyId);
+  const tasks = getCompanyTasks(companyId);
+  const approvals = getCompanyApprovals(companyId);
+  const files = state.files.filter((file) => projects.some((project) => project.id === file.projectId));
+  const documents = state.documents.filter((document) => projects.some((project) => project.id === document.projectId));
+  const openTasks = tasks.filter((task) => task.status !== "done");
+
+  return {
+    projects,
+    tasks,
+    openTasks,
+    approvals,
+    pendingApprovals: approvals.filter((approval) => approval.status !== "approved"),
+    files,
+    documents,
+    progress: projectProgress(tasks),
+    updatedAt: [...state.activities, ...state.comments]
+      .filter((item) => projects.some((project) => project.id === item.projectId || byId(state.tasks, item.taskId)?.projectId === project.id))
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]?.createdAt || ""
+  };
+}
+
+function operatorBriefForProject(project) {
+  const tasks = getProjectTasks(project.id, false);
+  const openTasks = tasks.filter((task) => task.status !== "done");
+  const overdue = tasks.filter(isOverdue);
+  const blocked = tasks.filter(isTaskBlocked);
+  const dueSoon = dueSoonTasks(tasks);
+  const approvals = getProjectApprovals(project.id).filter((approval) => approval.status !== "approved");
+  const latestActivity = getProjectActivity(project.id, 1)[0];
+  const progress = projectProgress(tasks);
+  const health = reportHealthScore({ progress, overdue: overdue.length, blocked: blocked.length, openIntake: approvals.length });
+  const nextAction = overdue[0]
+    ? `Recover ${overdue[0].title}`
+    : blocked[0]
+      ? `Unblock ${blocked[0].title}`
+      : approvals[0]
+        ? `Chase ${approvals[0].title}`
+        : dueSoon[0]
+          ? `Close ${dueSoon[0].title}`
+          : openTasks[0]
+            ? `Advance ${openTasks[0].title}`
+            : "Prepare client update";
+
+  return {
+    project,
+    progress,
+    health,
+    overdue,
+    blocked,
+    dueSoon,
+    approvals,
+    latestActivity,
+    nextAction,
+    summary: `${project.name} is ${progress}% complete with ${openTasks.length} open ${openTasks.length === 1 ? "task" : "tasks"}, ${blocked.length} blocked, and ${approvals.length} pending ${approvals.length === 1 ? "approval" : "approvals"}.`
+  };
+}
+
+function operatorBriefs(limit = 4) {
+  return visibleReportProjects()
+    .map(operatorBriefForProject)
+    .sort((a, b) => {
+      const riskSort = a.health - b.health;
+      if (riskSort !== 0) return riskSort;
+      return b.approvals.length - a.approvals.length;
+    })
+    .slice(0, limit);
+}
+
+function collaborationPresenceForTask(taskId) {
+  const task = byId(state.tasks, taskId);
+  if (!task) return [];
+
+  const memberIds = new Set([
+    task.assignee,
+    ...getTaskComments(taskId).map((comment) => comment.author),
+    ...getTaskActivity(taskId, 8).map((activity) => activity.memberId)
+  ]);
+
+  return [...memberIds]
+    .map((memberId) => byId(members, memberId))
+    .filter(Boolean)
+    .slice(0, 4);
+}
+
+function automationSuggestions() {
+  const pendingApprovals = getPendingApprovals();
+  const blockedTasks = activeTasks().filter((task) => task.status !== "done" && isTaskBlocked(task));
+  const dueTasks = dueSoonTasks(activeTasks());
+  const staleProjects = activeProjects().filter((project) => !getProjectActivity(project.id, 1).length);
+
+  return [
+    {
+      id: "suggestion-client-update",
+      title: "Friday client update",
+      description: "Generate a status recap for every client company with open work, pending approvals, and next actions.",
+      impact: `${state.companies.filter((company) => company.type === "Client").length} client companies`,
+      ready: true
+    },
+    {
+      id: "suggestion-approval-chase",
+      title: "Approval chase",
+      description: "When an approval is still requested near its due date, add an inbox item and activity note for the project manager.",
+      impact: `${pendingApprovals.length} pending approvals`,
+      ready: pendingApprovals.length > 0
+    },
+    {
+      id: "suggestion-blocker-digest",
+      title: "Blocker digest",
+      description: "Group blocked tasks by company and create a daily operator brief.",
+      impact: `${blockedTasks.length} blocked tasks`,
+      ready: blockedTasks.length > 0
+    },
+    {
+      id: "suggestion-due-soon",
+      title: "Due-soon daily plan",
+      description: "Plan urgent work into Today when a task is due within 7 days and assigned to the active user.",
+      impact: `${dueTasks.length} due-soon tasks`,
+      ready: dueTasks.length > 0
+    },
+    {
+      id: "suggestion-stale-project",
+      title: "Stale project nudge",
+      description: "Flag active projects that have no recent activity so PMs can follow up.",
+      impact: `${staleProjects.length} quiet projects`,
+      ready: staleProjects.length > 0
+    }
+  ];
+}
+
 function getTaskComments(taskId) {
   return state.comments
     .filter((comment) => comment.taskId === taskId)
@@ -1735,10 +2010,34 @@ function archiveProject(projectId) {
 
 function setRoute(route) {
   state.selectedRoute = route;
+  if (route !== "invite") state.selectedInviteToken = "";
   if (route !== "project") state.selectedProjectTab = "overview";
   if (route !== "company") state.selectedCompany = "all";
+  openSidebarGroupForRoute(route);
   saveState();
   render();
+}
+
+function inviteTokenFromLocation() {
+  const queryToken = new URLSearchParams(window.location.search).get("invite");
+  if (queryToken) return queryToken.trim();
+
+  const hash = window.location.hash.replace(/^#\/?/, "");
+  if (!hash.startsWith("invite/")) return "";
+  return decodeURIComponent(hash.slice("invite/".length)).trim();
+}
+
+function routeInviteFromLocation({ shouldRender = false } = {}) {
+  const token = inviteTokenFromLocation();
+  if (!token) return false;
+
+  state.selectedRoute = "invite";
+  state.selectedInviteToken = token;
+  state.selectedProject = "all";
+  state.selectedCompany = "all";
+  saveState();
+  if (shouldRender) render();
+  return true;
 }
 
 function setProject(projectId) {
@@ -1746,6 +2045,7 @@ function setProject(projectId) {
   state.selectedRoute = projectId === "all" ? "dashboard" : "project";
   state.selectedProjectTab = "overview";
   if (projectId !== "all") state.filters.company = projectCompany(projectId)?.id || "all";
+  openSidebarGroupForRoute(state.selectedRoute);
   saveState();
   render();
 }
@@ -1755,6 +2055,7 @@ function setCompany(companyId) {
   state.selectedRoute = companyId === "all" ? "companies" : "company";
   state.filters.company = companyId;
   state.selectedProject = "all";
+  openSidebarGroupForRoute(state.selectedRoute);
   saveState();
   render();
 }
@@ -1769,6 +2070,21 @@ function updateTask(id, updates) {
   render();
   showToast(`${next.title} updated`, "success");
   syncTaskToApi(next, "Task synced to API");
+}
+
+function planTaskToday(taskId) {
+  if (!byId(state.tasks, taskId)) return;
+  planTaskForDate(taskId, "next", todayKey());
+  state.selectedDailyDate = todayKey();
+  saveState();
+  render();
+  showToast("Task planned for Today", "success");
+}
+
+function completeTask(taskId) {
+  const task = byId(state.tasks, taskId);
+  if (!task || task.status === "done") return;
+  updateTask(taskId, { status: "done" });
 }
 
 function updateMilestoneDate(id, dueDate) {
@@ -1887,6 +2203,7 @@ function render() {
   if (state.selectedRoute === "data") renderDataManagement();
   if (state.selectedRoute === "settings") renderSettings();
   if (state.selectedRoute === "companies") renderCompanies();
+  if (state.selectedRoute === "invite") renderInviteAcceptance();
   if (state.selectedRoute === "dashboard") renderDashboard();
 }
 
@@ -1896,20 +2213,45 @@ function sidebarGroupForRoute(route) {
   if (["reports", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
   if (["data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
+  if (route === "invite") return "";
   return "";
 }
 
 function renderSidebarGroups() {
-  const activeGroup = sidebarGroupForRoute(state.selectedRoute);
-
   document.querySelectorAll("[data-nav-group]").forEach((group) => {
     const groupId = group.dataset.navGroup;
-    const isOpen = Boolean(sidebarState[groupId]) || groupId === activeGroup;
+    const isOpen = Boolean(sidebarState[groupId]);
     const toggle = group.querySelector("[data-sidebar-toggle]");
 
     group.classList.toggle("is-open", isOpen);
     if (toggle) toggle.setAttribute("aria-expanded", String(isOpen));
   });
+}
+
+function openSidebarGroupForRoute(route) {
+  const groupId = sidebarGroupForRoute(route);
+  if (!groupId) return;
+
+  if (isCompactSidebarViewport()) {
+    sidebarState = {
+      ...sidebarState,
+      home: groupId === "home",
+      work: groupId === "work",
+      manage: groupId === "manage",
+      admin: groupId === "admin",
+      projects: groupId === "projects"
+    };
+    saveSidebarState();
+    return;
+  }
+
+  if (sidebarState[groupId]) return;
+
+  sidebarState = {
+    ...sidebarState,
+    [groupId]: true
+  };
+  saveSidebarState();
 }
 
 function renderSidebarProjects() {
@@ -1952,7 +2294,7 @@ function renderFilters() {
   `;
   els.assigneeFilter.innerHTML = `
     <option value="all">Everyone</option>
-    ${members.map((member) => `<option value="${member.id}">${escapeHtml(member.name)}</option>`).join("")}
+    ${workspaceMembers().map((member) => `<option value="${member.id}">${escapeHtml(member.name)}</option>`).join("")}
   `;
   els.statusFilter.innerHTML = `
     <option value="all">Any status</option>
@@ -1968,6 +2310,37 @@ function renderFilters() {
   els.assigneeFilter.value = state.filters.assignee;
   els.statusFilter.value = state.filters.status;
   els.priorityFilter.value = state.filters.priority;
+}
+
+function renderMobileAppPanel() {
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Mobile app</p>
+          <h2>Install & alerts</h2>
+        </div>
+        <span class="status-pill inbox-blue">${escapeHtml(pwaStatusLabel())}</span>
+      </div>
+      <div class="mobile-app-panel">
+        <div>
+          <strong>Agora PWA</strong>
+          <p>${escapeHtml(pwaInstallHelp())} ${escapeHtml(notificationStatusLabel())}.</p>
+        </div>
+        <div class="data-actions">
+          <button class="button button-primary" type="button" id="pwa-install" ${pwaInstallReady ? "" : "disabled"}>Install App</button>
+          <button class="button button-secondary" type="button" id="notification-request" ${notificationPermissionState === "unsupported" || notificationPermissionState === "granted" ? "disabled" : ""}>Enable Alerts</button>
+          <button class="button button-secondary" type="button" id="notification-test" ${notificationPermissionState === "granted" ? "" : "disabled"}>Test Alert</button>
+        </div>
+        <div class="mobile-capability-list">
+          <span>Offline shell</span>
+          <span>Home screen install</span>
+          <span>Touch task actions</span>
+          <span>Notification-ready</span>
+        </div>
+      </div>
+    </section>
+  `;
 }
 
 function renderDashboard() {
@@ -2002,6 +2375,20 @@ function renderDashboard() {
         </div>
         <div class="project-summary-list">
           ${visibleProjects.length ? visibleProjects.map(renderProjectSummary).join("") : emptyState("No projects match the selected company.")}
+        </div>
+      </section>
+
+      ${renderMobileAppPanel()}
+
+      <section class="panel operator-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">AI operator</p>
+            <h2>What needs attention</h2>
+          </div>
+        </div>
+        <div class="operator-brief-list">
+          ${operatorBriefs(3).map(renderOperatorBrief).join("") || emptyState("No active risks right now.")}
         </div>
       </section>
 
@@ -2154,33 +2541,88 @@ function renderDailySmartTask(task) {
 function renderInbox() {
   const items = getInboxItems();
   const unreadItems = items.filter((item) => !isInboxRead(item.id));
-  const urgentItems = items.filter((item) => item.type === "overdue" || item.type === "assignment");
+  const urgentItems = items.filter((item) => item.type === "overdue" || item.type === "assignment" || item.type === "approval");
   const dueItems = items.filter((item) => item.type === "due soon");
   const activityItems = items.filter((item) => item.type === "comment" || item.type === "activity");
+  const approvalItems = items.filter((item) => item.type === "approval");
+  const briefs = operatorBriefs(3);
 
   els.appView.innerHTML = `
     <div class="metric-grid">
       ${metric("Unread", unreadItems.length)}
       ${metric("Needs action", urgentItems.length)}
       ${metric("Due soon", dueItems.length)}
-      ${metric("Activity", activityItems.length)}
+      ${metric("Approvals", approvalItems.length)}
     </div>
 
-    <section class="panel inbox-panel">
-      <div class="panel-header">
-        <div>
-          <p class="eyebrow">Attention</p>
-          <h2>Inbox</h2>
+    <div class="command-center-grid">
+      <section class="panel inbox-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Command center</p>
+            <h2>Inbox</h2>
+          </div>
+          <div class="inbox-header-actions">
+            <button class="button button-secondary" type="button" data-inbox-bulk="read" ${items.length ? "" : "disabled"}>Mark All Read</button>
+            <button class="button button-secondary" type="button" data-inbox-bulk="archive-read" ${items.some((item) => isInboxRead(item.id)) ? "" : "disabled"}>Clear Read</button>
+          </div>
         </div>
-        <div class="inbox-header-actions">
-          <button class="button button-secondary" type="button" data-inbox-bulk="read" ${items.length ? "" : "disabled"}>Mark All Read</button>
-          <button class="button button-secondary" type="button" data-inbox-bulk="archive-read" ${items.some((item) => isInboxRead(item.id)) ? "" : "disabled"}>Clear Read</button>
+        <div class="inbox-lanes">
+          ${renderInboxLane("Needs action", urgentItems)}
+          ${renderInboxLane("Approvals", approvalItems)}
+          ${renderInboxLane("Due soon", dueItems)}
+          ${renderInboxLane("Activity", activityItems)}
         </div>
+      </section>
+
+      <section class="panel operator-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">AI operator</p>
+            <h2>Project briefs</h2>
+          </div>
+        </div>
+        <div class="operator-brief-list">
+          ${briefs.length ? briefs.map(renderOperatorBrief).join("") : emptyState("No active projects need attention.")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderInboxLane(title, items) {
+  return `
+    <section class="inbox-lane">
+      <div class="inbox-lane-header">
+        <h3>${escapeHtml(title)}</h3>
+        <span>${items.length}</span>
       </div>
       <div class="inbox-list">
-        ${items.length ? items.map(renderInboxItem).join("") : emptyState("Inbox is clear.")}
+        ${items.length ? items.slice(0, 6).map(renderInboxItem).join("") : emptyState("Nothing here right now.")}
       </div>
     </section>
+  `;
+}
+
+function renderOperatorBrief(brief) {
+  const tone = brief.health < 45 ? "red" : brief.health < 70 ? "amber" : "green";
+  return `
+    <article class="operator-brief">
+      <div>
+        <span class="status-pill inbox-${tone}">${brief.health}% health</span>
+        <h3>${escapeHtml(brief.project.name)}</h3>
+        <p>${escapeHtml(brief.summary)}</p>
+      </div>
+      <div class="operator-actions">
+        <span>Next: ${escapeHtml(brief.nextAction)}</span>
+        ${brief.latestActivity ? `<small>Last change ${formatTimestamp(brief.latestActivity.createdAt)}</small>` : "<small>No recent activity</small>"}
+      </div>
+      <div class="operator-metrics">
+        <span><strong>${brief.blocked.length}</strong> blocked</span>
+        <span><strong>${brief.dueSoon.length}</strong> due soon</span>
+        <span><strong>${brief.approvals.length}</strong> approvals</span>
+      </div>
+    </article>
   `;
 }
 
@@ -2201,6 +2643,8 @@ function renderInboxItem(item) {
         </div>
       </div>
       <div class="inbox-actions">
+        ${item.approvalId ? `<button class="button button-primary" type="button" data-approval-action="approved" data-approval-id="${item.approvalId}" data-inbox-id="${item.id}">Approve</button>` : ""}
+        ${item.approvalId ? `<button class="button button-secondary" type="button" data-approval-action="needs-changes" data-approval-id="${item.approvalId}" data-inbox-id="${item.id}">Needs Changes</button>` : ""}
         ${item.taskId ? `<button class="button button-secondary" type="button" data-inbox-plan="${item.taskId}" data-inbox-id="${item.id}">Plan Today</button>` : ""}
         ${item.taskId ? `<button class="button button-secondary" type="button" data-edit-task="${item.taskId}" data-inbox-id="${item.id}">Open</button>` : ""}
         <button class="button button-secondary" type="button" data-inbox-read="${item.id}">${read ? "Mark Unread" : "Mark Read"}</button>
@@ -2250,6 +2694,7 @@ function renderCompanyCard(company) {
   const milestones = getCompanyMilestones(company.id);
   const trackedMinutes = sumMinutes(getCompanyTimeEntries(company.id));
   const progress = projectProgress(tasks);
+  const portal = companyPortalSnapshot(company.id);
 
   return `
     <article class="company-card">
@@ -2266,7 +2711,7 @@ function renderCompanyCard(company) {
         <span><strong>${projects.length}</strong> projects</span>
         <span><strong>${openTasks.length}</strong> open</span>
         <span><strong>${overdueTasks.length}</strong> overdue</span>
-        <span><strong>${formatDuration(trackedMinutes)}</strong> tracked</span>
+        <span><strong>${portal.pendingApprovals.length}</strong> approvals</span>
       </div>
       <div class="progress-block" aria-label="${progress}% complete">
         <strong>${progress}%</strong>
@@ -2274,8 +2719,79 @@ function renderCompanyCard(company) {
       </div>
       <div class="tag-row">
         <span>${milestones.length} ${milestones.length === 1 ? "milestone" : "milestones"}</span>
+        <span>${portal.documents.length + portal.files.length} shared assets</span>
+        <span>${formatDuration(trackedMinutes)} tracked</span>
       </div>
       <button class="button button-secondary" type="button" data-edit-company="${company.id}">Edit Company</button>
+    </article>
+  `;
+}
+
+function renderCompanyPortal(company) {
+  const portal = companyPortalSnapshot(company.id);
+  const latestApprovals = portal.approvals.slice(0, 4);
+  const sharedAssets = [...portal.documents, ...portal.files]
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+    .slice(0, 5);
+
+  return `
+    <section class="panel portal-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Client portal</p>
+          <h2>${escapeHtml(company.name)} portal</h2>
+        </div>
+        <button class="button button-primary" type="button" data-company-update="${company.id}">Draft Update</button>
+      </div>
+      <div class="portal-grid">
+        <article class="portal-status-card">
+          <span class="status-pill inbox-${portal.pendingApprovals.length ? "amber" : "green"}">${portal.pendingApprovals.length ? "Needs client" : "Clear"}</span>
+          <h3>${portal.progress}% complete</h3>
+          <p>${portal.openTasks.length} open ${portal.openTasks.length === 1 ? "task" : "tasks"} across ${portal.projects.length} ${portal.projects.length === 1 ? "project" : "projects"}.</p>
+          <small>${portal.updatedAt ? `Updated ${formatTimestamp(portal.updatedAt)}` : "No recent updates"}</small>
+        </article>
+
+        <div class="portal-list">
+          <div class="portal-list-header">
+            <h3>Approvals</h3>
+            <span>${portal.pendingApprovals.length} pending</span>
+          </div>
+          ${latestApprovals.length ? latestApprovals.map(renderApprovalRow).join("") : emptyState("No approvals for this company yet.")}
+        </div>
+
+        <div class="portal-list">
+          <div class="portal-list-header">
+            <h3>Shared assets</h3>
+            <span>${sharedAssets.length}</span>
+          </div>
+          ${sharedAssets.length ? sharedAssets.map((asset) => `
+            <article class="portal-asset-row">
+              <div>
+                <strong>${escapeHtml(asset.title)}</strong>
+                <span>${escapeHtml(asset.type || asset.kind)} / ${escapeHtml(projectName(asset.projectId))}</span>
+              </div>
+              <small>${formatTimestamp(asset.updatedAt)}</small>
+            </article>
+          `).join("") : emptyState("No shared docs or files yet.")}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderApprovalRow(approval) {
+  return `
+    <article class="approval-row">
+      <div>
+        <span class="status-pill inbox-${approvalTone(approval.status)}">${escapeHtml(approvalStatusLabel(approval.status))}</span>
+        <h3>${escapeHtml(approval.title)}</h3>
+        <p>${escapeHtml(approval.summary)}</p>
+        <small>${escapeHtml(projectName(approval.projectId))} / due ${formatDate(approval.dueDate)} / reviewer ${escapeHtml(approval.reviewer)}</small>
+      </div>
+      <div class="approval-actions">
+        ${approval.status !== "approved" ? `<button class="button button-primary compact-button" type="button" data-approval-action="approved" data-approval-id="${approval.id}">Approve</button>` : ""}
+        ${approval.status !== "needs-changes" ? `<button class="button button-secondary compact-button" type="button" data-approval-action="needs-changes" data-approval-id="${approval.id}">Changes</button>` : ""}
+      </div>
     </article>
   `;
 }
@@ -2326,6 +2842,8 @@ function renderCompanyPage() {
       ${metric("Overdue", overdueTasks.length)}
       ${metric("Milestones", milestones.length)}
     </div>
+
+    ${renderCompanyPortal(company)}
 
     <div class="company-detail-grid">
       <section class="panel">
@@ -2893,6 +3411,7 @@ function renderTaskCollaboration(taskId = "") {
 
   const comments = getTaskComments(taskId);
   const activities = getTaskActivity(taskId, 5);
+  const presence = collaborationPresenceForTask(taskId);
 
   container.innerHTML = `
     <div class="collaboration-grid">
@@ -2901,11 +3420,14 @@ function renderTaskCollaboration(taskId = "") {
           <p class="eyebrow">Comments</p>
           <span>${comments.length}</span>
         </div>
+        <div class="presence-row" aria-label="Collaborators">
+          ${presence.map((member) => `<span class="presence-pill"><span class="avatar">${member.name.split(" ").map((part) => part[0]).join("")}</span>${escapeHtml(member.name)}</span>`).join("")}
+        </div>
         <div class="comment-list">
           ${comments.length ? comments.map(renderComment).join("") : emptyState("No comments yet.")}
         </div>
         <div class="comment-composer">
-          <textarea id="comment-body" rows="3" placeholder="Add a comment"></textarea>
+          <textarea id="comment-body" rows="3" placeholder="Add a comment or @mention a teammate"></textarea>
           <button class="button button-secondary" type="button" id="comment-submit">Comment</button>
         </div>
       </section>
@@ -2998,7 +3520,7 @@ function renderTaskTimeTracking(taskId = "") {
           <label>
             <span>Employee</span>
             <select id="time-member">
-              ${members.map((member) => `<option value="${member.id}" ${member.id === currentMemberId ? "selected" : ""}>${member.name}</option>`).join("")}
+              ${workspaceMembers().map((member) => `<option value="${member.id}" ${member.id === currentMemberId ? "selected" : ""}>${escapeHtml(member.name)}</option>`).join("")}
             </select>
           </label>
           <label>
@@ -3414,7 +3936,7 @@ function renderReports() {
           </div>
         </div>
         <div class="workload-report-list">
-          ${members.map((member) => renderWorkloadReportRow(member, tasks, timeEntries)).join("")}
+          ${workspaceMembers().map((member) => renderWorkloadReportRow(member, tasks, timeEntries)).join("")}
         </div>
       </section>
 
@@ -3644,6 +4166,7 @@ function renderTaskTemplateCard(template) {
 function renderAutomations() {
   const enabled = state.automations.filter((automation) => automation.enabled);
   const recentHistory = state.automationHistory.slice(0, 8);
+  const suggestions = automationSuggestions();
 
   els.appView.innerHTML = `
     <div class="metric-grid">
@@ -3678,13 +4201,41 @@ function renderAutomations() {
           ${recentHistory.length ? recentHistory.map(renderAutomationHistory).join("") : emptyState("Automations have not run yet.")}
         </div>
       </section>
+
+      <section class="panel automation-suggestion-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Recommended</p>
+            <h2>Human automations</h2>
+          </div>
+        </div>
+        <div class="automation-suggestion-list">
+          ${suggestions.map(renderAutomationSuggestion).join("")}
+        </div>
+      </section>
     </div>
+  `;
+}
+
+function renderAutomationSuggestion(suggestion) {
+  return `
+    <article class="automation-suggestion ${suggestion.ready ? "is-ready" : ""}">
+      <div>
+        <span class="status-pill inbox-${suggestion.ready ? "green" : "neutral"}">${suggestion.ready ? "Ready" : "Watch"}</span>
+        <h3>${escapeHtml(suggestion.title)}</h3>
+        <p>${escapeHtml(suggestion.description)}</p>
+        <small>${escapeHtml(suggestion.impact)}</small>
+      </div>
+      <button class="button button-secondary compact-button" type="button" data-automation-suggestion="${suggestion.id}">Log Idea</button>
+    </article>
   `;
 }
 
 function renderSettings() {
   const roleById = Object.fromEntries(workspaceRoles.map((role) => [role.id, role]));
-  const memberships = members.map((member) => ({
+  const teamMembers = workspaceMembers();
+  const pendingInvitations = state.invitations.filter((invitation) => invitation.status === "pending");
+  const memberships = teamMembers.map((member) => ({
     ...member,
     membership: state.memberships.find((item) => item.memberId === member.id) || {
       memberId: member.id,
@@ -3716,6 +4267,11 @@ function renderSettings() {
             <p>${apiSession ? `Last synced ${escapeHtml(apiLastSyncedLabel())}` : "Start the API server, connect as a demo member, then sync this workspace."}</p>
           </div>
           <div class="api-sync-form">
+            <label>
+              <span>Email</span>
+              <input id="api-email" type="email" placeholder="teammate@company.com" value="${escapeHtml(apiSession?.user?.email || "")}">
+            </label>
+            <button class="button button-secondary" type="button" id="api-email-login">Sign In</button>
             <label>
               <span>Demo member</span>
               <select id="api-member">
@@ -3772,6 +4328,8 @@ function renderSettings() {
         </div>
       </section>
 
+      ${renderMobileAppPanel()}
+
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -3803,6 +4361,36 @@ function renderSettings() {
       <section class="panel">
         <div class="panel-header">
           <div>
+            <p class="eyebrow">Invitations</p>
+            <h2>Invite members</h2>
+          </div>
+          <span class="status-pill inbox-neutral">${pendingInvitations.length} pending</span>
+        </div>
+        <div class="invite-form">
+          <label>
+            <span>Name</span>
+            <input id="invite-name" placeholder="Jordan Lee">
+          </label>
+          <label>
+            <span>Email</span>
+            <input id="invite-email" type="email" placeholder="jordan@company.com">
+          </label>
+          <label>
+            <span>Role</span>
+            <select id="invite-role">
+              ${workspaceRoles.map((role) => `<option value="${role.id}" ${role.id === state.workspace.defaultRole ? "selected" : ""}>${escapeHtml(role.label)}</option>`).join("")}
+            </select>
+          </label>
+          <button class="button button-primary" type="button" id="invite-member" ${apiSession ? "" : "disabled"}>Send Invite</button>
+        </div>
+        <div class="invitation-list">
+          ${state.invitations.length ? state.invitations.map((invitation) => renderInvitationRow(invitation, roleById)).join("") : emptyState("No invitations yet.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
             <p class="eyebrow">Migration</p>
             <h2>Backend readiness</h2>
           </div>
@@ -3810,6 +4398,64 @@ function renderSettings() {
         ${renderBackendChecklist()}
       </section>
     </div>
+  `;
+}
+
+function renderInvitationRow(invitation, roleById) {
+  const role = roleById[invitation.role]?.label || invitation.role || "Member";
+  const invitedBy = invitation.invitedBy ? memberName(invitation.invitedBy) : "Workspace admin";
+  const date = invitation.acceptedAt || invitation.updatedAt || invitation.createdAt || "";
+
+  return `
+    <article class="invitation-row">
+      <div>
+        <h3>${escapeHtml(invitation.name || invitation.email)}</h3>
+        <p>${escapeHtml(invitation.email)} - ${escapeHtml(role)} - invited by ${escapeHtml(invitedBy)}</p>
+        ${invitation.status === "pending" ? `<code>${escapeHtml(invitation.acceptUrl || `#invite/${invitation.token || ""}`)}</code>` : ""}
+      </div>
+      <div>
+        <span class="status-pill ${invitation.status === "accepted" ? "inbox-green" : "inbox-amber"}">${escapeHtml(invitation.status || "pending")}</span>
+        <small>${date ? escapeHtml(formatDate(date.slice(0, 10))) : ""}</small>
+      </div>
+    </article>
+  `;
+}
+
+function renderInviteAcceptance() {
+  const token = state.selectedInviteToken;
+  const preview = invitePreviewToken === token ? invitePreview : null;
+  const roleLabel = workspaceRoles.find((role) => role.id === preview?.role)?.label || preview?.role || "Member";
+  const canAcceptInvite = Boolean(token && preview && preview.status === "pending");
+
+  if (token && invitePreviewToken !== token && !invitePreviewLoading) {
+    loadInvitationPreview(token);
+  }
+
+  els.appView.innerHTML = `
+    <section class="invite-accept-panel panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Workspace invitation</p>
+          <h2>Join ${escapeHtml(state.workspace.name)}</h2>
+        </div>
+        <span class="status-pill ${preview?.status === "accepted" ? "inbox-green" : "inbox-blue"}">${escapeHtml(preview?.status || "pending")}</span>
+      </div>
+      <div class="invite-accept-body">
+        <div>
+          <h3>${preview ? escapeHtml(preview.name || preview.email) : "Accept your invitation"}</h3>
+          <p>${preview ? `You were invited as ${escapeHtml(roleLabel)}. Confirm your name to activate your workspace access.` : "Loading invitation details from the Agora API."}</p>
+          ${token ? `<code>${escapeHtml(token)}</code>` : `<p class="is-overdue">This invite link is missing a token.</p>`}
+        </div>
+        <div class="invite-accept-form">
+          <label>
+            <span>Name</span>
+            <input id="invite-accept-name" placeholder="Your name" value="${escapeHtml(preview?.name || "")}" ${canAcceptInvite ? "" : "disabled"}>
+          </label>
+          <button class="button button-primary" type="button" id="invite-accept" ${canAcceptInvite ? "" : "disabled"}>Accept Invite</button>
+          <button class="button button-secondary" type="button" data-route="settings">Back to Settings</button>
+        </div>
+      </div>
+    </section>
   `;
 }
 
@@ -4279,7 +4925,7 @@ function renderCustomFieldCard(field) {
 function renderTimeTracking() {
   const entries = getFilteredTimeEntries();
   const billableEntries = entries.filter((entry) => entry.billable);
-  const employeeRows = members.map((member) => {
+  const employeeRows = workspaceMembers().map((member) => {
     const memberEntries = entries.filter((entry) => entry.memberId === member.id);
     return {
       ...member,
@@ -4419,6 +5065,9 @@ function renderTaskCard(task) {
       </div>
       ${fields}
       <div class="task-card-actions">
+        <button class="button button-secondary compact-button" type="button" data-edit-task="${task.id}">Open</button>
+        <button class="button button-secondary compact-button" type="button" data-task-plan-today="${task.id}">Today</button>
+        <button class="button button-primary compact-button" type="button" data-task-complete="${task.id}" ${task.status === "done" ? "disabled" : ""}>Done</button>
         <button class="button button-secondary button-danger compact-button" type="button" data-archive-task="${task.id}">Archive</button>
       </div>
     </article>
@@ -5092,6 +5741,90 @@ function runAllAutomations() {
   showToast(total ? `Automations ran on ${total} ${total === 1 ? "item" : "items"}` : "Automations ran with no changes", total ? "success" : "info");
 }
 
+function updateApprovalStatus(approvalId, status, inboxId = "") {
+  const approval = byId(state.approvals, approvalId);
+  if (!approval || !["approved", "needs-changes", "requested"].includes(status)) return;
+
+  state.approvals = state.approvals.map((item) => item.id === approvalId ? {
+    ...item,
+    status,
+    updatedAt: new Date().toISOString()
+  } : item);
+
+  addActivity({
+    projectId: approval.projectId,
+    taskId: approval.taskId,
+    type: "approval",
+    message: `${status === "approved" ? "approved" : "requested changes for"} ${approval.title}`
+  });
+
+  if (inboxId) archiveInboxItem(inboxId);
+  saveState();
+  render();
+  showToast(status === "approved" ? "Approval marked approved" : "Approval marked needs changes", "success");
+}
+
+function draftCompanyUpdate(companyId) {
+  const company = byId(state.companies, companyId);
+  if (!company) return;
+
+  const portal = companyPortalSnapshot(companyId);
+  const briefs = portal.projects.map(operatorBriefForProject);
+  const body = [
+    `${company.name} update`,
+    `Progress: ${portal.progress}% complete across ${portal.projects.length} projects.`,
+    `Open work: ${portal.openTasks.length} tasks. Pending approvals: ${portal.pendingApprovals.length}.`,
+    "",
+    ...briefs.map((brief) => `- ${brief.project.name}: ${brief.summary} Next action: ${brief.nextAction}.`)
+  ].join("\n");
+  const projectId = portal.projects[0]?.id || activeProjects()[0]?.id;
+  if (!projectId) return;
+
+  const document = {
+    id: uid("doc-update"),
+    projectId,
+    title: `${company.name} client update`,
+    type: "Client Update",
+    owner: currentMemberId,
+    updatedAt: new Date().toISOString(),
+    body
+  };
+
+  state.documents = [document, ...state.documents];
+  addActivity({
+    projectId,
+    type: "client_update",
+    message: `drafted a client update for ${company.name}`
+  });
+  saveState();
+  render();
+  showToast("Client update drafted in Docs", "success");
+}
+
+function logAutomationSuggestion(suggestionId) {
+  const suggestion = automationSuggestions().find((item) => item.id === suggestionId);
+  if (!suggestion) return;
+
+  if (state.automations.some((automation) => automation.id === suggestionId)) {
+    showToast("Automation idea is already in the rule list", "info");
+    return;
+  }
+
+  state.automations = [{
+    id: suggestion.id,
+    name: suggestion.title,
+    trigger: suggestion.description,
+    action: "Drafted from Agora recommendation",
+    enabled: false,
+    lastRun: "",
+    runCount: 0
+  }, ...state.automations];
+
+  saveState();
+  render();
+  showToast("Automation idea added as a draft rule", "success");
+}
+
 function saveWorkspaceSettings() {
   const name = document.querySelector("#workspace-name")?.value.trim();
   const slug = document.querySelector("#workspace-slug")?.value.trim();
@@ -5114,7 +5847,7 @@ function saveWorkspaceSettings() {
 }
 
 function updateMemberRole(memberId, role) {
-  if (!members.some((member) => member.id === memberId) || !workspaceRoles.some((item) => item.id === role)) return;
+  if (!workspaceMembers().some((member) => member.id === memberId) || !workspaceRoles.some((item) => item.id === role)) return;
 
   const existing = state.memberships.some((membership) => membership.memberId === memberId);
   state.memberships = existing
@@ -5153,6 +5886,7 @@ async function connectApiSession() {
       apiHealth: health,
       storageDriver: health.storage
     });
+    await syncAccessFromApi();
     render();
     showToast(`Connected to API as ${session.user.name}`, "success");
   } catch (error) {
@@ -5162,10 +5896,140 @@ async function connectApiSession() {
   }
 }
 
+async function signInWithEmail() {
+  const email = document.querySelector("#api-email")?.value.trim();
+  if (!email) {
+    showToast("Enter an email address", "info");
+    return;
+  }
+
+  try {
+    const health = await apiRequest("/api/health");
+    const session = await apiRequest("/api/auth/login", {
+      method: "POST",
+      body: { email }
+    });
+    saveApiSession({
+      ...session,
+      apiHealth: health,
+      storageDriver: health.storage
+    });
+    await syncAccessFromApi();
+    render();
+    showToast(`Signed in as ${session.user.name}`, "success");
+  } catch (error) {
+    showToast(`Sign in failed: ${error.message}`, "info");
+  }
+}
+
 function disconnectApiSession() {
   clearApiSession();
   render();
   showToast("API session disconnected", "success");
+}
+
+async function syncAccessFromApi() {
+  if (!apiSession) return;
+
+  const access = await apiRequest("/api/members");
+  state.users = Array.isArray(access.users)
+    ? access.users.filter((user) => !members.some((member) => member.id === user.id))
+    : state.users;
+  state.memberships = Array.isArray(access.memberships) ? access.memberships : state.memberships;
+  state.invitations = Array.isArray(access.invitations) ? access.invitations : state.invitations;
+  saveState();
+}
+
+async function inviteWorkspaceMember() {
+  if (!apiSession) {
+    showToast("Connect to the API before sending invites", "info");
+    return;
+  }
+
+  const name = document.querySelector("#invite-name")?.value.trim() || "";
+  const email = document.querySelector("#invite-email")?.value.trim() || "";
+  const role = document.querySelector("#invite-role")?.value || state.workspace.defaultRole;
+  if (!email) {
+    showToast("Invite requires an email address", "info");
+    return;
+  }
+
+  try {
+    const result = await apiRequest("/api/invitations", {
+      method: "POST",
+      body: { name, email, role }
+    });
+    const invitation = result.invitation;
+    state.invitations = [
+      invitation,
+      ...state.invitations.filter((item) => item.id !== invitation.id && item.email !== invitation.email)
+    ];
+    saveState();
+    render();
+    showToast(`Invite created for ${invitation.email}`, "success");
+  } catch (error) {
+    showToast(`Invite failed: ${error.message}`, "info");
+  }
+}
+
+async function loadInvitationPreview(token) {
+  invitePreviewLoading = true;
+  invitePreviewToken = token;
+  invitePreview = null;
+
+  try {
+    const result = await apiRequest(`/api/invitations/${encodeURIComponent(token)}`);
+    invitePreview = result.invitation;
+  } catch (error) {
+    invitePreview = {
+      token,
+      name: "",
+      email: "Invitation unavailable",
+      role: "member",
+      status: "missing"
+    };
+    showToast(`Invite lookup failed: ${error.message}`, "info");
+  } finally {
+    invitePreviewLoading = false;
+    if (state.selectedRoute === "invite" && state.selectedInviteToken === token) render();
+  }
+}
+
+async function acceptWorkspaceInvite() {
+  const token = state.selectedInviteToken;
+  const name = document.querySelector("#invite-accept-name")?.value.trim() || invitePreview?.name || "";
+  if (!token) {
+    showToast("Invite token is missing", "info");
+    return;
+  }
+  if (!name) {
+    showToast("Enter your name to accept the invite", "info");
+    return;
+  }
+
+  try {
+    const health = await apiRequest("/api/health");
+    const session = await apiRequest(`/api/invitations/${encodeURIComponent(token)}/accept`, {
+      method: "POST",
+      body: { name }
+    });
+    saveApiSession({
+      ...session,
+      apiHealth: health,
+      storageDriver: health.storage
+    });
+    await syncAccessFromApi();
+    state.selectedRoute = "dashboard";
+    state.selectedInviteToken = "";
+    invitePreview = null;
+    invitePreviewToken = "";
+    saveState();
+    window.history.replaceState(null, "", "#dashboard");
+    render();
+    showToast(`Welcome to ${state.workspace.name}, ${session.user.name}`, "success");
+  } catch (error) {
+    showToast(`Invite accept failed: ${error.message}`, "info");
+  }
 }
 
 async function saveWorkspaceToApi() {
@@ -5343,6 +6207,67 @@ async function syncFileToApi(file, action = "File synced") {
   }
 }
 
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) return;
+
+  navigator.serviceWorker.register("./sw.js")
+    .then(() => {
+      if (state.selectedRoute === "settings") {
+        render();
+      }
+    })
+    .catch(() => showToast("Offline shell could not be registered", "info"));
+}
+
+async function installPwa() {
+  if (!pwaInstallPrompt) {
+    showToast("Use your browser's Add to Home Screen action to install Agora", "info");
+    return;
+  }
+
+  pwaInstallPrompt.prompt();
+  const choice = await pwaInstallPrompt.userChoice;
+  pwaInstallPrompt = null;
+  pwaInstallReady = false;
+  render();
+  showToast(choice.outcome === "accepted" ? "Agora install started" : "Install dismissed", choice.outcome === "accepted" ? "success" : "info");
+}
+
+async function requestNotificationPermission() {
+  if (typeof Notification === "undefined") {
+    notificationPermissionState = "unsupported";
+    render();
+    showToast("Notifications are not supported in this browser", "info");
+    return;
+  }
+
+  notificationPermissionState = await Notification.requestPermission();
+  render();
+  showToast(notificationPermissionState === "granted" ? "Notifications enabled" : "Notifications not enabled", notificationPermissionState === "granted" ? "success" : "info");
+}
+
+async function sendTestNotification() {
+  if (notificationPermissionState !== "granted") {
+    showToast("Enable notifications before testing alerts", "info");
+    return;
+  }
+
+  const title = "Agora";
+  const options = {
+    body: "Mobile notifications are ready for task and inbox alerts.",
+    icon: "./assets/agora-mark.svg",
+    badge: "./assets/agora-mark.svg"
+  };
+
+  const registration = await navigator.serviceWorker?.getRegistration?.();
+  if (registration?.showNotification) {
+    registration.showNotification(title, options);
+  } else {
+    new Notification(title, options);
+  }
+  showToast("Test notification sent", "success");
+}
+
 document.addEventListener("click", (event) => {
   const toastDismissButton = event.target.closest("[data-toast-dismiss]");
   if (toastDismissButton) {
@@ -5395,8 +6320,33 @@ document.addEventListener("click", (event) => {
   const runAllAutomationsButton = event.target.closest("#automation-run-all");
   if (runAllAutomationsButton) runAllAutomations();
 
+  const automationSuggestionButton = event.target.closest("[data-automation-suggestion]");
+  if (automationSuggestionButton) logAutomationSuggestion(automationSuggestionButton.dataset.automationSuggestion);
+
+  const approvalActionButton = event.target.closest("[data-approval-action]");
+  if (approvalActionButton) {
+    updateApprovalStatus(
+      approvalActionButton.dataset.approvalId,
+      approvalActionButton.dataset.approvalAction,
+      approvalActionButton.dataset.inboxId || ""
+    );
+    return;
+  }
+
+  const companyUpdateButton = event.target.closest("[data-company-update]");
+  if (companyUpdateButton) draftCompanyUpdate(companyUpdateButton.dataset.companyUpdate);
+
   const workspaceSaveButton = event.target.closest("#workspace-save");
   if (workspaceSaveButton) saveWorkspaceSettings();
+
+  const pwaInstallButton = event.target.closest("#pwa-install");
+  if (pwaInstallButton) installPwa();
+
+  const notificationRequestButton = event.target.closest("#notification-request");
+  if (notificationRequestButton) requestNotificationPermission();
+
+  const notificationTestButton = event.target.closest("#notification-test");
+  if (notificationTestButton) sendTestNotification();
 
   const importJsonButton = event.target.closest("#import-json");
   if (importJsonButton) importWorkspaceFromTextarea();
@@ -5407,8 +6357,17 @@ document.addEventListener("click", (event) => {
   const apiConnectButton = event.target.closest("#api-connect");
   if (apiConnectButton) connectApiSession();
 
+  const apiEmailLoginButton = event.target.closest("#api-email-login");
+  if (apiEmailLoginButton) signInWithEmail();
+
   const apiDisconnectButton = event.target.closest("#api-disconnect");
   if (apiDisconnectButton) disconnectApiSession();
+
+  const inviteMemberButton = event.target.closest("#invite-member");
+  if (inviteMemberButton) inviteWorkspaceMember();
+
+  const acceptInviteButton = event.target.closest("#invite-accept");
+  if (acceptInviteButton) acceptWorkspaceInvite();
 
   const apiSaveButton = event.target.closest("#api-save-workspace");
   if (apiSaveButton) saveWorkspaceToApi();
@@ -5418,6 +6377,18 @@ document.addEventListener("click", (event) => {
 
   const apiImportButton = event.target.closest("#api-import-workspace");
   if (apiImportButton) importWorkspaceToApi();
+
+  const taskPlanTodayButton = event.target.closest("[data-task-plan-today]");
+  if (taskPlanTodayButton) {
+    planTaskToday(taskPlanTodayButton.dataset.taskPlanToday);
+    return;
+  }
+
+  const taskCompleteButton = event.target.closest("[data-task-complete]");
+  if (taskCompleteButton) {
+    completeTask(taskCompleteButton.dataset.taskComplete);
+    return;
+  }
 
   const archiveProjectButton = event.target.closest("[data-archive-project]");
   if (archiveProjectButton) {
@@ -5845,4 +6816,27 @@ els.companyForm.addEventListener("submit", (event) => {
   showToast(existingCompany ? "Company updated" : "Company created", "success");
 });
 
+window.addEventListener("hashchange", () => {
+  routeInviteFromLocation({ shouldRender: true });
+});
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  pwaInstallPrompt = event;
+  pwaInstallReady = true;
+  if (state.selectedRoute === "settings") render();
+});
+
+window.addEventListener("appinstalled", () => {
+  pwaInstallPrompt = null;
+  pwaInstallReady = false;
+  showToast("Agora installed", "success");
+  if (state.selectedRoute === "settings") render();
+});
+
+registerServiceWorker();
+
+if (!routeInviteFromLocation()) {
+  openSidebarGroupForRoute(state.selectedRoute);
+}
 render();

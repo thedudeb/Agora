@@ -596,6 +596,58 @@ textarea:focus {
   gap: 10px;
 }
 
+.command-center-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  gap: 16px;
+}
+
+.inbox-lanes,
+.operator-brief-list,
+.automation-suggestion-list,
+.portal-list {
+  display: grid;
+  gap: 10px;
+}
+
+.inbox-lane {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.inbox-lane-header,
+.portal-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inbox-lane-header h3,
+.portal-list-header h3 {
+  margin: 0;
+  font-size: 0.92rem;
+}
+
+.inbox-lane-header span,
+.portal-list-header span {
+  display: inline-flex;
+  min-width: 26px;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
 .inbox-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -652,6 +704,64 @@ textarea:focus {
 .inbox-neutral {
   color: var(--muted);
   background: #ede9df;
+}
+
+.operator-brief,
+.automation-suggestion,
+.approval-row,
+.portal-asset-row {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.operator-brief h3,
+.automation-suggestion h3,
+.approval-row h3 {
+  margin: 8px 0 4px;
+}
+
+.operator-brief p,
+.automation-suggestion p,
+.approval-row p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.operator-actions,
+.operator-metrics,
+.approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.operator-actions {
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.operator-metrics span {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 9px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.operator-metrics strong {
+  color: var(--text);
 }
 
 .docs-grid,
@@ -1022,6 +1132,19 @@ textarea:focus {
   font-weight: 800;
 }
 
+.automation-suggestion-panel {
+  grid-column: 1 / -1;
+}
+
+.automation-suggestion {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.automation-suggestion.is-ready {
+  border-color: rgba(62, 109, 66, 0.35);
+}
+
 .settings-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1067,6 +1190,139 @@ textarea:focus {
 .api-sync-form label {
   min-width: min(220px, 100%);
   flex: 1 1 220px;
+}
+
+.invite-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.invitation-list {
+  display: grid;
+  gap: 10px;
+}
+
+.invitation-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.invitation-row h3 {
+  margin: 0;
+}
+
+.invitation-row p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.invitation-row code {
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 8px;
+  padding: 4px 7px;
+  overflow-wrap: anywhere;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-radius: 6px;
+  font-size: 0.78rem;
+}
+
+.invitation-row > div:last-child {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.invitation-row small {
+  color: var(--muted);
+}
+
+.mobile-app-panel {
+  display: grid;
+  gap: 14px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.mobile-app-panel p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.mobile-capability-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mobile-capability-list span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 8px;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.invite-accept-panel {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.invite-accept-body {
+  display: grid;
+  gap: 16px;
+}
+
+.invite-accept-body h3 {
+  margin: 0;
+  font-size: 1.35rem;
+}
+
+.invite-accept-body p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.invite-accept-body code {
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 12px;
+  padding: 6px 8px;
+  overflow-wrap: anywhere;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-radius: 6px;
+  font-size: 0.82rem;
+}
+
+.invite-accept-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 .member-role-row {
@@ -1215,6 +1471,60 @@ textarea:focus {
 
 .company-metrics strong {
   color: var(--text);
+}
+
+.portal-panel {
+  margin-bottom: 14px;
+}
+
+.portal-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.portal-status-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 100%;
+  padding: 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.portal-status-card h3 {
+  margin: 0;
+  font-size: 1.9rem;
+}
+
+.portal-status-card p,
+.portal-status-card small,
+.portal-asset-row span,
+.portal-asset-row small,
+.approval-row small {
+  color: var(--muted);
+}
+
+.portal-status-card p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.approval-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.portal-asset-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.portal-asset-row div {
+  display: grid;
+  gap: 3px;
 }
 
 .project-hero {
@@ -1860,6 +2170,8 @@ textarea:focus {
 
 .task-card-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   justify-content: flex-end;
 }
 
@@ -2090,6 +2402,26 @@ th {
 .activity-list {
   display: grid;
   gap: 10px;
+}
+
+.presence-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.presence-pill {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 9px 4px 4px;
+  color: var(--muted);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .comment-item,
@@ -2451,6 +2783,7 @@ th {
   .reports-grid,
   .templates-grid,
   .automation-grid,
+  .command-center-grid,
   .settings-grid,
   .data-grid,
   .docs-grid,
@@ -2458,6 +2791,7 @@ th {
   .fields-grid,
   .company-grid,
   .company-detail-grid,
+  .portal-grid,
   .project-hero {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2471,7 +2805,9 @@ th {
   }
 
   .inbox-header-actions,
-  .inbox-actions {
+  .inbox-actions,
+  .approval-actions,
+  .operator-actions {
     justify-content: flex-start;
   }
 
@@ -2569,6 +2905,7 @@ th {
   .reports-grid,
   .templates-grid,
   .automation-grid,
+  .command-center-grid,
   .settings-grid,
   .data-grid,
   .docs-grid,
@@ -2576,6 +2913,7 @@ th {
   .fields-grid,
   .company-grid,
   .company-detail-grid,
+  .portal-grid,
   .project-hero,
   .form-grid,
   .collaboration-grid,
@@ -2586,6 +2924,8 @@ th {
   .field-composer,
   .template-controls,
   .settings-form,
+  .invite-form,
+  .invite-accept-form,
   .intake-field-grid,
   .custom-field-grid,
   .dependency-grid,
@@ -2653,9 +2993,23 @@ th {
     grid-template-columns: 1fr;
   }
 
+  .task-card-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+
+  .task-card-actions .button {
+    width: 100%;
+    min-height: 42px;
+  }
+
   .submission-card,
   .file-card,
-  .field-card {
+  .field-card,
+  .automation-suggestion,
+  .approval-row,
+  .portal-asset-row {
     grid-template-columns: 1fr;
   }
 
@@ -2672,8 +3026,13 @@ th {
 
   .timeline-card,
   .undated-task,
+  .invitation-row,
   .member-role-row {
     grid-template-columns: 1fr;
+  }
+
+  .invitation-row > div:last-child {
+    justify-items: start;
   }
 
   .gantt-panel {
@@ -2709,6 +3068,10 @@ th {
 
   .toolbar,
   .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .task-card-actions {
     grid-template-columns: 1fr;
   }
 }

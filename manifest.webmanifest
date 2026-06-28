@@ -1,0 +1,41 @@
+{
+  "name": "Agora Project Management",
+  "short_name": "Agora",
+  "description": "Open source project management for teams that want clarity without lock-in.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "browser"],
+  "background_color": "#f6f5f0",
+  "theme_color": "#245a58",
+  "orientation": "any",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "./assets/agora-mark.svg",
+      "sizes": "64x64",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Today",
+      "short_name": "Today",
+      "description": "Open your daily task plan.",
+      "url": "./#daily"
+    },
+    {
+      "name": "Inbox",
+      "short_name": "Inbox",
+      "description": "Open workspace notifications.",
+      "url": "./#inbox"
+    },
+    {
+      "name": "New Task",
+      "short_name": "Task",
+      "description": "Open Agora and create a task.",
+      "url": "./#dashboard"
+    }
+  ]
+}

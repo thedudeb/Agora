@@ -29,6 +29,21 @@ create table workspace_memberships (
   primary key (workspace_id, user_id)
 );
 
+create table workspace_invitations (
+  id text primary key,
+  workspace_id text not null references workspaces(id) on delete cascade,
+  email text not null,
+  name text not null default '',
+  role text not null default 'member',
+  status text not null default 'pending',
+  token text not null unique,
+  invited_by text references users(id),
+  accepted_by text references users(id),
+  accepted_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table companies (
   id text primary key,
   workspace_id text not null references workspaces(id) on delete cascade,
@@ -197,6 +212,7 @@ create table audit_events (
 );
 
 create index idx_memberships_user on workspace_memberships(user_id);
+create index idx_workspace_invitations_email on workspace_invitations(workspace_id, email);
 create index idx_companies_workspace on companies(workspace_id);
 create index idx_projects_workspace on projects(workspace_id);
 create index idx_tasks_workspace_project on tasks(workspace_id, project_id);

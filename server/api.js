@@ -74,6 +74,28 @@ function createServer(options = {}) {
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/auth/login") {
+        const body = await readJsonBody(request);
+        const session = await createEmailSession(storage, body.email);
+        sendJson(response, 200, session);
+        return;
+      }
+
+      const invitationAcceptMatch = url.pathname.match(/^\/api\/invitations\/([^/]+)\/accept$/);
+      if (invitationAcceptMatch && request.method === "POST") {
+        const body = await readJsonBody(request);
+        const session = await acceptInvitation(storage, decodeURIComponent(invitationAcceptMatch[1]), body.name);
+        sendJson(response, 200, session);
+        return;
+      }
+
+      const publicInvitationMatch = url.pathname.match(/^\/api\/invitations\/([^/]+)$/);
+      if (publicInvitationMatch && request.method === "GET") {
+        const invitation = await getInvitation(storage, decodeURIComponent(publicInvitationMatch[1]));
+        sendJson(response, 200, { invitation });
+        return;
+      }
+
       const session = requireSession(request, response);
       if (!session) return;
 
@@ -85,6 +107,41 @@ function createServer(options = {}) {
 
       if (request.method === "GET" && url.pathname === "/api/session") {
         sendJson(response, 200, session);
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/members") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const snapshot = await storage.loadWorkspaceSnapshot();
+        sendJson(response, 200, {
+          users: workspaceUsers(snapshot),
+          memberships: workspaceMemberships(snapshot),
+          invitations: workspaceInvitations(snapshot)
+        });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/invitations") {
+        if (!hasPermission(session, "members:write")) {
+          sendError(response, 403, "Missing members write permission");
+          return;
+        }
+        const snapshot = await storage.loadWorkspaceSnapshot();
+        sendJson(response, 200, { invitations: workspaceInvitations(snapshot) });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/invitations") {
+        if (!hasPermission(session, "members:write")) {
+          sendError(response, 403, "Missing members write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const invitation = await createInvitation(storage, body, session);
+        sendJson(response, 201, { invitation });
         return;
       }
 
@@ -376,9 +433,256 @@ function hasPermission(session, permission) {
   return session.permissions.includes(permission);
 }
 
+async function createEmailSession(storage, email) {
+  const normalizedEmail = normalizeEmail(email);
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const user = workspaceUsers(snapshot).find((item) => normalizeEmail(item.email) === normalizedEmail);
+  if (!user) publicError(401, "No active account found for that email");
+
+  const membership = workspaceMemberships(snapshot).find((item) => item.memberId === user.id && item.status === "active");
+  if (!membership) publicError(401, "No active workspace membership found for that email");
+
+  return createSession(user, membership);
+}
+
+async function createInvitation(storage, body, session) {
+  const invitation = normalizeInvitationInput(body, session);
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const users = workspaceUsers(snapshot);
+  const memberships = workspaceMemberships(snapshot);
+  const invitations = workspaceInvitations(snapshot);
+  const email = normalizeEmail(invitation.email);
+  const existingUser = users.find((user) => normalizeEmail(user.email) === email);
+  const existingMembership = existingUser
+    ? memberships.find((membership) => membership.memberId === existingUser.id && membership.status === "active")
+    : null;
+  if (existingMembership) publicError(409, "That email already has workspace access");
+
+  const pending = invitations.find((item) => normalizeEmail(item.email) === email && item.status === "pending");
+  const nextInvitation = pending ? {
+    ...pending,
+    name: invitation.name || pending.name,
+    role: invitation.role,
+    invitedBy: session.user.id,
+    updatedAt: new Date().toISOString()
+  } : invitation;
+  const nextInvitations = pending
+    ? invitations.map((item) => item.id === pending.id ? nextInvitation : item)
+    : [nextInvitation, ...invitations];
+
+  await storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    users: snapshotUsersOnly(snapshot),
+    memberships: snapshotMembershipsOnly(snapshot),
+    invitations: nextInvitations
+  }, {
+    storage: storage.driver || "json-file",
+    updatedBy: session.user.id,
+    action: "member_invite"
+  });
+  await storage.appendAuditEvent({
+    actorId: session.user.id,
+    action: "member_invite",
+    workspaceId: workspace.id,
+    detail: `${session.user.name} invited ${nextInvitation.email}`
+  });
+  return publicInvitation(nextInvitation);
+}
+
+async function getInvitation(storage, token) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const invitation = workspaceInvitations(snapshot).find((item) => item.token === token);
+  if (!invitation) publicError(404, "Invitation not found");
+  return publicInvitation(invitation);
+}
+
+async function acceptInvitation(storage, token, name) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const invitations = workspaceInvitations(snapshot);
+  const invitation = invitations.find((item) => item.token === token && item.status === "pending");
+  if (!invitation) publicError(404, "Invitation not found or already used");
+
+  const now = new Date().toISOString();
+  const users = snapshotUsersOnly(snapshot);
+  const memberships = snapshotMembershipsOnly(snapshot);
+  const existingUser = workspaceUsers(snapshot).find((user) => normalizeEmail(user.email) === normalizeEmail(invitation.email));
+  const user = existingUser || {
+    id: createUserId(invitation.email),
+    name: cleanString(name) || invitation.name || invitation.email.split("@")[0],
+    email: invitation.email,
+    role: "Team",
+    createdAt: now
+  };
+  const nextUsers = existingUser
+    ? users.map((item) => item.id === existingUser.id ? { ...item, name: cleanString(name) || item.name } : item)
+    : [user, ...users];
+  const nextMembership = {
+    memberId: user.id,
+    role: invitation.role,
+    status: "active",
+    invitedBy: invitation.invitedBy,
+    joinedAt: now
+  };
+  const nextMemberships = memberships.some((membership) => membership.memberId === user.id)
+    ? memberships.map((membership) => membership.memberId === user.id ? { ...membership, ...nextMembership } : membership)
+    : [nextMembership, ...memberships];
+  const nextInvitations = invitations.map((item) => item.id === invitation.id ? {
+    ...item,
+    status: "accepted",
+    acceptedAt: now,
+    acceptedBy: user.id
+  } : item);
+
+  await storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    users: nextUsers,
+    memberships: nextMemberships,
+    invitations: nextInvitations
+  }, {
+    storage: storage.driver || "json-file",
+    updatedBy: user.id,
+    action: "member_accept_invite"
+  });
+  await storage.appendAuditEvent({
+    actorId: user.id,
+    action: "member_accept_invite",
+    workspaceId: workspace.id,
+    detail: `${user.name} accepted an invitation`
+  });
+
+  return createSession(user, nextMembership);
+}
+
+function workspaceUsers(snapshot = {}) {
+  const users = new Map();
+  demoUsers.forEach((user) => users.set(user.id, user));
+  snapshotUsersOnly(snapshot).forEach((user) => users.set(user.id, user));
+  return Array.from(users.values());
+}
+
+function workspaceMemberships(snapshot = {}) {
+  const memberships = new Map();
+  demoMemberships.forEach((membership) => memberships.set(membership.memberId, membership));
+  snapshotMembershipsOnly(snapshot).forEach((membership) => memberships.set(membership.memberId, membership));
+  return Array.from(memberships.values());
+}
+
+function workspaceInvitations(snapshot = {}) {
+  return Array.isArray(snapshot.invitations) ? snapshot.invitations.map(normalizeStoredInvitation) : [];
+}
+
+function snapshotUsersOnly(snapshot = {}) {
+  return Array.isArray(snapshot.users) ? snapshot.users.map(normalizeStoredUser).filter(Boolean) : [];
+}
+
+function snapshotMembershipsOnly(snapshot = {}) {
+  return Array.isArray(snapshot.memberships) ? snapshot.memberships.map(normalizeStoredMembership).filter(Boolean) : [];
+}
+
+function mergeSnapshotAccess(existingSnapshot = {}, incomingSnapshot = {}) {
+  const users = mergeById(snapshotUsersOnly(existingSnapshot), snapshotUsersOnly(incomingSnapshot), "id");
+  const memberships = mergeById(snapshotMembershipsOnly(existingSnapshot), snapshotMembershipsOnly(incomingSnapshot), "memberId");
+  const invitations = mergeById(workspaceInvitations(existingSnapshot), workspaceInvitations(incomingSnapshot), "id");
+
+  return {
+    ...incomingSnapshot,
+    users,
+    memberships,
+    invitations
+  };
+}
+
+function mergeById(existingItems, incomingItems, key) {
+  const next = new Map();
+  existingItems.forEach((item) => next.set(item[key], item));
+  incomingItems.forEach((item) => next.set(item[key], item));
+  return Array.from(next.values());
+}
+
+function normalizeInvitationInput(body, session) {
+  const email = normalizeEmail(body.email);
+  const role = cleanString(body.role || "member");
+  if (!rolePermissions[role]) publicError(400, "Invitation role is invalid");
+
+  const now = new Date().toISOString();
+  return {
+    id: `invite-${crypto.randomUUID()}`,
+    token: crypto.randomUUID(),
+    email,
+    name: cleanString(body.name),
+    role,
+    status: "pending",
+    invitedBy: session.user.id,
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+function normalizeStoredInvitation(invitation) {
+  return {
+    id: cleanString(invitation.id) || `invite-${crypto.randomUUID()}`,
+    token: cleanString(invitation.token) || crypto.randomUUID(),
+    email: normalizeEmail(invitation.email),
+    name: cleanString(invitation.name),
+    role: rolePermissions[invitation.role] ? invitation.role : "member",
+    status: cleanString(invitation.status) || "pending",
+    invitedBy: cleanString(invitation.invitedBy),
+    acceptedBy: cleanString(invitation.acceptedBy),
+    createdAt: cleanString(invitation.createdAt) || new Date().toISOString(),
+    updatedAt: cleanString(invitation.updatedAt),
+    acceptedAt: cleanString(invitation.acceptedAt)
+  };
+}
+
+function normalizeStoredUser(user) {
+  if (!user?.id || !user?.email) return null;
+  return {
+    id: cleanString(user.id),
+    name: cleanString(user.name) || cleanString(user.email),
+    email: normalizeEmail(user.email),
+    role: cleanString(user.role) || "Team",
+    createdAt: cleanString(user.createdAt)
+  };
+}
+
+function normalizeStoredMembership(membership) {
+  if (!membership?.memberId) return null;
+  return {
+    memberId: cleanString(membership.memberId),
+    role: rolePermissions[membership.role] ? membership.role : "member",
+    status: cleanString(membership.status) || "active",
+    invitedBy: cleanString(membership.invitedBy),
+    joinedAt: cleanString(membership.joinedAt)
+  };
+}
+
+function publicInvitation(invitation) {
+  return {
+    ...invitation,
+    acceptUrl: `#invite/${invitation.token}`
+  };
+}
+
+function normalizeEmail(email) {
+  const value = cleanString(email).toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) publicError(400, "A valid email is required");
+  return value;
+}
+
+function cleanString(value) {
+  return value == null ? "" : String(value).trim();
+}
+
+function createUserId(email) {
+  const base = normalizeEmail(email).split("@")[0].replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "user";
+  return `${base}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
 async function saveWorkspaceSnapshot(storage, snapshot, session, action) {
   validateSnapshot(snapshot);
-  const document = await storage.saveWorkspace(snapshot, {
+  const existingSnapshot = await storage.loadWorkspaceSnapshot();
+  const mergedSnapshot = mergeSnapshotAccess(existingSnapshot, snapshot);
+  const document = await storage.saveWorkspace(mergedSnapshot, {
     storage: storage.driver || "json-file",
     updatedBy: session.user.id,
     action

@@ -23,6 +23,41 @@ async function run() {
     assert(login.token, "demo login did not return a token");
     assert(login.membership.role === "admin", "demo login did not return admin role");
 
+    const access = await request(`${baseUrl}/api/members`, {
+      token: login.token
+    });
+    assert(access.users.length === 4, "member list did not include demo users");
+
+    const invitation = await request(`${baseUrl}/api/invitations`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        name: "Jordan Lee",
+        email: "jordan@example.test",
+        role: "member"
+      }
+    });
+    assert(invitation.invitation.token, "invite did not return an acceptance token");
+    assert(invitation.invitation.status === "pending", "invite did not start pending");
+    assert(invitation.invitation.acceptUrl.startsWith("#invite/"), "invite did not return a browser accept route");
+
+    const invitationPreview = await request(`${baseUrl}/api/invitations/${invitation.invitation.token}`);
+    assert(invitationPreview.invitation.email === "jordan@example.test", "public invitation lookup failed");
+
+    const accepted = await request(`${baseUrl}/api/invitations/${invitation.invitation.token}/accept`, {
+      method: "POST",
+      body: { name: "Jordan Lee" }
+    });
+    assert(accepted.token, "accepted invite did not create a session");
+    assert(accepted.user.email === "jordan@example.test", "accepted invite did not return invited user");
+    assert(accepted.membership.role === "member", "accepted invite did not use invited role");
+
+    const emailLogin = await request(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      body: { email: "jordan@example.test" }
+    });
+    assert(emailLogin.user.id === accepted.user.id, "email login did not find accepted invite user");
+
     const saved = await request(`${baseUrl}/api/workspace`, {
       method: "PUT",
       token: login.token,
@@ -203,6 +238,8 @@ async function run() {
       token: login.token
     });
     assert(workspace.snapshot.workspace.name === "Smoke Test Studio", "workspace load failed");
+    assert(workspace.snapshot.users.some((user) => user.email === "jordan@example.test"), "workspace save dropped accepted invite user");
+    assert(workspace.snapshot.invitations.some((invite) => invite.email === "jordan@example.test" && invite.status === "accepted"), "workspace save dropped invitation state");
     assert(workspace.snapshot.projects[0].name === "Updated Smoke Project", "project not stored in workspace");
     assert(workspace.snapshot.tasks[0].title === "Updated Smoke Task", "task not stored in workspace");
     assert(workspace.snapshot.projects[0].archivedAt, "project archive not stored in workspace");
@@ -215,7 +252,7 @@ async function run() {
     const audit = await request(`${baseUrl}/api/audit-log`, {
       token: login.token
     });
-    assert(audit.events.length === 12, "audit log was not written");
+    assert(audit.events.length === 14, "audit log was not written");
 
     await testSupabaseStorageAdapter();
 
