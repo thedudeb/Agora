@@ -6,7 +6,7 @@ Agora is a self-hostable project management workspace inspired by tools like Asa
 
 ## Status
 
-Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, workspace settings, member roles, data import/export, API snapshot sync, a storage adapter foundation, a dependency-free API scaffold, demo auth, a PostgreSQL schema draft, company portfolios, editable companies, daily task planning, inbox notifications, notification badges and toasts, reporting dashboards, project and task templates, automations, project docs and files, intake forms, custom task fields, task dependencies, Gantt-style timelines, project filters, task creation, subtasks, comments, activity, employee time tracking, list view, board view, calendar view, project workspaces, milestones, project timelines, and a My Work view.
+Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, workspace settings, member roles, data import/export, API snapshot sync, a storage adapter foundation, optional Supabase snapshot persistence, a dependency-free API scaffold, demo auth, a PostgreSQL schema draft, company portfolios, editable companies, daily task planning, inbox notifications, notification badges and toasts, reporting dashboards, project and task templates, automations, project docs and files, intake forms, custom task fields, task dependencies, Gantt-style timelines, project filters, task creation, subtasks, comments, activity, employee time tracking, list view, board view, calendar view, project workspaces, milestones, project timelines, and a My Work view.
 
 ## Run Locally
 
@@ -27,6 +27,8 @@ npm run dev:api
 Then open `http://127.0.0.1:8787/api/health`.
 
 With both processes running, open Settings in the app and use "Connect to API" to enable workspace snapshot sync from the Data page.
+
+To use Supabase for API persistence, run `server/migrations/001_supabase_storage.sql` in Supabase and set `AGORA_STORAGE_DRIVER=supabase`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` for the API process.
 
 ## Product Principles
 

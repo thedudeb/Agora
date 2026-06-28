@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { createServer } = require("./api");
-const { createStorage } = require("./storage");
+const { createStorage, createSupabaseStorage } = require("./storage");
 
 async function run() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-api-"));
@@ -217,11 +217,94 @@ async function run() {
     });
     assert(audit.events.length === 12, "audit log was not written");
 
+    await testSupabaseStorageAdapter();
+
     console.log("API smoke test passed");
   } finally {
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
+}
+
+async function testSupabaseStorageAdapter() {
+  const originalFetch = global.fetch;
+  const snapshots = new Map();
+  const auditEvents = [];
+
+  global.fetch = async (url, options = {}) => {
+    const parsed = new URL(url);
+    const table = parsed.pathname.split("/").pop();
+    const body = options.body ? JSON.parse(options.body) : null;
+
+    if (table === "agora_workspace_snapshots" && (!options.method || options.method === "GET")) {
+      const workspaceId = parsed.searchParams.get("workspace_id")?.replace(/^eq\./, "");
+      const row = snapshots.get(workspaceId);
+      return mockResponse(row ? [row] : []);
+    }
+
+    if (table === "agora_workspace_snapshots" && options.method === "POST") {
+      const existing = snapshots.get(body.workspace_id);
+      const row = {
+        created_at: existing?.created_at || "2026-06-28T00:00:00.000Z",
+        updated_at: body.updated_at,
+        ...existing,
+        ...body
+      };
+      snapshots.set(body.workspace_id, row);
+      return mockResponse([row]);
+    }
+
+    if (table === "agora_audit_events" && (!options.method || options.method === "GET")) {
+      return mockResponse(auditEvents);
+    }
+
+    if (table === "agora_audit_events" && options.method === "POST") {
+      auditEvents.unshift(body);
+      return mockResponse([body]);
+    }
+
+    return mockResponse({ message: "Unexpected Supabase request" }, false, 404);
+  };
+
+  try {
+    const storage = createSupabaseStorage({
+      supabaseUrl: "https://example.supabase.co",
+      supabaseServiceRoleKey: "service-role-key",
+      workspaceId: "workspace-smoke"
+    });
+    assert((await storage.loadWorkspace()) === null, "supabase empty load failed");
+
+    const saved = await storage.saveWorkspace({
+      workspace: { id: "workspace-smoke", name: "Supabase Smoke" },
+      projects: [],
+      tasks: []
+    }, {
+      action: "workspace_update"
+    });
+    assert(saved.snapshot.workspace.name === "Supabase Smoke", "supabase save failed");
+
+    const snapshot = await storage.loadWorkspaceSnapshot();
+    assert(snapshot.workspace.name === "Supabase Smoke", "supabase snapshot load failed");
+
+    await storage.appendAuditEvent({
+      actorId: "mara",
+      action: "workspace_update",
+      workspaceId: "workspace-smoke",
+      detail: "Saved workspace"
+    });
+    const auditLog = await storage.loadAuditLog();
+    assert(auditLog.length === 1 && auditLog[0].action === "workspace_update", "supabase audit failed");
+  } finally {
+    global.fetch = originalFetch;
+  }
+}
+
+function mockResponse(body, ok = true, status = 200) {
+  return {
+    ok,
+    status,
+    text: async () => JSON.stringify(body)
+  };
 }
 
 async function request(url, options = {}) {

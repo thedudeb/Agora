@@ -24,6 +24,29 @@ npm run dev
 
 Then open Settings, connect as a demo member, and use the Data page to save or load the workspace snapshot.
 
+## Supabase Storage
+
+Agora can use Supabase Postgres for API persistence without adding a Node dependency. The storage adapter talks to Supabase through PostgREST using server-only credentials.
+
+1. Create a Supabase project.
+2. Run [`migrations/001_supabase_storage.sql`](./migrations/001_supabase_storage.sql) in the Supabase SQL editor.
+3. Copy `.env.example` to `.env` and set:
+
+```sh
+AGORA_STORAGE_DRIVER=supabase
+AGORA_WORKSPACE_ID=workspace-acme
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+4. Start the API with those variables loaded:
+
+```sh
+npm run dev:api
+```
+
+Keep `SUPABASE_SERVICE_ROLE_KEY` on the server only. The browser app still talks to Agora's local API, never directly to Supabase.
+
 ## Endpoints
 
 - `GET /api/health`: service health and active workspace metadata.
@@ -68,4 +91,4 @@ Authorization: Bearer <token>
 
 ## Database Target
 
-`schema.sql` is the PostgreSQL target for the self-hosted backend. The current JSON storage adapter gives us a low-friction local API while preserving a clear migration path to database-backed persistence.
+`schema.sql` is the normalized PostgreSQL target for the self-hosted backend. `migrations/001_supabase_storage.sql` is the first runnable Supabase migration and stores the current workspace snapshot plus audit log in Postgres. The JSON storage adapter remains the low-friction local default while Supabase provides the production-ready persistence path.

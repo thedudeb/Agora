@@ -53,7 +53,7 @@ function createServer(options = {}) {
         sendJson(response, 200, {
           ok: true,
           service: "agora-api",
-          storage: "json-file",
+          storage: storage.driver || "json-file",
           workspace
         });
         return;
@@ -93,7 +93,7 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        const snapshot = storage.loadWorkspaceSnapshot();
+        const snapshot = await storage.loadWorkspaceSnapshot();
         sendJson(response, 200, { projects: Array.isArray(snapshot.projects) ? snapshot.projects : [] });
         return;
       }
@@ -104,7 +104,7 @@ function createServer(options = {}) {
           return;
         }
         const body = await readJsonBody(request);
-        const project = upsertProject(storage, body.project || body, session, "project_create");
+        const project = await upsertProject(storage, body.project || body, session, "project_create");
         sendJson(response, 201, { project });
         return;
       }
@@ -116,7 +116,7 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing projects write permission");
           return;
         }
-        const project = archiveProject(storage, decodeURIComponent(projectRestoreMatch[1]), session, false);
+        const project = await archiveProject(storage, decodeURIComponent(projectRestoreMatch[1]), session, false);
         sendJson(response, 200, { project });
         return;
       }
@@ -127,7 +127,7 @@ function createServer(options = {}) {
           return;
         }
         const body = await readJsonBody(request);
-        const project = upsertProject(storage, { ...(body.project || body), id: decodeURIComponent(projectMatch[1]) }, session, "project_update");
+        const project = await upsertProject(storage, { ...(body.project || body), id: decodeURIComponent(projectMatch[1]) }, session, "project_update");
         sendJson(response, 200, { project });
         return;
       }
@@ -137,7 +137,7 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing projects write permission");
           return;
         }
-        const project = archiveProject(storage, decodeURIComponent(projectMatch[1]), session, true);
+        const project = await archiveProject(storage, decodeURIComponent(projectMatch[1]), session, true);
         sendJson(response, 200, { project });
         return;
       }
@@ -147,7 +147,7 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        const snapshot = storage.loadWorkspaceSnapshot();
+        const snapshot = await storage.loadWorkspaceSnapshot();
         const projectId = url.searchParams.get("projectId");
         const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
         sendJson(response, 200, { tasks: projectId ? tasks.filter((task) => task.projectId === projectId) : tasks });
@@ -160,7 +160,7 @@ function createServer(options = {}) {
           return;
         }
         const body = await readJsonBody(request);
-        const task = upsertTask(storage, body.task || body, session, "task_create");
+        const task = await upsertTask(storage, body.task || body, session, "task_create");
         sendJson(response, 201, { task });
         return;
       }
@@ -172,7 +172,7 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing tasks write permission");
           return;
         }
-        const task = archiveTask(storage, decodeURIComponent(taskRestoreMatch[1]), session, false);
+        const task = await archiveTask(storage, decodeURIComponent(taskRestoreMatch[1]), session, false);
         sendJson(response, 200, { task });
         return;
       }
@@ -183,7 +183,7 @@ function createServer(options = {}) {
           return;
         }
         const body = await readJsonBody(request);
-        const task = upsertTask(storage, { ...(body.task || body), id: decodeURIComponent(taskMatch[1]) }, session, "task_update");
+        const task = await upsertTask(storage, { ...(body.task || body), id: decodeURIComponent(taskMatch[1]) }, session, "task_update");
         sendJson(response, 200, { task });
         return;
       }
@@ -193,7 +193,7 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing tasks write permission");
           return;
         }
-        const task = archiveTask(storage, decodeURIComponent(taskMatch[1]), session, true);
+        const task = await archiveTask(storage, decodeURIComponent(taskMatch[1]), session, true);
         sendJson(response, 200, { task });
         return;
       }
@@ -203,7 +203,7 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        const snapshot = storage.loadWorkspaceSnapshot();
+        const snapshot = await storage.loadWorkspaceSnapshot();
         const taskId = url.searchParams.get("taskId");
         const comments = Array.isArray(snapshot.comments) ? snapshot.comments : [];
         sendJson(response, 200, { comments: taskId ? comments.filter((comment) => comment.taskId === taskId) : comments });
@@ -216,7 +216,7 @@ function createServer(options = {}) {
           return;
         }
         const body = await readJsonBody(request);
-        const comment = upsertCollectionItem(storage, "comments", body.comment || body, normalizeComment, session, "comment_create", (item) => `comment ${item.id}`);
+        const comment = await upsertCollectionItem(storage, "comments", body.comment || body, normalizeComment, session, "comment_create", (item) => `comment ${item.id}`);
         sendJson(response, 201, { comment });
         return;
       }
@@ -226,7 +226,7 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        const snapshot = storage.loadWorkspaceSnapshot();
+        const snapshot = await storage.loadWorkspaceSnapshot();
         const taskId = url.searchParams.get("taskId");
         const projectId = url.searchParams.get("projectId");
         let activities = Array.isArray(snapshot.activities) ? snapshot.activities : [];
@@ -242,7 +242,7 @@ function createServer(options = {}) {
           return;
         }
         const body = await readJsonBody(request);
-        const activity = upsertCollectionItem(storage, "activities", body.activity || body, normalizeActivity, session, "activity_create", (item) => `activity ${item.type}`);
+        const activity = await upsertCollectionItem(storage, "activities", body.activity || body, normalizeActivity, session, "activity_create", (item) => `activity ${item.type}`);
         sendJson(response, 201, { activity });
         return;
       }
@@ -252,7 +252,7 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        const snapshot = storage.loadWorkspaceSnapshot();
+        const snapshot = await storage.loadWorkspaceSnapshot();
         const projectId = url.searchParams.get("projectId");
         const documents = Array.isArray(snapshot.documents) ? snapshot.documents : [];
         sendJson(response, 200, { documents: projectId ? documents.filter((document) => document.projectId === projectId) : documents });
@@ -265,7 +265,7 @@ function createServer(options = {}) {
           return;
         }
         const body = await readJsonBody(request);
-        const document = upsertCollectionItem(storage, "documents", body.document || body, normalizeDocument, session, "document_create", (item) => `document ${item.title}`);
+        const document = await upsertCollectionItem(storage, "documents", body.document || body, normalizeDocument, session, "document_create", (item) => `document ${item.title}`);
         sendJson(response, 201, { document });
         return;
       }
@@ -275,7 +275,7 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        const snapshot = storage.loadWorkspaceSnapshot();
+        const snapshot = await storage.loadWorkspaceSnapshot();
         const projectId = url.searchParams.get("projectId");
         const files = Array.isArray(snapshot.files) ? snapshot.files : [];
         sendJson(response, 200, { files: projectId ? files.filter((file) => file.projectId === projectId) : files });
@@ -288,7 +288,7 @@ function createServer(options = {}) {
           return;
         }
         const body = await readJsonBody(request);
-        const file = upsertCollectionItem(storage, "files", body.file || body, normalizeFile, session, "file_create", (item) => `file ${item.title}`);
+        const file = await upsertCollectionItem(storage, "files", body.file || body, normalizeFile, session, "file_create", (item) => `file ${item.title}`);
         sendJson(response, 201, { file });
         return;
       }
@@ -298,11 +298,11 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
-        sendJson(response, 200, storage.loadWorkspace() || {
+        sendJson(response, 200, await storage.loadWorkspace() || {
           metadata: {
             createdAt: null,
             updatedAt: null,
-            storage: "json-file"
+            storage: storage.driver || "json-file"
           },
           snapshot: null
         });
@@ -315,7 +315,7 @@ function createServer(options = {}) {
           return;
         }
         const body = await readJsonBody(request);
-        const document = saveWorkspaceSnapshot(storage, body.snapshot || body, session, "workspace_update");
+        const document = await saveWorkspaceSnapshot(storage, body.snapshot || body, session, "workspace_update");
         sendJson(response, 200, document);
         return;
       }
@@ -326,7 +326,7 @@ function createServer(options = {}) {
           return;
         }
         const body = await readJsonBody(request);
-        const document = saveWorkspaceSnapshot(storage, body.snapshot || body, session, "workspace_import");
+        const document = await saveWorkspaceSnapshot(storage, body.snapshot || body, session, "workspace_import");
         sendJson(response, 200, document);
         return;
       }
@@ -336,7 +336,7 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing audit read permission");
           return;
         }
-        sendJson(response, 200, { events: storage.loadAuditLog() });
+        sendJson(response, 200, { events: await storage.loadAuditLog() });
         return;
       }
 
@@ -376,14 +376,14 @@ function hasPermission(session, permission) {
   return session.permissions.includes(permission);
 }
 
-function saveWorkspaceSnapshot(storage, snapshot, session, action) {
+async function saveWorkspaceSnapshot(storage, snapshot, session, action) {
   validateSnapshot(snapshot);
-  const document = storage.saveWorkspace(snapshot, {
-    storage: "json-file",
+  const document = await storage.saveWorkspace(snapshot, {
+    storage: storage.driver || "json-file",
     updatedBy: session.user.id,
     action
   });
-  storage.appendAuditEvent({
+  await storage.appendAuditEvent({
     actorId: session.user.id,
     action,
     workspaceId: workspace.id,
@@ -392,9 +392,9 @@ function saveWorkspaceSnapshot(storage, snapshot, session, action) {
   return document;
 }
 
-function upsertProject(storage, project, session, action) {
+async function upsertProject(storage, project, session, action) {
   const incomingProject = requireRecord(project, "Project");
-  const snapshot = storage.loadWorkspaceSnapshot();
+  const snapshot = await storage.loadWorkspaceSnapshot();
   const projects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
   const existingProject = projects.find((item) => item.id === incomingProject.id);
   const nextProject = normalizeProject(existingProject ? { ...existingProject, ...incomingProject } : incomingProject);
@@ -403,15 +403,15 @@ function upsertProject(storage, project, session, action) {
     ? projects.map((item) => item.id === nextProject.id ? { ...item, ...nextProject } : item)
     : [nextProject, ...projects];
 
-  storage.saveWorkspaceSnapshot({
+  await storage.saveWorkspaceSnapshot({
     ...snapshot,
     projects: nextProjects
   }, {
-    storage: "json-file",
+    storage: storage.driver || "json-file",
     updatedBy: session.user.id,
     action
   });
-  storage.appendAuditEvent({
+  await storage.appendAuditEvent({
     actorId: session.user.id,
     action,
     workspaceId: workspace.id,
@@ -420,9 +420,9 @@ function upsertProject(storage, project, session, action) {
   return nextProjects.find((item) => item.id === nextProject.id);
 }
 
-function upsertTask(storage, task, session, action) {
+async function upsertTask(storage, task, session, action) {
   const incomingTask = requireRecord(task, "Task");
-  const snapshot = storage.loadWorkspaceSnapshot();
+  const snapshot = await storage.loadWorkspaceSnapshot();
   const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
   const existingTask = tasks.find((item) => item.id === incomingTask.id);
   const nextTask = normalizeTask(existingTask ? { ...existingTask, ...incomingTask } : incomingTask);
@@ -431,15 +431,15 @@ function upsertTask(storage, task, session, action) {
     ? tasks.map((item) => item.id === nextTask.id ? { ...item, ...nextTask } : item)
     : [nextTask, ...tasks];
 
-  storage.saveWorkspaceSnapshot({
+  await storage.saveWorkspaceSnapshot({
     ...snapshot,
     tasks: nextTasks
   }, {
-    storage: "json-file",
+    storage: storage.driver || "json-file",
     updatedBy: session.user.id,
     action
   });
-  storage.appendAuditEvent({
+  await storage.appendAuditEvent({
     actorId: session.user.id,
     action,
     workspaceId: workspace.id,
@@ -448,8 +448,8 @@ function upsertTask(storage, task, session, action) {
   return nextTasks.find((item) => item.id === nextTask.id);
 }
 
-function archiveProject(storage, projectId, session, archived) {
-  const snapshot = storage.loadWorkspaceSnapshot();
+async function archiveProject(storage, projectId, session, archived) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
   const projects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
   const project = projects.find((item) => item.id === projectId);
   if (!project) publicError(404, "Project not found");
@@ -470,16 +470,16 @@ function archiveProject(storage, projectId, session, archived) {
     }) : task)
     : snapshot.tasks;
 
-  storage.saveWorkspaceSnapshot({
+  await storage.saveWorkspaceSnapshot({
     ...snapshot,
     projects: nextProjects,
     tasks: nextTasks
   }, {
-    storage: "json-file",
+    storage: storage.driver || "json-file",
     updatedBy: session.user.id,
     action: archived ? "project_archive" : "project_restore"
   });
-  storage.appendAuditEvent({
+  await storage.appendAuditEvent({
     actorId: session.user.id,
     action: archived ? "project_archive" : "project_restore",
     workspaceId: workspace.id,
@@ -488,8 +488,8 @@ function archiveProject(storage, projectId, session, archived) {
   return nextProject;
 }
 
-function archiveTask(storage, taskId, session, archived) {
-  const snapshot = storage.loadWorkspaceSnapshot();
+async function archiveTask(storage, taskId, session, archived) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
   const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
   const task = tasks.find((item) => item.id === taskId);
   if (!task) publicError(404, "Task not found");
@@ -503,15 +503,15 @@ function archiveTask(storage, taskId, session, archived) {
   });
   const nextTasks = tasks.map((item) => item.id === taskId ? nextTask : item);
 
-  storage.saveWorkspaceSnapshot({
+  await storage.saveWorkspaceSnapshot({
     ...snapshot,
     tasks: nextTasks
   }, {
-    storage: "json-file",
+    storage: storage.driver || "json-file",
     updatedBy: session.user.id,
     action: archived ? "task_archive" : "task_restore"
   });
-  storage.appendAuditEvent({
+  await storage.appendAuditEvent({
     actorId: session.user.id,
     action: archived ? "task_archive" : "task_restore",
     workspaceId: workspace.id,
@@ -520,8 +520,8 @@ function archiveTask(storage, taskId, session, archived) {
   return nextTask;
 }
 
-function upsertCollectionItem(storage, key, item, normalizer, session, action, detailLabel) {
-  const snapshot = storage.loadWorkspaceSnapshot();
+async function upsertCollectionItem(storage, key, item, normalizer, session, action, detailLabel) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
   const collection = Array.isArray(snapshot[key]) ? snapshot[key] : [];
   const incomingItem = requireRecord(item, "Item");
   const existingItem = collection.find((entry) => entry.id === incomingItem.id);
@@ -530,15 +530,15 @@ function upsertCollectionItem(storage, key, item, normalizer, session, action, d
     ? collection.map((entry) => entry.id === nextItem.id ? { ...entry, ...nextItem } : entry)
     : [nextItem, ...collection];
 
-  storage.saveWorkspaceSnapshot({
+  await storage.saveWorkspaceSnapshot({
     ...snapshot,
     [key]: nextCollection
   }, {
-    storage: "json-file",
+    storage: storage.driver || "json-file",
     updatedBy: session.user.id,
     action
   });
-  storage.appendAuditEvent({
+  await storage.appendAuditEvent({
     actorId: session.user.id,
     action,
     workspaceId: workspace.id,
