@@ -2980,10 +2980,18 @@ th {
     overflow-x: hidden;
   }
 
-  .landing-problem-grid,
   .landing-solution,
   .landing-no-ads {
     grid-template-columns: 1fr;
+  }
+
+  .landing-hero {
+    min-height: 720px;
+    background-position: 58% center;
+  }
+
+  .landing-hero-copy {
+    max-width: 680px;
   }
 
   .sidebar {
@@ -3129,30 +3137,87 @@ th {
   }
 
   .landing-hero {
-    min-height: 720px;
-    padding: 18px 16px 54px;
+    min-height: auto;
+    padding: 18px 16px 76px;
     background-image: linear-gradient(180deg, rgba(13, 20, 19, 0.9) 0%, rgba(13, 20, 19, 0.78) 48%, rgba(13, 20, 19, 0.28) 100%), var(--landing-hero-image);
-    background-position: 56% center;
+    background-position: 62% center;
   }
 
   .landing-nav {
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: start;
   }
 
   .landing-nav > div:last-child {
-    justify-content: flex-end;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
   }
 
   .landing-hero-copy {
-    padding-top: 72px;
+    padding-top: 58px;
   }
 
   .landing-hero-copy h1 {
-    font-size: clamp(4.6rem, 24vw, 6.8rem);
+    font-size: clamp(4.15rem, 22vw, 6.4rem);
+  }
+
+  .landing-lede {
+    max-width: 100%;
+    font-size: 1.05rem;
+  }
+
+  .landing-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .landing-actions .button,
+  .landing-nav .button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .landing-proof-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .landing-proof-row span {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    text-align: center;
   }
 
   .landing-section {
+    gap: 20px;
     padding: 58px 16px;
+  }
+
+  .landing-section h2 {
+    font-size: clamp(2.15rem, 11vw, 3.25rem);
+  }
+
+  .landing-section p {
+    font-size: 0.98rem;
+  }
+
+  .landing-problem-grid,
+  .landing-signal-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-problem-grid article,
+  .landing-signal-stack article,
+  .landing-no-ads {
+    padding: 18px;
+  }
+
+  .landing-no-ads {
+    margin-bottom: 0;
   }
 
   .sidebar {
@@ -3390,6 +3455,20 @@ th {
 }
 
 @media (max-width: 360px) {
+  .landing-hero {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .landing-nav > div:last-child,
+  .landing-proof-row {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-hero-copy h1 {
+    font-size: clamp(3.65rem, 24vw, 4.6rem);
+  }
+
   .topbar-actions {
     grid-template-columns: 1fr;
   }
