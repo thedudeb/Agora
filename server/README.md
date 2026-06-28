@@ -16,6 +16,14 @@ AGORA_API_PORT=8790 npm run dev:api
 
 Workspace snapshots are stored as JSON in `server/data/` during local development. That directory is ignored by git.
 
+To test sync from the browser prototype, run the app in a second terminal:
+
+```sh
+npm run dev
+```
+
+Then open Settings, connect as a demo member, and use the Data page to save or load the workspace snapshot.
+
 ## Endpoints
 
 - `GET /api/health`: service health and active workspace metadata.

@@ -965,6 +965,34 @@ textarea:focus {
   gap: 10px;
 }
 
+.api-sync-card {
+  display: grid;
+  gap: 14px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.api-sync-card p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.api-sync-form,
+.data-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+}
+
+.api-sync-form label {
+  min-width: min(220px, 100%);
+  flex: 1 1 220px;
+}
+
 .member-role-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(180px, 0.36fr);

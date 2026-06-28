@@ -1,4 +1,6 @@
 const STORAGE_KEY = "agora.workspace.v1";
+const API_SESSION_KEY = "agora.api.session.v1";
+const API_BASE_URL = "http://127.0.0.1:8787";
 
 const workspaceStore = {
   load() {
@@ -9,6 +11,25 @@ const workspaceStore = {
   },
   clear() {
     window.localStorage.removeItem(STORAGE_KEY);
+  }
+};
+
+const apiSessionStore = {
+  load() {
+    const stored = window.localStorage.getItem(API_SESSION_KEY);
+    if (!stored) return null;
+
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return null;
+    }
+  },
+  save(session) {
+    window.localStorage.setItem(API_SESSION_KEY, JSON.stringify(session));
+  },
+  clear() {
+    window.localStorage.removeItem(API_SESSION_KEY);
   }
 };
 
@@ -727,6 +748,7 @@ const seedData = {
 };
 
 let state = loadState();
+let apiSession = apiSessionStore.load();
 
 const els = {
   appView: document.querySelector("#app-view"),
@@ -771,6 +793,16 @@ function loadState() {
   }
 }
 
+function applyWorkspaceSnapshot(snapshot) {
+  const base = structuredClone(seedData);
+  state = normalizeState({
+    ...base,
+    ...snapshot,
+    filters: { ...base.filters, ...(snapshot.filters || {}) }
+  });
+  saveState();
+}
+
 function normalizeState(nextState) {
   return {
     ...nextState,
@@ -809,6 +841,45 @@ function normalizeState(nextState) {
 
 function saveState() {
   workspaceStore.save(state);
+}
+
+async function apiRequest(path, options = {}) {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: options.method || "GET",
+    headers: {
+      "Content-Type": "application/json",
+      ...(apiSession?.token ? { Authorization: `Bearer ${apiSession.token}` } : {})
+    },
+    body: options.body ? JSON.stringify(options.body) : undefined
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body.error || "API request failed");
+  }
+  return body;
+}
+
+function saveApiSession(session) {
+  apiSession = session;
+  apiSessionStore.save(session);
+}
+
+function clearApiSession() {
+  apiSession = null;
+  apiSessionStore.clear();
+}
+
+function apiConnectionLabel() {
+  if (!apiSession) return "Browser storage";
+  return `${apiSession.user.name} / ${apiSession.membership.role}`;
+}
+
+function apiConnectionTone() {
+  return apiSession ? "inbox-green" : "inbox-neutral";
+}
+
+function apiLastSyncedLabel() {
+  return apiSession?.lastSyncedAt ? formatTimestamp(apiSession.lastSyncedAt) : "Not synced";
 }
 
 function byId(collection, id) {
@@ -949,13 +1020,7 @@ function exportTimeCsv() {
 
 function importWorkspaceJson(rawJson) {
   const parsed = JSON.parse(rawJson);
-  const base = structuredClone(seedData);
-  state = normalizeState({
-    ...base,
-    ...parsed,
-    filters: { ...base.filters, ...(parsed.filters || {}) }
-  });
-  saveState();
+  applyWorkspaceSnapshot(parsed);
 }
 
 function backendReadinessItems() {
@@ -3473,10 +3538,36 @@ function renderSettings() {
       ${metric("Members", memberships.length)}
       ${metric("Roles", workspaceRoles.length)}
       ${metric("Companies", state.companies.length)}
-      ${metric("Storage", state.workspace.storageMode)}
+      ${metric("Storage", apiSession ? "API connected" : state.workspace.storageMode)}
     </div>
 
     <div class="settings-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Connection</p>
+            <h2>API sync</h2>
+          </div>
+          <span class="status-pill ${apiConnectionTone()}">${apiSession ? "connected" : "browser only"}</span>
+        </div>
+        <div class="api-sync-card">
+          <div>
+            <strong>${escapeHtml(apiConnectionLabel())}</strong>
+            <p>${apiSession ? `Last synced ${escapeHtml(apiLastSyncedLabel())}` : "Start the API server, connect as a demo member, then sync this workspace."}</p>
+          </div>
+          <div class="api-sync-form">
+            <label>
+              <span>Demo member</span>
+              <select id="api-member">
+                ${members.map((member) => `<option value="${member.id}" ${member.id === (apiSession?.user?.id || currentMemberId) ? "selected" : ""}>${escapeHtml(member.name)}</option>`).join("")}
+              </select>
+            </label>
+            <button class="button button-primary" type="button" id="api-connect">${apiSession ? "Switch User" : "Connect to API"}</button>
+            <button class="button button-secondary" type="button" id="api-disconnect" ${apiSession ? "" : "disabled"}>Disconnect</button>
+          </div>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -3567,10 +3658,31 @@ function renderDataManagement() {
       ${metric("Projects", state.projects.length)}
       ${metric("Tasks", state.tasks.length)}
       ${metric("Time entries", state.timeEntries.length)}
-      ${metric("Export version", "1")}
+      ${metric("Sync", apiSession ? "API connected" : "Browser only")}
     </div>
 
     <div class="data-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Backend</p>
+            <h2>API sync</h2>
+          </div>
+          <span class="status-pill ${apiConnectionTone()}">${apiSession ? "connected" : "offline"}</span>
+        </div>
+        <div class="api-sync-card">
+          <div>
+            <strong>${escapeHtml(apiConnectionLabel())}</strong>
+            <p>${apiSession ? `Last synced ${escapeHtml(apiLastSyncedLabel())}` : "Connect from Settings to save or load workspace snapshots through the API."}</p>
+          </div>
+          <div class="data-actions">
+            <button class="button button-primary" type="button" id="api-save-workspace" ${apiSession ? "" : "disabled"}>Save to API</button>
+            <button class="button button-secondary" type="button" id="api-load-workspace" ${apiSession ? "" : "disabled"}>Load from API</button>
+            <button class="button button-secondary" type="button" id="api-import-workspace" ${apiSession ? "" : "disabled"}>Import to API</button>
+          </div>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -4847,6 +4959,96 @@ function importWorkspaceFromTextarea() {
   }
 }
 
+async function connectApiSession() {
+  const memberId = document.querySelector("#api-member")?.value || currentMemberId;
+
+  try {
+    const session = await apiRequest("/api/auth/demo-login", {
+      method: "POST",
+      body: { memberId }
+    });
+    saveApiSession(session);
+    render();
+    showToast(`Connected to API as ${session.user.name}`, "success");
+  } catch (error) {
+    clearApiSession();
+    render();
+    showToast("API unavailable. Start npm run dev:api and try again.", "info");
+  }
+}
+
+function disconnectApiSession() {
+  clearApiSession();
+  render();
+  showToast("API session disconnected", "success");
+}
+
+async function saveWorkspaceToApi() {
+  if (!apiSession) {
+    showToast("Connect to the API from Settings first", "info");
+    return;
+  }
+
+  try {
+    const document = await apiRequest("/api/workspace", {
+      method: "PUT",
+      body: { snapshot: workspaceSnapshot() }
+    });
+    saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt });
+    render();
+    showToast("Workspace saved to API", "success");
+  } catch (error) {
+    showToast(`API save failed: ${error.message}`, "info");
+  }
+}
+
+async function loadWorkspaceFromApi() {
+  if (!apiSession) {
+    showToast("Connect to the API from Settings first", "info");
+    return;
+  }
+
+  try {
+    const document = await apiRequest("/api/workspace");
+    if (!document.snapshot) {
+      showToast("No API workspace snapshot has been saved yet", "info");
+      return;
+    }
+    applyWorkspaceSnapshot(document.snapshot);
+    saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt });
+    render();
+    showToast("Workspace loaded from API", "success");
+  } catch (error) {
+    showToast(`API load failed: ${error.message}`, "info");
+  }
+}
+
+async function importWorkspaceToApi() {
+  if (!apiSession) {
+    showToast("Connect to the API from Settings first", "info");
+    return;
+  }
+
+  const rawJson = document.querySelector("#json-import")?.value.trim();
+  if (!rawJson) {
+    showToast("Paste a JSON export before importing to the API", "info");
+    return;
+  }
+
+  try {
+    const snapshot = JSON.parse(rawJson);
+    const document = await apiRequest("/api/workspace/import", {
+      method: "POST",
+      body: { snapshot }
+    });
+    saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt });
+    render();
+    showToast("JSON imported to API", "success");
+  } catch (error) {
+    showToast(`API import failed: ${error.message}`, "info");
+  }
+}
+
 document.addEventListener("click", (event) => {
   const toastDismissButton = event.target.closest("[data-toast-dismiss]");
   if (toastDismissButton) {
@@ -4898,6 +5100,21 @@ document.addEventListener("click", (event) => {
 
   const refreshExportButton = event.target.closest("#refresh-export");
   if (refreshExportButton) renderDataManagement();
+
+  const apiConnectButton = event.target.closest("#api-connect");
+  if (apiConnectButton) connectApiSession();
+
+  const apiDisconnectButton = event.target.closest("#api-disconnect");
+  if (apiDisconnectButton) disconnectApiSession();
+
+  const apiSaveButton = event.target.closest("#api-save-workspace");
+  if (apiSaveButton) saveWorkspaceToApi();
+
+  const apiLoadButton = event.target.closest("#api-load-workspace");
+  if (apiLoadButton) loadWorkspaceFromApi();
+
+  const apiImportButton = event.target.closest("#api-import-workspace");
+  if (apiImportButton) importWorkspaceToApi();
 
   const projectButton = event.target.closest("[data-project-id]");
   if (projectButton) setProject(projectButton.dataset.projectId);
