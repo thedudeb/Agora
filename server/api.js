@@ -140,6 +140,17 @@ function createServer(options = {}) {
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/ai/operator") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const result = await runAiOperator(body, session);
+        sendJson(response, 200, result);
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/members") {
         if (!hasPermission(session, "workspace:read")) {
           sendError(response, 403, "Missing workspace read permission");
@@ -491,6 +502,212 @@ function createServer(options = {}) {
       sendError(response, error.statusCode || 500, error.publicMessage || "Internal server error");
     }
   });
+}
+
+async function runAiOperator(body, session) {
+  const config = aiProviderConfig(body.settings || {});
+  const context = compactAiContext(body.context || {});
+  const mode = body.mode ? String(body.mode) : "workspace_brief";
+
+  if (config.provider === "local") {
+    return localAiOperatorResult(mode, context, config, session);
+  }
+
+  const prompt = buildAiOperatorPrompt(mode, context, session);
+  const content = await callAiProvider(config, prompt);
+  return {
+    mode,
+    provider: providerLabel(config),
+    title: aiTitleForMode(mode, context),
+    body: content,
+    actions: aiActionsForMode(mode, context),
+    generatedAt: new Date().toISOString()
+  };
+}
+
+function aiProviderConfig(settings = {}) {
+  const provider = String(settings.provider || process.env.AGORA_AI_PROVIDER || "local").toLowerCase();
+  const model = String(settings.model || process.env.AGORA_AI_MODEL || defaultAiModel(provider));
+  const configuredBaseUrl = process.env.AGORA_AI_BASE_URL || "";
+  const clientBaseUrlAllowed = process.env.AGORA_AI_ALLOW_CLIENT_BASE_URL === "true";
+  const clientBaseUrl = clientBaseUrlAllowed ? String(settings.baseUrl || "") : "";
+  const baseUrl = (configuredBaseUrl || clientBaseUrl || defaultAiBaseUrl(provider)).replace(/\/+$/, "");
+  const apiKey = process.env.AGORA_AI_API_KEY || process.env.OPENAI_API_KEY || "";
+
+  return { provider, model, baseUrl, apiKey };
+}
+
+function defaultAiModel(provider) {
+  if (provider === "ollama") return "llama3.1";
+  if (provider === "openai" || provider === "custom") return "gpt-4o-mini";
+  return "Agora deterministic operator";
+}
+
+function defaultAiBaseUrl(provider) {
+  if (provider === "ollama") return "http://127.0.0.1:11434";
+  if (provider === "openai" || provider === "custom") return "https://api.openai.com/v1";
+  return "";
+}
+
+function providerLabel(config) {
+  return `${config.provider}${config.model ? ` / ${config.model}` : ""}`;
+}
+
+function compactAiContext(context) {
+  return {
+    workspace: pickFields(context.workspace, ["name", "slug", "visibility"]),
+    project: pickFields(context.project, ["id", "name", "description", "dueDate", "owner", "companyId"]),
+    company: pickFields(context.company, ["id", "name", "type", "status"]),
+    brief: pickFields(context.brief, ["health", "progress", "summary", "nextAction", "actionType"]),
+    tasks: compactItems(context.tasks, ["id", "title", "description", "status", "priority", "dueDate", "assignee", "projectId", "blockedBy"], 12),
+    approvals: compactItems(context.approvals, ["id", "title", "summary", "status", "reviewer", "projectId"], 8),
+    activities: compactItems(context.activities, ["type", "message", "createdAt", "projectId", "taskId"], 8),
+    documents: compactItems(context.documents, ["title", "type", "updatedAt", "projectId"], 8)
+  };
+}
+
+function pickFields(source, fields) {
+  if (!source || typeof source !== "object") return {};
+  return Object.fromEntries(fields.filter((field) => source[field] !== undefined).map((field) => [field, source[field]]));
+}
+
+function compactItems(items, fields, limit) {
+  if (!Array.isArray(items)) return [];
+  return items.slice(0, limit).map((item) => pickFields(item, fields));
+}
+
+function buildAiOperatorPrompt(mode, context, session) {
+  return [
+    "You are Agora Operator, an AI project-management copilot for an open-source, self-hostable project management app.",
+    "Be concise, practical, and action-oriented. Do not invent private data. Return plain markdown, not JSON.",
+    `Current user: ${session.user.name} (${session.membership.role}).`,
+    `Mode: ${mode}.`,
+    "",
+    "Workspace context:",
+    JSON.stringify(context, null, 2),
+    "",
+    "Write a useful operator response with: executive summary, risks, recommended next actions, and a short update draft when relevant."
+  ].join("\n");
+}
+
+async function callAiProvider(config, prompt) {
+  if (config.provider === "ollama") return callOllama(config, prompt);
+  return callOpenAiCompatible(config, prompt);
+}
+
+async function callOpenAiCompatible(config, prompt) {
+  if (!config.apiKey) {
+    publicError(400, "AI provider key is missing. Set AGORA_AI_API_KEY or OPENAI_API_KEY on the API server.");
+  }
+
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.apiKey}`
+    },
+    body: JSON.stringify({
+      model: config.model,
+      temperature: 0.2,
+      messages: [
+        { role: "system", content: "You are a concise project-management operator." },
+        { role: "user", content: prompt }
+      ]
+    })
+  });
+
+  const body = await parseProviderResponse(response);
+  const content = body.choices?.[0]?.message?.content;
+  if (!content) publicError(502, "AI provider returned an empty response");
+  return String(content).trim();
+}
+
+async function callOllama(config, prompt) {
+  const response = await fetch(`${config.baseUrl}/api/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: config.model,
+      stream: false,
+      messages: [
+        { role: "system", content: "You are a concise project-management operator." },
+        { role: "user", content: prompt }
+      ]
+    })
+  });
+
+  const body = await parseProviderResponse(response);
+  const content = body.message?.content || body.response;
+  if (!content) publicError(502, "Ollama returned an empty response");
+  return String(content).trim();
+}
+
+async function parseProviderResponse(response) {
+  let body = {};
+  try {
+    body = await response.json();
+  } catch {
+    body = {};
+  }
+
+  if (!response.ok) {
+    const message = body.error?.message || body.error || `AI provider request failed with ${response.status}`;
+    publicError(response.status >= 400 && response.status < 500 ? 400 : 502, String(message));
+  }
+  return body;
+}
+
+function localAiOperatorResult(mode, context, config, session) {
+  const projectName = context.project?.name || "the workspace";
+  const brief = context.brief || {};
+  const tasks = Array.isArray(context.tasks) ? context.tasks : [];
+  const approvals = Array.isArray(context.approvals) ? context.approvals : [];
+  const blocked = tasks.filter((task) => Array.isArray(task.blockedBy) && task.blockedBy.length);
+  const urgent = tasks.filter((task) => task.priority === "urgent" || task.priority === "high");
+  const nextTask = blocked[0] || urgent[0] || tasks.find((task) => task.status !== "done") || tasks[0];
+
+  return {
+    mode,
+    provider: providerLabel(config),
+    title: aiTitleForMode(mode, context),
+    body: [
+      `Generated for ${session.user.name} from Agora's local deterministic operator.`,
+      "",
+      brief.summary || `${projectName} has ${tasks.length} visible tasks and ${approvals.length} pending approval signals.`,
+      nextTask ? `Next best move: ${nextTask.title}.` : "Next best move: review the workspace and pick the highest-impact task.",
+      blocked.length ? `Risk: ${blocked.length} blocked task${blocked.length === 1 ? "" : "s"} need owner follow-up.` : "Risk: no blocked tasks are visible in this context.",
+      approvals.length ? `Approval follow-up: ${approvals[0].title || "pending approval"} is the first review to chase.` : "Approval follow-up: no pending approvals in this context.",
+      "",
+      "Suggested update:",
+      `${projectName}: ${brief.nextAction || "review the active work, close blockers, and post a concise status update"}.`
+    ].join("\n"),
+    actions: aiActionsForMode(mode, context),
+    generatedAt: new Date().toISOString()
+  };
+}
+
+function aiTitleForMode(mode, context) {
+  if (mode === "project_brief") return `${context.project?.name || "Project"} operator brief`;
+  if (mode === "client_update") return `${context.company?.name || "Client"} update draft`;
+  if (mode === "daily_plan") return "Daily operator plan";
+  return `${context.workspace?.name || "Workspace"} operator brief`;
+}
+
+function aiActionsForMode(mode, context) {
+  const projectId = context.project?.id || "";
+  if (mode === "project_brief") {
+    return [
+      { label: "Save to Docs", type: "save_doc", projectId },
+      { label: "Plan next action", type: "plan_action", projectId }
+    ];
+  }
+  if (mode === "daily_plan") {
+    return [{ label: "Generate Today", type: "generate_today" }];
+  }
+  return [
+    { label: "Draft workspace brief", type: "save_doc", projectId },
+    { label: "Review risks", type: "review_risks" }
+  ];
 }
 
 function createSession(user, membership) {

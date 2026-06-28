@@ -883,9 +883,63 @@ textarea:focus {
   gap: 16px;
 }
 
+.operator-center-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.75fr);
+  gap: 16px;
+}
+
+.operator-center-grid .wide-panel {
+  grid-column: 1 / -1;
+}
+
+.operator-command-panel {
+  align-content: start;
+}
+
+.operator-command-copy p {
+  max-width: 720px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.operator-command-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.operator-signal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.operator-signal-grid div,
+.operator-doc-row {
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.operator-signal-grid strong {
+  display: block;
+  font-size: 1.5rem;
+}
+
+.operator-signal-grid span {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
 .inbox-lanes,
 .operator-brief-list,
 .automation-suggestion-list,
+.operator-doc-list,
 .portal-list {
   display: grid;
   gap: 10px;
@@ -988,6 +1042,7 @@ textarea:focus {
 }
 
 .operator-brief,
+.operator-doc-row,
 .automation-suggestion,
 .approval-row,
 .portal-asset-row {
@@ -1000,17 +1055,24 @@ textarea:focus {
 }
 
 .operator-brief h3,
+.operator-doc-row h3,
 .automation-suggestion h3,
 .approval-row h3 {
   margin: 8px 0 4px;
 }
 
 .operator-brief p,
+.operator-doc-row p,
 .automation-suggestion p,
 .approval-row p {
   margin: 0;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.operator-doc-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
 }
 
 .workspace-pulse {
@@ -3238,6 +3300,7 @@ th {
   .templates-grid,
   .automation-grid,
   .command-center-grid,
+  .operator-center-grid,
   .settings-grid,
   .data-grid,
   .docs-grid,
@@ -3257,6 +3320,10 @@ th {
 
   .inbox-item {
     grid-template-columns: 1fr;
+  }
+
+  .operator-center-grid .wide-panel {
+    grid-column: auto;
   }
 
   .inbox-header-actions,
@@ -3450,6 +3517,7 @@ th {
   .templates-grid,
   .automation-grid,
   .command-center-grid,
+  .operator-center-grid,
   .settings-grid,
   .data-grid,
   .docs-grid,
@@ -3478,6 +3546,11 @@ th {
   .timeline-controls,
   .nav-list,
   .project-list {
+    grid-template-columns: 1fr;
+  }
+
+  .operator-signal-grid,
+  .operator-doc-row {
     grid-template-columns: 1fr;
   }
 

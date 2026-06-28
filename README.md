@@ -6,7 +6,7 @@ Agora is a self-hostable project management workspace inspired by tools like Asa
 
 ## Status
 
-Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, PWA installability, an offline app shell, mobile task actions, workspace settings, member roles, team invitations, first-owner signup, password login, passwordless API sessions, structured records endpoints, data import/export, API snapshot sync, a storage adapter foundation, optional Supabase snapshot and structured record persistence, a dependency-free API scaffold, demo auth, a PostgreSQL schema draft, command-center inbox lanes, local AI operator planning, bring-your-own-AI settings, operator briefs with action buttons, client/company portals, client approvals, live collaboration presence, task-view awareness, stale edit warnings, workspace pulse, automation recommendations, company portfolios, editable companies, daily task planning, inbox notifications, notification badges and toasts, reporting dashboards, project and task templates, automations, project docs and files, intake forms, custom task fields, task dependencies, Gantt-style timelines, project filters, task creation, subtasks, comments, activity, employee time tracking, list view, board view, calendar view, project workspaces, milestones, project timelines, and a My Work view.
+Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, PWA installability, an offline app shell, mobile task actions, workspace settings, member roles, team invitations, first-owner signup, password login, passwordless API sessions, structured records endpoints, data import/export, API snapshot sync, a storage adapter foundation, optional Supabase snapshot and structured record persistence, a dependency-free API scaffold, demo auth, a PostgreSQL schema draft, command-center inbox lanes, a dedicated AI Operator page, local AI operator planning, server-side bring-your-own-AI adapters, operator briefs with action buttons, client/company portals, client approvals, live collaboration presence, task-view awareness, stale edit warnings, workspace pulse, automation recommendations, company portfolios, editable companies, daily task planning, inbox notifications, notification badges and toasts, reporting dashboards, project and task templates, automations, project docs and files, intake forms, custom task fields, task dependencies, Gantt-style timelines, project filters, task creation, subtasks, comments, activity, employee time tracking, list view, board view, calendar view, project workspaces, milestones, project timelines, and a My Work view.
 
 ## Quick Start
 
@@ -77,6 +77,27 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Do not paste it into browser settings or client code.
 
 Client invitations can be assigned to a company. Accepted client accounts land in the Portal view and only receive the company-scoped workspace records they are allowed to see.
+
+## AI Operator
+
+Agora includes a local deterministic operator by default, plus an optional server-side adapter for OpenAI-compatible APIs, Ollama, or a custom endpoint. Provider secrets stay on the API server.
+
+```sh
+AGORA_AI_PROVIDER=openai
+AGORA_AI_MODEL=gpt-4o-mini
+AGORA_AI_BASE_URL=https://api.openai.com/v1
+AGORA_AI_API_KEY=your-server-side-key
+```
+
+For Ollama:
+
+```sh
+AGORA_AI_PROVIDER=ollama
+AGORA_AI_MODEL=llama3.1
+AGORA_AI_BASE_URL=http://127.0.0.1:11434
+```
+
+Restart `npm run dev:api`, connect to the API from Settings, then open Operator to draft workspace and project briefs. Keep `AGORA_AI_API_KEY` server-only.
 
 ## Product Principles
 

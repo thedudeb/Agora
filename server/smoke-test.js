@@ -28,6 +28,21 @@ async function run() {
     });
     assert(access.users.length === 4, "member list did not include demo users");
 
+    const aiOperator = await request(`${baseUrl}/api/ai/operator`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        mode: "workspace_brief",
+        settings: { provider: "local", model: "Agora deterministic operator" },
+        context: {
+          workspace: { name: "Smoke Test Studio" },
+          tasks: [{ id: "task-smoke", title: "Smoke Task", priority: "high", status: "todo" }]
+        }
+      }
+    });
+    assert(aiOperator.title.includes("operator brief"), "AI operator did not return a brief title");
+    assert(aiOperator.body.includes("Smoke Task"), "AI operator did not use provided context");
+
     const invitation = await request(`${baseUrl}/api/invitations`, {
       method: "POST",
       token: login.token,

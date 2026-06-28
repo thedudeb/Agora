@@ -102,6 +102,7 @@ const routes = {
   calendar: "Calendar",
   "my-work": "My Work",
   time: "Time",
+  operator: "Operator",
   reports: "Reports",
   templates: "Templates",
   automations: "Automations",
@@ -1120,6 +1121,74 @@ function aiProviderLabel() {
     : `${settings.provider}${settings.model ? ` / ${settings.model}` : ""}`;
 }
 
+function aiProviderNeedsApi() {
+  return aiSettings().provider !== "local";
+}
+
+function aiConnectionSummary() {
+  if (!aiProviderNeedsApi()) return "Local operator";
+  if (!apiSession) return "Connect API to use provider";
+  return "Server adapter ready";
+}
+
+async function requestAiOperator(mode, context) {
+  return apiRequest("/api/ai/operator", {
+    method: "POST",
+    body: {
+      mode,
+      settings: aiSettings(),
+      context
+    }
+  });
+}
+
+async function runAiOperator(mode, context, fallbackBody) {
+  if (!aiProviderNeedsApi()) {
+    return {
+      provider: aiProviderLabel(),
+      title: aiTitleForMode(mode, context),
+      body: fallbackBody,
+      source: "local"
+    };
+  }
+
+  if (!apiSession) {
+    showToast("Connect to the API to use this AI provider. Using local operator.", "info");
+    return {
+      provider: "Local fallback",
+      title: aiTitleForMode(mode, context),
+      body: fallbackBody,
+      source: "local"
+    };
+  }
+
+  try {
+    const result = await requestAiOperator(mode, context);
+    return {
+      provider: result.provider || aiProviderLabel(),
+      title: result.title || aiTitleForMode(mode, context),
+      body: result.body || fallbackBody,
+      actions: result.actions || [],
+      source: "server"
+    };
+  } catch (error) {
+    showToast(`AI provider unavailable: ${error.message}. Using local operator.`, "info");
+    return {
+      provider: "Local fallback",
+      title: aiTitleForMode(mode, context),
+      body: fallbackBody,
+      source: "local"
+    };
+  }
+}
+
+function aiTitleForMode(mode, context) {
+  if (mode === "project_brief") return `${context.project?.name || "Project"} operator brief`;
+  if (mode === "client_update") return `${context.company?.name || "Client"} update draft`;
+  if (mode === "daily_plan") return "Daily operator plan";
+  return `${state.workspace.name} operator brief`;
+}
+
 function apiLastSyncedLabel() {
   return apiSession?.lastSyncedAt ? formatTimestamp(apiSession.lastSyncedAt) : "Not synced";
 }
@@ -2021,6 +2090,44 @@ function operatorBriefs(limit = 4) {
     .slice(0, limit);
 }
 
+function projectAiContext(project) {
+  const brief = operatorBriefForProject(project);
+  const projectTasks = getProjectTasks(project.id, false);
+  return {
+    workspace: state.workspace,
+    project,
+    company: projectCompany(project.id),
+    brief,
+    tasks: projectTasks,
+    approvals: getProjectApprovals(project.id).filter((approval) => approval.status !== "approved"),
+    activities: getProjectActivity(project.id, 8),
+    documents: state.documents.filter((document) => document.projectId === project.id)
+  };
+}
+
+function workspaceAiContext() {
+  const projects = visibleReportProjects();
+  const briefs = operatorBriefs(6);
+  return {
+    workspace: state.workspace,
+    brief: {
+      summary: `${projects.length} active projects, ${activeTasks().length} open tasks, and ${getInboxItems().filter((item) => !isInboxRead(item.id)).length} unread inbox items.`,
+      nextAction: briefs[0]?.nextAction || "Review the highest-risk project"
+    },
+    tasks: activeTasks().sort((a, b) => operatorTaskScore(b) - operatorTaskScore(a)).slice(0, 12),
+    approvals: state.approvals.filter((approval) => approval.status !== "approved"),
+    activities: state.activities.slice(0, 8),
+    documents: state.documents.slice(0, 8)
+  };
+}
+
+function recentOperatorDocuments(limit = 4) {
+  return state.documents
+    .filter((document) => document.type === "Operator Brief" || document.type === "Workspace Brief" || /operator brief/i.test(document.title))
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+    .slice(0, limit);
+}
+
 function collaborationPresenceForTask(taskId) {
   const task = byId(state.tasks, taskId);
   if (!task) return [];
@@ -2539,6 +2646,7 @@ function render() {
     calendar: renderCalendar,
     "my-work": renderMyWork,
     time: renderTimeTracking,
+    operator: renderOperatorCenter,
     reports: renderReports,
     templates: renderTemplates,
     automations: renderAutomations,
@@ -2569,7 +2677,7 @@ function render() {
 
 function sidebarGroupForRoute(route) {
   if (["landing", "dashboard", "portal", "daily", "inbox"].includes(route)) return "home";
-  if (["board", "list", "calendar", "my-work", "time"].includes(route)) return "work";
+  if (["board", "list", "calendar", "my-work", "time", "operator"].includes(route)) return "work";
   if (["reports", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
   if (["data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
@@ -2866,6 +2974,94 @@ function renderDashboard() {
         </div>
       </section>
     </div>
+  `;
+}
+
+function renderOperatorCenter() {
+  const briefs = operatorBriefs(6);
+  const operatorDocs = recentOperatorDocuments();
+  const openRisks = briefs.filter((brief) => brief.health < 70);
+  const blockedTasks = activeTasks().filter(isTaskBlocked);
+  const approvalCount = state.approvals.filter((approval) => approval.status !== "approved").length;
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Provider", aiProviderLabel())}
+      ${metric("Adapter", aiConnectionSummary())}
+      ${metric("Risks", openRisks.length)}
+      ${metric("Approvals", approvalCount)}
+    </div>
+
+    <div class="operator-center-grid">
+      <section class="panel operator-command-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">AI command center</p>
+            <h2>Operator workspace</h2>
+          </div>
+          <span class="status-pill inbox-blue">${escapeHtml(aiConnectionSummary())}</span>
+        </div>
+        <div class="operator-command-copy">
+          <p>Generate a workspace brief, draft project updates, and turn the highest-risk signals into planned work.</p>
+        </div>
+        <div class="operator-command-actions">
+          <button class="button button-primary" type="button" id="ai-workspace-brief">Draft Workspace Brief</button>
+          <button class="button button-secondary" type="button" id="ai-generate-today">Generate Today</button>
+          <button class="button button-secondary" type="button" data-route="settings">AI Settings</button>
+        </div>
+        <div class="operator-signal-grid">
+          <div>
+            <strong>${blockedTasks.length}</strong>
+            <span>blocked tasks</span>
+          </div>
+          <div>
+            <strong>${getInboxItems().filter((item) => !isInboxRead(item.id)).length}</strong>
+            <span>unread signals</span>
+          </div>
+          <div>
+            <strong>${operatorDocs.length}</strong>
+            <span>operator docs</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Generated</p>
+            <h2>Operator docs</h2>
+          </div>
+        </div>
+        <div class="operator-doc-list">
+          ${operatorDocs.length ? operatorDocs.map(renderOperatorDocRow).join("") : emptyState("No operator docs yet. Draft a workspace or project brief to start the queue.")}
+        </div>
+      </section>
+
+      <section class="panel operator-panel wide-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Risk queue</p>
+            <h2>Suggested action plan</h2>
+          </div>
+        </div>
+        <div class="operator-brief-list">
+          ${briefs.length ? briefs.map(renderOperatorBrief).join("") : emptyState("No active project risks right now.")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderOperatorDocRow(document) {
+  return `
+    <article class="operator-doc-row">
+      <div>
+        <span class="status-pill inbox-neutral">${escapeHtml(document.type)}</span>
+        <h3>${escapeHtml(document.title)}</h3>
+        <p>${escapeHtml(projectName(document.projectId))} - Updated ${escapeHtml(formatTimestamp(document.updatedAt))}</p>
+      </div>
+      <button class="button button-secondary compact-button" type="button" data-route="docs">Open Docs</button>
+    </article>
   `;
 }
 
@@ -5045,7 +5241,7 @@ function renderSettings() {
               ${["Server environment", "Self-hosted secret store", "Not required"].map((option) => `<option value="${option}" ${ai.keySource === option ? "selected" : ""}>${option}</option>`).join("")}
             </select>
           </label>
-          <p class="settings-help">Agora uses the local deterministic operator by default. External providers should be called from the server so API keys never live in browser storage.</p>
+          <p class="settings-help">Agora uses the local deterministic operator by default. External providers run through the API server; put keys in .env with AGORA_AI_API_KEY or OPENAI_API_KEY. Browser-saved base URLs are only used when the server enables AGORA_AI_ALLOW_CLIENT_BASE_URL.</p>
           <button class="button button-primary" type="button" id="ai-save-settings">Save AI Settings</button>
         </div>
       </section>
@@ -6718,18 +6914,46 @@ function projectOperatorBriefBody(project) {
   ].join("\n");
 }
 
-function generateProjectBrief(projectId) {
+function workspaceOperatorBriefBody() {
+  const briefs = operatorBriefs(5);
+  const openTasks = activeTasks().filter((task) => task.status !== "done");
+  const blocked = openTasks.filter(isTaskBlocked);
+  const approvals = state.approvals.filter((approval) => approval.status !== "approved");
+
+  return [
+    `${state.workspace.name} operator brief`,
+    `Generated by ${aiProviderLabel()}.`,
+    "",
+    `${activeProjects().length} active projects, ${openTasks.length} open tasks, ${blocked.length} blocked tasks, and ${approvals.length} pending approvals.`,
+    "",
+    "Highest-risk projects",
+    ...(briefs.length ? briefs.map((brief) => `- ${brief.project.name}: ${brief.health}% health. ${brief.nextAction}.`) : ["- No active project risks visible."]),
+    "",
+    "Recommended actions",
+    ...openTasks
+      .sort((a, b) => operatorTaskScore(b) - operatorTaskScore(a))
+      .slice(0, 5)
+      .map((task) => `- ${task.title}: ${operatorReasonForTask(task)}.`),
+    "",
+    "Workspace update draft",
+    `${state.workspace.name}: focus today on ${briefs[0]?.nextAction || "reviewing active work and clearing the highest-signal blockers"}.`
+  ].join("\n");
+}
+
+async function generateProjectBrief(projectId) {
   const project = byId(state.projects, projectId);
   if (!project) return;
 
+  showToast("Drafting project brief", "info");
+  const aiResult = await runAiOperator("project_brief", projectAiContext(project), projectOperatorBriefBody(project));
   const document = {
     id: uid("doc-brief"),
     projectId,
-    title: `${project.name} operator brief`,
+    title: aiResult.title || `${project.name} operator brief`,
     type: "Operator Brief",
     owner: activeMemberId(),
     updatedAt: new Date().toISOString(),
-    body: projectOperatorBriefBody(project)
+    body: aiResult.body
   };
   state.documents = [document, ...state.documents];
   addActivity({
@@ -6739,8 +6963,38 @@ function generateProjectBrief(projectId) {
   });
   saveState();
   render();
-  showToast("Project brief drafted in Docs", "success");
+  showToast(`Project brief drafted in Docs (${aiResult.provider})`, "success");
   syncDocumentToApi(document, "Operator brief synced to API");
+}
+
+async function generateWorkspaceBrief() {
+  const project = visibleReportProjects()[0] || activeProjects()[0];
+  if (!project) {
+    showToast("Create a project before drafting a workspace brief", "info");
+    return;
+  }
+
+  showToast("Drafting workspace brief", "info");
+  const aiResult = await runAiOperator("workspace_brief", workspaceAiContext(), workspaceOperatorBriefBody());
+  const document = {
+    id: uid("doc-workspace-brief"),
+    projectId: project.id,
+    title: aiResult.title || `${state.workspace.name} operator brief`,
+    type: "Workspace Brief",
+    owner: activeMemberId(),
+    updatedAt: new Date().toISOString(),
+    body: aiResult.body
+  };
+  state.documents = [document, ...state.documents];
+  addActivity({
+    projectId: project.id,
+    type: "ai_workspace_brief",
+    message: `generated a workspace operator brief for ${state.workspace.name}`
+  });
+  saveState();
+  render();
+  showToast(`Workspace brief drafted in Docs (${aiResult.provider})`, "success");
+  syncDocumentToApi(document, "Workspace brief synced to API");
 }
 
 function runOperatorAction(actionType, projectId) {
@@ -7410,6 +7664,12 @@ document.addEventListener("click", (event) => {
   const generateTodayButton = event.target.closest("#ai-generate-today");
   if (generateTodayButton) {
     generateTodayPlan();
+    return;
+  }
+
+  const workspaceBriefButton = event.target.closest("#ai-workspace-brief");
+  if (workspaceBriefButton) {
+    generateWorkspaceBrief();
     return;
   }
 
