@@ -1,4 +1,6 @@
 const STORAGE_KEY = "agora.workspace.v1";
+const WORKSPACE_REGISTRY_KEY = "agora.workspaces.v1";
+const ACTIVE_WORKSPACE_ID_KEY = "agora.activeWorkspaceId.v1";
 const API_SESSION_KEY = "agora.api.session.v1";
 const SIDEBAR_STATE_KEY = "agora.sidebar.v1";
 const API_SYNC_QUEUE_KEY = "agora.api.syncQueue.v1";
@@ -40,15 +42,88 @@ function storageRemove(key) {
   }
 }
 
+function workspaceSnapshotKey(workspaceId) {
+  return `agora.workspace.snapshot.${workspaceId}.v1`;
+}
+
+function fallbackWorkspaceRegistry() {
+  return [
+    {
+      id: seedData?.workspace?.id || "workspace-acme",
+      name: seedData?.workspace?.name || "Acme Studio",
+      slug: seedData?.workspace?.slug || "acme-studio",
+      status: "active",
+      template: "demo",
+      createdAt: "2026-06-27T12:00:00.000Z",
+      updatedAt: new Date().toISOString()
+    }
+  ];
+}
+
+function normalizeWorkspaceRegistry(registry) {
+  const fallback = fallbackWorkspaceRegistry();
+  const source = Array.isArray(registry) && registry.length ? registry : fallback;
+  const seen = new Set();
+  const normalized = source
+    .filter((workspace) => workspace?.id)
+    .map((workspace) => ({
+      id: workspace.id,
+      name: workspace.name || "Untitled workspace",
+      slug: workspace.slug || workspace.id,
+      status: workspace.status === "archived" ? "archived" : "active",
+      template: workspace.template || "custom",
+      createdAt: workspace.createdAt || new Date().toISOString(),
+      updatedAt: workspace.updatedAt || new Date().toISOString()
+    }))
+    .filter((workspace) => {
+      if (seen.has(workspace.id)) return false;
+      seen.add(workspace.id);
+      return true;
+    });
+  return normalized.length ? normalized : fallback;
+}
+
+function loadWorkspaceRegistry() {
+  const stored = storageGet(WORKSPACE_REGISTRY_KEY);
+  if (!stored) return normalizeWorkspaceRegistry();
+
+  try {
+    return normalizeWorkspaceRegistry(JSON.parse(stored));
+  } catch {
+    return normalizeWorkspaceRegistry();
+  }
+}
+
+function saveWorkspaceRegistry() {
+  storageSet(WORKSPACE_REGISTRY_KEY, JSON.stringify(workspaceRegistry));
+}
+
+function registryWorkspace(workspaceId = activeWorkspaceId) {
+  return workspaceRegistry.find((workspace) => workspace.id === workspaceId) || workspaceRegistry.find((workspace) => workspace.status !== "archived") || workspaceRegistry[0];
+}
+
+function loadActiveWorkspaceId(registry) {
+  const stored = storageGet(ACTIVE_WORKSPACE_ID_KEY);
+  const active = registry.find((workspace) => workspace.id === stored && workspace.status !== "archived")
+    || registry.find((workspace) => workspace.status !== "archived")
+    || registry[0];
+  return active?.id || "workspace-acme";
+}
+
+function saveActiveWorkspaceId(workspaceId) {
+  storageSet(ACTIVE_WORKSPACE_ID_KEY, workspaceId);
+}
+
 const workspaceStore = {
   load() {
-    return storageGet(STORAGE_KEY);
+    return storageGet(workspaceSnapshotKey(activeWorkspaceId)) || storageGet(STORAGE_KEY);
   },
   save(nextState) {
+    storageSet(workspaceSnapshotKey(activeWorkspaceId), JSON.stringify(nextState));
     storageSet(STORAGE_KEY, JSON.stringify(nextState));
   },
   clear() {
-    storageRemove(STORAGE_KEY);
+    storageRemove(workspaceSnapshotKey(activeWorkspaceId));
   }
 };
 
@@ -1032,6 +1107,8 @@ const seedData = {
   ]
 };
 
+let workspaceRegistry = loadWorkspaceRegistry();
+let activeWorkspaceId = loadActiveWorkspaceId(workspaceRegistry);
 let state = loadState();
 let apiSession = apiSessionStore.load();
 let apiSyncQueue = apiSyncQueueStore.load();
@@ -1059,6 +1136,10 @@ const els = {
   pageTitle: document.querySelector("#page-title"),
   routeStatus: document.querySelector("#route-status"),
   connectionBanner: document.querySelector("#connection-banner"),
+  workspaceSwitcher: document.querySelector("#workspace-switcher"),
+  workspaceCreate: document.querySelector("#workspace-create"),
+  workspaceDuplicate: document.querySelector("#workspace-duplicate"),
+  workspaceArchive: document.querySelector("#workspace-archive"),
   projectList: document.querySelector("#project-list"),
   projectSectionCount: document.querySelector("#project-section-count"),
   navInboxCount: document.querySelector("#nav-inbox-count"),
@@ -1083,7 +1164,10 @@ const els = {
   projectForm: document.querySelector("#project-form"),
   companyDialog: document.querySelector("#company-dialog"),
   companyForm: document.querySelector("#company-form"),
-  companyFormTitle: document.querySelector("#company-form-title")
+  companyFormTitle: document.querySelector("#company-form-title"),
+  workspaceDialog: document.querySelector("#workspace-dialog"),
+  workspaceForm: document.querySelector("#workspace-form"),
+  workspaceFormTitle: document.querySelector("#workspace-form-title")
 };
 
 let draftSubtasks = [];
@@ -1128,7 +1212,7 @@ function refreshSmoothScroll() {
 
 function loadState() {
   const stored = workspaceStore.load();
-  if (!stored) return normalizeState(structuredClone(seedData));
+  if (!stored) return normalizeState(workspaceSnapshotForRegistry(registryWorkspace(activeWorkspaceId)));
 
   try {
     const parsed = JSON.parse(stored);
@@ -1143,6 +1227,39 @@ function loadState() {
   }
 }
 
+function slugFromName(name) {
+  const slug = String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "workspace";
+}
+
+function uniqueWorkspaceId(name) {
+  const base = `workspace-${slugFromName(name)}`;
+  const existing = new Set(workspaceRegistry.map((workspace) => workspace.id));
+  if (!existing.has(base)) return base;
+  let index = 2;
+  while (existing.has(`${base}-${index}`)) index += 1;
+  return `${base}-${index}`;
+}
+
+function workspaceSnapshotForRegistry(workspaceMeta) {
+  const base = structuredClone(seedData);
+  const meta = workspaceMeta || registryWorkspace(activeWorkspaceId) || fallbackWorkspaceRegistry()[0];
+  return {
+    ...base,
+    selectedRoute: "dashboard",
+    workspace: {
+      ...base.workspace,
+      id: meta.id,
+      name: meta.name,
+      slug: meta.slug || slugFromName(meta.name)
+    }
+  };
+}
+
 function applyWorkspaceSnapshot(snapshot) {
   const base = structuredClone(seedData);
   state = normalizeState({
@@ -1151,6 +1268,26 @@ function applyWorkspaceSnapshot(snapshot) {
     filters: { ...base.filters, ...(snapshot.filters || {}) }
   });
   saveState();
+}
+
+function updateActiveWorkspaceRegistryFromState() {
+  const now = new Date().toISOString();
+  const existing = registryWorkspace(activeWorkspaceId);
+  const nextEntry = {
+    id: activeWorkspaceId,
+    name: state.workspace.name || existing?.name || "Untitled workspace",
+    slug: state.workspace.slug || existing?.slug || activeWorkspaceId,
+    status: existing?.status || "active",
+    template: existing?.template || state.onboarding?.sampleMode || "custom",
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
+  };
+  workspaceRegistry = normalizeWorkspaceRegistry([
+    nextEntry,
+    ...workspaceRegistry.filter((workspace) => workspace.id !== activeWorkspaceId)
+  ]);
+  saveWorkspaceRegistry();
+  saveActiveWorkspaceId(activeWorkspaceId);
 }
 
 function normalizeState(nextState) {
@@ -1208,6 +1345,7 @@ function normalizeState(nextState) {
 
 function saveState() {
   applyWorkspaceTheme();
+  updateActiveWorkspaceRegistryFromState();
   workspaceStore.save(state);
 }
 
@@ -1753,10 +1891,12 @@ function renderSettingsTabs(activeTab) {
   `;
 }
 
-function createBlankWorkspaceState() {
+function createBlankWorkspaceState(options = {}) {
   const blank = structuredClone(seedData);
   const owner = members[0];
   const now = new Date().toISOString();
+  const workspaceId = options.id || activeWorkspaceId;
+  const workspaceName = options.name || "New Agora Workspace";
   return normalizeState({
     ...blank,
     selectedRoute: "dashboard",
@@ -1786,7 +1926,7 @@ function createBlankWorkspaceState() {
     invitations: [],
     auditEvents: [
       {
-        id: `audit-clean-start-${Date.now()}`,
+        id: `audit-clean-start-${workspaceId}-${Date.now()}`,
         actorId: owner.id,
         action: "workspace_clean_start",
         detail: "Clean workspace created",
@@ -1797,8 +1937,9 @@ function createBlankWorkspaceState() {
     memberships: [{ memberId: owner.id, role: "admin", status: "active" }],
     workspace: {
       ...blank.workspace,
-      name: "New Agora Workspace",
-      slug: "new-agora-workspace",
+      id: workspaceId,
+      name: workspaceName,
+      slug: options.slug || slugFromName(workspaceName),
       visibility: "Private"
     },
     onboarding: {
@@ -4267,6 +4408,177 @@ function setRoute(route) {
   }
 }
 
+function resetWorkspaceViewState() {
+  state.selectedRoute = "dashboard";
+  state.selectedProject = "all";
+  state.selectedCompany = "all";
+  state.selectedInviteToken = "";
+  state.selectedProjectTab = "overview";
+  state.filters = { ...seedData.filters };
+  openSidebarGroupForRoute("dashboard");
+}
+
+function switchWorkspace(workspaceId) {
+  const workspace = workspaceRegistry.find((item) => item.id === workspaceId && item.status !== "archived");
+  if (!workspace || workspace.id === activeWorkspaceId) return;
+  saveState();
+  activeWorkspaceId = workspace.id;
+  saveActiveWorkspaceId(activeWorkspaceId);
+  state = loadState();
+  resetWorkspaceViewState();
+  saveState();
+  render();
+  showToast(`Switched to ${workspace.name}`, "success");
+}
+
+function populateWorkspaceForm(action) {
+  const current = registryWorkspace(activeWorkspaceId);
+  const titleByAction = {
+    create: "New Workspace",
+    duplicate: "Duplicate Workspace",
+    archive: "Archive Workspace"
+  };
+  const helpByAction = {
+    create: "Create a clean local workspace with its own browser-saved snapshot.",
+    duplicate: "Copy the current workspace into a new local workspace.",
+    archive: `Archive ${current?.name || "this workspace"} and switch to another active workspace.`
+  };
+  const defaultName = action === "duplicate" ? `${state.workspace.name} Copy` : action === "archive" ? current?.name || state.workspace.name : "New Agora Workspace";
+  document.querySelector("#workspace-dialog-action").value = action;
+  document.querySelector("#workspace-dialog-name").value = defaultName;
+  document.querySelector("#workspace-dialog-name").disabled = action === "archive";
+  document.querySelector("#workspace-dialog-name-field").hidden = action === "archive";
+  document.querySelector("#workspace-dialog-help").textContent = helpByAction[action] || "";
+  document.querySelector("#workspace-submit").textContent = action === "archive" ? "Archive Workspace" : "Save Workspace";
+  els.workspaceFormTitle.textContent = titleByAction[action] || "Workspace";
+}
+
+function createWorkspaceWithName(name) {
+  const workspaceName = name.trim();
+  const workspaceId = uniqueWorkspaceId(workspaceName);
+  const now = new Date().toISOString();
+  saveState();
+  workspaceRegistry = normalizeWorkspaceRegistry([
+    {
+      id: workspaceId,
+      name: workspaceName,
+      slug: slugFromName(workspaceName),
+      status: "active",
+      template: "clean",
+      createdAt: now,
+      updatedAt: now
+    },
+    ...workspaceRegistry
+  ]);
+  saveWorkspaceRegistry();
+  activeWorkspaceId = workspaceId;
+  saveActiveWorkspaceId(activeWorkspaceId);
+  state = createBlankWorkspaceState({ id: workspaceId, name: workspaceName, slug: slugFromName(workspaceName) });
+  resetWorkspaceViewState();
+  saveState();
+  render();
+  showToast(`Created ${workspaceName}`, "success");
+}
+
+function duplicateWorkspaceWithName(name) {
+  const source = registryWorkspace(activeWorkspaceId);
+  const workspaceName = name.trim();
+  const workspaceId = uniqueWorkspaceId(workspaceName);
+  const now = new Date().toISOString();
+  saveState();
+  const snapshot = normalizeState({
+    ...workspaceSnapshot(),
+    selectedRoute: "dashboard",
+    selectedProject: "all",
+    selectedCompany: "all",
+    workspace: {
+      ...state.workspace,
+      id: workspaceId,
+      name: workspaceName,
+      slug: slugFromName(workspaceName)
+    },
+    onboarding: {
+      ...state.onboarding,
+      dismissed: false,
+      sampleMode: state.onboarding?.sampleMode || source?.template || "custom"
+    }
+  });
+  workspaceRegistry = normalizeWorkspaceRegistry([
+    {
+      id: workspaceId,
+      name: workspaceName,
+      slug: slugFromName(workspaceName),
+      status: "active",
+      template: source?.template || "duplicate",
+      createdAt: now,
+      updatedAt: now
+    },
+    ...workspaceRegistry
+  ]);
+  saveWorkspaceRegistry();
+  activeWorkspaceId = workspaceId;
+  saveActiveWorkspaceId(activeWorkspaceId);
+  state = snapshot;
+  resetWorkspaceViewState();
+  saveState();
+  render();
+  showToast(`Duplicated ${source?.name || "workspace"}`, "success");
+}
+
+function createWorkspaceFromSwitcher() {
+  populateWorkspaceForm("create");
+  openDialog(els.workspaceDialog);
+}
+
+function duplicateWorkspaceFromSwitcher() {
+  populateWorkspaceForm("duplicate");
+  openDialog(els.workspaceDialog);
+}
+
+function archiveActiveWorkspace() {
+  const activeWorkspaces = workspaceRegistry.filter((workspace) => workspace.status !== "archived");
+  if (activeWorkspaces.length <= 1) {
+    showToast("Keep at least one active workspace", "info");
+    return;
+  }
+  populateWorkspaceForm("archive");
+  openDialog(els.workspaceDialog);
+}
+
+function archiveActiveWorkspaceConfirmed() {
+  const activeWorkspaces = workspaceRegistry.filter((workspace) => workspace.status !== "archived");
+  if (activeWorkspaces.length <= 1) {
+    showToast("Keep at least one active workspace", "info");
+    return;
+  }
+  const workspace = registryWorkspace(activeWorkspaceId);
+  if (!workspace) return;
+  saveState();
+  workspaceRegistry = workspaceRegistry.map((item) => item.id === workspace.id ? { ...item, status: "archived", updatedAt: new Date().toISOString() } : item);
+  const next = workspaceRegistry.find((item) => item.status !== "archived");
+  saveWorkspaceRegistry();
+  activeWorkspaceId = next.id;
+  saveActiveWorkspaceId(activeWorkspaceId);
+  state = loadState();
+  resetWorkspaceViewState();
+  saveState();
+  render();
+  showToast(`Archived ${workspace.name}`, "success");
+}
+
+function saveWorkspaceDialog() {
+  const action = document.querySelector("#workspace-dialog-action")?.value || "create";
+  const name = document.querySelector("#workspace-dialog-name")?.value.trim() || "";
+  if (action !== "archive" && !name) {
+    showToast("Workspace name is required", "info");
+    return;
+  }
+  if (action === "create") createWorkspaceWithName(name);
+  if (action === "duplicate") duplicateWorkspaceWithName(name);
+  if (action === "archive") archiveActiveWorkspaceConfirmed();
+  closeDialog(els.workspaceDialog);
+}
+
 function syncRouteToTutorialStep() {
   if (!state.tutorial?.active) return;
   const { step } = activeTutorialStep();
@@ -4616,6 +4928,7 @@ function render() {
   renderSearchResults();
   renderNotificationBadges();
   renderPermissionChrome();
+  renderWorkspaceSwitcher();
   renderConnectionBanner();
   document.querySelector(".brand small").textContent = state.workspace.name;
   document.body.classList.toggle("is-landing-route", state.selectedRoute === "landing");
@@ -4712,6 +5025,21 @@ function renderSidebarGroups() {
     group.classList.toggle("is-open", isOpen);
     if (toggle) toggle.setAttribute("aria-expanded", String(isOpen));
   });
+}
+
+function renderWorkspaceSwitcher() {
+  if (!els.workspaceSwitcher) return;
+  const activeWorkspaces = workspaceRegistry.filter((workspace) => workspace.status !== "archived");
+  els.workspaceSwitcher.innerHTML = activeWorkspaces.map((workspace) => `
+    <option value="${escapeHtml(workspace.id)}" ${workspace.id === activeWorkspaceId ? "selected" : ""}>
+      ${escapeHtml(workspace.name)}
+    </option>
+  `).join("");
+  els.workspaceSwitcher.disabled = activeWorkspaces.length <= 1;
+  if (els.workspaceArchive) {
+    els.workspaceArchive.disabled = activeWorkspaces.length <= 1;
+    els.workspaceArchive.title = activeWorkspaces.length <= 1 ? "Keep at least one active workspace." : "Archive workspace";
+  }
 }
 
 function openSidebarGroupForRoute(route) {
@@ -11074,7 +11402,7 @@ document.querySelector("#new-project-button").addEventListener("click", () => {
   openDialog(els.projectDialog);
 });
 
-[els.taskDialog, els.projectDialog, els.companyDialog].filter(Boolean).forEach((dialog) => {
+[els.taskDialog, els.projectDialog, els.companyDialog, els.workspaceDialog].filter(Boolean).forEach((dialog) => {
   dialog.addEventListener("close", () => {
     if (dialog === els.taskDialog) {
       const taskId = document.querySelector("#task-id")?.value || "";
@@ -11086,12 +11414,25 @@ document.querySelector("#new-project-button").addEventListener("click", () => {
   });
 });
 
+els.workspaceForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  saveWorkspaceDialog();
+});
+
 document.querySelector("#seed-reset").addEventListener("click", () => {
   state = structuredClone(seedData);
   saveState();
   render();
   showToast("Sample data reset", "success");
 });
+
+els.workspaceSwitcher?.addEventListener("change", (event) => {
+  switchWorkspace(event.target.value);
+});
+
+els.workspaceCreate?.addEventListener("click", createWorkspaceFromSwitcher);
+els.workspaceDuplicate?.addEventListener("click", duplicateWorkspaceFromSwitcher);
+els.workspaceArchive?.addEventListener("click", archiveActiveWorkspace);
 
 els.searchInput.addEventListener("input", (event) => {
   state.filters.query = event.target.value;

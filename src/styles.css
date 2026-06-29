@@ -196,6 +196,48 @@ button {
   font-size: 0.78rem;
 }
 
+.workspace-switcher {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.workspace-switcher label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.workspace-switcher span {
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.workspace-switcher select {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  font-size: 0.82rem;
+}
+
+.workspace-switcher-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.workspace-switcher-actions .icon-button {
+  width: 32px;
+  height: 32px;
+  font-size: 0.78rem;
+}
+
 .nav-list,
 .project-list {
   display: grid;

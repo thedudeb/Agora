@@ -4,7 +4,7 @@ This roadmap describes the intended direction for Agora. It will evolve as the p
 
 ## Current Prototype
 
-Agora currently includes a dependency-free browser app, local app server, API scaffold, JSON storage, optional Supabase storage, first-run onboarding, guided tutorial mode, clean/demo workspace setup, account signup/login, Supabase email/password auth, invitations, role permissions, company-scoped access controls, API-first company/project/task records, split Settings tabs for account, sync, security, integrations, and developer readiness, merged local/API audit logs, project/task views, saved views, project PM snapshots, company and client portals, docs/files, intake, templates, automations with previews, notifications, time tracking, import/export, command-style search, copyable status reports, polling-based live refresh, task viewer presence, same-page cursor presence, mentions, watched-task inbox signals, stale edit warnings, customizable workspace themes, deployment readiness checks, accessibility basics, and PWA shell support.
+Agora currently includes a dependency-free browser app, local app server, API scaffold, JSON storage, optional Supabase storage, first-run onboarding, guided tutorial mode, local multi-workspace switching, clean/demo workspace setup, account signup/login, Supabase email/password auth, invitations, role permissions, company-scoped access controls, API-first company/project/task records, split Settings tabs for account, sync, security, integrations, and developer readiness, merged local/API audit logs, project/task views, saved views, project PM snapshots, company and client portals, docs/files, intake, templates, automations with previews, notifications, time tracking, import/export, command-style search, copyable status reports, polling-based live refresh, task viewer presence, same-page cursor presence, mentions, watched-task inbox signals, stale edit warnings, customizable workspace themes, deployment readiness checks, accessibility basics, and PWA shell support.
 
 ## Phase 0: Project Foundation
 
@@ -19,6 +19,7 @@ Agora currently includes a dependency-free browser app, local app server, API sc
 ## Phase 1: MVP
 
 - Workspace creation and member invitations.
+- Local workspace switcher with create, duplicate, archive, and switch actions. ✅
 - Role-aware authentication, company-scoped access, and session management.
 - API-backed workspace persistence. ✅
 - Project creation with configurable statuses.

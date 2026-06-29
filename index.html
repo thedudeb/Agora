@@ -29,7 +29,7 @@
     <link rel="icon" href="./assets/agora-mark.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./assets/agora-mark.svg">
     <link rel="stylesheet" href="https://unpkg.com/lenis@1.3.25/dist/lenis.css">
-    <link rel="stylesheet" href="./src/styles.css?v=tutorial-v1">
+    <link rel="stylesheet" href="./src/styles.css?v=workspaces-v2">
   </head>
   <body>
     <a class="skip-link" href="#app-view">Skip to main content</a>
@@ -42,6 +42,18 @@
             <small>Acme Studio</small>
           </span>
         </a>
+
+        <section class="workspace-switcher" aria-label="Workspace switcher">
+          <label>
+            <span>Workspace</span>
+            <select id="workspace-switcher"></select>
+          </label>
+          <div class="workspace-switcher-actions">
+            <button class="icon-button" type="button" id="workspace-create" aria-label="Create workspace">+</button>
+            <button class="icon-button" type="button" id="workspace-duplicate" aria-label="Duplicate workspace">D</button>
+            <button class="icon-button" type="button" id="workspace-archive" aria-label="Archive workspace">A</button>
+          </div>
+        </section>
 
         <nav class="nav-list" aria-label="Primary">
           <section class="nav-group is-open" data-nav-group="home">
@@ -338,8 +350,30 @@
       </form>
     </dialog>
 
-    <script src="./src/boot.js?v=tutorial-v1"></script>
+    <dialog class="modal" id="workspace-dialog" aria-labelledby="workspace-form-title" data-lenis-prevent>
+      <form method="dialog" id="workspace-form" class="modal-form">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Workspace</p>
+            <h2 id="workspace-form-title">New Workspace</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-dialog="workspace-dialog" aria-label="Close">x</button>
+        </div>
+        <input type="hidden" id="workspace-dialog-action">
+        <p class="settings-help" id="workspace-dialog-help"></p>
+        <label id="workspace-dialog-name-field">
+          <span>Name</span>
+          <input id="workspace-dialog-name" required maxlength="80" placeholder="Client Ops Workspace">
+        </label>
+        <div class="modal-actions">
+          <button class="button button-secondary" type="button" data-close-dialog="workspace-dialog">Cancel</button>
+          <button class="button button-primary" type="submit" id="workspace-submit">Save Workspace</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./src/boot.js?v=workspaces-v2"></script>
     <script src="https://unpkg.com/lenis@1.3.25/dist/lenis.min.js" async></script>
-    <script src="./src/app.js?v=tutorial-v1"></script>
+    <script src="./src/app.js?v=workspaces-v2"></script>
   </body>
 </html>
