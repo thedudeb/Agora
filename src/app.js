@@ -1123,23 +1123,8 @@ function normalizeState(nextState) {
       description: "",
       ...company
     })),
-    projects: nextState.projects.map((project) => ({
-      archivedAt: "",
-      archivedBy: "",
-      restoredAt: "",
-      ...project
-    })),
-    tasks: nextState.tasks.map((task) => ({
-      archivedAt: "",
-      archivedBy: "",
-      restoredAt: "",
-      ...task,
-      startDate: task.startDate || task.createdAt?.slice(0, 10) || "",
-      updatedAt: task.updatedAt || task.createdAt || new Date().toISOString(),
-      blockedBy: Array.isArray(task.blockedBy) ? task.blockedBy : [],
-      subtasks: Array.isArray(task.subtasks) ? task.subtasks : [],
-      customFields: task.customFields && typeof task.customFields === "object" ? task.customFields : {}
-    }))
+    projects: nextState.projects.map(normalizeProjectRecord),
+    tasks: nextState.tasks.map(normalizeTaskRecord)
   };
 }
 
@@ -1302,10 +1287,12 @@ async function retryApiSyncQueue() {
   let synced = 0;
   for (const item of queue) {
     try {
-      await apiRequest(item.path, {
+      const result = await apiRequest(item.path, {
         method: item.method,
         body: item.body
       });
+      if (result.project) mergeCoreRecordsFromApi({ projects: [result.project] });
+      if (result.task) mergeCoreRecordsFromApi({ tasks: [result.task] });
       clearApiSyncQueueItem(item.id);
       synced += 1;
     } catch (error) {
@@ -1313,6 +1300,7 @@ async function retryApiSyncQueue() {
     }
   }
   await refreshBackendHealth({ silent: true });
+  if (synced) saveState();
   render();
   showToast(synced ? `Retried ${synced} API sync${synced === 1 ? "" : "s"}` : "API sync retry still blocked", synced ? "success" : "info");
 }
@@ -1342,6 +1330,97 @@ function mergeCollectionFromApi(collection, incoming = []) {
   if (collectionSignature(nextItems) === collectionSignature(current)) return false;
   state[collection] = nextItems;
   return true;
+}
+
+function normalizeProjectRecord(project = {}) {
+  return {
+    archivedAt: "",
+    archivedBy: "",
+    restoredAt: "",
+    ...project
+  };
+}
+
+function normalizeTaskRecord(task = {}) {
+  return {
+    archivedAt: "",
+    archivedBy: "",
+    restoredAt: "",
+    ...task,
+    startDate: task.startDate || task.createdAt?.slice(0, 10) || "",
+    updatedAt: task.updatedAt || task.createdAt || new Date().toISOString(),
+    blockedBy: Array.isArray(task.blockedBy) ? task.blockedBy : [],
+    subtasks: Array.isArray(task.subtasks) ? task.subtasks : [],
+    customFields: task.customFields && typeof task.customFields === "object" ? task.customFields : {}
+  };
+}
+
+function coreRecordSignature({ projects = state.projects, tasks = state.tasks } = {}) {
+  return JSON.stringify({
+    projects: projects.map((project) => ({
+      id: project.id,
+      name: project.name,
+      companyId: project.companyId,
+      owner: project.owner,
+      startDate: project.startDate,
+      dueDate: project.dueDate,
+      archivedAt: project.archivedAt || "",
+      restoredAt: project.restoredAt || ""
+    })),
+    tasks: tasks.map((task) => ({
+      id: task.id,
+      projectId: task.projectId,
+      title: task.title,
+      assignee: task.assignee,
+      status: task.status,
+      priority: task.priority,
+      startDate: task.startDate,
+      dueDate: task.dueDate,
+      updatedAt: task.updatedAt || task.createdAt || "",
+      archivedAt: task.archivedAt || "",
+      restoredAt: task.restoredAt || ""
+    }))
+  });
+}
+
+function mergeCoreRecordsFromApi({ projects = [], tasks = [] } = {}, options = {}) {
+  const incomingProjects = Array.isArray(projects) ? projects.map(normalizeProjectRecord).filter((project) => project.id) : [];
+  const incomingTasks = Array.isArray(tasks) ? tasks.map(normalizeTaskRecord).filter((task) => task.id) : [];
+  if (!incomingProjects.length && !incomingTasks.length && !options.replaceEmpty) return false;
+
+  const previousSignature = coreRecordSignature();
+  const authoritative = options.authoritative === true || options.replaceEmpty;
+  const hasRemoteCore = incomingProjects.length || incomingTasks.length || options.replaceEmpty;
+  state.projects = hasRemoteCore && authoritative
+    ? incomingProjects
+    : incomingProjects.length || options.replaceEmpty
+      ? mergeRecordsById(state.projects, incomingProjects).map(normalizeProjectRecord)
+      : state.projects;
+  state.tasks = hasRemoteCore && authoritative
+    ? incomingTasks
+    : incomingTasks.length || options.replaceEmpty
+      ? mergeRecordsById(state.tasks, incomingTasks).map(normalizeTaskRecord)
+      : state.tasks;
+  return coreRecordSignature() !== previousSignature;
+}
+
+async function loadCoreRecordsFromApi(options = {}) {
+  if (!apiSession) return false;
+
+  const [projectsResult, tasksResult] = await Promise.all([
+    apiRequest("/api/projects"),
+    apiRequest("/api/tasks")
+  ]);
+  const changed = mergeCoreRecordsFromApi({
+    projects: projectsResult.projects,
+    tasks: tasksResult.tasks
+  }, { authoritative: true, ...options });
+
+  if (changed) {
+    markRealtimeChanged();
+    saveState();
+  }
+  return changed;
 }
 
 function markRealtimeChanged() {
@@ -1395,7 +1474,8 @@ async function pollApiForWorkspaceChanges() {
   if (!apiSession || document.hidden || apiSyncQueue.length) return;
 
   try {
-    let changed = await loadStructuredRecordsFromApi();
+    let changed = await loadCoreRecordsFromApi();
+    changed = await loadStructuredRecordsFromApi() || changed;
     const remoteDocument = await apiRequest("/api/workspace");
     const updatedAt = remoteDocument.metadata?.updatedAt || "";
     const hasSnapshotChange = Boolean(remoteDocument.snapshot && updatedAt && updatedAt !== apiSession.lastSyncedAt && updatedAt !== realtimeLastRefreshAt);
@@ -1405,6 +1485,7 @@ async function pollApiForWorkspaceChanges() {
       const previousRevision = openTaskId ? taskRevision(byId(state.tasks, openTaskId)) : "";
       realtimeLastRefreshAt = updatedAt;
       applyWorkspaceSnapshot(remoteDocument.snapshot);
+      changed = await loadCoreRecordsFromApi() || changed;
       changed = await loadStructuredRecordsFromApi() || changed;
       changed = true;
       markRealtimeChanged();
@@ -9454,7 +9535,7 @@ function saveApiBaseUrl() {
   }
 }
 
-async function syncAccessFromApi() {
+async function syncAccessFromApi(options = {}) {
   if (!apiSession) return;
 
   const access = await apiRequest("/api/members");
@@ -9464,6 +9545,9 @@ async function syncAccessFromApi() {
   state.memberships = Array.isArray(access.memberships) ? access.memberships : state.memberships;
   state.invitations = Array.isArray(access.invitations) ? access.invitations : state.invitations;
   saveState();
+  if (options.includeWorkspaceRecords === false) return;
+  await loadCoreRecordsFromApi();
+  await loadStructuredRecordsFromApi();
 }
 
 async function inviteWorkspaceMember() {
@@ -9656,6 +9740,7 @@ async function loadWorkspaceFromApi() {
       return;
     }
     applyWorkspaceSnapshot(document.snapshot);
+    await loadCoreRecordsFromApi();
     await loadStructuredRecordsFromApi();
     saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, storageDriver: document.metadata.storage || apiSession.storageDriver });
     await refreshBackendHealth({ silent: true });
@@ -9697,10 +9782,14 @@ async function syncProjectToApi(project, action = "Project synced", isNew = fals
   if (!apiSession) return;
 
   try {
-    await apiRequest(isNew ? "/api/projects" : `/api/projects/${encodeURIComponent(project.id)}`, {
+    const result = await apiRequest(isNew ? "/api/projects" : `/api/projects/${encodeURIComponent(project.id)}`, {
       method: isNew ? "POST" : "PUT",
       body: { project }
     });
+    if (result.project && mergeCoreRecordsFromApi({ projects: [result.project] })) {
+      saveState();
+      render();
+    }
     showToast(action, "success");
   } catch (error) {
     queueApiSyncFailure({
@@ -9718,10 +9807,14 @@ async function syncTaskToApi(task, action = "Task synced", isNew = false) {
   if (!apiSession) return;
 
   try {
-    await apiRequest(isNew ? "/api/tasks" : `/api/tasks/${encodeURIComponent(task.id)}`, {
+    const result = await apiRequest(isNew ? "/api/tasks" : `/api/tasks/${encodeURIComponent(task.id)}`, {
       method: isNew ? "POST" : "PUT",
       body: { task }
     });
+    if (result.task && mergeCoreRecordsFromApi({ tasks: [result.task] })) {
+      saveState();
+      render();
+    }
     showToast(action, "success");
   } catch (error) {
     queueApiSyncFailure({
@@ -9739,9 +9832,13 @@ async function syncTaskArchiveToApi(taskId) {
   if (!apiSession) return;
 
   try {
-    await apiRequest(`/api/tasks/${encodeURIComponent(taskId)}`, {
+    const result = await apiRequest(`/api/tasks/${encodeURIComponent(taskId)}`, {
       method: "DELETE"
     });
+    if (result.task && mergeCoreRecordsFromApi({ tasks: [result.task] })) {
+      saveState();
+      render();
+    }
     showToast("Task archive synced to API", "success");
   } catch (error) {
     queueApiSyncFailure({
@@ -9759,9 +9856,13 @@ async function syncProjectArchiveToApi(projectId) {
   if (!apiSession) return;
 
   try {
-    await apiRequest(`/api/projects/${encodeURIComponent(projectId)}`, {
+    const result = await apiRequest(`/api/projects/${encodeURIComponent(projectId)}`, {
       method: "DELETE"
     });
+    if (result.project && mergeCoreRecordsFromApi({ projects: [result.project] })) {
+      saveState();
+      render();
+    }
     showToast("Project archive synced to API", "success");
   } catch (error) {
     queueApiSyncFailure({

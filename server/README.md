@@ -108,12 +108,12 @@ The first migration creates the snapshot/audit tables plus structured record tab
 - `GET /api/workspace`: returns the latest saved workspace snapshot.
 - `PUT /api/workspace`: saves a workspace snapshot for workspace-wide admin/project-manager roles. Company-scoped sessions must use project, task, and structured record endpoints.
 - `POST /api/workspace/import`: imports a workspace snapshot for admins.
-- `GET /api/projects`: lists projects from the current workspace snapshot.
+- `GET /api/projects`: lists the current session's canonical projects for API-connected clients.
 - `POST /api/projects`: creates a project for admin/project-manager roles.
 - `PUT /api/projects/:id`: updates a project for admin/project-manager roles.
 - `DELETE /api/projects/:id`: archives a project and its tasks for admin/project-manager roles.
 - `POST /api/projects/:id/restore`: restores an archived project for admin/project-manager roles.
-- `GET /api/tasks`: lists tasks from the current workspace snapshot. Supports `?projectId=...`.
+- `GET /api/tasks`: lists the current session's canonical tasks for API-connected clients. Supports `?projectId=...`.
 - `POST /api/tasks`: creates a task for admin/project-manager roles.
 - `PUT /api/tasks/:id`: updates a task for admin/project-manager roles.
 - `DELETE /api/tasks/:id`: archives a task for admin/project-manager roles.
