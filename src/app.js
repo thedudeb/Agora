@@ -964,6 +964,7 @@ function normalizeState(nextState) {
     taskTemplates: Array.isArray(nextState.taskTemplates) ? nextState.taskTemplates : seedData.taskTemplates,
     automations: Array.isArray(nextState.automations) ? nextState.automations : seedData.automations,
     automationHistory: Array.isArray(nextState.automationHistory) ? nextState.automationHistory : [],
+    operatorActions: Array.isArray(nextState.operatorActions) ? nextState.operatorActions : [],
     companies: nextState.companies.map((company) => ({
       type: "Client",
       status: "active",
@@ -2129,6 +2130,100 @@ function recentOperatorDocuments(limit = 4) {
     .slice(0, limit);
 }
 
+function operatorActionSuggestions(limit = 6) {
+  return operatorBriefs(limit)
+    .map(operatorActionSuggestionForBrief)
+    .filter(Boolean);
+}
+
+function operatorActionSuggestionForBrief(brief) {
+  const sourceTask = brief.overdue[0] || brief.blocked[0] || brief.dueSoon[0] || getProjectTasks(brief.project.id, false).find((task) => task.status !== "done");
+  const approval = brief.approvals[0];
+  const company = projectCompany(brief.project.id);
+  const base = {
+    id: `suggest-${brief.project.id}-${brief.actionType}`,
+    projectId: brief.project.id,
+    projectName: brief.project.name,
+    companyId: company?.id || "",
+    sourceTaskId: sourceTask?.id || "",
+    approvalId: approval?.id || "",
+    health: brief.health,
+    impact: `${brief.health}% health / ${brief.blocked.length} blocked / ${brief.approvals.length} approvals`
+  };
+
+  if (brief.actionType === "recover" && sourceTask) {
+    return {
+      ...base,
+      type: "task",
+      title: `Create recovery task for ${sourceTask.title}`,
+      summary: `Adds a high-priority recovery task, plans it for Today, and logs the operator decision.`,
+      confirmLabel: "Create Task"
+    };
+  }
+  if (brief.actionType === "unblock" && sourceTask) {
+    return {
+      ...base,
+      type: "task",
+      title: `Create unblock task for ${sourceTask.title}`,
+      summary: `Creates a follow-up to identify the blocker, owner, and next date.`,
+      confirmLabel: "Create Task"
+    };
+  }
+  if (brief.actionType === "approval" && approval) {
+    return {
+      ...base,
+      type: "approval_chase",
+      title: `Chase approval: ${approval.title}`,
+      summary: `Creates an approval follow-up task for ${approval.reviewer} and keeps it visible in Today.`,
+      confirmLabel: "Chase Approval"
+    };
+  }
+  if (brief.actionType === "plan" && sourceTask) {
+    return {
+      ...base,
+      type: "plan",
+      title: `Plan ${sourceTask.title} for Today`,
+      summary: `Moves the task into the Now lane and posts an operator note explaining why.`,
+      confirmLabel: "Plan Today"
+    };
+  }
+  if (company?.type === "Client" && sourceTask && !approval) {
+    return {
+      ...base,
+      type: "approval_request",
+      title: `Request approval for ${sourceTask.title}`,
+      summary: `Creates a client approval request with a reviewer, due date, and source task attached.`,
+      confirmLabel: "Request Approval"
+    };
+  }
+  if (company?.type === "Client") {
+    return {
+      ...base,
+      type: "client_update",
+      title: `Draft client update for ${company.name}`,
+      summary: `Creates a client-facing update from open work, pending approvals, and next actions.`,
+      confirmLabel: "Draft Update"
+    };
+  }
+  if (sourceTask) {
+    return {
+      ...base,
+      type: "plan",
+      title: `Advance ${sourceTask.title}`,
+      summary: `Plans the next step and posts a short operator note.`,
+      confirmLabel: "Plan Next"
+    };
+  }
+  return null;
+}
+
+function recentOperatorActions(limit = 6) {
+  return (Array.isArray(state.operatorActions) ? state.operatorActions : [])
+    .slice()
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, limit);
+}
+
 function collaborationPresenceForTask(taskId) {
   const task = byId(state.tasks, taskId);
   if (!task) return [];
@@ -2981,6 +3076,8 @@ function renderDashboard() {
 function renderOperatorCenter() {
   const briefs = operatorBriefs(6);
   const operatorDocs = recentOperatorDocuments();
+  const suggestedActions = operatorActionSuggestions(6);
+  const actionLog = recentOperatorActions(6);
   const openRisks = briefs.filter((brief) => brief.health < 70);
   const blockedTasks = activeTasks().filter(isTaskBlocked);
   const approvalCount = state.approvals.filter((approval) => approval.status !== "approved").length;
@@ -3029,6 +3126,30 @@ function renderOperatorCenter() {
       <section class="panel">
         <div class="panel-header">
           <div>
+            <p class="eyebrow">Preview before apply</p>
+            <h2>Suggested actions</h2>
+          </div>
+        </div>
+        <div class="operator-suggestion-list">
+          ${suggestedActions.length ? suggestedActions.map(renderOperatorActionSuggestion).join("") : emptyState("No operator actions are ready to apply.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Applied</p>
+            <h2>Action log</h2>
+          </div>
+        </div>
+        <div class="operator-action-log">
+          ${actionLog.length ? actionLog.map(renderOperatorActionLogRow).join("") : emptyState("Applied operator actions will appear here.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
             <p class="eyebrow">Generated</p>
             <h2>Operator docs</h2>
           </div>
@@ -3050,6 +3171,36 @@ function renderOperatorCenter() {
         </div>
       </section>
     </div>
+  `;
+}
+
+function renderOperatorActionSuggestion(action) {
+  return `
+    <article class="operator-action-card">
+      <div>
+        <span class="status-pill inbox-${action.health < 45 ? "red" : action.health < 70 ? "amber" : "green"}">${escapeHtml(action.impact)}</span>
+        <h3>${escapeHtml(action.title)}</h3>
+        <p>${escapeHtml(action.summary)}</p>
+        <small>${escapeHtml(action.projectName)}</small>
+      </div>
+      <div class="operator-action-row">
+        <button class="button button-primary compact-button" type="button" data-operator-apply="${action.type}" data-operator-project="${action.projectId}" data-operator-task="${action.sourceTaskId}" data-operator-approval="${action.approvalId}" data-operator-company="${action.companyId}">${escapeHtml(action.confirmLabel)}</button>
+        <button class="button button-secondary compact-button" type="button" data-project-id="${action.projectId}">Open Project</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderOperatorActionLogRow(action) {
+  return `
+    <article class="operator-log-row">
+      <div>
+        <span class="status-pill inbox-neutral">${escapeHtml(action.status || "applied")}</span>
+        <h3>${escapeHtml(action.title)}</h3>
+        <p>${escapeHtml(action.detail || "")}</p>
+        <small>${escapeHtml(formatTimestamp(action.createdAt))} / ${escapeHtml(memberName(action.memberId || currentMemberId))}</small>
+      </div>
+    </article>
   `;
 }
 
@@ -6778,6 +6929,7 @@ function draftCompanyUpdate(companyId) {
   render();
   showToast("Client update drafted in Docs", "success");
   syncDocumentToApi(document, "Client update synced to API");
+  return document;
 }
 
 function createOperatorTask({ project, sourceTask = null, title, description, assignee, priority = "high", dueOffset = 1, tags = [] }) {
@@ -6849,6 +7001,139 @@ function addOperatorComment(task, body) {
   });
   syncCommentToApi(comment, "Operator note synced to API");
   return comment;
+}
+
+function logOperatorAction({ type, title, detail, projectId = "", taskId = "", status = "applied" }) {
+  const action = {
+    id: uid("operator-action"),
+    type,
+    title,
+    detail,
+    projectId,
+    taskId,
+    status,
+    memberId: activeMemberId(),
+    createdAt: new Date().toISOString()
+  };
+  state.operatorActions = [action, ...(Array.isArray(state.operatorActions) ? state.operatorActions : [])].slice(0, 50);
+  addActivity({
+    projectId,
+    taskId,
+    type: "operator_apply",
+    message: `applied operator action ${title}`
+  });
+  return action;
+}
+
+function createOperatorApprovalRequest(project, sourceTask = null) {
+  const company = projectCompany(project.id);
+  const now = new Date().toISOString();
+  const approval = {
+    id: uid("approval-operator"),
+    projectId: project.id,
+    taskId: sourceTask?.id || "",
+    companyId: company?.id || project.companyId || "",
+    title: `Approval request: ${sourceTask?.title || project.name}`,
+    summary: sourceTask
+      ? `Operator generated approval request for ${sourceTask.title}. Confirm scope, next date, and owner.`
+      : `Operator generated approval request for ${project.name}. Confirm the next milestone and client-facing status.`,
+    reviewer: company?.type === "Client" ? `${company.name} reviewer` : "Project reviewer",
+    requester: activeMemberId(),
+    status: "requested",
+    dueDate: shiftDate(todayKey(), 2),
+    createdAt: now,
+    updatedAt: now
+  };
+  state.approvals = [approval, ...state.approvals];
+  syncRecordToApi("approvals", approval, "Approval request synced to API");
+  return approval;
+}
+
+function draftOperatorClientUpdate(companyId) {
+  const document = draftCompanyUpdate(companyId);
+  if (!document) return null;
+  logOperatorAction({
+    type: "client_update",
+    title: `Drafted client update for ${companyName(companyId)}`,
+    detail: "Created a client-facing status update in Docs.",
+    projectId: document?.projectId || ""
+  });
+  return document;
+}
+
+function applyOperatorSuggestion(type, projectId, taskId = "", approvalId = "", companyId = "") {
+  const project = byId(state.projects, projectId);
+  if (!project) return;
+
+  const task = taskId ? byId(state.tasks, taskId) : null;
+  const approval = approvalId ? byId(state.approvals, approvalId) : null;
+
+  if (type === "task") {
+    const created = createOperatorTask({
+      project,
+      sourceTask: task,
+      title: task && isTaskBlocked(task) ? `Unblock: ${task.title}` : `Recovery plan: ${task?.title || project.name}`,
+      description: task
+        ? `Operator generated follow-up for ${task.title}. Confirm the owner, blocker, next date, and status update.`
+        : `Operator generated follow-up for ${project.name}. Confirm the next owner and next date.`,
+      assignee: task?.assignee || project.owner,
+      priority: task && isOverdue(task) ? "urgent" : "high",
+      dueOffset: 1,
+      tags: ["applied"]
+    });
+    logOperatorAction({
+      type,
+      title: `Created ${created.title}`,
+      detail: "Created and planned an operator follow-up task.",
+      projectId,
+      taskId: created.id
+    });
+  } else if (type === "approval_chase") {
+    const created = createOperatorTask({
+      project,
+      sourceTask: task || byId(state.tasks, approval?.taskId),
+      title: `Chase approval: ${approval?.title || project.name}`,
+      description: `Operator generated approval chase${approval ? ` for ${approval.reviewer}: ${approval.summary}` : "."}`,
+      assignee: approval?.requester || project.owner,
+      priority: "high",
+      dueOffset: 1,
+      tags: ["approval", "applied"]
+    });
+    logOperatorAction({
+      type,
+      title: `Queued approval chase for ${approval?.title || project.name}`,
+      detail: "Created an approval chase task and planned it for Today.",
+      projectId,
+      taskId: created.id
+    });
+  } else if (type === "approval_request") {
+    const createdApproval = createOperatorApprovalRequest(project, task);
+    logOperatorAction({
+      type,
+      title: `Requested approval for ${createdApproval.title}`,
+      detail: `New approval routed to ${createdApproval.reviewer}.`,
+      projectId,
+      taskId: task?.id || ""
+    });
+  } else if (type === "client_update") {
+    if (!draftOperatorClientUpdate(companyId || project.companyId || projectCompany(project.id)?.id)) return;
+  } else if (type === "plan") {
+    const targetTask = task || getProjectTasks(project.id, false).find((item) => item.status !== "done");
+    if (!targetTask) return;
+    planTaskForDate(targetTask.id, "now", todayKey());
+    addOperatorComment(targetTask, `Operator planned this for Today because ${operatorReasonForTask(targetTask).toLowerCase()}.`);
+    logOperatorAction({
+      type,
+      title: `Planned ${targetTask.title} for Today`,
+      detail: "Moved the task into the Now lane and posted an operator note.",
+      projectId,
+      taskId: targetTask.id
+    });
+  }
+
+  saveState();
+  render();
+  showToast("Operator action applied", "success");
 }
 
 function generateTodayPlan() {
@@ -7714,6 +7999,18 @@ document.addEventListener("click", (event) => {
   const operatorActionButton = event.target.closest("[data-operator-action]");
   if (operatorActionButton) {
     runOperatorAction(operatorActionButton.dataset.operatorAction, operatorActionButton.dataset.operatorProject);
+    return;
+  }
+
+  const operatorApplyButton = event.target.closest("[data-operator-apply]");
+  if (operatorApplyButton) {
+    applyOperatorSuggestion(
+      operatorApplyButton.dataset.operatorApply,
+      operatorApplyButton.dataset.operatorProject,
+      operatorApplyButton.dataset.operatorTask || "",
+      operatorApplyButton.dataset.operatorApproval || "",
+      operatorApplyButton.dataset.operatorCompany || ""
+    );
     return;
   }
 

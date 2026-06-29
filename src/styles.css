@@ -918,6 +918,8 @@ textarea:focus {
 }
 
 .operator-signal-grid div,
+.operator-action-card,
+.operator-log-row,
 .operator-doc-row {
   min-width: 0;
   padding: 12px;
@@ -939,6 +941,8 @@ textarea:focus {
 .inbox-lanes,
 .operator-brief-list,
 .automation-suggestion-list,
+.operator-suggestion-list,
+.operator-action-log,
 .operator-doc-list,
 .portal-list {
   display: grid;
@@ -1042,6 +1046,8 @@ textarea:focus {
 }
 
 .operator-brief,
+.operator-action-card,
+.operator-log-row,
 .operator-doc-row,
 .automation-suggestion,
 .approval-row,
@@ -1055,6 +1061,8 @@ textarea:focus {
 }
 
 .operator-brief h3,
+.operator-action-card h3,
+.operator-log-row h3,
 .operator-doc-row h3,
 .automation-suggestion h3,
 .approval-row h3 {
@@ -1062,6 +1070,8 @@ textarea:focus {
 }
 
 .operator-brief p,
+.operator-action-card p,
+.operator-log-row p,
 .operator-doc-row p,
 .automation-suggestion p,
 .approval-row p {
@@ -1070,6 +1080,7 @@ textarea:focus {
   line-height: 1.45;
 }
 
+.operator-action-card,
 .operator-doc-row {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
