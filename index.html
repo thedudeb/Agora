@@ -29,7 +29,7 @@
     <link rel="icon" href="./assets/agora-mark.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./assets/agora-mark.svg">
     <link rel="stylesheet" href="https://unpkg.com/lenis@1.3.25/dist/lenis.css">
-    <link rel="stylesheet" href="./src/styles.css?v=themes-readiness-v1">
+    <link rel="stylesheet" href="./src/styles.css?v=saved-views-reports-v3">
   </head>
   <body>
     <a class="skip-link" href="#app-view">Skip to main content</a>
@@ -159,6 +159,18 @@
             <span>Priority</span>
             <select id="priority-filter"></select>
           </label>
+          <label>
+            <span>Saved view</span>
+            <select id="saved-view-filter"></select>
+          </label>
+          <label class="saved-view-name-field">
+            <span>View name</span>
+            <input id="saved-view-name" placeholder="PM standup">
+          </label>
+          <div class="saved-view-actions">
+            <button class="button button-secondary compact-button" type="button" id="save-view-button">Save View</button>
+            <button class="button button-secondary compact-button" type="button" id="delete-view-button">Forget</button>
+          </div>
         </section>
 
         <p class="sr-only" id="route-status" aria-live="polite" aria-atomic="true">Dashboard view loaded.</p>
@@ -324,7 +336,8 @@
       </form>
     </dialog>
 
-    <script src="https://unpkg.com/lenis@1.3.25/dist/lenis.min.js"></script>
-    <script src="./src/app.js?v=themes-readiness-v1"></script>
+    <script src="./src/boot.js?v=saved-views-reports-v3"></script>
+    <script src="https://unpkg.com/lenis@1.3.25/dist/lenis.min.js" async></script>
+    <script src="./src/app.js?v=saved-views-reports-v3"></script>
   </body>
 </html>

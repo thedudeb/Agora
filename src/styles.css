@@ -588,13 +588,24 @@ textarea:focus {
 
 .toolbar {
   display: grid;
-  grid-template-columns: repeat(5, minmax(140px, 1fr));
+  grid-template-columns: repeat(7, minmax(124px, 1fr)) auto;
   gap: 12px;
   margin-bottom: 20px;
   padding: 14px;
   background: rgba(255, 255, 255, 0.5);
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.saved-view-actions {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+
+.saved-view-actions .button {
+  min-height: 38px;
+  white-space: nowrap;
 }
 
 .view {
@@ -1471,6 +1482,18 @@ textarea:focus {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
   gap: 16px;
+}
+
+.status-report-panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.status-report-output {
+  min-height: 280px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  line-height: 1.45;
 }
 
 .report-card-list,
@@ -4229,6 +4252,16 @@ body[data-density="compact"] .main-content {
     gap: 10px;
     margin-bottom: 14px;
     padding: 12px;
+  }
+
+  .saved-view-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-column: 1 / -1;
+  }
+
+  .saved-view-actions .button {
+    width: 100%;
   }
 
   .metric-grid {

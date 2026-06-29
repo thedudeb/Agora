@@ -7,7 +7,7 @@ const API_BASE_URL = configuredApiBaseUrl();
 
 function configuredApiBaseUrl() {
   const fallback = "http://127.0.0.1:8787";
-  const stored = window.localStorage.getItem("agora.api.baseUrl") || "";
+  const stored = storageGet("agora.api.baseUrl") || "";
   const candidate = window.AGORA_API_BASE_URL || window.AGORA_CONFIG?.apiBaseUrl || stored || fallback;
   try {
     return new URL(candidate, window.location.origin).origin.replace(/\/+$/, "");
@@ -16,21 +16,45 @@ function configuredApiBaseUrl() {
   }
 }
 
+function storageGet(key) {
+  try {
+    return window.localStorage?.getItem(key) || null;
+  } catch {
+    return null;
+  }
+}
+
+function storageSet(key, value) {
+  try {
+    window.localStorage?.setItem(key, value);
+  } catch {
+    // Local persistence is best-effort when browser storage is unavailable.
+  }
+}
+
+function storageRemove(key) {
+  try {
+    window.localStorage?.removeItem(key);
+  } catch {
+    // Local persistence is best-effort when browser storage is unavailable.
+  }
+}
+
 const workspaceStore = {
   load() {
-    return window.localStorage.getItem(STORAGE_KEY);
+    return storageGet(STORAGE_KEY);
   },
   save(nextState) {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+    storageSet(STORAGE_KEY, JSON.stringify(nextState));
   },
   clear() {
-    window.localStorage.removeItem(STORAGE_KEY);
+    storageRemove(STORAGE_KEY);
   }
 };
 
 const apiSessionStore = {
   load() {
-    const stored = window.localStorage.getItem(API_SESSION_KEY);
+    const stored = storageGet(API_SESSION_KEY);
     if (!stored) return null;
 
     try {
@@ -40,16 +64,16 @@ const apiSessionStore = {
     }
   },
   save(session) {
-    window.localStorage.setItem(API_SESSION_KEY, JSON.stringify(session));
+    storageSet(API_SESSION_KEY, JSON.stringify(session));
   },
   clear() {
-    window.localStorage.removeItem(API_SESSION_KEY);
+    storageRemove(API_SESSION_KEY);
   }
 };
 
 const apiSyncQueueStore = {
   load() {
-    const stored = window.localStorage.getItem(API_SYNC_QUEUE_KEY);
+    const stored = storageGet(API_SYNC_QUEUE_KEY);
     if (!stored) return [];
 
     try {
@@ -60,10 +84,10 @@ const apiSyncQueueStore = {
     }
   },
   save(queue) {
-    window.localStorage.setItem(API_SYNC_QUEUE_KEY, JSON.stringify(queue));
+    storageSet(API_SYNC_QUEUE_KEY, JSON.stringify(queue));
   },
   clear() {
-    window.localStorage.removeItem(API_SYNC_QUEUE_KEY);
+    storageRemove(API_SYNC_QUEUE_KEY);
   }
 };
 
@@ -76,7 +100,7 @@ const sidebarDefaults = {
 };
 
 function loadSidebarState() {
-  const stored = window.localStorage.getItem(SIDEBAR_STATE_KEY);
+  const stored = storageGet(SIDEBAR_STATE_KEY);
   if (!stored) return { ...sidebarDefaults };
 
   try {
@@ -87,7 +111,7 @@ function loadSidebarState() {
 }
 
 function saveSidebarState() {
-  window.localStorage.setItem(SIDEBAR_STATE_KEY, JSON.stringify(sidebarState));
+  storageSet(SIDEBAR_STATE_KEY, JSON.stringify(sidebarState));
 }
 
 function isCompactSidebarViewport() {
@@ -207,6 +231,23 @@ const seedData = {
     priority: "all",
     query: ""
   },
+  savedViews: [
+    {
+      id: "view-my-urgent",
+      name: "My urgent work",
+      route: "my-work",
+      selectedProject: "all",
+      selectedCompany: "all",
+      filters: {
+        company: "all",
+        assignee: "mara",
+        status: "all",
+        priority: "urgent",
+        query: ""
+      },
+      createdAt: "2026-06-27T09:00:00.000Z"
+    }
+  ],
   dailyNotes: {
     "2026-06-27": "Focus: tighten the MVP story, keep the build small, and leave notes for tomorrow."
   },
@@ -947,6 +988,10 @@ const els = {
   assigneeFilter: document.querySelector("#assignee-filter"),
   statusFilter: document.querySelector("#status-filter"),
   priorityFilter: document.querySelector("#priority-filter"),
+  savedViewFilter: document.querySelector("#saved-view-filter"),
+  savedViewName: document.querySelector("#saved-view-name"),
+  saveViewButton: document.querySelector("#save-view-button"),
+  deleteViewButton: document.querySelector("#delete-view-button"),
   taskDialog: document.querySelector("#task-dialog"),
   taskForm: document.querySelector("#task-form"),
   taskFormTitle: document.querySelector("#task-form-title"),
@@ -1043,6 +1088,7 @@ function normalizeState(nextState) {
     memberships: Array.isArray(nextState.memberships) ? nextState.memberships : seedData.memberships,
     users: Array.isArray(nextState.users) ? nextState.users : [],
     invitations: Array.isArray(nextState.invitations) ? nextState.invitations : [],
+    savedViews: normalizeSavedViews(nextState.savedViews),
     dailyNotes: { ...seedData.dailyNotes, ...(nextState.dailyNotes || {}) },
     dailyPlans: { ...seedData.dailyPlans, ...(nextState.dailyPlans || {}) },
     inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
@@ -2169,6 +2215,105 @@ function isTaskVisibleForContext(task) {
     (state.filters.priority === "all" || task.priority === state.filters.priority) &&
     (!query || haystack.includes(query))
   );
+}
+
+function normalizeSavedViews(value) {
+  const views = Array.isArray(value) ? value : seedData.savedViews;
+  return views
+    .filter((view) => view && view.id && view.name)
+    .map((view) => ({
+      id: String(view.id),
+      name: String(view.name),
+      route: routes[view.route] ? view.route : "dashboard",
+      selectedProject: view.selectedProject || "all",
+      selectedCompany: view.selectedCompany || "all",
+      filters: {
+        ...seedData.filters,
+        ...(view.filters || {})
+      },
+      createdAt: view.createdAt || new Date().toISOString()
+    }));
+}
+
+function currentViewSnapshot(name) {
+  return {
+    id: uid("view"),
+    name,
+    route: state.selectedRoute,
+    selectedProject: state.selectedProject,
+    selectedCompany: state.selectedCompany,
+    filters: { ...state.filters },
+    createdAt: new Date().toISOString()
+  };
+}
+
+function currentSavedViewId() {
+  const current = JSON.stringify({
+    route: state.selectedRoute,
+    selectedProject: state.selectedProject,
+    selectedCompany: state.selectedCompany,
+    filters: state.filters
+  });
+  return state.savedViews.find((view) => JSON.stringify({
+    route: view.route,
+    selectedProject: view.selectedProject,
+    selectedCompany: view.selectedCompany,
+    filters: view.filters
+  }) === current)?.id || "";
+}
+
+function saveCurrentView() {
+  const fallbackName = `${routes[state.selectedRoute] || "Workspace"} view`;
+  const name = els.savedViewName?.value.trim() || fallbackName;
+  if (!name) return;
+  const existing = state.savedViews.find((view) => view.name.toLowerCase() === name.toLowerCase());
+  const nextView = {
+    ...currentViewSnapshot(name),
+    id: existing?.id || uid("view"),
+    createdAt: existing?.createdAt || new Date().toISOString()
+  };
+  state.savedViews = [
+    nextView,
+    ...state.savedViews.filter((view) => view.id !== nextView.id)
+  ].slice(0, 20);
+  saveState();
+  render();
+  if (els.savedViewName) els.savedViewName.value = "";
+  showToast("Saved view added", "success");
+}
+
+function applySavedView(viewId) {
+  const view = state.savedViews.find((item) => item.id === viewId);
+  if (!view) return;
+  state.filters = { ...seedData.filters, ...view.filters };
+  state.selectedProject = view.selectedProject || "all";
+  state.selectedCompany = view.selectedCompany || "all";
+  state.selectedRoute = routeFallback(view.route);
+  if (state.selectedRoute === "project" && !byId(state.projects, state.selectedProject)) {
+    state.selectedRoute = "dashboard";
+    state.selectedProject = "all";
+  }
+  if (state.selectedRoute === "company" && !byId(state.companies, state.selectedCompany)) {
+    state.selectedRoute = "companies";
+    state.selectedCompany = "all";
+  }
+  openSidebarGroupForRoute(state.selectedRoute);
+  saveState();
+  render();
+  showToast(`Loaded ${view.name}`, "success");
+}
+
+function deleteCurrentSavedView() {
+  const viewId = els.savedViewFilter?.value || currentSavedViewId();
+  const view = state.savedViews.find((item) => item.id === viewId);
+  if (!view) {
+    showToast("Choose a saved view to forget", "info");
+    return;
+  }
+  state.savedViews = state.savedViews.filter((item) => item.id !== view.id);
+  saveState();
+  render();
+  showToast(`Forgot ${view.name}`, "success");
 }
 
 function globalSearchResults() {
@@ -3738,12 +3883,21 @@ function renderFilters() {
     <option value="all">Any priority</option>
     ${priorities.map((priority) => `<option value="${priority.id}">${priority.label}</option>`).join("")}
   `;
+  if (els.savedViewFilter) {
+    const activeSavedViewId = currentSavedViewId();
+    els.savedViewFilter.innerHTML = `
+      <option value="">${activeSavedViewId ? "Saved view" : "Custom view"}</option>
+      ${state.savedViews.map((view) => `<option value="${view.id}">${escapeHtml(view.name)}</option>`).join("")}
+    `;
+    els.savedViewFilter.value = activeSavedViewId;
+  }
 
   els.companyFilter.value = state.filters.company;
   els.projectFilter.value = state.selectedProject;
   els.assigneeFilter.value = state.filters.assignee;
   els.statusFilter.value = state.filters.status;
   els.priorityFilter.value = state.filters.priority;
+  if (els.deleteViewButton) els.deleteViewButton.disabled = !currentSavedViewId() && !els.savedViewFilter?.value;
 }
 
 function renderMobileAppPanel() {
@@ -5849,6 +6003,7 @@ function renderReports() {
   const averageHealth = projectRows.length
     ? Math.round(projectRows.reduce((total, row) => total + row.health, 0) / projectRows.length)
     : 100;
+  const statusReport = workspaceStatusReport({ projectRows, companyRows, openTasks, blockedTasks, overdueTasks, openIntake, timeEntries, averageHealth });
 
   els.appView.innerHTML = `
     <div class="metric-grid">
@@ -5857,6 +6012,17 @@ function renderReports() {
       ${metric("Blocked", blockedTasks.length)}
       ${metric("Tracked", formatDuration(sumMinutes(timeEntries)))}
     </div>
+
+    <section class="panel status-report-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Shareout</p>
+          <h2>Status report</h2>
+        </div>
+        <button class="button button-primary compact-button" type="button" id="copy-status-report">Copy Report</button>
+      </div>
+      <textarea class="export-textarea status-report-output" id="status-report-output" rows="12" readonly>${escapeHtml(statusReport)}</textarea>
+    </section>
 
     <div class="reports-grid">
       <section class="panel">
@@ -5934,6 +6100,57 @@ function renderProjectReportCard(row) {
       </div>
     </article>
   `;
+}
+
+function workspaceStatusReport({ projectRows, companyRows, openTasks, blockedTasks, overdueTasks, openIntake, timeEntries, averageHealth }) {
+  const scope = [
+    state.filters.company !== "all" ? companyName(state.filters.company) : "All companies",
+    state.selectedProject !== "all" ? projectName(state.selectedProject) : "All projects",
+    state.filters.assignee !== "all" ? memberName(state.filters.assignee) : "",
+    state.filters.status !== "all" ? statusLabel(state.filters.status) : "",
+    state.filters.priority !== "all" ? priorityLabel(state.filters.priority) : ""
+  ].filter(Boolean).join(" / ");
+  const riskiest = [...projectRows].sort((a, b) => a.health - b.health).slice(0, 3);
+  const topCompanies = [...companyRows].sort((a, b) => a.health - b.health).slice(0, 3);
+  const nextTasks = [...openTasks]
+    .sort((a, b) => operatorTaskScore(b) - operatorTaskScore(a))
+    .slice(0, 5);
+
+  return [
+    `# ${state.workspace.name} Status Report`,
+    "",
+    `Generated: ${formatFullDate(todayKey())}`,
+    `Scope: ${scope}`,
+    "",
+    "## Summary",
+    `- Portfolio health: ${averageHealth}%`,
+    `- Open work: ${openTasks.length}`,
+    `- Blocked: ${blockedTasks.length}`,
+    `- Overdue: ${overdueTasks.length}`,
+    `- Open intake: ${openIntake.length}`,
+    `- Tracked time: ${formatDuration(sumMinutes(timeEntries))}`,
+    "",
+    "## Projects To Watch",
+    ...(riskiest.length ? riskiest.map((row) => `- ${row.project.name}: ${row.health}% health, ${row.overdue.length} overdue, ${row.blocked.length} blocked, ${formatDuration(row.trackedMinutes)} tracked.`) : ["- No matching projects."]),
+    "",
+    "## Company Snapshot",
+    ...(topCompanies.length ? topCompanies.map((row) => `- ${row.company.name}: ${row.health}% health across ${row.projectCount} ${row.projectCount === 1 ? "project" : "projects"}.`) : ["- No matching companies."]),
+    "",
+    "## Next Actions",
+    ...(nextTasks.length ? nextTasks.map((task) => `- ${task.title}: ${operatorReasonForTask(task)} (${projectName(task.projectId)}).`) : ["- No open next actions match the current filters."])
+  ].join("\n");
+}
+
+async function copyStatusReport() {
+  const report = document.querySelector("#status-report-output")?.value || "";
+  if (!report) return;
+  try {
+    await navigator.clipboard.writeText(report);
+    showToast("Status report copied", "success");
+  } catch {
+    document.querySelector("#status-report-output")?.select();
+    showToast("Status report selected", "info");
+  }
 }
 
 function renderCompanyReportRow(row) {
@@ -8921,7 +9138,7 @@ function saveApiBaseUrl() {
   try {
     const url = new URL(rawUrl);
     const normalizedUrl = url.origin.replace(/\/+$/, "");
-    localStorage.setItem("agora.api.baseUrl", normalizedUrl);
+    storageSet("agora.api.baseUrl", normalizedUrl);
     showToast("API URL saved. Reloading Agora.", "success");
     window.setTimeout(() => window.location.reload(), 400);
   } catch (error) {
@@ -9399,6 +9616,9 @@ document.addEventListener("click", (event) => {
   const createFieldButton = event.target.closest("#field-create");
   if (createFieldButton) createCustomField();
 
+  const copyStatusReportButton = event.target.closest("#copy-status-report");
+  if (copyStatusReportButton) copyStatusReport();
+
   const useProjectTemplateButton = event.target.closest("[data-use-project-template]");
   if (useProjectTemplateButton) createProjectTemplateFromButton(useProjectTemplateButton);
 
@@ -9862,6 +10082,13 @@ els.priorityFilter.addEventListener("change", (event) => {
   render();
 });
 
+els.savedViewFilter?.addEventListener("change", (event) => {
+  if (event.target.value) applySavedView(event.target.value);
+});
+
+els.saveViewButton?.addEventListener("click", saveCurrentView);
+els.deleteViewButton?.addEventListener("click", deleteCurrentSavedView);
+
 els.appView.addEventListener("change", (event) => {
   const dailyDateInput = event.target.closest("[data-daily-date]");
   if (dailyDateInput) {
@@ -10090,3 +10317,4 @@ if (!routeInviteFromLocation()) {
   openSidebarGroupForRoute(state.selectedRoute);
 }
 render();
+document.documentElement.dataset.agoraBoot = "ready";
