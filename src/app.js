@@ -880,6 +880,9 @@ let auditEvents = [];
 let auditLoading = false;
 let realtimePollTimer = null;
 let realtimeLastRefreshAt = "";
+let realtimeLastChangedAt = "";
+let realtimeLastError = "";
+let realtimeChangeCount = 0;
 let sidebarState = loadSidebarState();
 let invitePreview = null;
 let invitePreviewToken = "";
@@ -1209,21 +1212,56 @@ function mergeRecordsById(existingItems = [], incomingItems = []) {
   return Array.from(next.values());
 }
 
-async function loadStructuredRecordsFromApi() {
+function collectionSignature(items = []) {
+  return JSON.stringify(items.map((item) => ({
+    id: item.id,
+    updatedAt: item.updatedAt || item.createdAt || item.lastActiveAt || "",
+    status: item.status || "",
+    title: item.title || item.name || item.body || item.message || "",
+    memberId: item.memberId || item.author || item.owner || ""
+  })));
+}
+
+function mergeCollectionFromApi(collection, incoming = []) {
+  const current = Array.isArray(state[collection]) ? state[collection] : [];
+  const nextItems = mergeRecordsById(current, incoming);
+  if (collectionSignature(nextItems) === collectionSignature(current)) return false;
+  state[collection] = nextItems;
+  return true;
+}
+
+function markRealtimeChanged() {
+  realtimeLastChangedAt = new Date().toISOString();
+  realtimeChangeCount += 1;
+  realtimeLastError = "";
+}
+
+function realtimeStatusLabel() {
+  if (!apiSession) return "Browser only";
+  if (realtimeLastError) return "Sync needs attention";
+  if (realtimeLastChangedAt) return `Live ${formatTimestamp(realtimeLastChangedAt)}`;
+  if (apiSession.lastSyncedAt) return `Synced ${formatTimestamp(apiSession.lastSyncedAt)}`;
+  return "Live polling";
+}
+
+async function loadStructuredRecordsFromApi(options = {}) {
   if (!apiSession) return false;
 
+  const collections = options.collections || structuredRecordCollections;
   const result = await apiRequest("/api/records");
   const records = result.records || {};
   let changed = false;
 
-  structuredRecordCollections.forEach((collection) => {
+  collections.forEach((collection) => {
     const incoming = Array.isArray(records[collection]) ? records[collection] : [];
     if (!incoming.length) return;
-    state[collection] = mergeRecordsById(state[collection], incoming);
-    changed = true;
+    changed = mergeCollectionFromApi(collection, incoming) || changed;
   });
 
-  if (changed) saveState();
+  if (changed) {
+    markRealtimeChanged();
+    saveState();
+  }
   return changed;
 }
 
@@ -1243,25 +1281,50 @@ async function pollApiForWorkspaceChanges() {
   if (!apiSession || document.hidden || apiSyncQueue.length) return;
 
   try {
+    let changed = await loadStructuredRecordsFromApi();
     const remoteDocument = await apiRequest("/api/workspace");
     const updatedAt = remoteDocument.metadata?.updatedAt || "";
-    if (!remoteDocument.snapshot || !updatedAt || updatedAt === apiSession.lastSyncedAt || updatedAt === realtimeLastRefreshAt) return;
+    const hasSnapshotChange = Boolean(remoteDocument.snapshot && updatedAt && updatedAt !== apiSession.lastSyncedAt && updatedAt !== realtimeLastRefreshAt);
 
-    realtimeLastRefreshAt = updatedAt;
-    applyWorkspaceSnapshot(remoteDocument.snapshot);
-    await loadStructuredRecordsFromApi();
-    saveApiSession({ ...apiSession, lastSyncedAt: updatedAt, storageDriver: remoteDocument.metadata.storage || apiSession.storageDriver });
+    if (hasSnapshotChange) {
+      const openTaskId = document.querySelector("#task-dialog[open] #task-id")?.value || "";
+      const previousRevision = openTaskId ? taskRevision(byId(state.tasks, openTaskId)) : "";
+      realtimeLastRefreshAt = updatedAt;
+      applyWorkspaceSnapshot(remoteDocument.snapshot);
+      changed = await loadStructuredRecordsFromApi() || changed;
+      changed = true;
+      markRealtimeChanged();
+      saveApiSession({ ...apiSession, lastSyncedAt: updatedAt, storageDriver: remoteDocument.metadata.storage || apiSession.storageDriver });
+      handleOpenTaskRemoteRefresh(openTaskId, previousRevision);
+    }
+
+    if (!changed) return;
+
     if (state.selectedRoute !== "settings" && state.selectedRoute !== "data") {
       render();
     }
-    showToast("Workspace refreshed from API", "success");
+    showToast("Live workspace updates applied", "success");
   } catch (error) {
     if (error.message === "Session expired") {
       clearApiSession();
       render();
       showToast("API session expired. Sign in again from Settings.", "info");
+    } else {
+      realtimeLastError = error.message || "Realtime refresh failed";
     }
   }
+}
+
+function handleOpenTaskRemoteRefresh(openTaskId, previousRevision = "") {
+  if (!openTaskId) return;
+  const task = byId(state.tasks, openTaskId);
+  if (!task) return;
+  const nextRevision = taskRevision(task);
+  if (previousRevision && nextRevision && previousRevision !== nextRevision && taskEditSnapshots.get(openTaskId) !== nextRevision) {
+    showTaskEditWarning(task);
+  }
+  renderTaskCollaboration(openTaskId);
+  renderTaskTimeTracking(openTaskId);
 }
 
 function apiConnectionLabel() {
@@ -1305,6 +1368,10 @@ function canAccessRoute(route) {
 
 function currentWorkspaceRole() {
   return apiSession?.membership?.role || "admin";
+}
+
+function hasApiPermission(permission) {
+  return !apiSession || apiSession.permissions?.includes(permission);
 }
 
 function canUseSettingsTab(tabId) {
@@ -1493,6 +1560,10 @@ function activeMemberId() {
   return apiSession?.user?.id || currentMemberId;
 }
 
+function canLogTimeForOthers() {
+  return hasApiPermission("members:write");
+}
+
 function taskRevision(task) {
   return task?.updatedAt || task?.createdAt || "";
 }
@@ -1572,20 +1643,20 @@ async function refreshLiveCollaborationFromApi({ rerender = false } = {}) {
 
   try {
     let changed = false;
-    for (const collection of ["presence", "comments", "activities"]) {
+    for (const collection of ["presence", "comments", "activities", "approvals", "documents", "files", "timeEntries"]) {
       const result = await apiRequest(`/api/records/${collection}`);
       const incoming = Array.isArray(result.records) ? result.records : [];
       if (!incoming.length) continue;
-      const nextItems = mergeRecordsById(state[collection], incoming);
-      if (JSON.stringify(nextItems) !== JSON.stringify(state[collection])) {
-        state[collection] = nextItems;
-        changed = true;
-      }
+      changed = mergeCollectionFromApi(collection, incoming) || changed;
     }
     if (changed) {
+      markRealtimeChanged();
       saveState();
       const openTaskId = document.querySelector("#task-dialog[open] #task-id")?.value || "";
-      if (openTaskId) renderTaskCollaboration(openTaskId);
+      if (openTaskId) {
+        renderTaskCollaboration(openTaskId);
+        renderTaskTimeTracking(openTaskId);
+      }
       if (rerender || ["dashboard", "inbox"].includes(state.selectedRoute)) render();
     }
     return changed;
@@ -2498,7 +2569,7 @@ function collaborationPresenceForTask(taskId) {
   ]);
 
   return [...memberIds]
-    .map((memberId) => byId(members, memberId))
+    .map((memberId) => byId(workspaceMembers(), memberId))
     .filter(Boolean)
     .slice(0, 4);
 }
@@ -4663,6 +4734,20 @@ function renderActivityList(activities) {
   `;
 }
 
+function taskRealtimeSummary(taskId) {
+  const comments = getTaskComments(taskId);
+  const activities = getTaskActivity(taskId, 1);
+  const latestComment = comments.slice().sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+  const latestActivity = activities[0];
+  const latestTimestamp = [latestComment?.createdAt, latestActivity?.createdAt, realtimeLastChangedAt]
+    .filter(Boolean)
+    .sort((a, b) => new Date(b) - new Date(a))[0];
+  return {
+    label: realtimeStatusLabel(),
+    detail: latestTimestamp ? `Latest change ${formatTimestamp(latestTimestamp)}` : "Waiting for live workspace changes"
+  };
+}
+
 function renderTaskCollaboration(taskId = "") {
   const container = document.querySelector("#task-collaboration");
   if (!container) return;
@@ -4687,8 +4772,13 @@ function renderTaskCollaboration(taskId = "") {
   const activities = getTaskActivity(taskId, 5);
   const presence = collaborationPresenceForTask(taskId);
   const liveViewers = livePresenceMembers({ taskId });
+  const realtime = taskRealtimeSummary(taskId);
 
   container.innerHTML = `
+    <div class="realtime-strip ${realtimeLastError ? "has-error" : ""}">
+      <span class="presence-pill ${apiSession && !realtimeLastError ? "is-live" : ""}">${escapeHtml(realtime.label)}</span>
+      <small>${escapeHtml(realtime.detail)}</small>
+    </div>
     <div class="collaboration-grid">
       <section>
         <div class="collaboration-header">
@@ -4791,6 +4881,10 @@ function renderTaskTimeTracking(taskId = "") {
 
   const entries = getTaskTimeEntries(taskId);
   const totalMinutes = sumMinutes(entries);
+  const canPickMember = canLogTimeForOthers();
+  let timeMembers = canPickMember ? workspaceMembers() : workspaceMembers().filter((member) => member.id === activeMemberId());
+  if (!timeMembers.length && apiSession?.user) timeMembers = [{ role: "Team", ...apiSession.user }];
+  const selectedTimeMember = activeMemberId();
 
   container.innerHTML = `
     <div class="task-time-grid">
@@ -4802,8 +4896,8 @@ function renderTaskTimeTracking(taskId = "") {
         <div class="time-entry-form">
           <label>
             <span>Employee</span>
-            <select id="time-member">
-              ${workspaceMembers().map((member) => `<option value="${member.id}" ${member.id === currentMemberId ? "selected" : ""}>${escapeHtml(member.name)}</option>`).join("")}
+            <select id="time-member" ${canPickMember ? "" : "disabled"}>
+              ${timeMembers.map((member) => `<option value="${member.id}" ${member.id === selectedTimeMember ? "selected" : ""}>${escapeHtml(member.name)}</option>`).join("")}
             </select>
           </label>
           <label>
@@ -5553,7 +5647,7 @@ function renderSettings() {
         <div class="api-sync-card">
           <div>
             <strong>${escapeHtml(apiConnectionLabel())}</strong>
-            <p>${apiSession ? `Last synced ${escapeHtml(apiLastSyncedLabel())}` : "Start the API server, create the workspace owner account, or connect as a demo member."}</p>
+            <p>${apiSession ? `${escapeHtml(realtimeStatusLabel())} - Last saved ${escapeHtml(apiLastSyncedLabel())}` : "Start the API server, create the workspace owner account, or connect as a demo member."}</p>
           </div>
           <div class="api-sync-form">
             <label class="api-url-field">
@@ -5882,7 +5976,7 @@ function renderDataManagement() {
         <div class="api-sync-card">
           <div>
             <strong>${escapeHtml(apiConnectionLabel())}</strong>
-            <p>${apiSession ? `Last synced ${escapeHtml(apiLastSyncedLabel())}` : "Connect from Settings to save or load workspace snapshots through the API."}</p>
+            <p>${apiSession ? `${escapeHtml(realtimeStatusLabel())} - Last saved ${escapeHtml(apiLastSyncedLabel())}` : "Connect from Settings to save or load workspace snapshots through the API."}</p>
           </div>
           <div class="data-actions">
             <button class="button button-primary" type="button" id="api-save-workspace" ${apiSession ? "" : "disabled"}>Save to API</button>
@@ -6541,6 +6635,7 @@ function renderTaskCard(task) {
   const checklist = subtaskSummary(task);
   const fields = renderTaskFieldChips(task);
   const dependencies = renderTaskDependencyChips(task);
+  const liveViewers = livePresenceRecords({ taskId: task.id }).length;
   return `
     <article class="task-card ${isTaskBlocked(task) ? "is-blocked" : ""}" draggable="true" data-task-id="${task.id}">
       <button class="task-card-main" type="button" data-edit-task="${task.id}">
@@ -6553,6 +6648,7 @@ function renderTaskCard(task) {
         <span class="priority priority-${task.priority}">${priorityLabel(task.priority)}</span>
         <span class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}</span>
         ${checklist ? `<span>${escapeHtml(checklist)}</span>` : ""}
+        ${liveViewers ? `<span class="live-task-chip">Live ${liveViewers}</span>` : ""}
       </div>
       ${dependencies}
       <div class="tag-row">
@@ -6574,6 +6670,7 @@ function renderTaskRow(task) {
   const checklist = subtaskSummary(task);
   const fields = renderTaskFieldChips(task);
   const dependencies = renderTaskDependencyChips(task);
+  const liveViewers = livePresenceRecords({ taskId: task.id }).length;
   return `
     <tr>
       <td>
@@ -6592,7 +6689,7 @@ function renderTaskRow(task) {
       <td>${memberName(task.assignee)}</td>
       <td>${selectControl("status", task.id, task.status, statuses)}</td>
       <td>${selectControl("priority", task.id, task.priority, priorities)}</td>
-      <td class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}</td>
+      <td class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}${liveViewers ? `<br><span class="live-task-chip">Live ${liveViewers}</span>` : ""}</td>
       <td><button class="button button-secondary button-danger compact-button" type="button" data-archive-task="${task.id}">Archive</button></td>
     </tr>
   `;
@@ -6744,7 +6841,7 @@ function addTaskComment() {
   const comment = {
     id: uid("comment"),
     taskId,
-    author: currentMemberId,
+    author: activeMemberId(),
     body,
     createdAt: new Date().toISOString()
   };
@@ -6768,7 +6865,7 @@ function addTaskTimeEntry() {
   const taskId = document.querySelector("#task-id").value;
   const task = byId(state.tasks, taskId);
   const minutes = Number(document.querySelector("#time-minutes")?.value || 0);
-  const memberId = document.querySelector("#time-member")?.value || currentMemberId;
+  const memberId = canLogTimeForOthers() ? (document.querySelector("#time-member")?.value || activeMemberId()) : activeMemberId();
   const date = document.querySelector("#time-date")?.value;
   const note = document.querySelector("#time-note")?.value.trim() || "";
   const billable = Boolean(document.querySelector("#time-billable")?.checked);
@@ -6810,7 +6907,7 @@ function addQuickDailyTime(taskId, minutes = 30) {
   const entry = {
     id: uid("time"),
     taskId,
-    memberId: currentMemberId,
+    memberId: activeMemberId(),
     date: state.selectedDailyDate,
     minutes,
     note: "Daily focus block",
@@ -8470,10 +8567,19 @@ async function syncRecordToApi(collection, record, action = "Record synced", sho
   if (!apiSession) return;
 
   try {
-    await apiRequest(`/api/records/${encodeURIComponent(collection)}`, {
+    const result = await apiRequest(`/api/records/${encodeURIComponent(collection)}`, {
       method: "POST",
       body: { record }
     });
+    if (result.record) {
+      mergeCollectionFromApi(collection, [result.record]);
+      saveState();
+      const openTaskId = document.querySelector("#task-dialog[open] #task-id")?.value || "";
+      if (openTaskId && ["comments", "activities", "timeEntries", "presence"].includes(collection)) {
+        renderTaskCollaboration(openTaskId);
+        renderTaskTimeTracking(openTaskId);
+      }
+    }
     if (showSuccess) showToast(action, "success");
   } catch (error) {
     queueApiSyncFailure({

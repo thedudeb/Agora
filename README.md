@@ -49,6 +49,8 @@ With both processes running, open Settings in the app and create the first owner
 
 Settings and Data include a Backend Health panel after connecting to the API. It shows the active storage/auth drivers, Supabase production-mode readiness, structured collection status, snapshot metadata, and any failed local syncs waiting to retry.
 
+When connected to the API, Agora polls for workspace and structured-record changes, merges server-canonical records back into the browser, shows live task viewers, and warns before saving over a task that changed while its modal was open.
+
 ## Useful Commands
 
 ```sh

@@ -3056,6 +3056,29 @@ th {
   gap: 16px;
 }
 
+.realtime-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 10px;
+  background: #ecf4ef;
+  border: 1px solid #bfd8c8;
+  border-radius: 8px;
+}
+
+.realtime-strip.has-error {
+  background: #f8edd9;
+  border-color: #dfc38e;
+}
+
+.realtime-strip small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .collaboration-header,
 .comment-meta {
   display: flex;
@@ -3108,6 +3131,19 @@ th {
   color: var(--green);
   background: #e1eee1;
   border-color: #bfd8c8;
+}
+
+.live-task-chip {
+  display: inline-flex;
+  min-height: 22px;
+  align-items: center;
+  padding: 2px 7px;
+  color: var(--green);
+  font-size: 0.72rem;
+  font-weight: 900;
+  background: #e1eee1;
+  border: 1px solid #bfd8c8;
+  border-radius: 999px;
 }
 
 .comment-item,

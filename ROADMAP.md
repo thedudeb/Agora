@@ -4,7 +4,7 @@ This roadmap describes the intended direction for Agora. It will evolve as the p
 
 ## Current Prototype
 
-Agora currently includes a dependency-free browser app, local app server, API scaffold, JSON storage, optional Supabase storage, account signup/login, invitations, role permissions, project/task views, company and client portals, docs/files, intake, templates, automations, notifications, time tracking, import/export, accessibility basics, and PWA shell support.
+Agora currently includes a dependency-free browser app, local app server, API scaffold, JSON storage, optional Supabase storage, account signup/login, invitations, role permissions, project/task views, company and client portals, docs/files, intake, templates, automations, notifications, time tracking, import/export, polling-based live refresh, task viewer presence, stale edit warnings, accessibility basics, and PWA shell support.
 
 ## Phase 0: Project Foundation
 
