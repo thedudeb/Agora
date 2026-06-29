@@ -32,7 +32,7 @@ npm run dev
 
 Then open Settings, create the first workspace owner account, sign in with email and password, and use the Data page to save or load the workspace snapshot. If the API is not running at the default address, set the API URL in Settings and reload the app.
 
-Settings and Data also expose Backend Health after you connect. It reports the active storage/auth drivers, production-mode readiness, workspace snapshot metadata, structured record collections, client scoping, and any failed browser syncs that can be retried.
+Settings and Data also expose Backend Health after you connect. It reports the active storage/auth drivers, production-mode readiness, workspace snapshot metadata, structured record collections, session company scoping, and any failed browser syncs that can be retried.
 
 Demo auth and passwordless email login are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true` or `AGORA_PASSWORDLESS_AUTH=true` in `.env` and restart the API. Session lifetime defaults to eight hours through `AGORA_SESSION_TTL_SECONDS`, invitations expire through `AGORA_INVITATION_TTL_DAYS`, password reset tokens expire through `AGORA_PASSWORD_RESET_TTL_MINUTES`, reset delivery is configured with `AGORA_PASSWORD_RESET_DELIVERY`, and cross-origin API calls are limited to localhost plus any origins listed in `AGORA_ALLOWED_ORIGINS`.
 
@@ -90,6 +90,8 @@ The first migration creates the snapshot/audit tables plus structured record tab
 - `POST /api/auth/change-password`: changes the current authenticated password. Body: `{ "currentPassword": "...", "newPassword": "8+ characters" }`.
 - `POST /api/auth/password-reset/request`: creates a short-lived password reset token. Body: `{ "email": "jordan@example.com" }`.
 - `POST /api/auth/password-reset/confirm`: completes a password reset. Body: `{ "email": "jordan@example.com", "token": "...", "password": "8+ characters" }`.
+- `POST /api/auth/supabase-password-signup`: creates a Supabase Auth email/password account through the API server when `AGORA_AUTH_DRIVER=supabase`. Body: `{ "name": "Jordan Lee", "email": "jordan@example.com", "password": "8+ characters" }`.
+- `POST /api/auth/supabase-password-login`: signs in with Supabase Auth email/password through the API server when `AGORA_AUTH_DRIVER=supabase`. Body: `{ "email": "jordan@example.com", "password": "8+ characters" }`.
 - `POST /api/auth/supabase-login`: exchanges a Supabase Auth access token for an Agora API session when `AGORA_AUTH_DRIVER=supabase`. Body: `{ "accessToken": "supabase-access-token" }`.
 - `POST /api/auth/logout`: clears the current session.
 - `GET /api/session`: returns the current authenticated session.
@@ -104,7 +106,7 @@ The first migration creates the snapshot/audit tables plus structured record tab
 - `GET /api/records/:collection`: returns a structured collection such as `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, or `presence`. Supports filters like `?projectId=...`, `?taskId=...`, `?companyId=...`, and `?memberId=...`.
 - `POST /api/records/:collection`: creates or updates one structured record for supported collections. Writes are checked server-side against the authenticated session scope, project, task, company relationships, and member-owned fields. Clients can respond to existing approvals but cannot create new approval records.
 - `GET /api/workspace`: returns the latest saved workspace snapshot.
-- `PUT /api/workspace`: saves a workspace snapshot for admin/project-manager roles.
+- `PUT /api/workspace`: saves a workspace snapshot for workspace-wide admin/project-manager roles. Company-scoped sessions must use project, task, and structured record endpoints.
 - `POST /api/workspace/import`: imports a workspace snapshot for admins.
 - `GET /api/projects`: lists projects from the current workspace snapshot.
 - `POST /api/projects`: creates a project for admin/project-manager roles.
@@ -141,7 +143,7 @@ Authorization: Bearer <token>
 - `member`: read workspace data, log their own time, add comments/activity, and add attachments.
 - `client`: read scoped workspace data, add comments/activity, and respond to existing approvals.
 
-Client memberships can include `companyId`. When present, workspace snapshots and structured record reads are scoped to that company before they are returned to the browser.
+Memberships can include `companyId`. When present, workspace snapshots, project/task reads, structured record reads, and write checks are scoped to that company before data is returned or accepted.
 
 ## Database Target
 

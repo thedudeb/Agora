@@ -49,6 +49,8 @@ AGORA_SUPABASE_STORAGE_BUCKET=agora-files
 
 Never expose `SUPABASE_SERVICE_ROLE_KEY` in browser code or client settings. Agora uses it only from the API server for persistence and private file-object access.
 
+With `AGORA_AUTH_DRIVER=supabase`, the Settings account form can sign users up or in with Supabase email/password auth through the Agora API server. The browser never needs Supabase service-role credentials; it only talks to Agora.
+
 ## Password Reset
 
 Agora supports reset-token creation and confirmation through the API. Production deployments should deliver reset tokens through SMTP or a webhook-backed email workflow.

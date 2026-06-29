@@ -209,6 +209,48 @@ async function run() {
     });
     assert(tasks.tasks.length === 1, "task list failed");
 
+    const scopedInvitation = await request(`${baseUrl}/api/invitations`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        name: "Scoped Manager",
+        email: "scoped-manager@example.test",
+        role: "manager",
+        companyId: "acme-studio"
+      }
+    });
+    const scopedManager = await request(`${baseUrl}/api/invitations/${scopedInvitation.invitation.token}/accept`, {
+      method: "POST",
+      body: { name: "Scoped Manager" }
+    });
+    assert(scopedManager.membership.companyId === "acme-studio", "scoped manager did not keep company scope");
+
+    const scopedProjects = await request(`${baseUrl}/api/projects`, {
+      token: scopedManager.token
+    });
+    assert(scopedProjects.projects.length === 1 && scopedProjects.projects[0].companyId === "acme-studio", "scoped project list was not filtered");
+
+    const blockedScopedProject = await requestError(`${baseUrl}/api/projects`, {
+      method: "POST",
+      token: scopedManager.token,
+      body: {
+        project: {
+          id: "outside-scope-project",
+          name: "Outside Scope",
+          companyId: "other-company",
+          owner: "mara"
+        }
+      }
+    });
+    assert(blockedScopedProject.status === 403, "scoped manager should not create projects outside company scope");
+
+    const blockedScopedSnapshot = await requestError(`${baseUrl}/api/workspace`, {
+      method: "PUT",
+      token: scopedManager.token,
+      body: { snapshot: { workspace: { name: "Scoped overwrite" } } }
+    });
+    assert(blockedScopedSnapshot.status === 403, "scoped manager should not save whole workspace snapshots");
+
     const createdComment = await request(`${baseUrl}/api/comments`, {
       method: "POST",
       token: login.token,
@@ -390,7 +432,11 @@ async function run() {
     const audit = await request(`${baseUrl}/api/audit-log`, {
       token: login.token
     });
-    assert(audit.events.length === 18, "audit log was not written");
+    const auditActions = new Set(audit.events.map((event) => event.action));
+    assert(audit.events.length >= 18, "audit log was not written");
+    assert(auditActions.has("member_invite"), "invite audit event was not written");
+    assert(auditActions.has("task_create"), "task create audit event was not written");
+    assert(auditActions.has("project_archive"), "project archive audit event was not written");
 
     await testLockedAuthDefaults();
     await testAccountAuth();
@@ -817,8 +863,36 @@ async function testSupabaseAuthBridge() {
 
   global.fetch = async (url, options = {}) => {
     const parsed = new URL(url);
+    if (parsed.hostname === "example.supabase.co" && parsed.pathname === "/auth/v1/signup") {
+      const body = JSON.parse(options.body || "{}");
+      assert(options.headers?.apikey === "anon-key", "supabase signup did not use anon key");
+      assert(body.email === "supabase@example.test", "supabase signup did not send email");
+      return mockResponse({
+        access_token: "signup-token",
+        token_type: "bearer",
+        user: {
+          id: "00000000-0000-4000-8000-000000000001",
+          email: "supabase@example.test"
+        }
+      });
+    }
+    if (parsed.hostname === "example.supabase.co" && parsed.pathname === "/auth/v1/token" && parsed.searchParams.get("grant_type") === "password") {
+      const body = JSON.parse(options.body || "{}");
+      assert(options.headers?.apikey === "anon-key", "supabase password login did not use anon key");
+      assert(body.email === "supabase@example.test", "supabase password login did not send email");
+      return mockResponse({
+        access_token: "password-token",
+        token_type: "bearer",
+        user: {
+          id: "00000000-0000-4000-8000-000000000001",
+          email: "supabase@example.test"
+        }
+      });
+    }
     if (parsed.hostname === "example.supabase.co" && parsed.pathname === "/auth/v1/user") {
-      if (options.headers?.Authorization !== "Bearer supabase-token") {
+      const acceptedTokens = new Set(["supabase-token", "signup-token", "password-token"]);
+      const token = String(options.headers?.Authorization || "").replace(/^Bearer\s+/, "");
+      if (!acceptedTokens.has(token)) {
         return mockResponse({ message: "Invalid token" }, false, 401);
       }
       return mockResponse({
@@ -842,6 +916,17 @@ async function testSupabaseAuthBridge() {
     const health = await request(`${baseUrl}/api/health`);
     assert(health.auth === "supabase", "health did not expose supabase auth mode");
 
+    const supabaseSignup = await request(`${baseUrl}/api/auth/supabase-password-signup`, {
+      method: "POST",
+      body: {
+        name: "Supabase User",
+        email: "supabase@example.test",
+        password: "supabase-secret"
+      }
+    });
+    assert(supabaseSignup.token, "supabase password signup did not return an Agora session token");
+    assert(supabaseSignup.user.email === "supabase@example.test", "supabase password signup did not return Supabase user");
+
     const exchange = await request(`${baseUrl}/api/auth/supabase-login`, {
       method: "POST",
       body: { accessToken: "supabase-token" }
@@ -850,6 +935,16 @@ async function testSupabaseAuthBridge() {
     assert(exchange.user.email === "supabase@example.test", "supabase login did not return Supabase user");
     assert(exchange.user.authProvider === "supabase", "supabase login did not mark auth provider");
     assert(exchange.membership.role === "admin", "first Supabase user did not bootstrap as admin");
+
+    const supabasePasswordLogin = await request(`${baseUrl}/api/auth/supabase-password-login`, {
+      method: "POST",
+      body: {
+        email: "supabase@example.test",
+        password: "supabase-secret"
+      }
+    });
+    assert(supabasePasswordLogin.token, "supabase password login did not return an Agora session token");
+    assert(supabasePasswordLogin.user.email === "supabase@example.test", "supabase password login did not return Supabase user");
 
     const members = await request(`${baseUrl}/api/members`, {
       token: exchange.token

@@ -283,6 +283,16 @@ const seedData = {
   ],
   users: [],
   invitations: [],
+  auditEvents: [
+    {
+      id: "audit-seed-workspace",
+      actorId: "mara",
+      action: "workspace_seed",
+      detail: "Sample workspace created",
+      source: "local",
+      createdAt: "2026-06-27T12:00:00.000Z"
+    }
+  ],
   inboxRead: [],
   inboxArchived: [],
   taskWatchers: {},
@@ -1088,6 +1098,7 @@ function normalizeState(nextState) {
     memberships: Array.isArray(nextState.memberships) ? nextState.memberships : seedData.memberships,
     users: Array.isArray(nextState.users) ? nextState.users : [],
     invitations: Array.isArray(nextState.invitations) ? nextState.invitations : [],
+    auditEvents: Array.isArray(nextState.auditEvents) ? nextState.auditEvents : seedData.auditEvents,
     savedViews: normalizeSavedViews(nextState.savedViews),
     dailyNotes: { ...seedData.dailyNotes, ...(nextState.dailyNotes || {}) },
     dailyPlans: { ...seedData.dailyPlans, ...(nextState.dailyPlans || {}) },
@@ -1465,8 +1476,23 @@ function clientAllowedRoutes() {
 }
 
 function canAccessRoute(route) {
-  if (!isClientSession()) return true;
-  return clientAllowedRoutes().has(route);
+  if (isClientSession()) return clientAllowedRoutes().has(route);
+  if (!apiSession) return true;
+  const routePermissions = {
+    audit: "audit:read",
+    data: "workspace:import",
+    settings: "workspace:read",
+    reports: "workspace:read",
+    templates: "projects:write",
+    automations: "projects:write",
+    fields: "projects:write",
+    companies: "projects:write",
+    company: "projects:write",
+    intake: "projects:write",
+    operator: "workspace:read"
+  };
+  const permission = routePermissions[route];
+  return permission ? hasApiPermission(permission) : true;
 }
 
 function currentWorkspaceRole() {
@@ -1475,6 +1501,44 @@ function currentWorkspaceRole() {
 
 function hasApiPermission(permission) {
   return !apiSession || apiSession.permissions?.includes(permission);
+}
+
+function currentMembership() {
+  return apiSession?.membership || state.memberships.find((membership) => membership.memberId === activeMemberId()) || null;
+}
+
+function currentCompanyAccess() {
+  const membership = currentMembership();
+  const companyIds = Array.isArray(membership?.companyIds) ? membership.companyIds : [];
+  const singleCompanyId = membership?.companyId || apiSession?.user?.companyId || "";
+  return Array.from(new Set([...companyIds, singleCompanyId].filter(Boolean)));
+}
+
+function hasCompanyScope() {
+  return currentCompanyAccess().length > 0;
+}
+
+function canAccessCompany(companyId) {
+  if (!companyId) return true;
+  const access = currentCompanyAccess();
+  return !access.length || access.includes(companyId);
+}
+
+function canAccessProject(projectOrId) {
+  const project = typeof projectOrId === "string" ? byId(state.projects, projectOrId) : projectOrId;
+  return Boolean(project && canAccessCompany(project.companyId));
+}
+
+function canAccessTask(task) {
+  return Boolean(task && canAccessProject(task.projectId));
+}
+
+function canWrite(permission) {
+  return hasApiPermission(permission);
+}
+
+function canSaveWholeWorkspace() {
+  return Boolean(apiSession && hasApiPermission("workspace:write") && !hasCompanyScope());
 }
 
 function canUseSettingsTab(tabId) {
@@ -1631,6 +1695,62 @@ function renderPermissionMatrix() {
           </div>
         `).join("")}
       </div>
+    </section>
+  `;
+}
+
+function renderCurrentAccessPanel() {
+  const role = workspaceRoles.find((item) => item.id === currentWorkspaceRole());
+  const membership = currentMembership();
+  const companyIds = currentCompanyAccess();
+  const scopeLabel = companyIds.length
+    ? companyIds.map(companyName).join(", ")
+    : "Workspace-wide";
+  const permissions = apiSession?.permissions || [
+    "workspace:read",
+    "workspace:write",
+    "workspace:import",
+    "audit:read",
+    "members:write",
+    "projects:write",
+    "tasks:write",
+    "time:write",
+    "comments:write",
+    "activity:write",
+    "attachments:write",
+    "approvals:write"
+  ];
+
+  return `
+    <section class="panel access-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Session</p>
+          <h2>Current access</h2>
+        </div>
+        <span class="status-pill ${apiSession ? "inbox-green" : "inbox-neutral"}">${apiSession ? "Signed in" : "Local admin"}</span>
+      </div>
+      <div class="access-summary-grid">
+        <article>
+          <span>User</span>
+          <strong>${escapeHtml(apiSession?.user?.name || memberName(activeMemberId()))}</strong>
+          <p>${escapeHtml(apiSession?.user?.email || "Browser-only session")}</p>
+        </article>
+        <article>
+          <span>Role</span>
+          <strong>${escapeHtml(role?.label || currentWorkspaceRole())}</strong>
+          <p>${escapeHtml(role?.description || "Full prototype access while offline.")}</p>
+        </article>
+        <article>
+          <span>Company scope</span>
+          <strong>${escapeHtml(scopeLabel)}</strong>
+          <p>${hasCompanyScope() ? "Navigation and work views are filtered to assigned companies." : "Can see all companies in this workspace."}</p>
+        </article>
+      </div>
+      <div class="permission-chip-list" aria-label="Current session permissions">
+        ${permissions.map((permission) => `<span class="status-pill inbox-neutral">${escapeHtml(permission)}</span>`).join("")}
+      </div>
+      ${membership?.invitedBy ? `<p class="settings-help">Invited by ${escapeHtml(memberName(membership.invitedBy))}${membership.joinedAt ? ` on ${escapeHtml(formatDate(membership.joinedAt.slice(0, 10)))}` : ""}.</p>` : ""}
     </section>
   `;
 }
@@ -1794,11 +1914,15 @@ function isTaskArchived(task) {
 }
 
 function activeProjects() {
-  return state.projects.filter((project) => !isProjectArchived(project));
+  return state.projects.filter((project) => !isProjectArchived(project) && canAccessProject(project));
 }
 
 function activeTasks() {
-  return state.tasks.filter((task) => !isTaskArchived(task));
+  return state.tasks.filter((task) => !isTaskArchived(task) && canAccessTask(task));
+}
+
+function visibleCompanies() {
+  return state.companies.filter((company) => canAccessCompany(company.id));
 }
 
 function workspaceMembers() {
@@ -2352,7 +2476,7 @@ function globalSearchResults() {
       projectId: project.id
     }));
 
-  const companyResults = state.companies
+  const companyResults = visibleCompanies()
     .filter((company) => matches([company.name, company.description, company.type, memberName(company.owner)]))
     .slice(0, 3)
     .map((company) => ({
@@ -3446,6 +3570,19 @@ function milestoneProgress(milestone) {
   return projectProgress(linkedTasks);
 }
 
+function addAuditEvent({ action, detail, actorId = activeMemberId(), source = apiSession ? "api-ready" : "local" }) {
+  const event = {
+    id: uid("audit"),
+    actorId,
+    action,
+    detail,
+    source,
+    createdAt: new Date().toISOString()
+  };
+  state.auditEvents = [event, ...(state.auditEvents || [])].slice(0, 250);
+  return event;
+}
+
 function addActivity({ projectId, taskId = "", memberId = currentMemberId, type, message }) {
   const activity = {
     id: uid("activity"),
@@ -3457,6 +3594,11 @@ function addActivity({ projectId, taskId = "", memberId = currentMemberId, type,
     createdAt: new Date().toISOString()
   };
   state.activities = [activity, ...state.activities];
+  addAuditEvent({
+    actorId: memberId,
+    action: type,
+    detail: message
+  });
   syncActivityToApi(activity);
   return activity;
 }
@@ -3464,6 +3606,10 @@ function addActivity({ projectId, taskId = "", memberId = currentMemberId, type,
 function archiveTask(taskId) {
   const task = byId(state.tasks, taskId);
   if (!task || isTaskArchived(task)) return;
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot archive tasks", "info");
+    return;
+  }
 
   const archivedAt = new Date().toISOString();
   state.tasks = state.tasks.map((item) => item.id === taskId ? {
@@ -3487,6 +3633,10 @@ function archiveTask(taskId) {
 function archiveProject(projectId) {
   const project = byId(state.projects, projectId);
   if (!project || isProjectArchived(project)) return;
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot archive projects", "info");
+    return;
+  }
 
   const archivedAt = new Date().toISOString();
   const projectTaskIds = new Set(state.tasks.filter((task) => task.projectId === projectId).map((task) => task.id));
@@ -3581,6 +3731,11 @@ function setCompany(companyId) {
 function updateTask(id, updates) {
   const previous = byId(state.tasks, id);
   if (!previous) return;
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot edit tasks", "info");
+    render();
+    return;
+  }
   const next = { ...previous, ...updates, updatedAt: new Date().toISOString() };
   state.tasks = state.tasks.map((task) => task.id === id ? next : task);
   recordTaskChanges(previous, next);
@@ -3693,6 +3848,20 @@ function render() {
     state.selectedCompany = isClientSession() ? clientCompanyId() : state.selectedCompany;
     saveState();
   }
+  if (state.selectedProject !== "all" && !canAccessProject(state.selectedProject)) {
+    state.selectedProject = "all";
+    state.selectedRoute = "dashboard";
+    saveState();
+  }
+  if (state.selectedCompany !== "all" && !canAccessCompany(state.selectedCompany)) {
+    state.selectedCompany = "all";
+    state.filters.company = "all";
+    saveState();
+  }
+  if (state.filters.company !== "all" && !canAccessCompany(state.filters.company)) {
+    state.filters.company = "all";
+    saveState();
+  }
   const selectedProject = byId(state.projects, state.selectedProject);
   const selectedCompany = byId(state.companies, state.selectedCompany);
   els.pageTitle.textContent = state.selectedRoute === "project" && selectedProject
@@ -3784,15 +3953,25 @@ function renderPermissionChrome() {
       item.hidden = false;
       return;
     }
-    item.hidden = client && !canAccessRoute(item.dataset.route);
+    item.hidden = !canAccessRoute(item.dataset.route);
   });
   document.querySelectorAll("[data-nav-group]").forEach((group) => {
-    group.hidden = client && !group.querySelector(".nav-item:not([hidden])");
+    group.hidden = !group.querySelector(".nav-item:not([hidden])");
   });
-  ["#new-project-button", "#new-task-button", "#notification-button"].forEach((selector) => {
-    const element = document.querySelector(selector);
-    if (element) element.hidden = client;
-  });
+  const newProjectButton = document.querySelector("#new-project-button");
+  if (newProjectButton) {
+    newProjectButton.hidden = client;
+    newProjectButton.disabled = !canWrite("projects:write");
+    newProjectButton.title = canWrite("projects:write") ? "" : "Your role cannot create projects.";
+  }
+  const newTaskButton = document.querySelector("#new-task-button");
+  if (newTaskButton) {
+    newTaskButton.hidden = client;
+    newTaskButton.disabled = !canWrite("tasks:write");
+    newTaskButton.title = canWrite("tasks:write") ? "" : "Your role cannot create tasks.";
+  }
+  const notificationButton = document.querySelector("#notification-button");
+  if (notificationButton) notificationButton.hidden = client;
 }
 
 function renderSidebarGroups() {
@@ -3858,6 +4037,7 @@ function renderSidebarProjects() {
 }
 
 function renderFilters() {
+  const companyOptions = visibleCompanies();
   const projectOptions = state.filters.company === "all"
     ? activeProjects()
     : activeProjects().filter((project) => project.companyId === state.filters.company);
@@ -3865,7 +4045,7 @@ function renderFilters() {
   els.searchInput.value = state.filters.query;
   els.companyFilter.innerHTML = `
     <option value="all">All companies</option>
-    ${state.companies.map((company) => `<option value="${company.id}">${escapeHtml(company.name)}</option>`).join("")}
+    ${companyOptions.map((company) => `<option value="${company.id}">${escapeHtml(company.name)}</option>`).join("")}
   `;
   els.projectFilter.innerHTML = `
     <option value="all">All projects</option>
@@ -4551,8 +4731,8 @@ function renderInboxItem(item) {
 
 function renderCompanies() {
   const companies = state.filters.company === "all"
-    ? state.companies
-    : state.companies.filter((company) => company.id === state.filters.company);
+    ? visibleCompanies()
+    : visibleCompanies().filter((company) => company.id === state.filters.company);
   const allCompanyTasks = companies.flatMap((company) => getCompanyTasks(company.id));
   const openTasks = allCompanyTasks.filter((task) => task.status !== "done");
   const overdueTasks = allCompanyTasks.filter(isOverdue);
@@ -4572,7 +4752,7 @@ function renderCompanies() {
           <p class="eyebrow">Portfolio</p>
           <h2>Companies</h2>
         </div>
-        <button class="button button-primary" type="button" id="new-company-button">New Company</button>
+        <button class="button button-primary" type="button" id="new-company-button" ${canWrite("projects:write") ? "" : "disabled"}>New Company</button>
       </div>
       <div class="company-grid">
         ${companies.map(renderCompanyCard).join("")}
@@ -5992,10 +6172,10 @@ function renderMyWork() {
 function renderReports() {
   const { tasks, projects, timeEntries, submissions } = reportTaskScope();
   const projectRows = projects.map((project) => projectReport(project, tasks, timeEntries, submissions));
-  const visibleCompanies = state.filters.company === "all"
-    ? state.companies
-    : state.companies.filter((company) => company.id === state.filters.company);
-  const companyRows = visibleCompanies.map((company) => companyReport(company, tasks, timeEntries, submissions));
+  const reportCompanies = state.filters.company === "all"
+    ? visibleCompanies()
+    : visibleCompanies().filter((company) => company.id === state.filters.company);
+  const companyRows = reportCompanies.map((company) => companyReport(company, tasks, timeEntries, submissions));
   const openTasks = tasks.filter((task) => task.status !== "done");
   const blockedTasks = tasks.filter(isTaskBlocked);
   const overdueTasks = tasks.filter(isOverdue);
@@ -6279,7 +6459,8 @@ function renderTemplates() {
 }
 
 function renderProjectTemplateCard(template) {
-  const defaultCompany = state.filters.company === "all" ? state.companies[0]?.id : state.filters.company;
+  const companies = visibleCompanies();
+  const defaultCompany = state.filters.company === "all" ? companies[0]?.id : state.filters.company;
   return `
     <article class="template-card" data-project-template-card="${template.id}">
       <div>
@@ -6297,7 +6478,7 @@ function renderProjectTemplateCard(template) {
         <label>
           <span>Company</span>
           <select data-template-company>
-            ${state.companies.map((company) => `<option value="${company.id}" ${company.id === defaultCompany ? "selected" : ""}>${escapeHtml(company.name)}</option>`).join("")}
+            ${companies.map((company) => `<option value="${company.id}" ${company.id === defaultCompany ? "selected" : ""}>${escapeHtml(company.name)}</option>`).join("")}
           </select>
         </label>
         <label>
@@ -6438,6 +6619,7 @@ function renderSettings() {
 
     <div class="settings-grid settings-section settings-section-${activeSettingsTab}">
       ${activeSettingsTab === "account" ? `
+      ${renderCurrentAccessPanel()}
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -6472,6 +6654,8 @@ function renderSettings() {
             <button class="button button-primary" type="button" id="api-password-signup">Create Owner</button>
             <button class="button button-secondary" type="button" id="api-password-login">Password Sign In</button>
             <button class="button button-secondary" type="button" id="api-email-login">Sign In</button>
+            <button class="button button-secondary" type="button" id="api-supabase-password-signup">Supabase Sign Up</button>
+            <button class="button button-secondary" type="button" id="api-supabase-password-login">Supabase Sign In</button>
             <label>
               <span>Current password</span>
               <input id="api-current-password" type="password" placeholder="Current password">
@@ -6497,9 +6681,9 @@ function renderSettings() {
             <button class="button button-secondary" type="button" id="api-password-reset-confirm">Confirm Reset</button>
             <label class="wide-field">
               <span>Supabase access token</span>
-              <textarea id="api-supabase-token" rows="2" placeholder="Paste a Supabase Auth access_token"></textarea>
+              <textarea id="api-supabase-token" rows="2" placeholder="Advanced: paste a Supabase Auth access_token"></textarea>
             </label>
-            <button class="button button-secondary" type="button" id="api-supabase-login">Use Supabase Auth</button>
+            <button class="button button-secondary" type="button" id="api-supabase-login">Use Supabase Token</button>
             <label>
               <span>Demo member</span>
               <select id="api-member">
@@ -6510,7 +6694,7 @@ function renderSettings() {
             <button class="button button-secondary" type="button" id="api-disconnect" ${apiSession ? "" : "disabled"}>Disconnect</button>
           </div>
           <div class="data-actions">
-            <button class="button button-primary" type="button" id="api-save-workspace" ${apiSession ? "" : "disabled"}>Save to API</button>
+            <button class="button button-primary" type="button" id="api-save-workspace" ${canSaveWholeWorkspace() ? "" : "disabled"}>Save to API</button>
             <button class="button button-secondary" type="button" id="api-load-workspace" ${apiSession ? "" : "disabled"}>Load from API</button>
           </div>
         </div>
@@ -6646,9 +6830,21 @@ function renderSettings() {
                     <p>${escapeHtml(member.role)} - ${escapeHtml(role?.description || "")}</p>
                   </div>
                 </div>
-                <select data-member-role="${member.id}" aria-label="Role for ${escapeHtml(member.name)}">
-                  ${workspaceRoles.map((option) => `<option value="${option.id}" ${option.id === member.membership.role ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
-                </select>
+                <div class="member-access-controls">
+                  <label>
+                    <span class="sr-only">Role for ${escapeHtml(member.name)}</span>
+                    <select data-member-role="${member.id}" aria-label="Role for ${escapeHtml(member.name)}">
+                      ${workspaceRoles.map((option) => `<option value="${option.id}" ${option.id === member.membership.role ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+                    </select>
+                  </label>
+                  <label>
+                    <span class="sr-only">Company access for ${escapeHtml(member.name)}</span>
+                    <select data-member-company="${member.id}" aria-label="Company access for ${escapeHtml(member.name)}">
+                      <option value="" ${member.membership.companyId ? "" : "selected"}>Workspace-wide</option>
+                      ${state.companies.map((company) => `<option value="${company.id}" ${company.id === member.membership.companyId ? "selected" : ""}>${escapeHtml(company.name)}</option>`).join("")}
+                    </select>
+                  </label>
+                </div>
               </article>
             `;
           }).join("")}
@@ -6871,7 +7067,11 @@ function renderDataManagement() {
 }
 
 function renderAuditLog() {
-  const events = auditEvents;
+  const localEvents = Array.isArray(state.auditEvents) ? state.auditEvents : [];
+  const serverEvents = Array.isArray(auditEvents) ? auditEvents : [];
+  const events = mergeRecordsById(localEvents, serverEvents)
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 100);
   const actions = Array.from(new Set(events.map((event) => event.action).filter(Boolean))).slice(0, 12);
 
   els.appView.innerHTML = `
@@ -6879,6 +7079,8 @@ function renderAuditLog() {
       ${metric("Events", events.length)}
       ${metric("Actors", new Set(events.map((event) => event.actorId).filter(Boolean)).size)}
       ${metric("Actions", actions.length)}
+      ${metric("Local", localEvents.length)}
+      ${metric("Server", serverEvents.length)}
       ${metric("Status", auditLoading ? "Loading" : apiSession ? "Connected" : "Offline")}
     </div>
 
@@ -6891,10 +7093,10 @@ function renderAuditLog() {
         <button class="button button-secondary" type="button" id="audit-refresh" ${apiSession ? "" : "disabled"}>${auditLoading ? "Refreshing" : "Refresh"}</button>
       </div>
       <div class="audit-toolbar">
-        ${actions.length ? actions.map((action) => `<span class="status-pill inbox-neutral">${escapeHtml(action)}</span>`).join("") : `<span class="status-pill inbox-neutral">No API events loaded</span>`}
+        ${actions.length ? actions.map((action) => `<span class="status-pill inbox-neutral">${escapeHtml(action)}</span>`).join("") : `<span class="status-pill inbox-neutral">No audit events yet</span>`}
       </div>
       <div class="audit-list">
-        ${events.length ? events.map(renderAuditEvent).join("") : emptyState(apiSession ? "Refresh to load API audit events." : "Connect to the API from Settings to view the audit trail.")}
+        ${events.length ? events.map(renderAuditEvent).join("") : emptyState(apiSession ? "Refresh to load API audit events." : "Make a local change to start the audit trail.")}
       </div>
     </section>
   `;
@@ -6906,7 +7108,7 @@ function renderAuditEvent(event) {
       <div>
         <span class="status-pill inbox-blue">${escapeHtml(event.action || "event")}</span>
         <h3>${escapeHtml(event.detail || "Workspace event")}</h3>
-        <p>${escapeHtml(memberName(event.actorId) || event.actorId || "System")} - ${escapeHtml(formatTimestamp(event.createdAt))}</p>
+        <p>${escapeHtml(memberName(event.actorId) || event.actorId || "System")} - ${escapeHtml(formatTimestamp(event.createdAt))} - ${escapeHtml(event.source || "server")}</p>
       </div>
       <code>${escapeHtml(event.id || "")}</code>
     </article>
@@ -8863,6 +9065,10 @@ function saveWorkspaceSettings() {
     theme: normalizeWorkspaceTheme({ preset: themePreset, density }),
     backendTarget: backendTarget || state.workspace.backendTarget
   };
+  addAuditEvent({
+    action: "workspace_settings_update",
+    detail: `Updated workspace settings for ${state.workspace.name}`
+  });
   saveState();
   render();
   showToast("Workspace settings saved", "success");
@@ -8890,14 +9096,51 @@ function saveAiSettings() {
 
 function updateMemberRole(memberId, role) {
   if (!workspaceMembers().some((member) => member.id === memberId) || !workspaceRoles.some((item) => item.id === role)) return;
+  if (!canWrite("members:write")) {
+    showToast("Your role cannot manage members", "info");
+    render();
+    return;
+  }
 
   const existing = state.memberships.some((membership) => membership.memberId === memberId);
   state.memberships = existing
     ? state.memberships.map((membership) => membership.memberId === memberId ? { ...membership, role } : membership)
     : [...state.memberships, { memberId, role, status: "active" }];
+  addAuditEvent({
+    action: "member_role_update",
+    detail: `Changed ${memberName(memberId)} role to ${workspaceRoles.find((item) => item.id === role)?.label || role}`
+  });
   saveState();
   render();
   showToast("Member role updated", "success");
+}
+
+function updateMemberCompanyAccess(memberId, companyId) {
+  if (!workspaceMembers().some((member) => member.id === memberId)) return;
+  if (companyId && !byId(state.companies, companyId)) return;
+  if (!canWrite("members:write")) {
+    showToast("Your role cannot manage company access", "info");
+    render();
+    return;
+  }
+
+  const existingMembership = state.memberships.find((membership) => membership.memberId === memberId);
+  const nextMembership = {
+    memberId,
+    role: existingMembership?.role || state.workspace.defaultRole,
+    status: existingMembership?.status || "active",
+    ...(companyId ? { companyId } : {})
+  };
+  state.memberships = existingMembership
+    ? state.memberships.map((membership) => membership.memberId === memberId ? { ...membership, companyId } : membership)
+    : [...state.memberships, nextMembership];
+  addAuditEvent({
+    action: "member_company_scope_update",
+    detail: `Changed ${memberName(memberId)} company scope to ${companyId ? companyName(companyId) : "workspace-wide"}`
+  });
+  saveState();
+  render();
+  showToast("Company access updated", "success");
 }
 
 function importWorkspaceFromTextarea() {
@@ -9027,6 +9270,71 @@ async function signInWithPassword() {
     showToast(`Signed in as ${session.user.name}`, "success");
   } catch (error) {
     showToast(`Password sign in failed: ${error.message}`, "info");
+  }
+}
+
+async function signUpWithSupabasePassword() {
+  const name = document.querySelector("#api-account-name")?.value.trim();
+  const email = document.querySelector("#api-email")?.value.trim();
+  const password = document.querySelector("#api-password")?.value;
+  if (!email || !password) {
+    showToast("Enter email and password for Supabase sign up", "info");
+    return;
+  }
+
+  try {
+    const health = await apiRequest("/api/health");
+    const result = await apiRequest("/api/auth/supabase-password-signup", {
+      method: "POST",
+      body: {
+        name,
+        email,
+        password
+      }
+    });
+    if (result.pendingConfirmation) {
+      showToast("Supabase account created. Confirm your email, then sign in.", "success");
+      return;
+    }
+    saveApiSession({
+      ...result,
+      apiHealth: health,
+      storageDriver: health.storage
+    });
+    await syncAccessFromApi();
+    await refreshBackendHealth({ silent: true });
+    render();
+    showToast(`Signed up with Supabase as ${result.user.name}`, "success");
+  } catch (error) {
+    showToast(`Supabase sign up failed: ${error.message}`, "info");
+  }
+}
+
+async function signInWithSupabasePassword() {
+  const email = document.querySelector("#api-email")?.value.trim();
+  const password = document.querySelector("#api-password")?.value;
+  if (!email || !password) {
+    showToast("Enter email and password for Supabase sign in", "info");
+    return;
+  }
+
+  try {
+    const health = await apiRequest("/api/health");
+    const session = await apiRequest("/api/auth/supabase-password-login", {
+      method: "POST",
+      body: { email, password }
+    });
+    saveApiSession({
+      ...session,
+      apiHealth: health,
+      storageDriver: health.storage
+    });
+    await syncAccessFromApi();
+    await refreshBackendHealth({ silent: true });
+    render();
+    showToast(`Signed in with Supabase as ${session.user.name}`, "success");
+  } catch (error) {
+    showToast(`Supabase sign in failed: ${error.message}`, "info");
   }
 }
 
@@ -9183,6 +9491,10 @@ async function inviteWorkspaceMember() {
       invitation,
       ...state.invitations.filter((item) => item.id !== invitation.id && item.email !== invitation.email)
     ];
+    addAuditEvent({
+      action: "member_invite",
+      detail: `Invited ${invitation.email} as ${invitation.role || role}`
+    });
     saveState();
     render();
     showToast(`Invite created for ${invitation.email}`, "success");
@@ -9206,6 +9518,10 @@ async function resendWorkspaceInvite(invitationId) {
       invitation,
       ...state.invitations.filter((item) => item.id !== invitation.id)
     ];
+    addAuditEvent({
+      action: "member_invite_resend",
+      detail: `Resent invite to ${invitation.email}`
+    });
     saveState();
     render();
     showToast(`Invite refreshed for ${invitation.email}`, "success");
@@ -9226,6 +9542,10 @@ async function revokeWorkspaceInvite(invitationId) {
     });
     const invitation = result.invitation;
     state.invitations = state.invitations.map((item) => item.id === invitation.id ? invitation : item);
+    addAuditEvent({
+      action: "member_invite_revoke",
+      detail: `Revoked invite to ${invitation.email}`
+    });
     saveState();
     render();
     showToast(`Invite revoked for ${invitation.email}`, "success");
@@ -9299,6 +9619,10 @@ async function acceptWorkspaceInvite() {
 async function saveWorkspaceToApi(options = {}) {
   if (!apiSession) {
     if (!options.silent) showToast("Connect to the API from Settings first", "info");
+    return;
+  }
+  if (!canSaveWholeWorkspace()) {
+    if (!options.silent) showToast("Company-scoped sessions save through project, task, and record updates", "info");
     return;
   }
 
@@ -9731,6 +10055,12 @@ document.addEventListener("click", (event) => {
   const apiPasswordLoginButton = event.target.closest("#api-password-login");
   if (apiPasswordLoginButton) signInWithPassword();
 
+  const apiSupabasePasswordSignupButton = event.target.closest("#api-supabase-password-signup");
+  if (apiSupabasePasswordSignupButton) signUpWithSupabasePassword();
+
+  const apiSupabasePasswordLoginButton = event.target.closest("#api-supabase-password-login");
+  if (apiSupabasePasswordLoginButton) signInWithSupabasePassword();
+
   const apiPasswordChangeButton = event.target.closest("#api-password-change");
   if (apiPasswordChangeButton) changeApiPassword();
 
@@ -9823,18 +10153,30 @@ document.addEventListener("click", (event) => {
 
   const newCompanyButton = event.target.closest("#new-company-button");
   if (newCompanyButton) {
+    if (!canWrite("projects:write")) {
+      showToast("Your role cannot manage companies", "info");
+      return;
+    }
     populateCompanyForm();
     openDialog(els.companyDialog);
   }
 
   const newProjectTaskButton = event.target.closest("#new-task-button-project");
   if (newProjectTaskButton) {
+    if (!canWrite("tasks:write")) {
+      showToast("Your role cannot create tasks", "info");
+      return;
+    }
     populateTaskForm();
     openDialog(els.taskDialog);
   }
 
   const editCompanyButton = event.target.closest("[data-edit-company]");
   if (editCompanyButton) {
+    if (!canWrite("projects:write")) {
+      showToast("Your role cannot edit companies", "info");
+      return;
+    }
     populateCompanyForm(byId(state.companies, editCompanyButton.dataset.editCompany));
     openDialog(els.companyDialog);
   }
@@ -9975,6 +10317,10 @@ document.addEventListener("click", (event) => {
 
   const editButton = event.target.closest("[data-edit-task]");
   if (editButton) {
+    if (!canWrite("tasks:write")) {
+      showToast("Your role cannot edit tasks", "info");
+      return;
+    }
     if (editButton.dataset.inboxId) {
       markInboxRead(editButton.dataset.inboxId);
       saveState();
@@ -9992,6 +10338,12 @@ document.addEventListener("change", (event) => {
   const memberRoleSelect = event.target.closest("[data-member-role]");
   if (memberRoleSelect) {
     updateMemberRole(memberRoleSelect.dataset.memberRole, memberRoleSelect.value);
+    return;
+  }
+
+  const memberCompanySelect = event.target.closest("[data-member-company]");
+  if (memberCompanySelect) {
+    updateMemberCompanyAccess(memberCompanySelect.dataset.memberCompany, memberCompanySelect.value);
     return;
   }
 
@@ -10013,11 +10365,19 @@ document.addEventListener("keydown", (event) => {
 });
 
 document.querySelector("#new-task-button").addEventListener("click", () => {
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot create tasks", "info");
+    return;
+  }
   populateTaskForm();
   openDialog(els.taskDialog);
 });
 
 document.querySelector("#new-project-button").addEventListener("click", () => {
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot create projects", "info");
+    return;
+  }
   populateProjectForm();
   openDialog(els.projectDialog);
 });
@@ -10157,6 +10517,10 @@ els.appView.addEventListener("drop", (event) => {
 
 els.taskForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot save tasks", "info");
+    return;
+  }
   const id = document.querySelector("#task-id").value || uid("task");
   const existingTask = byId(state.tasks, id);
   if (existingTask && staleTaskOverrideId !== id && taskEditSnapshots.get(id) && taskEditSnapshots.get(id) !== taskRevision(existingTask)) {
@@ -10211,6 +10575,10 @@ els.taskForm.addEventListener("submit", (event) => {
 
 els.projectForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot create projects", "info");
+    return;
+  }
   const project = {
     id: uid("project"),
     name: document.querySelector("#project-name").value.trim(),
@@ -10239,6 +10607,10 @@ els.projectForm.addEventListener("submit", (event) => {
 
 els.companyForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot manage companies", "info");
+    return;
+  }
   const id = document.querySelector("#company-id").value || uid("company");
   const existingCompany = byId(state.companies, id);
   const company = {

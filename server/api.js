@@ -196,6 +196,22 @@ function createServer(options = {}) {
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/auth/supabase-password-signup") {
+        assertRateLimit(request, "supabase-password-signup", 5);
+        const body = await readJsonBody(request);
+        const result = await createSupabasePasswordAccount(storage, body);
+        sendJson(response, result.pendingConfirmation ? 202 : 201, result);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/auth/supabase-password-login") {
+        const body = await readJsonBody(request);
+        assertRateLimit(request, `supabase-password:${normalizeEmail(body.email)}`);
+        const session = await createSupabasePasswordSession(storage, body);
+        sendJson(response, 200, session);
+        return;
+      }
+
       const invitationAcceptMatch = url.pathname.match(/^\/api\/invitations\/([^/]+)\/accept$/);
       if (invitationAcceptMatch && request.method === "POST") {
         assertRateLimit(request, "invitation-accept", 12);
@@ -713,7 +729,7 @@ async function buildBackendHealth(storage, session) {
       id: "client-scope",
       label: "Client scoping",
       done: true,
-      detail: isClientSession(session) ? `Scoped to ${sessionCompanyId(session) || "client membership"}` : "Workspace role can see full workspace"
+      detail: sessionCompanyId(session) ? `Scoped to ${sessionCompanyId(session)}` : "Workspace role can see full workspace"
     },
     {
       id: "auth-hardening",
@@ -1041,9 +1057,8 @@ function sessionCompanyId(session) {
 }
 
 function scopedSnapshot(snapshot = {}, session) {
-  if (!isClientSession(session)) return snapshot;
-
   const companyId = sessionCompanyId(session);
+  if (!companyId && !isClientSession(session)) return snapshot;
   if (!companyId) {
     return {
       ...snapshot,
@@ -1095,7 +1110,7 @@ function scopedSnapshot(snapshot = {}, session) {
 }
 
 function scopedRecordFilters(session, filters = {}) {
-  if (!isClientSession(session)) return filters;
+  if (!sessionCompanyId(session)) return filters;
   return {
     ...filters,
     companyId: sessionCompanyId(session) || filters.companyId || ""
@@ -1450,12 +1465,75 @@ async function createSupabaseSessionFromAccessToken(storage, accessToken, option
     : createSession(user, membership);
 }
 
-async function fetchSupabaseUser(accessToken) {
+async function createSupabasePasswordAccount(storage, body) {
+  if (!supabaseAuthEnabled()) publicError(404, "Supabase Auth is disabled");
+  const email = normalizeEmail(body.email);
+  const password = cleanString(body.password);
+  const name = cleanString(body.name) || email.split("@")[0];
+  if (!email || !password) publicError(400, "Supabase sign up requires email and password");
+
+  const authResult = await supabaseAuthRequest("/auth/v1/signup", {
+    email,
+    password,
+    data: {
+      full_name: name,
+      name
+    }
+  });
+  const accessToken = cleanString(authResult.access_token);
+  if (!accessToken) {
+    return {
+      pendingConfirmation: true,
+      email,
+      message: "Supabase created the account. Confirm the email address, then sign in."
+    };
+  }
+  return createSupabaseSessionFromAccessToken(storage, accessToken);
+}
+
+async function createSupabasePasswordSession(storage, body) {
+  if (!supabaseAuthEnabled()) publicError(404, "Supabase Auth is disabled");
+  const email = normalizeEmail(body.email);
+  const password = cleanString(body.password);
+  if (!email || !password) publicError(400, "Supabase sign in requires email and password");
+
+  const authResult = await supabaseAuthRequest("/auth/v1/token?grant_type=password", {
+    email,
+    password
+  });
+  const accessToken = cleanString(authResult.access_token);
+  if (!accessToken) publicError(401, "Supabase did not return an access token");
+  return createSupabaseSessionFromAccessToken(storage, accessToken);
+}
+
+async function supabaseAuthRequest(pathname, body) {
+  const { supabaseUrl, anonKey } = supabaseAuthConfig();
+  const response = await fetch(`${supabaseUrl}${pathname}`, {
+    method: "POST",
+    headers: {
+      apikey: anonKey,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    publicError(response.status === 400 ? 401 : response.status, result.msg || result.message || result.error_description || "Supabase Auth request failed");
+  }
+  return result;
+}
+
+function supabaseAuthConfig() {
   const supabaseUrl = cleanString(process.env.SUPABASE_URL || process.env.AGORA_SUPABASE_URL).replace(/\/+$/, "");
   const anonKey = cleanString(process.env.SUPABASE_ANON_KEY || process.env.AGORA_SUPABASE_ANON_KEY);
   if (!supabaseUrl || !anonKey) {
     publicError(500, "Supabase auth requires SUPABASE_URL and SUPABASE_ANON_KEY on the API server");
   }
+  return { supabaseUrl, anonKey };
+}
+
+async function fetchSupabaseUser(accessToken) {
+  const { supabaseUrl, anonKey } = supabaseAuthConfig();
 
   const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
     headers: {
@@ -1991,6 +2069,9 @@ function verifyPassword(password, user) {
 
 async function saveWorkspaceSnapshot(storage, snapshot, session, action) {
   validateSnapshot(snapshot);
+  if (sessionCompanyId(session)) {
+    publicError(403, "Company-scoped sessions must use structured project, task, and record endpoints");
+  }
   const existingSnapshot = await storage.loadWorkspaceSnapshot();
   const mergedSnapshot = mergeSnapshotAccess(existingSnapshot, snapshot);
   const document = await storage.saveWorkspace(mergedSnapshot, {
@@ -2013,6 +2094,7 @@ async function upsertProject(storage, project, session, action) {
   const projects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
   const existingProject = projects.find((item) => item.id === incomingProject.id);
   const nextProject = normalizeProject(existingProject ? { ...existingProject, ...incomingProject } : incomingProject);
+  assertProjectCompanyScope(nextProject, session);
   const exists = Boolean(existingProject);
   const nextProjects = exists
     ? projects.map((item) => item.id === nextProject.id ? { ...item, ...nextProject } : item)
@@ -2039,8 +2121,12 @@ async function upsertTask(storage, task, session, action) {
   const incomingTask = requireRecord(task, "Task");
   const snapshot = await storage.loadWorkspaceSnapshot();
   const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
+  const projects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
   const existingTask = tasks.find((item) => item.id === incomingTask.id);
   const nextTask = normalizeTask(existingTask ? { ...existingTask, ...incomingTask } : incomingTask);
+  const project = projects.find((item) => item.id === nextTask.projectId);
+  if (!project) publicError(400, "Task project is not in this workspace");
+  assertProjectCompanyScope(project, session);
   const exists = Boolean(existingTask);
   const nextTasks = exists
     ? tasks.map((item) => item.id === nextTask.id ? { ...item, ...nextTask } : item)
@@ -2068,6 +2154,7 @@ async function archiveProject(storage, projectId, session, archived) {
   const projects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
   const project = projects.find((item) => item.id === projectId);
   if (!project) publicError(404, "Project not found");
+  assertProjectCompanyScope(project, session);
 
   const timestamp = new Date().toISOString();
   const nextProject = normalizeProject({
@@ -2106,8 +2193,12 @@ async function archiveProject(storage, projectId, session, archived) {
 async function archiveTask(storage, taskId, session, archived) {
   const snapshot = await storage.loadWorkspaceSnapshot();
   const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
+  const projects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
   const task = tasks.find((item) => item.id === taskId);
   if (!task) publicError(404, "Task not found");
+  const project = projects.find((item) => item.id === task.projectId);
+  if (!project) publicError(400, "Task project is not in this workspace");
+  assertProjectCompanyScope(project, session);
 
   const timestamp = new Date().toISOString();
   const nextTask = normalizeTask({
@@ -2133,6 +2224,14 @@ async function archiveTask(storage, taskId, session, archived) {
     detail: `${session.user.name} ${archived ? "archived" : "restored"} task ${nextTask.title}`
   });
   return nextTask;
+}
+
+function assertProjectCompanyScope(project, session) {
+  const companyId = sessionCompanyId(session);
+  if (!companyId) return;
+  if (project.companyId !== companyId) {
+    publicError(403, "Project is outside the company scope");
+  }
 }
 
 async function upsertCollectionItem(storage, key, item, normalizer, session, action, detailLabel) {
@@ -2216,15 +2315,13 @@ function assertCanWriteScopedRecord(key, record, snapshot = {}, session) {
     publicError(403, "Presence can only be updated for the current user");
   }
 
-  if (!isClientSession(session)) return;
-
   const companyId = sessionCompanyId(session);
-  if (!companyId) publicError(403, "Client session is missing company scope");
+  if (!companyId) return;
   if (record.companyId && record.companyId !== companyId) {
-    publicError(403, "Record is outside the client company scope");
+    publicError(403, "Record is outside the company scope");
   }
   if (project && project.companyId !== companyId) {
-    publicError(403, "Project is outside the client company scope");
+    publicError(403, "Project is outside the company scope");
   }
 }
 

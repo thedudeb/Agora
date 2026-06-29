@@ -1978,6 +1978,51 @@ textarea:focus {
   overflow-x: auto;
 }
 
+.access-panel {
+  grid-column: 1 / -1;
+}
+
+.access-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.access-summary-grid article {
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.access-summary-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.access-summary-grid strong {
+  display: block;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+
+.access-summary-grid p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.permission-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .permission-matrix {
   display: grid;
   min-width: 720px;
@@ -2279,7 +2324,7 @@ textarea:focus {
 
 .member-role-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.36fr);
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.56fr);
   gap: 12px;
   align-items: center;
   padding: 12px;
@@ -2293,6 +2338,12 @@ textarea:focus {
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+.member-access-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(130px, 1fr));
+  gap: 8px;
 }
 
 .member-role-row h3 {
@@ -4215,6 +4266,7 @@ body[data-density="compact"] .main-content {
   .template-controls,
   .settings-form,
   .settings-section-account .api-sync-form,
+  .access-summary-grid,
   .theme-option-grid,
   .project-command-grid,
   .mobile-roadmap-list,
@@ -4227,6 +4279,10 @@ body[data-density="compact"] .main-content {
   .timeline-controls,
   .nav-list,
   .project-list {
+    grid-template-columns: 1fr;
+  }
+
+  .member-access-controls {
     grid-template-columns: 1fr;
   }
 
