@@ -1588,6 +1588,59 @@ textarea:focus {
   border-color: rgba(62, 109, 66, 0.35);
 }
 
+.settings-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.settings-tab {
+  min-height: 40px;
+  padding: 8px 12px;
+  color: var(--muted);
+  font-weight: 800;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+}
+
+.settings-tab:hover {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.settings-tab.is-active {
+  color: #ffffff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.settings-tab:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
+}
+
+.settings-section-account,
+.settings-section-workspace,
+.settings-section-backend {
+  grid-template-columns: 1fr;
+}
+
+.settings-section-account .api-sync-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.settings-section-account .api-sync-form label {
+  min-width: 0;
+}
+
+.settings-section-account .api-url-field,
+.settings-section-account .wide-field {
+  grid-column: 1 / -1;
+}
+
 .settings-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3445,6 +3498,12 @@ th {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .settings-section-account,
+  .settings-section-workspace,
+  .settings-section-backend {
+    grid-template-columns: 1fr;
+  }
+
   .daily-lanes {
     grid-template-columns: 1fr;
   }
@@ -3475,6 +3534,15 @@ th {
 @media (max-width: 680px) {
   .main-content {
     padding: 16px;
+  }
+
+  .settings-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-tab {
+    width: 100%;
   }
 
   .is-landing-route .main-content {
@@ -3668,6 +3736,7 @@ th {
   .field-composer,
   .template-controls,
   .settings-form,
+  .settings-section-account .api-sync-form,
   .invite-form,
   .invite-accept-form,
   .intake-field-grid,

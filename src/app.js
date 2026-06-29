@@ -122,6 +122,14 @@ const workspaceRoles = [
   { id: "client", label: "Client / Guest", description: "Can submit intake, review shared work, and follow selected project updates." }
 ];
 
+const settingsTabs = [
+  { id: "account", label: "Account" },
+  { id: "workspace", label: "Workspace" },
+  { id: "members", label: "Members" },
+  { id: "integrations", label: "Integrations" },
+  { id: "backend", label: "Backend" }
+];
+
 const currentMemberId = "mara";
 
 const routes = {
@@ -157,6 +165,7 @@ const seedData = {
   selectedCompany: "all",
   selectedInviteToken: "",
   selectedProjectTab: "overview",
+  selectedSettingsTab: "account",
   selectedCalendarMonth: "2026-07",
   selectedDailyDate: "2026-06-27",
   filters: {
@@ -976,6 +985,7 @@ function normalizeState(nextState) {
   return {
     ...nextState,
     selectedInviteToken: nextState.selectedInviteToken || "",
+    selectedSettingsTab: nextState.selectedSettingsTab || seedData.selectedSettingsTab,
     selectedCalendarMonth: nextState.selectedCalendarMonth || seedData.selectedCalendarMonth,
     selectedDailyDate: nextState.selectedDailyDate || todayKey(),
     workspace: {
@@ -1291,6 +1301,45 @@ function clientAllowedRoutes() {
 function canAccessRoute(route) {
   if (!isClientSession()) return true;
   return clientAllowedRoutes().has(route);
+}
+
+function currentWorkspaceRole() {
+  return apiSession?.membership?.role || "admin";
+}
+
+function canUseSettingsTab(tabId) {
+  if (!apiSession) return true;
+  const role = currentWorkspaceRole();
+  if (role === "client") return false;
+  if (tabId === "members") return role === "admin";
+  if (tabId === "workspace" || tabId === "backend") return role === "admin" || role === "manager";
+  return true;
+}
+
+function settingsTabFallback(tabId) {
+  if (settingsTabs.some((tab) => tab.id === tabId && canUseSettingsTab(tab.id))) return tabId;
+  return settingsTabs.find((tab) => canUseSettingsTab(tab.id))?.id || "account";
+}
+
+function renderSettingsTabs(activeTab) {
+  return `
+    <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+      ${settingsTabs.map((tab) => {
+        const isActive = tab.id === activeTab;
+        const canUseTab = canUseSettingsTab(tab.id);
+        return `
+          <button
+            class="settings-tab ${isActive ? "is-active" : ""}"
+            type="button"
+            role="tab"
+            data-settings-tab="${tab.id}"
+            aria-selected="${isActive ? "true" : "false"}"
+            ${canUseTab ? "" : "disabled aria-disabled=\"true\""}
+          >${escapeHtml(tab.label)}</button>
+        `;
+      }).join("")}
+    </div>
+  `;
 }
 
 function routeFallback(route) {
@@ -2745,6 +2794,7 @@ function setRoute(route) {
   state.selectedRoute = routeFallback(route);
   if (route !== "invite") state.selectedInviteToken = "";
   if (route !== "project") state.selectedProjectTab = "overview";
+  if (state.selectedRoute === "settings") state.selectedSettingsTab = settingsTabFallback(state.selectedSettingsTab);
   if (route !== "company") state.selectedCompany = "all";
   openSidebarGroupForRoute(state.selectedRoute);
   saveState();
@@ -5477,6 +5527,8 @@ function renderSettings() {
       status: "active"
     }
   }));
+  const activeSettingsTab = settingsTabFallback(state.selectedSettingsTab);
+  if (state.selectedSettingsTab !== activeSettingsTab) state.selectedSettingsTab = activeSettingsTab;
 
   els.appView.innerHTML = `
     <div class="metric-grid">
@@ -5486,12 +5538,15 @@ function renderSettings() {
       ${metric("Storage", apiBackendLabel())}
     </div>
 
-    <div class="settings-grid">
+    ${renderSettingsTabs(activeSettingsTab)}
+
+    <div class="settings-grid settings-section settings-section-${activeSettingsTab}">
+      ${activeSettingsTab === "account" ? `
       <section class="panel">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Connection</p>
-            <h2>API sync</h2>
+            <p class="eyebrow">Account</p>
+            <h2>Access and sync</h2>
           </div>
           <span class="status-pill ${apiConnectionTone()}">${escapeHtml(apiStatusLabel())}</span>
         </div>
@@ -5564,7 +5619,9 @@ function renderSettings() {
           </div>
         </div>
       </section>
+      ` : ""}
 
+      ${activeSettingsTab === "workspace" ? `
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -5604,7 +5661,9 @@ function renderSettings() {
           <button class="button button-primary" type="button" id="workspace-save">Save Settings</button>
         </div>
       </section>
+      ` : ""}
 
+      ${activeSettingsTab === "integrations" ? `
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -5645,7 +5704,9 @@ function renderSettings() {
       </section>
 
       ${renderMobileAppPanel()}
+      ` : ""}
 
+      ${activeSettingsTab === "members" ? `
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -5710,7 +5771,9 @@ function renderSettings() {
           ${state.invitations.length ? state.invitations.map((invitation) => renderInvitationRow(invitation, roleById)).join("") : emptyState("No invitations yet.")}
         </div>
       </section>
+      ` : ""}
 
+      ${activeSettingsTab === "backend" ? `
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -5720,6 +5783,7 @@ function renderSettings() {
         </div>
         ${renderBackendChecklist()}
       </section>
+      ` : ""}
     </div>
   `;
 }
@@ -8513,6 +8577,14 @@ document.addEventListener("click", (event) => {
     sidebarState[groupId] = !sidebarState[groupId];
     saveSidebarState();
     renderSidebarGroups();
+    return;
+  }
+
+  const settingsTabButton = event.target.closest("[data-settings-tab]");
+  if (settingsTabButton && !settingsTabButton.disabled) {
+    state.selectedSettingsTab = settingsTabFallback(settingsTabButton.dataset.settingsTab);
+    saveState();
+    render();
     return;
   }
 
