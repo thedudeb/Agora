@@ -18,6 +18,8 @@ Open `http://127.0.0.1:5174`, go to Settings, create the first owner account, th
 AGORA_APP_PORT=5174
 AGORA_API_PORT=8787
 AGORA_ALLOWED_ORIGINS=https://your-agora-app.example.com
+AGORA_PUBLIC_APP_URL=https://your-agora-app.example.com
+AGORA_EMAIL_FROM=Agora <no-reply@your-domain.example>
 AGORA_SESSION_TTL_SECONDS=28800
 AGORA_INVITATION_TTL_DAYS=14
 AGORA_PASSWORD_RESET_TTL_MINUTES=30
@@ -49,15 +51,38 @@ Never expose `SUPABASE_SERVICE_ROLE_KEY` in browser code or client settings. Ago
 
 ## Password Reset
 
-Agora supports reset-token creation and confirmation through the API. In production, wire token delivery to an email provider before enabling user-facing reset flows.
+Agora supports reset-token creation and confirmation through the API. Production deployments should deliver reset tokens through SMTP or a webhook-backed email workflow.
+
+SMTP:
+
+```sh
+AGORA_PASSWORD_RESET_DELIVERY=smtp
+AGORA_SMTP_HOST=smtp.your-provider.example
+AGORA_SMTP_PORT=587
+AGORA_SMTP_SECURE=false
+AGORA_SMTP_STARTTLS=true
+AGORA_SMTP_USER=your-smtp-user
+AGORA_SMTP_PASSWORD=your-smtp-password
+```
+
+Webhook:
+
+```sh
+AGORA_PASSWORD_RESET_DELIVERY=webhook
+AGORA_PASSWORD_RESET_WEBHOOK_URL=https://your-email-worker.example.com/agora/password-reset
+AGORA_PASSWORD_RESET_WEBHOOK_SECRET=shared-secret
+```
+
+The webhook receives JSON with `to`, `name`, `subject`, `text`, `token`, `resetUrl`, and `expiresAt`.
 
 For local/manual administration only:
 
 ```sh
+AGORA_PASSWORD_RESET_DELIVERY=manual
 AGORA_PASSWORD_RESET_RETURN_TOKEN=true
 ```
 
-That returns the reset token to the browser so an admin can complete the reset without email infrastructure. Keep it `false` for hosted production.
+That returns the reset token to the browser so an admin can complete the reset without email infrastructure. Keep `AGORA_PASSWORD_RESET_RETURN_TOKEN=false` for hosted production.
 
 ## File Uploads
 
@@ -88,3 +113,22 @@ Then sign in and open Settings or Data. Backend Health should show storage, auth
 - Confirm Supabase Storage bucket exists before uploading files.
 - Confirm Audit Log loads for admins/project managers.
 - Run `npm run check` and `npm run test:api`.
+
+## Vercel Static App
+
+Agora includes `vercel.json` for static app hosting and security headers. This is for the browser app only.
+
+1. Import the GitHub repo into Vercel.
+2. Use no build command.
+3. Use the repo root as the output directory.
+4. Set the app's API URL in Settings after deploy, or pre-seed browser storage for your environment.
+5. Host the API separately on a long-running Node service with `npm run start:api`.
+
+Set the API host in `.env`:
+
+```sh
+AGORA_ALLOWED_ORIGINS=https://your-vercel-app.vercel.app
+AGORA_PUBLIC_APP_URL=https://your-vercel-app.vercel.app
+```
+
+Vercel serverless functions are not the primary API target for the current dependency-free server because `server/api.js` is a long-running Node HTTP server.

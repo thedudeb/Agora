@@ -1,7 +1,9 @@
 const http = require("node:http");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
+const net = require("node:net");
 const path = require("node:path");
+const tls = require("node:tls");
 const { URL } = require("node:url");
 const { loadEnvFile } = require("./env");
 const { createStorage } = require("./storage");
@@ -1138,6 +1140,7 @@ async function requestPasswordReset(storage, email) {
 
   const token = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS).toISOString();
+  const delivery = await deliverPasswordReset(user, token, expiresAt);
   const nextUsers = users.map((item) => item.id === user.id ? {
     ...item,
     passwordResetTokenHash: hashResetToken(token),
@@ -1162,9 +1165,202 @@ async function requestPasswordReset(storage, email) {
 
   return {
     ...response,
+    delivery: delivery.mode,
+    delivered: delivery.delivered,
     expiresAt,
-    ...(envFlag("AGORA_PASSWORD_RESET_RETURN_TOKEN", false) ? { resetToken: token } : {})
+    ...(delivery.exposeToken ? { resetToken: token } : {})
   };
+}
+
+async function deliverPasswordReset(user, token, expiresAt) {
+  const mode = cleanString(process.env.AGORA_PASSWORD_RESET_DELIVERY || "").toLowerCase();
+  const exposeToken = mode === "manual" || envFlag("AGORA_PASSWORD_RESET_RETURN_TOKEN", false);
+  if (!mode || mode === "manual") {
+    return { mode: mode || "not-configured", delivered: false, exposeToken };
+  }
+
+  const payload = passwordResetPayload(user, token, expiresAt);
+  if (mode === "smtp") {
+    try {
+      await sendSmtpMail(payload);
+    } catch (error) {
+      publicError(502, `SMTP password reset delivery failed: ${error.message}`);
+    }
+    return { mode, delivered: true, exposeToken };
+  }
+  if (mode === "webhook") {
+    await sendPasswordResetWebhook(payload);
+    return { mode, delivered: true, exposeToken };
+  }
+
+  publicError(500, `Unsupported password reset delivery mode: ${mode}`);
+}
+
+function passwordResetPayload(user, token, expiresAt) {
+  const appUrl = cleanString(process.env.AGORA_PUBLIC_APP_URL || process.env.AGORA_APP_URL || "http://127.0.0.1:5174").replace(/\/+$/, "");
+  const resetUrl = `${appUrl}/#settings?resetToken=${encodeURIComponent(token)}&email=${encodeURIComponent(user.email)}`;
+  return {
+    to: user.email,
+    name: user.name || user.email,
+    from: cleanString(process.env.AGORA_EMAIL_FROM || process.env.SMTP_FROM || "Agora <no-reply@localhost>"),
+    subject: "Reset your Agora password",
+    text: [
+      `Hi ${user.name || user.email},`,
+      "",
+      "A password reset was requested for your Agora account.",
+      "",
+      `Reset token: ${token}`,
+      `Reset link: ${resetUrl}`,
+      `Expires: ${expiresAt}`,
+      "",
+      "If you did not request this reset, you can ignore this message."
+    ].join("\n"),
+    token,
+    resetUrl,
+    expiresAt
+  };
+}
+
+async function sendPasswordResetWebhook(payload) {
+  const webhookUrl = cleanString(process.env.AGORA_PASSWORD_RESET_WEBHOOK_URL);
+  if (!webhookUrl) publicError(500, "AGORA_PASSWORD_RESET_WEBHOOK_URL is required for webhook password reset delivery");
+
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(process.env.AGORA_PASSWORD_RESET_WEBHOOK_SECRET ? { Authorization: `Bearer ${process.env.AGORA_PASSWORD_RESET_WEBHOOK_SECRET}` } : {})
+    },
+    body: JSON.stringify({
+      type: "agora.password_reset",
+      to: payload.to,
+      name: payload.name,
+      subject: payload.subject,
+      text: payload.text,
+      token: payload.token,
+      resetUrl: payload.resetUrl,
+      expiresAt: payload.expiresAt
+    })
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    publicError(502, body || "Password reset webhook delivery failed");
+  }
+}
+
+async function sendSmtpMail(payload) {
+  const host = cleanString(process.env.AGORA_SMTP_HOST || process.env.SMTP_HOST);
+  const port = positiveNumber(process.env.AGORA_SMTP_PORT || process.env.SMTP_PORT, envFlag("AGORA_SMTP_SECURE", false) ? 465 : 587);
+  const user = cleanString(process.env.AGORA_SMTP_USER || process.env.SMTP_USER);
+  const password = cleanString(process.env.AGORA_SMTP_PASSWORD || process.env.SMTP_PASSWORD);
+  const secure = envFlag("AGORA_SMTP_SECURE", port === 465);
+  const startTls = envFlag("AGORA_SMTP_STARTTLS", !secure);
+  if (!host) publicError(500, "AGORA_SMTP_HOST is required for SMTP password reset delivery");
+
+  let client = await openSmtpConnection({ host, port, secure });
+  const session = smtpSession(client);
+  await session.expect([220]);
+  await session.command(`EHLO ${smtpLocalName()}`, [250]);
+  if (!secure && startTls) {
+    await session.command("STARTTLS", [220]);
+    client = tls.connect({ socket: client, servername: host });
+    await new Promise((resolve, reject) => {
+      client.once("secureConnect", resolve);
+      client.once("error", reject);
+    });
+    session.replaceSocket(client);
+    await session.command(`EHLO ${smtpLocalName()}`, [250]);
+  }
+  if (user || password) {
+    await session.command("AUTH LOGIN", [334]);
+    await session.command(Buffer.from(user).toString("base64"), [334]);
+    await session.command(Buffer.from(password).toString("base64"), [235]);
+  }
+
+  await session.command(`MAIL FROM:<${emailAddress(payload.from)}>`, [250]);
+  await session.command(`RCPT TO:<${emailAddress(payload.to)}>`, [250, 251]);
+  await session.command("DATA", [354]);
+  await session.command(smtpMessage(payload), [250], "\r\n.\r\n");
+  await session.command("QUIT", [221]).catch(() => {});
+}
+
+function openSmtpConnection({ host, port, secure }) {
+  return new Promise((resolve, reject) => {
+    const client = secure ? tls.connect({ host, port, servername: host }) : net.connect({ host, port });
+    client.once(secure ? "secureConnect" : "connect", () => resolve(client));
+    client.once("error", reject);
+    client.setTimeout(15000, () => {
+      client.destroy();
+      reject(new Error("SMTP connection timed out"));
+    });
+  });
+}
+
+function smtpSession(socket) {
+  let client = socket;
+  let buffer = "";
+  const pending = [];
+  const onData = (chunk) => {
+    buffer += chunk.toString("utf8");
+    drain();
+  };
+  const drain = () => {
+    if (!pending.length) return;
+    const lineEnd = buffer.search(/\r?\n/);
+    if (lineEnd === -1) return;
+    const lines = buffer.split(/\r?\n/);
+    const completeIndex = lines.findIndex((line) => /^\d{3} /.test(line));
+    if (completeIndex === -1) return;
+    const responseLines = lines.slice(0, completeIndex + 1).join("\n");
+    buffer = lines.slice(completeIndex + 1).join("\n");
+    const { codes, resolve, reject } = pending.shift();
+    const code = Number(responseLines.slice(0, 3));
+    if (codes.includes(code)) {
+      resolve(responseLines);
+    } else {
+      reject(new Error(`SMTP command failed: ${responseLines}`));
+    }
+    drain();
+  };
+  client.on("data", onData);
+  return {
+    replaceSocket(nextSocket) {
+      client.off("data", onData);
+      client = nextSocket;
+      client.on("data", onData);
+    },
+    expect(codes) {
+      return new Promise((resolve, reject) => {
+        pending.push({ codes, resolve, reject });
+        drain();
+      });
+    },
+    async command(command, codes, terminator = "\r\n") {
+      client.write(`${command}${terminator}`);
+      return this.expect(codes);
+    }
+  };
+}
+
+function smtpMessage(payload) {
+  return [
+    `From: ${payload.from}`,
+    `To: ${payload.to}`,
+    `Subject: ${payload.subject}`,
+    "MIME-Version: 1.0",
+    "Content-Type: text/plain; charset=utf-8",
+    "",
+    payload.text.replace(/^\./gm, "..")
+  ].join("\r\n");
+}
+
+function emailAddress(value) {
+  const match = cleanString(value).match(/<([^>]+)>/);
+  return match ? match[1] : cleanString(value);
+}
+
+function smtpLocalName() {
+  return cleanString(process.env.AGORA_SMTP_LOCAL_NAME) || "agora.local";
 }
 
 async function confirmPasswordReset(storage, body) {

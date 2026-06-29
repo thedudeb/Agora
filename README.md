@@ -54,6 +54,8 @@ Settings and Data include a Backend Health panel after connecting to the API. It
 ```sh
 npm run dev       # serve the browser app
 npm run dev:api   # start the local API
+npm start         # serve the browser app for a host/runtime
+npm run start:api # start the API for a host/runtime
 npm run check     # syntax-check app and server files
 npm run test:api  # run the dependency-free API smoke test
 ```
@@ -62,7 +64,7 @@ To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`
 
 Demo auth and passwordless email login are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true` or `AGORA_PASSWORDLESS_AUTH=true` and restart `npm run dev:api`.
 
-For deployment details, Supabase Storage setup, password reset delivery, and release checks, see [`docs/deployment.md`](./docs/deployment.md).
+For deployment details, Vercel static hosting, Supabase Storage setup, SMTP/webhook password reset delivery, and release checks, see [`docs/deployment.md`](./docs/deployment.md).
 
 ## Supabase Storage
 

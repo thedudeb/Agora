@@ -6024,13 +6024,13 @@ function renderAutomationHistory(run) {
 function renderDocsAndFiles() {
   const documents = getVisibleDocuments();
   const files = getVisibleFiles();
-  const activeProjects = new Set([...documents.map((document) => document.projectId), ...files.map((file) => file.projectId)]);
+  const projectIdsWithAssets = new Set([...documents.map((document) => document.projectId), ...files.map((file) => file.projectId)]);
 
   els.appView.innerHTML = `
     <div class="metric-grid">
       ${metric("Documents", documents.length)}
       ${metric("Files", files.length)}
-      ${metric("Projects", activeProjects.size)}
+      ${metric("Projects", projectIdsWithAssets.size)}
       ${metric("Updated", documents.length + files.length)}
     </div>
 

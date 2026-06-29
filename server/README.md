@@ -34,7 +34,7 @@ Then open Settings, create the first workspace owner account, sign in with email
 
 Settings and Data also expose Backend Health after you connect. It reports the active storage/auth drivers, production-mode readiness, workspace snapshot metadata, structured record collections, client scoping, and any failed browser syncs that can be retried.
 
-Demo auth and passwordless email login are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true` or `AGORA_PASSWORDLESS_AUTH=true` in `.env` and restart the API. Session lifetime defaults to eight hours through `AGORA_SESSION_TTL_SECONDS`, invitations expire through `AGORA_INVITATION_TTL_DAYS`, password reset tokens expire through `AGORA_PASSWORD_RESET_TTL_MINUTES`, and cross-origin API calls are limited to localhost plus any origins listed in `AGORA_ALLOWED_ORIGINS`.
+Demo auth and passwordless email login are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true` or `AGORA_PASSWORDLESS_AUTH=true` in `.env` and restart the API. Session lifetime defaults to eight hours through `AGORA_SESSION_TTL_SECONDS`, invitations expire through `AGORA_INVITATION_TTL_DAYS`, password reset tokens expire through `AGORA_PASSWORD_RESET_TTL_MINUTES`, reset delivery is configured with `AGORA_PASSWORD_RESET_DELIVERY`, and cross-origin API calls are limited to localhost plus any origins listed in `AGORA_ALLOWED_ORIGINS`.
 
 ## App Server
 
@@ -49,6 +49,8 @@ It listens on `http://127.0.0.1:5174` by default. Override with:
 ```sh
 AGORA_APP_PORT=5175 npm run dev
 ```
+
+Use `npm start` for hosted static app runtimes and `npm run start:api` for hosted API runtimes.
 
 ## Supabase Storage
 

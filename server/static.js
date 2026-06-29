@@ -36,7 +36,7 @@ function securityHeaders() {
       "script-src 'self' https://unpkg.com",
       "style-src 'self' 'unsafe-inline' https://unpkg.com",
       "img-src 'self' data: https://raw.githubusercontent.com",
-      "connect-src 'self' http://127.0.0.1:* http://localhost:* https://*.supabase.co",
+      "connect-src 'self' http://127.0.0.1:* http://localhost:* https://*.supabase.co https:",
       "font-src 'self'",
       "manifest-src 'self'",
       "base-uri 'self'",

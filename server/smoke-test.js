@@ -327,6 +327,10 @@ async function run() {
 
 async function testAccountAuth() {
   const originalResetReturnToken = process.env.AGORA_PASSWORD_RESET_RETURN_TOKEN;
+  const originalResetDelivery = process.env.AGORA_PASSWORD_RESET_DELIVERY;
+  const originalResetWebhookUrl = process.env.AGORA_PASSWORD_RESET_WEBHOOK_URL;
+  const originalResetWebhookSecret = process.env.AGORA_PASSWORD_RESET_WEBHOOK_SECRET;
+  const originalFetch = global.fetch;
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-auth-"));
   const server = createServer({
     storage: createStorage({ dataDir, driver: "json" }),
@@ -407,6 +411,34 @@ async function testAccountAuth() {
       }
     });
     assert(passwordLogin.user.id === signup.user.id, "password login did not return owner");
+
+    let webhookCalled = false;
+    process.env.AGORA_PASSWORD_RESET_RETURN_TOKEN = "false";
+    process.env.AGORA_PASSWORD_RESET_DELIVERY = "webhook";
+    process.env.AGORA_PASSWORD_RESET_WEBHOOK_URL = "https://mail-worker.example.test/reset";
+    process.env.AGORA_PASSWORD_RESET_WEBHOOK_SECRET = "shared-secret";
+    global.fetch = async (url, options = {}) => {
+      if (url === "https://mail-worker.example.test/reset") {
+        webhookCalled = true;
+        const body = JSON.parse(options.body);
+        assert(options.headers.Authorization === "Bearer shared-secret", "password reset webhook secret was not sent");
+        assert(body.to === "owner@example.test", "password reset webhook had wrong recipient");
+        assert(body.token, "password reset webhook did not include token");
+        assert(body.resetUrl.includes(encodeURIComponent(body.token)), "password reset webhook did not include tokenized URL");
+        return mockResponse({ ok: true });
+      }
+      return originalFetch(url, options);
+    };
+    const webhookReset = await request(`${baseUrl}/api/auth/password-reset/request`, {
+      method: "POST",
+      body: { email: "owner@example.test" }
+    });
+    assert(webhookCalled, "password reset webhook was not called");
+    assert(webhookReset.delivered === true, "password reset webhook did not report delivery");
+    assert(!webhookReset.resetToken, "password reset webhook should not expose token when return token is disabled");
+    process.env.AGORA_PASSWORD_RESET_RETURN_TOKEN = "true";
+    process.env.AGORA_PASSWORD_RESET_DELIVERY = "manual";
+    global.fetch = originalFetch;
 
     const members = await request(`${baseUrl}/api/members`, {
       token: signup.token
@@ -592,6 +624,22 @@ async function testAccountAuth() {
     } else {
       process.env.AGORA_PASSWORD_RESET_RETURN_TOKEN = originalResetReturnToken;
     }
+    if (originalResetDelivery === undefined) {
+      delete process.env.AGORA_PASSWORD_RESET_DELIVERY;
+    } else {
+      process.env.AGORA_PASSWORD_RESET_DELIVERY = originalResetDelivery;
+    }
+    if (originalResetWebhookUrl === undefined) {
+      delete process.env.AGORA_PASSWORD_RESET_WEBHOOK_URL;
+    } else {
+      process.env.AGORA_PASSWORD_RESET_WEBHOOK_URL = originalResetWebhookUrl;
+    }
+    if (originalResetWebhookSecret === undefined) {
+      delete process.env.AGORA_PASSWORD_RESET_WEBHOOK_SECRET;
+    } else {
+      process.env.AGORA_PASSWORD_RESET_WEBHOOK_SECRET = originalResetWebhookSecret;
+    }
+    global.fetch = originalFetch;
   }
 }
 
