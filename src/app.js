@@ -1181,6 +1181,9 @@ const els = {
   savedViewFilter: document.querySelector("#saved-view-filter"),
   savedViewName: document.querySelector("#saved-view-name"),
   saveViewButton: document.querySelector("#save-view-button"),
+  updateViewButton: document.querySelector("#update-view-button"),
+  renameViewButton: document.querySelector("#rename-view-button"),
+  pinViewButton: document.querySelector("#pin-view-button"),
   deleteViewButton: document.querySelector("#delete-view-button"),
   taskDialog: document.querySelector("#task-dialog"),
   taskForm: document.querySelector("#task-form"),
@@ -3295,8 +3298,10 @@ function normalizeSavedViews(value) {
         ...seedData.filters,
         ...(view.filters || {})
       },
+      pinned: Boolean(view.pinned),
       createdAt: view.createdAt || new Date().toISOString()
-    }));
+    }))
+    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || new Date(b.createdAt) - new Date(a.createdAt));
 }
 
 function currentViewSnapshot(name) {
@@ -3334,6 +3339,7 @@ function saveCurrentView() {
   const nextView = {
     ...currentViewSnapshot(name),
     id: existing?.id || uid("view"),
+    pinned: Boolean(existing?.pinned),
     createdAt: existing?.createdAt || new Date().toISOString()
   };
   state.savedViews = [
@@ -3344,6 +3350,53 @@ function saveCurrentView() {
   render();
   if (els.savedViewName) els.savedViewName.value = "";
   showToast("Saved view added", "success");
+}
+
+function updateCurrentSavedView() {
+  const viewId = els.savedViewFilter?.value || currentSavedViewId();
+  const view = state.savedViews.find((item) => item.id === viewId);
+  if (!view) {
+    showToast("Choose a saved view to update", "info");
+    return;
+  }
+  const nextView = {
+    ...currentViewSnapshot(view.name),
+    id: view.id,
+    pinned: Boolean(view.pinned),
+    createdAt: view.createdAt
+  };
+  state.savedViews = normalizeSavedViews([nextView, ...state.savedViews.filter((item) => item.id !== view.id)]);
+  saveState();
+  render();
+  showToast(`Updated ${view.name}`, "success");
+}
+
+function renameCurrentSavedView() {
+  const viewId = els.savedViewFilter?.value || currentSavedViewId();
+  const view = state.savedViews.find((item) => item.id === viewId);
+  const name = els.savedViewName?.value.trim();
+  if (!view || !name) {
+    showToast("Choose a view and enter a new name", "info");
+    return;
+  }
+  state.savedViews = normalizeSavedViews(state.savedViews.map((item) => item.id === view.id ? { ...item, name } : item));
+  saveState();
+  render();
+  if (els.savedViewName) els.savedViewName.value = "";
+  showToast("Saved view renamed", "success");
+}
+
+function togglePinnedSavedView() {
+  const viewId = els.savedViewFilter?.value || currentSavedViewId();
+  const view = state.savedViews.find((item) => item.id === viewId);
+  if (!view) {
+    showToast("Choose a saved view to pin", "info");
+    return;
+  }
+  state.savedViews = normalizeSavedViews(state.savedViews.map((item) => item.id === view.id ? { ...item, pinned: !item.pinned } : item));
+  saveState();
+  render();
+  showToast(view.pinned ? "Saved view unpinned" : "Saved view pinned", "success");
 }
 
 function applySavedView(viewId) {
@@ -5087,6 +5140,69 @@ function archiveProject(projectId) {
   syncProjectArchiveToApi(projectId);
 }
 
+function duplicateProject(projectId) {
+  const project = byId(state.projects, projectId);
+  if (!project || isProjectArchived(project)) return;
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot duplicate projects", "info");
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const nextProject = {
+    ...project,
+    id: uid("project"),
+    name: `${project.name} Copy`,
+    startDate: project.startDate || todayKey(),
+    dueDate: project.dueDate || "",
+    archivedAt: "",
+    archivedBy: ""
+  };
+  const sourceTasks = getProjectTasks(project.id, false);
+  const taskIds = {};
+  const tasks = sourceTasks.map((task) => {
+    const taskId = uid("task");
+    taskIds[task.id] = taskId;
+    return {
+      ...task,
+      id: taskId,
+      projectId: nextProject.id,
+      title: task.title,
+      status: task.status === "done" ? "todo" : task.status,
+      archivedAt: "",
+      archivedBy: "",
+      createdAt: now,
+      updatedAt: now,
+      subtasks: (task.subtasks || []).map((subtask) => ({ ...subtask, id: uid("subtask"), done: false }))
+    };
+  }).map((task) => ({
+    ...task,
+    blockedBy: (task.blockedBy || []).map((id) => taskIds[id]).filter(Boolean)
+  }));
+  const milestones = getProjectMilestones(project.id).map((milestone) => ({
+    ...milestone,
+    id: uid("milestone"),
+    projectId: nextProject.id,
+    taskIds: (milestone.taskIds || []).map((id) => taskIds[id]).filter(Boolean)
+  }));
+
+  state.projects = [nextProject, ...state.projects];
+  state.tasks = [...tasks, ...state.tasks];
+  state.milestones = [...milestones, ...state.milestones];
+  addActivity({
+    projectId: nextProject.id,
+    type: "project_duplicate",
+    message: `duplicated project ${project.name}`
+  });
+  state.selectedProject = nextProject.id;
+  state.selectedRoute = "project";
+  state.selectedProjectTab = "overview";
+  saveState();
+  render();
+  showToast("Project duplicated", "success");
+  syncProjectToApi(nextProject, "Project duplicated in API", true);
+}
+
 function setRoute(route) {
   state.selectedRoute = routeFallback(route);
   if (route !== "invite") state.selectedInviteToken = "";
@@ -5817,7 +5933,7 @@ function renderFilters() {
     const activeSavedViewId = currentSavedViewId();
     els.savedViewFilter.innerHTML = `
       <option value="">${activeSavedViewId ? "Saved view" : "Custom view"}</option>
-      ${state.savedViews.map((view) => `<option value="${view.id}">${escapeHtml(view.name)}</option>`).join("")}
+      ${state.savedViews.map((view) => `<option value="${view.id}">${view.pinned ? "Pinned - " : ""}${escapeHtml(view.name)}</option>`).join("")}
     `;
     els.savedViewFilter.value = activeSavedViewId;
   }
@@ -5827,7 +5943,12 @@ function renderFilters() {
   els.assigneeFilter.value = state.filters.assignee;
   els.statusFilter.value = state.filters.status;
   els.priorityFilter.value = state.filters.priority;
-  if (els.deleteViewButton) els.deleteViewButton.disabled = !currentSavedViewId() && !els.savedViewFilter?.value;
+  const hasSavedView = Boolean(currentSavedViewId() || els.savedViewFilter?.value);
+  [els.updateViewButton, els.renameViewButton, els.pinViewButton, els.deleteViewButton].filter(Boolean).forEach((button) => {
+    button.disabled = !hasSavedView;
+  });
+  const pinnedView = state.savedViews.find((view) => view.id === (els.savedViewFilter?.value || currentSavedViewId()));
+  if (els.pinViewButton) els.pinViewButton.textContent = pinnedView?.pinned ? "Unpin" : "Pin";
 }
 
 function renderMobileAppPanel() {
@@ -6904,6 +7025,8 @@ function renderProjectPage() {
           <span>${milestones.length} ${milestones.length === 1 ? "milestone" : "milestones"}</span>
         </div>
         <div class="inline-actions">
+          <button class="button button-secondary" type="button" data-edit-project="${project.id}">Edit Project</button>
+          <button class="button button-secondary" type="button" data-duplicate-project="${project.id}">Duplicate Project</button>
           <button class="button button-secondary button-danger" type="button" data-archive-project="${project.id}">Archive Project</button>
         </div>
       </div>
@@ -8191,6 +8314,19 @@ function renderTemplates() {
             <h2>Project templates</h2>
           </div>
         </div>
+        <div class="template-composer">
+          <label>
+            <span>Template name</span>
+            <input id="project-template-name" placeholder="Client launch pack">
+          </label>
+          <label>
+            <span>Source project</span>
+            <select id="project-template-source">
+              ${activeProjects().map((project) => `<option value="${project.id}">${escapeHtml(project.name)}</option>`).join("")}
+            </select>
+          </label>
+          <button class="button button-secondary" type="button" id="project-template-create">Save Project Template</button>
+        </div>
         <div class="template-list">
           ${state.projectTemplates.map(renderProjectTemplateCard).join("")}
         </div>
@@ -8202,6 +8338,19 @@ function renderTemplates() {
             <p class="eyebrow">Reusable work</p>
             <h2>Task templates</h2>
           </div>
+        </div>
+        <div class="template-composer">
+          <label>
+            <span>Template name</span>
+            <input id="task-template-name" placeholder="Weekly client review">
+          </label>
+          <label>
+            <span>Source task</span>
+            <select id="task-template-source">
+              ${activeTasks().map((task) => `<option value="${task.id}">${escapeHtml(task.title)}</option>`).join("")}
+            </select>
+          </label>
+          <button class="button button-secondary" type="button" id="task-template-create">Save Task Template</button>
         </div>
         <div class="template-list">
           ${state.taskTemplates.map(renderTaskTemplateCard).join("")}
@@ -8243,6 +8392,7 @@ function renderProjectTemplateCard(template) {
           <input data-template-name placeholder="${escapeHtml(template.name)}">
         </label>
         <button class="button button-primary" type="button" data-use-project-template="${template.id}">Create Project</button>
+        <button class="button button-secondary button-danger" type="button" data-delete-project-template="${template.id}">Delete Template</button>
       </div>
     </article>
   `;
@@ -8270,6 +8420,7 @@ function renderTaskTemplateCard(template) {
           </select>
         </label>
         <button class="button button-secondary" type="button" data-use-task-template="${template.id}">Create Task</button>
+        <button class="button button-secondary button-danger" type="button" data-delete-task-template="${template.id}">Delete Template</button>
       </div>
     </article>
   `;
@@ -8296,6 +8447,26 @@ function renderAutomations() {
             <h2>Automations</h2>
           </div>
           <button class="button button-primary" type="button" id="automation-run-all" ${enabled.length ? "" : "disabled"}>Run Enabled</button>
+        </div>
+        <div class="automation-composer">
+          <input type="hidden" id="automation-id">
+          <label>
+            <span>Rule name</span>
+            <input id="automation-name" placeholder="Escalate overdue client work">
+          </label>
+          <label>
+            <span>When</span>
+            <input id="automation-trigger" placeholder="Task is overdue">
+          </label>
+          <label>
+            <span>Then</span>
+            <input id="automation-action" placeholder="Mark risk high and notify PM">
+          </label>
+          <label class="checkbox-label automation-enabled-control">
+            <input id="automation-enabled" type="checkbox" checked>
+            <span>Enabled</span>
+          </label>
+          <button class="button button-secondary" type="button" id="automation-create">Save Rule</button>
         </div>
         <div class="automation-list">
           ${state.automations.map(renderAutomationCard).join("")}
@@ -8927,8 +9098,10 @@ function renderAutomationCard(automation) {
         </div>
       </div>
       <div class="automation-actions">
+        <button class="button button-secondary" type="button" data-edit-automation="${automation.id}">Edit</button>
         <button class="button button-secondary" type="button" data-toggle-automation="${automation.id}">${automation.enabled ? "Pause" : "Enable"}</button>
         <button class="button button-primary" type="button" data-run-automation="${automation.id}" ${automation.enabled ? "" : "disabled"}>Run</button>
+        <button class="button button-secondary button-danger" type="button" data-delete-automation="${automation.id}">Delete</button>
       </div>
     </article>
   `;
@@ -9593,13 +9766,16 @@ function fillSelect(selector, options, selectedValue, labelKey) {
   )).join("");
 }
 
-function populateProjectForm() {
-  document.querySelector("#project-name").value = "";
-  document.querySelector("#project-description").value = "";
-  document.querySelector("#project-start-date").value = "";
-  document.querySelector("#project-due-date").value = "";
-  fillSelect("#project-company", state.companies, state.filters.company === "all" ? state.companies[0].id : state.filters.company, "name");
-  fillSelect("#project-owner", members, members[0].id, "name");
+function populateProjectForm(project = null) {
+  document.querySelector("#project-id").value = project?.id || "";
+  document.querySelector("#project-name").value = project?.name || "";
+  document.querySelector("#project-description").value = project?.description || "";
+  document.querySelector("#project-start-date").value = project?.startDate || "";
+  document.querySelector("#project-due-date").value = project?.dueDate || "";
+  fillSelect("#project-company", state.companies, project?.companyId || (state.filters.company === "all" ? state.companies[0].id : state.filters.company), "name");
+  fillSelect("#project-owner", members, project?.owner || members[0].id, "name");
+  document.querySelector("#project-form-title").textContent = project ? "Edit Project" : "New Project";
+  document.querySelector("#project-form .button-primary").textContent = project ? "Save Project" : "Create Project";
 }
 
 function populateCompanyForm(company = null) {
@@ -9863,6 +10039,100 @@ function createProjectFromTemplate(templateId, { companyId, name, startDate = to
     message: `created project ${project.name} from ${template.name}`
   });
   return { project, tasks, milestones, documents, intakeForm };
+}
+
+function saveProjectAsTemplate() {
+  const sourceProjectId = document.querySelector("#project-template-source")?.value;
+  const project = byId(state.projects, sourceProjectId);
+  const name = document.querySelector("#project-template-name")?.value.trim() || `${project?.name || "Project"} Template`;
+  if (!project) {
+    showToast("Choose a source project", "info");
+    return;
+  }
+  const startDate = project.startDate || todayKey();
+  const tasks = getProjectTasks(project.id, false);
+  const taskKeys = Object.fromEntries(tasks.map((task, index) => [task.id, `task-${index + 1}`]));
+  const template = {
+    id: uid("template"),
+    name,
+    category: companyName(project.companyId) || "Custom",
+    description: project.description || `Reusable template from ${project.name}`,
+    owner: project.owner,
+    durationDays: Math.max(7, daysBetween(startDate, project.dueDate || shiftDate(startDate, 14))),
+    tasks: tasks.map((task, index) => ({
+      key: taskKeys[task.id] || `task-${index + 1}`,
+      title: task.title,
+      description: task.description,
+      assignee: task.assignee,
+      priority: task.priority,
+      startOffset: daysBetween(startDate, task.startDate || startDate),
+      dueOffset: daysBetween(startDate, task.dueDate || shiftDate(startDate, 7)),
+      tags: [...(task.tags || [])],
+      blockedBy: (task.blockedBy || []).map((id) => taskKeys[id]).filter(Boolean),
+      subtasks: (task.subtasks || []).map((subtask) => subtask.title)
+    })),
+    milestones: getProjectMilestones(project.id).map((milestone) => ({
+      title: milestone.title,
+      description: milestone.description,
+      dueOffset: daysBetween(startDate, milestone.dueDate || shiftDate(startDate, 14)),
+      owner: milestone.owner,
+      status: milestone.status,
+      taskKeys: (milestone.taskIds || []).map((id) => taskKeys[id]).filter(Boolean)
+    })),
+    docs: state.documents.filter((document) => document.projectId === project.id).map((document) => ({
+      title: document.title,
+      type: document.type,
+      body: document.body
+    })),
+    intakeForm: {
+      title: `${name} intake`,
+      assignee: project.owner,
+      description: `Collect requests for ${name}.`
+    }
+  };
+  state.projectTemplates = [template, ...state.projectTemplates.filter((item) => item.name.toLowerCase() !== name.toLowerCase())];
+  saveState();
+  render();
+  showToast("Project template saved", "success");
+}
+
+function saveTaskAsTemplate() {
+  const sourceTaskId = document.querySelector("#task-template-source")?.value;
+  const task = byId(state.tasks, sourceTaskId);
+  const name = document.querySelector("#task-template-name")?.value.trim() || task?.title || "Task Template";
+  if (!task) {
+    showToast("Choose a source task", "info");
+    return;
+  }
+  const template = {
+    id: uid("task-template"),
+    name,
+    description: task.description || `Reusable task template from ${task.title}`,
+    assignee: task.assignee,
+    priority: task.priority,
+    durationDays: Math.max(1, daysBetween(task.startDate || todayKey(), task.dueDate || shiftDate(todayKey(), 3))),
+    tags: [...(task.tags || [])],
+    subtasks: (task.subtasks || []).map((subtask) => subtask.title),
+    customFields: { ...(task.customFields || {}) }
+  };
+  state.taskTemplates = [template, ...state.taskTemplates.filter((item) => item.name.toLowerCase() !== name.toLowerCase())];
+  saveState();
+  render();
+  showToast("Task template saved", "success");
+}
+
+function deleteProjectTemplate(templateId) {
+  state.projectTemplates = state.projectTemplates.filter((template) => template.id !== templateId);
+  saveState();
+  render();
+  showToast("Project template deleted", "success");
+}
+
+function deleteTaskTemplate(templateId) {
+  state.taskTemplates = state.taskTemplates.filter((template) => template.id !== templateId);
+  saveState();
+  render();
+  showToast("Task template deleted", "success");
 }
 
 function createTaskFromSubmissionRecord(submission, form) {
@@ -10252,6 +10522,64 @@ function toggleAutomation(ruleId) {
   saveState();
   render();
   showToast("Automation updated", "success");
+}
+
+function saveAutomationRule() {
+  const id = document.querySelector("#automation-id")?.value || uid("automation");
+  const existing = byId(state.automations, id);
+  const name = document.querySelector("#automation-name")?.value.trim();
+  const trigger = document.querySelector("#automation-trigger")?.value.trim();
+  const action = document.querySelector("#automation-action")?.value.trim();
+  const enabled = Boolean(document.querySelector("#automation-enabled")?.checked);
+
+  if (!name || !trigger || !action) {
+    showToast("Add a name, trigger, and action", "info");
+    return;
+  }
+
+  const rule = {
+    id,
+    name,
+    trigger,
+    action,
+    enabled,
+    lastRun: existing?.lastRun || "",
+    runCount: Number(existing?.runCount || 0)
+  };
+
+  state.automations = existing
+    ? state.automations.map((automation) => automation.id === id ? rule : automation)
+    : [rule, ...state.automations];
+  saveState();
+  render();
+  showToast(existing ? "Automation updated" : "Automation created", "success");
+}
+
+function editAutomationRule(ruleId) {
+  const automation = byId(state.automations, ruleId);
+  if (!automation) return;
+  const idInput = document.querySelector("#automation-id");
+  const nameInput = document.querySelector("#automation-name");
+  const triggerInput = document.querySelector("#automation-trigger");
+  const actionInput = document.querySelector("#automation-action");
+  const enabledInput = document.querySelector("#automation-enabled");
+  if (idInput) idInput.value = automation.id;
+  if (nameInput) {
+    nameInput.value = automation.name;
+    nameInput.focus();
+  }
+  if (triggerInput) triggerInput.value = automation.trigger;
+  if (actionInput) actionInput.value = automation.action;
+  if (enabledInput) enabledInput.checked = automation.enabled;
+  showToast("Automation loaded for editing", "info");
+}
+
+function deleteAutomationRule(ruleId) {
+  state.automations = state.automations.filter((automation) => automation.id !== ruleId);
+  state.automationHistory = state.automationHistory.filter((run) => run.automationId !== ruleId);
+  saveState();
+  render();
+  showToast("Automation deleted", "success");
 }
 
 function runAllAutomations() {
@@ -11774,6 +12102,30 @@ document.addEventListener("click", (event) => {
   const useTaskTemplateButton = event.target.closest("[data-use-task-template]");
   if (useTaskTemplateButton) createTaskTemplateFromButton(useTaskTemplateButton);
 
+  const createProjectTemplateButton = event.target.closest("#project-template-create");
+  if (createProjectTemplateButton) {
+    saveProjectAsTemplate();
+    return;
+  }
+
+  const createTaskTemplateButton = event.target.closest("#task-template-create");
+  if (createTaskTemplateButton) {
+    saveTaskAsTemplate();
+    return;
+  }
+
+  const deleteProjectTemplateButton = event.target.closest("[data-delete-project-template]");
+  if (deleteProjectTemplateButton) {
+    deleteProjectTemplate(deleteProjectTemplateButton.dataset.deleteProjectTemplate);
+    return;
+  }
+
+  const deleteTaskTemplateButton = event.target.closest("[data-delete-task-template]");
+  if (deleteTaskTemplateButton) {
+    deleteTaskTemplate(deleteTaskTemplateButton.dataset.deleteTaskTemplate);
+    return;
+  }
+
   const templateSubmissionButton = event.target.closest("[data-template-submission]");
   if (templateSubmissionButton) createProjectFromSubmission(templateSubmissionButton.dataset.templateSubmission);
 
@@ -11782,6 +12134,24 @@ document.addEventListener("click", (event) => {
 
   const toggleAutomationButton = event.target.closest("[data-toggle-automation]");
   if (toggleAutomationButton) toggleAutomation(toggleAutomationButton.dataset.toggleAutomation);
+
+  const saveAutomationButton = event.target.closest("#automation-create");
+  if (saveAutomationButton) {
+    saveAutomationRule();
+    return;
+  }
+
+  const editAutomationButton = event.target.closest("[data-edit-automation]");
+  if (editAutomationButton) {
+    editAutomationRule(editAutomationButton.dataset.editAutomation);
+    return;
+  }
+
+  const deleteAutomationButton = event.target.closest("[data-delete-automation]");
+  if (deleteAutomationButton) {
+    deleteAutomationRule(deleteAutomationButton.dataset.deleteAutomation);
+    return;
+  }
 
   const runAllAutomationsButton = event.target.closest("#automation-run-all");
   if (runAllAutomationsButton) runAllAutomations();
@@ -11982,6 +12352,22 @@ document.addEventListener("click", (event) => {
   const archiveProjectButton = event.target.closest("[data-archive-project]");
   if (archiveProjectButton) {
     archiveProject(archiveProjectButton.dataset.archiveProject);
+    return;
+  }
+
+  const editProjectButton = event.target.closest("[data-edit-project]");
+  if (editProjectButton) {
+    const project = byId(state.projects, editProjectButton.dataset.editProject);
+    if (project) {
+      populateProjectForm(project);
+      openDialog(els.projectDialog);
+    }
+    return;
+  }
+
+  const duplicateProjectButton = event.target.closest("[data-duplicate-project]");
+  if (duplicateProjectButton) {
+    duplicateProject(duplicateProjectButton.dataset.duplicateProject);
     return;
   }
 
@@ -12313,6 +12699,9 @@ els.savedViewFilter?.addEventListener("change", (event) => {
 });
 
 els.saveViewButton?.addEventListener("click", saveCurrentView);
+els.updateViewButton?.addEventListener("click", updateCurrentSavedView);
+els.renameViewButton?.addEventListener("click", renameCurrentSavedView);
+els.pinViewButton?.addEventListener("click", togglePinnedSavedView);
 els.deleteViewButton?.addEventListener("click", deleteCurrentSavedView);
 
 els.appView.addEventListener("change", (event) => {
@@ -12442,33 +12831,46 @@ els.taskForm.addEventListener("submit", (event) => {
 els.projectForm.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!canWrite("projects:write")) {
-    showToast("Your role cannot create projects", "info");
+    showToast("Your role cannot save projects", "info");
     return;
   }
+  const id = document.querySelector("#project-id").value || uid("project");
+  const existingProject = byId(state.projects, id);
   const project = {
-    id: uid("project"),
+    id,
     name: document.querySelector("#project-name").value.trim(),
     companyId: document.querySelector("#project-company").value,
     description: document.querySelector("#project-description").value.trim(),
     owner: document.querySelector("#project-owner").value,
     startDate: document.querySelector("#project-start-date").value,
-    dueDate: document.querySelector("#project-due-date").value
+    dueDate: document.querySelector("#project-due-date").value,
+    archivedAt: existingProject?.archivedAt || "",
+    archivedBy: existingProject?.archivedBy || ""
   };
 
-  state.projects = [project, ...state.projects];
-  addActivity({
-    projectId: project.id,
-    type: "project_create",
-    message: `created project ${project.name}`
-  });
+  if (existingProject) {
+    state.projects = state.projects.map((item) => item.id === id ? project : item);
+    addActivity({
+      projectId: project.id,
+      type: "project_update",
+      message: `updated project ${project.name}`
+    });
+  } else {
+    state.projects = [project, ...state.projects];
+    addActivity({
+      projectId: project.id,
+      type: "project_create",
+      message: `created project ${project.name}`
+    });
+  }
   state.selectedProject = project.id;
   state.selectedRoute = "project";
   state.selectedProjectTab = "overview";
   saveState();
   closeDialog(els.projectDialog);
   render();
-  showToast("Project created", "success");
-  syncProjectToApi(project, "Project created in API", true);
+  showToast(existingProject ? "Project updated" : "Project created", "success");
+  syncProjectToApi(project, existingProject ? "Project synced to API" : "Project created in API", !existingProject);
 });
 
 els.companyForm.addEventListener("submit", (event) => {

@@ -2064,6 +2064,31 @@ body[data-tutorial-target="view"] #app-view {
   gap: 10px;
 }
 
+.template-composer,
+.automation-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.automation-composer {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.automation-composer label:nth-of-type(3) {
+  grid-column: 1 / -1;
+}
+
+.automation-enabled-control {
+  align-self: center;
+}
+
 .template-card,
 .automation-card,
 .automation-history-item {
@@ -4785,7 +4810,9 @@ body[data-density="compact"] .main-content {
   .doc-composer,
   .file-composer,
   .field-composer,
+  .template-composer,
   .template-controls,
+  .automation-composer,
   .settings-form,
   .settings-section-account .api-sync-form,
   .access-summary-grid,
