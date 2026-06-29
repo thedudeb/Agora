@@ -844,6 +844,82 @@ textarea:focus {
   border-radius: 6px;
 }
 
+.tutorial-overlay {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 30;
+  width: min(420px, calc(100vw - 32px));
+}
+
+.tutorial-overlay[hidden] {
+  display: none;
+}
+
+.tutorial-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.tutorial-card h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.tutorial-card p:not(.eyebrow) {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.tutorial-progress,
+.tutorial-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tutorial-progress span {
+  color: var(--accent-strong);
+  font-weight: 900;
+}
+
+.tutorial-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+body.is-tutorial-active .sidebar,
+body.is-tutorial-active .toolbar,
+body.is-tutorial-active .topbar-actions,
+body.is-tutorial-active .connection-banner,
+body.is-tutorial-active .onboarding-panel,
+body.is-tutorial-active .settings-tabs,
+body.is-tutorial-active .settings-section,
+body.is-tutorial-active #app-view {
+  transition: box-shadow 160ms ease, outline-color 160ms ease;
+}
+
+body[data-tutorial-target="sidebar"] .sidebar,
+body[data-tutorial-target="toolbar"] .toolbar,
+body[data-tutorial-target="topbar"] .topbar-actions,
+body[data-tutorial-target="connection"] .connection-banner,
+body[data-tutorial-target="setup"] .onboarding-panel,
+body[data-tutorial-target="settings"] .settings-tabs,
+body[data-tutorial-target="settings"] .settings-section,
+body[data-tutorial-target="view"] #app-view {
+  outline: 3px solid var(--accent);
+  outline-offset: 4px;
+  box-shadow: 0 0 0 8px var(--accent-soft);
+}
+
 .connection-banner {
   display: flex;
   align-items: center;
@@ -4237,6 +4313,16 @@ body[data-density="compact"] .main-content {
   .connection-banner {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .tutorial-overlay {
+    right: 16px;
+    bottom: 16px;
+    width: calc(100vw - 32px);
+  }
+
+  .tutorial-actions .button {
+    flex: 1 1 96px;
   }
 
   .connection-actions {

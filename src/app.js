@@ -217,6 +217,66 @@ const routes = {
   invite: "Accept Invite"
 };
 
+const tutorialSteps = [
+  {
+    id: "dashboard",
+    route: "dashboard",
+    target: "setup",
+    title: "Start with your workspace setup",
+    body: "Use the setup panel to choose demo data or a clean workspace, name the workspace, add a company, create a project, invite teammates, and connect the API."
+  },
+  {
+    id: "navigation",
+    route: "dashboard",
+    target: "sidebar",
+    title: "Move through the workspace",
+    body: "The sidebar groups the app into Home, Work, Manage, Admin, and Projects. Open the groups you need and jump between project views without losing your filters."
+  },
+  {
+    id: "filters",
+    route: "dashboard",
+    target: "toolbar",
+    title: "Use filters as your command layer",
+    body: "Filter by company, project, assignee, status, and priority. Save common views when you want a repeatable command center for standups or client check-ins."
+  },
+  {
+    id: "work",
+    route: "board",
+    target: "view",
+    title: "Run work from the core views",
+    body: "Board, List, Calendar, and My Work are different lenses on the same tasks. Use whichever view fits the meeting or job in front of you."
+  },
+  {
+    id: "today",
+    route: "daily",
+    target: "view",
+    title: "Plan the day",
+    body: "Today gives each person a focused daily task page. Pull work into Now, Next, or Later and keep daily notes next to the plan."
+  },
+  {
+    id: "inbox",
+    route: "inbox",
+    target: "view",
+    title: "Triage notifications",
+    body: "Inbox collects due-soon work, assignments, comments, mentions, watched tasks, and activity that needs attention. Mark items read or plan them for Today."
+  },
+  {
+    id: "settings",
+    route: "settings",
+    settingsTab: "sync",
+    target: "settings",
+    title: "Connect and understand sync",
+    body: "Settings separates Account, Workspace, Members, Integrations, Sync, Security, and Developer tools. The Sync tab shows where records live and what still needs repair."
+  },
+  {
+    id: "create",
+    route: "dashboard",
+    target: "topbar",
+    title: "Create work quickly",
+    body: "Use New Project and New Task from the top bar whenever you need to capture work. Agora keeps the same data available across board, list, calendar, reports, and client views."
+  }
+];
+
 const seedData = {
   selectedRoute: "landing",
   selectedProject: "all",
@@ -229,6 +289,11 @@ const seedData = {
   onboarding: {
     dismissed: false,
     sampleMode: "demo",
+    completedAt: ""
+  },
+  tutorial: {
+    active: false,
+    step: 0,
     completedAt: ""
   },
   filters: {
@@ -999,6 +1064,7 @@ const els = {
   navInboxCount: document.querySelector("#nav-inbox-count"),
   notificationCount: document.querySelector("#notification-count"),
   toastRegion: document.querySelector("#toast-region"),
+  tutorialOverlay: document.querySelector("#tutorial-overlay"),
   searchInput: document.querySelector("#search-input"),
   searchResults: document.querySelector("#search-results"),
   companyFilter: document.querySelector("#company-filter"),
@@ -1097,6 +1163,11 @@ function normalizeState(nextState) {
     onboarding: {
       ...seedData.onboarding,
       ...(nextState.onboarding || {})
+    },
+    tutorial: {
+      ...seedData.tutorial,
+      ...(nextState.tutorial || {}),
+      step: clamp(Number((nextState.tutorial || {}).step || 0), 0, tutorialSteps.length - 1)
     },
     workspace: {
       ...seedData.workspace,
@@ -1835,6 +1906,7 @@ function renderConnectionBanner() {
     <div class="connection-actions">
       ${setupComplete ? `<span class="status-pill inbox-green">Setup complete</span>` : `<span class="status-pill inbox-amber">${score.done}/${score.total} setup</span>`}
       ${setupComplete ? "" : `<button class="button button-secondary compact-button" type="button" data-onboarding-action="show">Continue setup</button>`}
+      <button class="button button-secondary compact-button" type="button" data-tutorial-action="start">${state.tutorial?.completedAt ? "Tutorial" : "Start Tutorial"}</button>
       <button class="button button-secondary compact-button" type="button" data-onboarding-action="sync">Sync</button>
     </div>
   `;
@@ -1871,6 +1943,46 @@ function renderOnboardingPanel() {
         `).join("")}
       </div>
     </section>
+  `;
+}
+
+function activeTutorialStep() {
+  const index = clamp(Number(state.tutorial?.step || 0), 0, tutorialSteps.length - 1);
+  return {
+    index,
+    step: tutorialSteps[index]
+  };
+}
+
+function renderTutorialOverlay() {
+  if (!els.tutorialOverlay) return;
+  const isActive = Boolean(state.tutorial?.active);
+  document.body.dataset.tutorialTarget = isActive ? activeTutorialStep().step.target : "";
+  document.body.classList.toggle("is-tutorial-active", isActive);
+
+  if (!isActive) {
+    els.tutorialOverlay.hidden = true;
+    els.tutorialOverlay.innerHTML = "";
+    return;
+  }
+
+  const { index, step } = activeTutorialStep();
+  els.tutorialOverlay.hidden = false;
+  els.tutorialOverlay.innerHTML = `
+    <div class="tutorial-card" role="dialog" aria-label="Agora tutorial">
+      <div class="tutorial-progress">
+        <span>${index + 1}/${tutorialSteps.length}</span>
+        <button class="icon-button" type="button" data-tutorial-action="close" aria-label="Close tutorial">x</button>
+      </div>
+      <p class="eyebrow">Tutorial mode</p>
+      <h2>${escapeHtml(step.title)}</h2>
+      <p>${escapeHtml(step.body)}</p>
+      <div class="tutorial-actions">
+        <button class="button button-secondary compact-button" type="button" data-tutorial-action="prev" ${index === 0 ? "disabled" : ""}>Back</button>
+        <button class="button button-secondary compact-button" type="button" data-tutorial-action="restart">Restart</button>
+        <button class="button button-primary compact-button" type="button" data-tutorial-action="${index === tutorialSteps.length - 1 ? "finish" : "next"}">${index === tutorialSteps.length - 1 ? "Done" : "Next"}</button>
+      </div>
+    </div>
   `;
 }
 
@@ -4155,6 +4267,62 @@ function setRoute(route) {
   }
 }
 
+function syncRouteToTutorialStep() {
+  if (!state.tutorial?.active) return;
+  const { step } = activeTutorialStep();
+  state.selectedRoute = routeFallback(step.route || "dashboard");
+  if (step.settingsTab) state.selectedSettingsTab = settingsTabFallback(step.settingsTab);
+  if (state.selectedRoute !== "project") state.selectedProjectTab = "overview";
+  if (state.selectedRoute !== "company") state.selectedCompany = "all";
+  openSidebarGroupForRoute(state.selectedRoute);
+}
+
+function startTutorial(step = 0) {
+  state.tutorial = {
+    ...state.tutorial,
+    active: true,
+    step: clamp(step, 0, tutorialSteps.length - 1)
+  };
+  syncRouteToTutorialStep();
+  saveState();
+  render();
+}
+
+function handleTutorialAction(action) {
+  const current = clamp(Number(state.tutorial?.step || 0), 0, tutorialSteps.length - 1);
+  if (action === "start") {
+    startTutorial(state.tutorial?.completedAt ? 0 : current);
+    return;
+  }
+
+  if (action === "next") {
+    startTutorial(current + 1);
+    return;
+  }
+
+  if (action === "prev") {
+    startTutorial(current - 1);
+    return;
+  }
+
+  if (action === "restart") {
+    startTutorial(0);
+    return;
+  }
+
+  if (action === "close" || action === "finish") {
+    state.tutorial = {
+      ...state.tutorial,
+      active: false,
+      step: action === "finish" ? tutorialSteps.length - 1 : current,
+      completedAt: action === "finish" ? new Date().toISOString() : state.tutorial?.completedAt || ""
+    };
+    saveState();
+    render();
+    showToast(action === "finish" ? "Tutorial complete" : "Tutorial closed", action === "finish" ? "success" : "info");
+  }
+}
+
 function handleOnboardingAction(action) {
   if (action === "use-demo") {
     const nextState = normalizeState({
@@ -4490,6 +4658,7 @@ function render() {
       </section>
     `;
   }
+  renderTutorialOverlay();
   heartbeatPresence();
   renderPresenceCursors();
   refreshSmoothScroll();
@@ -10430,6 +10599,12 @@ document.addEventListener("click", (event) => {
   const onboardingActionButton = event.target.closest("[data-onboarding-action]");
   if (onboardingActionButton) {
     handleOnboardingAction(onboardingActionButton.dataset.onboardingAction);
+    return;
+  }
+
+  const tutorialActionButton = event.target.closest("[data-tutorial-action]");
+  if (tutorialActionButton) {
+    handleTutorialAction(tutorialActionButton.dataset.tutorialAction);
     return;
   }
 
