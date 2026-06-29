@@ -42,16 +42,16 @@ const demoMemberships = [
 ];
 
 const rolePermissions = {
-  admin: ["workspace:read", "workspace:write", "workspace:import", "audit:read", "members:write", "projects:write", "tasks:write", "comments:write", "activity:write", "attachments:write", "approvals:write"],
-  manager: ["workspace:read", "workspace:write", "audit:read", "projects:write", "tasks:write", "comments:write", "activity:write", "attachments:write", "approvals:write"],
-  member: ["workspace:read", "comments:write", "activity:write", "attachments:write"],
+  admin: ["workspace:read", "workspace:write", "workspace:import", "audit:read", "members:write", "projects:write", "tasks:write", "time:write", "comments:write", "activity:write", "attachments:write", "approvals:write"],
+  manager: ["workspace:read", "workspace:write", "audit:read", "projects:write", "tasks:write", "time:write", "comments:write", "activity:write", "attachments:write", "approvals:write"],
+  member: ["workspace:read", "time:write", "comments:write", "activity:write", "attachments:write"],
   client: ["workspace:read", "comments:write", "activity:write", "approvals:write"]
 };
 
 const recordCollections = {
   companies: { writePermission: "projects:write", normalizer: normalizeCompany, label: "company" },
   approvals: { writePermission: "approvals:write", normalizer: normalizeApproval, label: "approval" },
-  timeEntries: { writePermission: "tasks:write", normalizer: normalizeTimeEntry, label: "time entry" },
+  timeEntries: { writePermission: "time:write", normalizer: normalizeTimeEntry, label: "time entry" },
   comments: { writePermission: "comments:write", normalizer: normalizeComment, label: "comment" },
   activities: { writePermission: "activity:write", normalizer: normalizeActivity, label: "activity" },
   documents: { writePermission: "attachments:write", normalizer: normalizeDocument, label: "document" },
@@ -2136,11 +2136,12 @@ async function archiveTask(storage, taskId, session, archived) {
 }
 
 async function upsertCollectionItem(storage, key, item, normalizer, session, action, detailLabel) {
-  const incomingItem = requireRecord(item, "Item");
+  const incomingItem = prepareRecordForSession(key, item, session);
   const snapshot = await storage.loadWorkspaceSnapshot();
   const existingItems = await storage.loadRecords(key, scopedRecordFilters(session, {}));
   const existingItem = existingItems.find((entry) => entry.id === incomingItem.id);
-  const nextItem = enrichRecordScopeFields(normalizer(existingItem ? { ...existingItem, ...incomingItem } : incomingItem), snapshot);
+  const normalizedItem = enrichRecordScopeFields(normalizer(existingItem ? { ...existingItem, ...incomingItem } : incomingItem), snapshot);
+  const nextItem = applySessionRecordPolicy(key, normalizedItem, existingItem, session);
   assertCanWriteScopedRecord(key, nextItem, snapshot, session);
   const savedItem = await storage.upsertRecord(key, nextItem, {
     storage: storage.driver || "json-file",
@@ -2154,6 +2155,33 @@ async function upsertCollectionItem(storage, key, item, normalizer, session, act
     detail: `${session.user.name} saved ${detailLabel(savedItem)}`
   });
   return savedItem;
+}
+
+function prepareRecordForSession(key, item, session) {
+  const record = requireRecord(item, "Item");
+  if (key === "comments") return { ...record, author: session.user.id };
+  if (key === "activities") return { ...record, memberId: session.user.id };
+  if (key === "documents" || key === "files") return { ...record, owner: session.user.id };
+  if (key === "presence" && !hasPermission(session, "members:write")) return { ...record, memberId: session.user.id };
+  if (key === "timeEntries" && !record.memberId) return { ...record, memberId: session.user.id };
+  return record;
+}
+
+function applySessionRecordPolicy(key, record, existingItem, session) {
+  if (key === "timeEntries" && record.memberId !== session.user.id && !hasPermission(session, "members:write")) {
+    publicError(403, "Time entries can only be logged for the current user");
+  }
+
+  if (key === "approvals" && isClientSession(session)) {
+    if (!existingItem) publicError(403, "Clients can only respond to existing approvals");
+    return {
+      ...existingItem,
+      status: record.status || existingItem.status,
+      updatedAt: record.updatedAt || new Date().toISOString()
+    };
+  }
+
+  return record;
 }
 
 function enrichRecordScopeFields(record, snapshot = {}) {

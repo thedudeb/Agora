@@ -147,6 +147,49 @@ async function run() {
     });
     assert(createdTask.task.title === "Smoke Task", "task create failed");
 
+    const blockedMemberTask = await requestError(`${baseUrl}/api/tasks`, {
+      method: "POST",
+      token: accepted.token,
+      body: {
+        task: {
+          id: "member-created-task",
+          projectId: "project-smoke",
+          title: "Member-created task"
+        }
+      }
+    });
+    assert(blockedMemberTask.status === 403, "member should not create tasks");
+
+    const memberTime = await request(`${baseUrl}/api/records/timeEntries`, {
+      method: "POST",
+      token: accepted.token,
+      body: {
+        record: {
+          id: "member-time-smoke",
+          taskId: "task-smoke",
+          date: "2026-07-02",
+          minutes: 25,
+          note: "Member focus block"
+        }
+      }
+    });
+    assert(memberTime.record.memberId === accepted.user.id, "member time entry did not use current user");
+
+    const blockedMemberTime = await requestError(`${baseUrl}/api/records/timeEntries`, {
+      method: "POST",
+      token: accepted.token,
+      body: {
+        record: {
+          id: "spoofed-member-time",
+          taskId: "task-smoke",
+          memberId: "mara",
+          date: "2026-07-02",
+          minutes: 15
+        }
+      }
+    });
+    assert(blockedMemberTime.status === 403, "member should not log time for another user");
+
     const updatedTask = await request(`${baseUrl}/api/tasks/task-smoke`, {
       method: "PUT",
       token: login.token,
@@ -180,10 +223,24 @@ async function run() {
     });
     assert(createdComment.comment.body === "Smoke test comment", "comment create failed");
 
+    const memberComment = await request(`${baseUrl}/api/comments`, {
+      method: "POST",
+      token: accepted.token,
+      body: {
+        comment: {
+          id: "member-comment-smoke",
+          taskId: "task-smoke",
+          author: "mara",
+          body: "Member-authored smoke test comment"
+        }
+      }
+    });
+    assert(memberComment.comment.author === accepted.user.id, "member comment author was not canonicalized");
+
     const comments = await request(`${baseUrl}/api/comments?taskId=task-smoke`, {
       token: login.token
     });
-    assert(comments.comments.length === 1, "comment list failed");
+    assert(comments.comments.length === 2, "comment list failed");
 
     const createdActivity = await request(`${baseUrl}/api/activities`, {
       method: "POST",
@@ -295,7 +352,9 @@ async function run() {
     assert(workspace.snapshot.tasks[0].title === "Updated Smoke Task", "task not stored in workspace");
     assert(workspace.snapshot.projects[0].archivedAt, "project archive not stored in workspace");
     assert(workspace.snapshot.tasks[0].archivedAt, "project archive did not archive task");
-    assert(workspace.snapshot.comments[0].body === "Smoke test comment", "comment not stored in workspace");
+    assert(workspace.snapshot.comments.some((comment) => comment.body === "Smoke test comment"), "comment not stored in workspace");
+    assert(workspace.snapshot.comments.some((comment) => comment.author === accepted.user.id), "member comment author not stored correctly");
+    assert(workspace.snapshot.timeEntries.some((entry) => entry.memberId === accepted.user.id), "member time entry not stored correctly");
     assert(workspace.snapshot.activities[0].message === "commented on Updated Smoke Task", "activity not stored in workspace");
     assert(workspace.snapshot.documents[0].title === "Smoke Doc", "document not stored in workspace");
     assert(workspace.snapshot.files.some((file) => file.title === "smoke-plan.pdf"), "file not stored in workspace");
@@ -305,13 +364,13 @@ async function run() {
       token: login.token
     });
     const commentsReport = finalBackendHealth.records.find((record) => record.key === "comments");
-    assert(commentsReport && commentsReport.count === 1, "backend health did not count structured comments");
+    assert(commentsReport && commentsReport.count === 2, "backend health did not count structured comments");
     assert(finalBackendHealth.snapshot.counts.projects === 1, "backend health did not count snapshot projects");
 
     const audit = await request(`${baseUrl}/api/audit-log`, {
       token: login.token
     });
-    assert(audit.events.length === 15, "audit log was not written");
+    assert(audit.events.length === 17, "audit log was not written");
 
     await testLockedAuthDefaults();
     await testAccountAuth();
@@ -609,6 +668,37 @@ async function testAccountAuth() {
       }
     });
     assert(blockedClientWrite.status === 403, "client cross-company record write should be blocked");
+
+    const blockedClientCreate = await requestError(`${baseUrl}/api/records/approvals`, {
+      method: "POST",
+      token: clientLogin.token,
+      body: {
+        record: {
+          id: "approval-client-created",
+          companyId: "company-record",
+          projectId: "project-record",
+          title: "Client-created approval",
+          status: "approved"
+        }
+      }
+    });
+    assert(blockedClientCreate.status === 403, "client should not create new approvals");
+
+    const clientApprovalResponse = await request(`${baseUrl}/api/records/approvals`, {
+      method: "POST",
+      token: clientLogin.token,
+      body: {
+        record: {
+          id: "approval-record",
+          companyId: "company-record",
+          projectId: "project-record",
+          title: "Client changed the title",
+          status: "approved"
+        }
+      }
+    });
+    assert(clientApprovalResponse.record.status === "approved", "client approval response did not update status");
+    assert(clientApprovalResponse.record.title === "Record Approval", "client approval response should not change title");
 
     const clientBackendHealth = await request(`${baseUrl}/api/backend/health`, {
       token: clientLogin.token

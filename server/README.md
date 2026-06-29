@@ -102,7 +102,7 @@ The first migration creates the snapshot/audit tables plus structured record tab
 - `POST /api/invitations/:token/accept`: accepts an invitation and creates a session. Body: `{ "name": "Jordan Lee", "password": "optional 8+ characters" }`.
 - `GET /api/records`: returns structured collections from the active storage adapter. When no structured rows exist yet, the response includes `snapshotFallback` for bootstrap compatibility.
 - `GET /api/records/:collection`: returns a structured collection such as `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, or `presence`. Supports filters like `?projectId=...`, `?taskId=...`, `?companyId=...`, and `?memberId=...`.
-- `POST /api/records/:collection`: creates or updates one structured record for supported collections. Writes are checked server-side against the authenticated session scope, project, task, and company relationships.
+- `POST /api/records/:collection`: creates or updates one structured record for supported collections. Writes are checked server-side against the authenticated session scope, project, task, company relationships, and member-owned fields. Clients can respond to existing approvals but cannot create new approval records.
 - `GET /api/workspace`: returns the latest saved workspace snapshot.
 - `PUT /api/workspace`: saves a workspace snapshot for admin/project-manager roles.
 - `POST /api/workspace/import`: imports a workspace snapshot for admins.
@@ -138,8 +138,8 @@ Authorization: Bearer <token>
 
 - `admin`: read/write/import workspace data, read audit log, manage members, and respond to approvals.
 - `manager`: read/write workspace data, read audit log, and respond to approvals.
-- `member`: read workspace data, add comments/activity, and add attachments.
-- `client`: read scoped workspace data, add comments/activity, and respond to approvals.
+- `member`: read workspace data, log their own time, add comments/activity, and add attachments.
+- `client`: read scoped workspace data, add comments/activity, and respond to existing approvals.
 
 Client memberships can include `companyId`. When present, workspace snapshots and structured record reads are scoped to that company before they are returned to the browser.
 
