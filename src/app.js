@@ -1117,12 +1117,7 @@ function normalizeState(nextState) {
     automations: Array.isArray(nextState.automations) ? nextState.automations : seedData.automations,
     automationHistory: Array.isArray(nextState.automationHistory) ? nextState.automationHistory : [],
     operatorActions: Array.isArray(nextState.operatorActions) ? nextState.operatorActions : [],
-    companies: nextState.companies.map((company) => ({
-      type: "Client",
-      status: "active",
-      description: "",
-      ...company
-    })),
+    companies: nextState.companies.map(normalizeCompanyRecord),
     projects: nextState.projects.map(normalizeProjectRecord),
     tasks: nextState.tasks.map(normalizeTaskRecord)
   };
@@ -1324,9 +1319,27 @@ function collectionSignature(items = []) {
   })));
 }
 
-function mergeCollectionFromApi(collection, incoming = []) {
+function normalizeCompanyRecord(company = {}) {
+  return {
+    type: "Client",
+    status: "active",
+    description: "",
+    ...company
+  };
+}
+
+function normalizeCollectionRecords(collection, items = []) {
+  if (collection === "companies") return items.map(normalizeCompanyRecord).filter((company) => company.id);
+  return items;
+}
+
+function mergeCollectionFromApi(collection, incoming = [], options = {}) {
   const current = Array.isArray(state[collection]) ? state[collection] : [];
-  const nextItems = mergeRecordsById(current, incoming);
+  const incomingItems = normalizeCollectionRecords(collection, incoming);
+  if (!incomingItems.length && !options.replaceEmpty) return false;
+  const nextItems = options.authoritative || options.replaceEmpty
+    ? incomingItems
+    : mergeRecordsById(current, incomingItems);
   if (collectionSignature(nextItems) === collectionSignature(current)) return false;
   state[collection] = nextItems;
   return true;
@@ -1448,7 +1461,7 @@ async function loadStructuredRecordsFromApi(options = {}) {
   collections.forEach((collection) => {
     const incoming = Array.isArray(records[collection]) ? records[collection] : [];
     if (!incoming.length) return;
-    changed = mergeCollectionFromApi(collection, incoming) || changed;
+    changed = mergeCollectionFromApi(collection, incoming, { authoritative: collection === "companies" }) || changed;
   });
 
   if (changed) {
