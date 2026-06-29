@@ -3079,6 +3079,10 @@ th {
   font-weight: 800;
 }
 
+.realtime-strip .button {
+  margin-left: auto;
+}
+
 .collaboration-header,
 .comment-meta {
   display: flex;
@@ -3131,6 +3135,49 @@ th {
   color: var(--green);
   background: #e1eee1;
   border-color: #bfd8c8;
+}
+
+.mention-token {
+  display: inline-flex;
+  padding: 0 4px;
+  color: var(--accent-strong);
+  font-weight: 900;
+  background: var(--accent-soft);
+  border-radius: 5px;
+}
+
+.presence-cursor-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  pointer-events: none;
+}
+
+.presence-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  filter: drop-shadow(0 8px 16px rgba(35, 31, 25, 0.16));
+  transition: transform 180ms ease;
+}
+
+.presence-cursor-point {
+  width: 0;
+  height: 0;
+  border-top: 13px solid var(--accent);
+  border-right: 9px solid transparent;
+}
+
+.presence-cursor-label {
+  padding: 4px 7px;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 900;
+  background: var(--accent);
+  border-radius: 6px;
 }
 
 .live-task-chip {

@@ -2493,6 +2493,10 @@ function normalizePresence(presence) {
   if (!presence.id || !presence.memberId) {
     publicError(400, "Presence requires id and memberId");
   }
+  const cursorX = optionalNumber(presence.cursorX);
+  const cursorY = optionalNumber(presence.cursorY);
+  const viewportWidth = optionalNumber(presence.viewportWidth);
+  const viewportHeight = optionalNumber(presence.viewportHeight);
   return {
     id: String(presence.id),
     memberId: String(presence.memberId),
@@ -2500,10 +2504,20 @@ function normalizePresence(presence) {
     projectId: presence.projectId ? String(presence.projectId) : "",
     taskId: presence.taskId ? String(presence.taskId) : "",
     viewing: presence.viewing ? String(presence.viewing) : "",
+    cursorX,
+    cursorY,
+    viewportWidth,
+    viewportHeight,
     status: presence.status ? String(presence.status) : "online",
     lastActiveAt: presence.lastActiveAt ? String(presence.lastActiveAt) : new Date().toISOString(),
     updatedAt: presence.updatedAt ? String(presence.updatedAt) : new Date().toISOString()
   };
+}
+
+function optionalNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function normalizeDocument(document) {

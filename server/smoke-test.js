@@ -237,6 +237,26 @@ async function run() {
     });
     assert(memberComment.comment.author === accepted.user.id, "member comment author was not canonicalized");
 
+    const memberPresence = await request(`${baseUrl}/api/records/presence`, {
+      method: "POST",
+      token: accepted.token,
+      body: {
+        record: {
+          id: "presence-member-smoke",
+          memberId: "mara",
+          route: "board",
+          taskId: "task-smoke",
+          viewing: "Viewing Smoke Task",
+          cursorX: 120,
+          cursorY: 240,
+          viewportWidth: 1280,
+          viewportHeight: 720
+        }
+      }
+    });
+    assert(memberPresence.record.memberId === accepted.user.id, "member presence was not canonicalized");
+    assert(memberPresence.record.cursorX === 120 && memberPresence.record.cursorY === 240, "presence cursor fields were not stored");
+
     const comments = await request(`${baseUrl}/api/comments?taskId=task-smoke`, {
       token: login.token
     });
@@ -370,7 +390,7 @@ async function run() {
     const audit = await request(`${baseUrl}/api/audit-log`, {
       token: login.token
     });
-    assert(audit.events.length === 17, "audit log was not written");
+    assert(audit.events.length === 18, "audit log was not written");
 
     await testLockedAuthDefaults();
     await testAccountAuth();

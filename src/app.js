@@ -208,6 +208,7 @@ const seedData = {
   invitations: [],
   inboxRead: [],
   inboxArchived: [],
+  taskWatchers: {},
   approvals: [
     {
       id: "approval-kickoff-checklist",
@@ -924,6 +925,8 @@ let toastTimers = new Map();
 let lastFocusedBeforeDialog = null;
 let lastPresenceSignature = "";
 let lastPresenceSyncedAt = 0;
+let lastPointer = null;
+let lastPointerSyncedAt = 0;
 let liveRefreshInFlight = false;
 let taskEditSnapshots = new Map();
 let staleTaskOverrideId = "";
@@ -1006,6 +1009,7 @@ function normalizeState(nextState) {
     dailyPlans: { ...seedData.dailyPlans, ...(nextState.dailyPlans || {}) },
     inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
     inboxArchived: Array.isArray(nextState.inboxArchived) ? nextState.inboxArchived : [],
+    taskWatchers: normalizeTaskWatchers(nextState.taskWatchers),
     presence: Array.isArray(nextState.presence) ? nextState.presence : [],
     approvals: Array.isArray(nextState.approvals) ? nextState.approvals : seedData.approvals,
     customFields: Array.isArray(nextState.customFields) ? nextState.customFields : seedData.customFields,
@@ -1592,6 +1596,10 @@ function currentPresenceRecord({ taskId = "" } = {}) {
     projectId,
     taskId,
     viewing,
+    cursorX: lastPointer?.x ?? null,
+    cursorY: lastPointer?.y ?? null,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
     status: document.hidden ? "away" : "online",
     lastActiveAt: now,
     updatedAt: now
@@ -1617,6 +1625,7 @@ function heartbeatPresence({ force = false, taskId = "" } = {}) {
   upsertLocalPresence(record);
   saveState();
   syncRecordToApi("presence", record, "Presence synced", false);
+  renderPresenceCursors();
 }
 
 function livePresenceRecords({ taskId = "" } = {}) {
@@ -1635,6 +1644,61 @@ function livePresenceMembers({ taskId = "" } = {}) {
     }))
     .filter((item) => item.member)
     .slice(0, 5);
+}
+
+function currentOpenTaskId() {
+  return document.querySelector("#task-dialog[open] #task-id")?.value || "";
+}
+
+function isSamePresenceSurface(presence) {
+  if (presence.route !== state.selectedRoute) return false;
+  const openTaskId = currentOpenTaskId();
+  if (openTaskId || presence.taskId) return presence.taskId === openTaskId;
+  if (state.selectedRoute === "project") return presence.projectId === state.selectedProject;
+  if (state.selectedRoute === "company") return presence.projectId === state.selectedProject || !presence.projectId;
+  return true;
+}
+
+function remoteCursorRecords() {
+  return livePresenceRecords({})
+    .filter(isSamePresenceSurface)
+    .filter((presence) => presence.cursorX !== null && presence.cursorY !== null)
+    .filter((presence) => presence.cursorX !== undefined && presence.cursorY !== undefined)
+    .filter((presence) => Number.isFinite(Number(presence.cursorX)) && Number.isFinite(Number(presence.cursorY)))
+    .slice(0, 6);
+}
+
+function renderPresenceCursors() {
+  let layer = document.querySelector("#presence-cursors");
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.id = "presence-cursors";
+    layer.className = "presence-cursor-layer";
+    layer.setAttribute("aria-hidden", "true");
+    document.body.append(layer);
+  }
+
+  const cursors = remoteCursorRecords();
+  layer.hidden = !cursors.length;
+  layer.innerHTML = cursors.map((presence) => {
+    const scaleX = window.innerWidth / Math.max(1, Number(presence.viewportWidth || window.innerWidth));
+    const scaleY = window.innerHeight / Math.max(1, Number(presence.viewportHeight || window.innerHeight));
+    const x = Math.max(0, Math.min(window.innerWidth - 120, Number(presence.cursorX) * scaleX));
+    const y = Math.max(0, Math.min(window.innerHeight - 36, Number(presence.cursorY) * scaleY));
+    return `
+      <span class="presence-cursor" style="transform: translate(${Math.round(x)}px, ${Math.round(y)}px);">
+        <span class="presence-cursor-point"></span>
+        <span class="presence-cursor-label">${escapeHtml(memberName(presence.memberId))}</span>
+      </span>
+    `;
+  }).join("");
+}
+
+function handlePointerPresence(event) {
+  lastPointer = { x: event.clientX, y: event.clientY };
+  if (!apiSession || Date.now() - lastPointerSyncedAt < 1200) return;
+  lastPointerSyncedAt = Date.now();
+  heartbeatPresence({ force: true, taskId: currentOpenTaskId() });
 }
 
 async function refreshLiveCollaborationFromApi({ rerender = false } = {}) {
@@ -1657,6 +1721,7 @@ async function refreshLiveCollaborationFromApi({ rerender = false } = {}) {
         renderTaskCollaboration(openTaskId);
         renderTaskTimeTracking(openTaskId);
       }
+      renderPresenceCursors();
       if (rerender || ["dashboard", "inbox"].includes(state.selectedRoute)) render();
     }
     return changed;
@@ -1891,6 +1956,74 @@ function isTaskVisibleForContext(task) {
   );
 }
 
+function normalizeTaskWatchers(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).map(([taskId, watchers]) => [
+    taskId,
+    Array.from(new Set((Array.isArray(watchers) ? watchers : []).filter(Boolean).map(String)))
+  ]));
+}
+
+function taskWatchers(taskId) {
+  return Array.isArray(state.taskWatchers?.[taskId]) ? state.taskWatchers[taskId] : [];
+}
+
+function isWatchingTask(taskId, memberId = activeMemberId()) {
+  return taskWatchers(taskId).includes(memberId);
+}
+
+function setTaskWatching(taskId, shouldWatch, memberId = activeMemberId()) {
+  const watchers = new Set(taskWatchers(taskId));
+  if (shouldWatch) watchers.add(memberId);
+  else watchers.delete(memberId);
+  state.taskWatchers = {
+    ...(state.taskWatchers || {}),
+    [taskId]: Array.from(watchers)
+  };
+}
+
+function toggleTaskWatch(taskId) {
+  const task = byId(state.tasks, taskId);
+  if (!task) return;
+  const shouldWatch = !isWatchingTask(taskId);
+  setTaskWatching(taskId, shouldWatch);
+  saveState();
+  renderTaskCollaboration(taskId);
+  renderNotificationBadges();
+  showToast(shouldWatch ? "Watching task" : "Stopped watching task", "success");
+}
+
+function mentionToken(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function memberMentionTokens(member) {
+  const nameParts = String(member.name || "").split(/\s+/).filter(Boolean);
+  return new Set([
+    mentionToken(member.id),
+    mentionToken(member.email?.split("@")[0]),
+    mentionToken(nameParts[0]),
+    mentionToken(member.name)
+  ].filter(Boolean));
+}
+
+function mentionTokensFromText(value) {
+  return Array.from(String(value || "").matchAll(/@([a-z0-9._-]+)/gi)).map((match) => mentionToken(match[1])).filter(Boolean);
+}
+
+function mentionedMembers(comment) {
+  const tokens = new Set(mentionTokensFromText(comment.body));
+  if (!tokens.size) return [];
+  return workspaceMembers().filter((member) => {
+    const memberTokens = memberMentionTokens(member);
+    return Array.from(tokens).some((token) => memberTokens.has(token));
+  });
+}
+
+function isMentionedInComment(comment, memberId = activeMemberId()) {
+  return mentionedMembers(comment).some((member) => member.id === memberId);
+}
+
 function isInboxRead(id) {
   return state.inboxRead.includes(id);
 }
@@ -1969,10 +2102,11 @@ function getInboxItems({ includeArchived = false } = {}) {
   const dueSoon = shiftDate(today, 7);
   const visibleTasks = activeTasks().filter(isTaskVisibleForContext);
   const visibleTaskIds = new Set(visibleTasks.map((task) => task.id));
+  const memberId = activeMemberId();
   const items = [];
 
   visibleTasks.forEach((task) => {
-    if (task.status !== "done" && task.assignee === currentMemberId) {
+    if (task.status !== "done" && task.assignee === memberId) {
       items.push({
         id: `assignment-${task.id}`,
         type: "assignment",
@@ -2014,38 +2148,45 @@ function getInboxItems({ includeArchived = false } = {}) {
   });
 
   state.comments
-    .filter((comment) => comment.author !== currentMemberId)
+    .filter((comment) => comment.author !== memberId)
     .filter((comment) => visibleTaskIds.has(comment.taskId))
     .forEach((comment) => {
       const task = byId(state.tasks, comment.taskId);
+      const mentioned = isMentionedInComment(comment, memberId);
+      const watched = isWatchingTask(comment.taskId, memberId);
       items.push({
-        id: `comment-${comment.id}`,
-        type: "comment",
-        tone: "green",
+        id: mentioned ? `mention-${comment.id}` : watched ? `watch-comment-${comment.id}` : `comment-${comment.id}`,
+        type: mentioned ? "mention" : watched ? "watched" : "comment",
+        tone: mentioned ? "blue" : watched ? "amber" : "green",
         title: task?.title || "Task comment",
-        message: `${memberName(comment.author)} commented: ${comment.body}`,
+        message: mentioned
+          ? `${memberName(comment.author)} mentioned you: ${comment.body}`
+          : watched
+            ? `${memberName(comment.author)} commented on a task you watch: ${comment.body}`
+            : `${memberName(comment.author)} commented: ${comment.body}`,
         taskId: comment.taskId,
         projectId: task?.projectId || "",
         createdAt: comment.createdAt,
-        urgency: 1
+        urgency: mentioned ? 4 : watched ? 3 : 1
       });
     });
 
   state.activities
-    .filter((activity) => activity.memberId !== currentMemberId)
+    .filter((activity) => activity.memberId !== memberId)
     .filter((activity) => !activity.taskId || visibleTaskIds.has(activity.taskId))
     .slice(0, 12)
     .forEach((activity) => {
+      const watched = activity.taskId && isWatchingTask(activity.taskId, memberId);
       items.push({
-        id: `activity-${activity.id}`,
-        type: "activity",
-        tone: "neutral",
+        id: watched ? `watch-activity-${activity.id}` : `activity-${activity.id}`,
+        type: watched ? "watched" : "activity",
+        tone: watched ? "amber" : "neutral",
         title: activity.taskId ? byId(state.tasks, activity.taskId)?.title || projectName(activity.projectId) : projectName(activity.projectId),
-        message: `${memberName(activity.memberId)} ${activity.message}.`,
+        message: watched ? `${memberName(activity.memberId)} updated a task you watch: ${activity.message}.` : `${memberName(activity.memberId)} ${activity.message}.`,
         taskId: activity.taskId,
         projectId: activity.projectId,
         createdAt: activity.createdAt,
-        urgency: 0
+        urgency: watched ? 3 : 0
       });
     });
 
@@ -3107,6 +3248,7 @@ function render() {
     `;
   }
   heartbeatPresence();
+  renderPresenceCursors();
   refreshSmoothScroll();
 }
 
@@ -3717,10 +3859,10 @@ function renderDailySmartTask(task) {
 function renderInbox() {
   const items = getInboxItems();
   const unreadItems = items.filter((item) => !isInboxRead(item.id));
-  const urgentItems = items.filter((item) => item.type === "overdue" || item.type === "assignment" || item.type === "approval");
+  const urgentItems = items.filter((item) => item.type === "overdue" || item.type === "assignment" || item.type === "approval" || item.type === "mention");
   const dueItems = items.filter((item) => item.type === "due soon");
-  const activityItems = items.filter((item) => item.type === "comment" || item.type === "activity");
-  const approvalItems = items.filter((item) => item.type === "approval");
+  const activityItems = items.filter((item) => item.type === "comment" || item.type === "activity" || item.type === "mention" || item.type === "watched");
+  const mentionItems = items.filter((item) => item.type === "mention" || item.type === "watched");
   const briefs = operatorBriefs(3);
   const pulse = workspacePulse();
 
@@ -3729,7 +3871,7 @@ function renderInbox() {
       ${metric("Unread", unreadItems.length)}
       ${metric("Needs action", urgentItems.length)}
       ${metric("Due soon", dueItems.length)}
-      ${metric("Approvals", approvalItems.length)}
+      ${metric("Mentions", mentionItems.length)}
     </div>
 
     <div class="command-center-grid">
@@ -4773,11 +4915,15 @@ function renderTaskCollaboration(taskId = "") {
   const presence = collaborationPresenceForTask(taskId);
   const liveViewers = livePresenceMembers({ taskId });
   const realtime = taskRealtimeSummary(taskId);
+  const watching = isWatchingTask(taskId);
+  const watcherCount = taskWatchers(taskId).length;
 
   container.innerHTML = `
     <div class="realtime-strip ${realtimeLastError ? "has-error" : ""}">
       <span class="presence-pill ${apiSession && !realtimeLastError ? "is-live" : ""}">${escapeHtml(realtime.label)}</span>
       <small>${escapeHtml(realtime.detail)}</small>
+      <button class="button button-secondary compact-button" type="button" data-toggle-watch-task="${taskId}">${watching ? "Watching" : "Watch"}</button>
+      <small>${watcherCount} watcher${watcherCount === 1 ? "" : "s"}</small>
     </div>
     <div class="collaboration-grid">
       <section>
@@ -5044,6 +5190,10 @@ function renderTaskTimeEntry(entry) {
   `;
 }
 
+function renderCommentBody(body) {
+  return escapeHtml(body).replace(/@([a-z0-9._-]+)/gi, '<span class="mention-token">@$1</span>');
+}
+
 function renderComment(comment) {
   return `
     <article class="comment-item">
@@ -5053,7 +5203,7 @@ function renderComment(comment) {
           <strong>${memberName(comment.author)}</strong>
           <small>${formatTimestamp(comment.createdAt)}</small>
         </div>
-        <p>${escapeHtml(comment.body)}</p>
+        <p>${renderCommentBody(comment.body)}</p>
       </div>
     </article>
   `;
@@ -6846,6 +6996,7 @@ function addTaskComment() {
     createdAt: new Date().toISOString()
   };
   state.comments = [comment, ...state.comments];
+  setTaskWatching(taskId, true);
 
   addActivity({
     projectId: task.projectId,
@@ -9063,6 +9214,12 @@ document.addEventListener("click", (event) => {
   const commentButton = event.target.closest("#comment-submit");
   if (commentButton) addTaskComment();
 
+  const watchTaskButton = event.target.closest("[data-toggle-watch-task]");
+  if (watchTaskButton) {
+    toggleTaskWatch(watchTaskButton.dataset.toggleWatchTask);
+    return;
+  }
+
   const timeButton = event.target.closest("#time-submit");
   if (timeButton) addTaskTimeEntry();
 
@@ -9354,6 +9511,8 @@ els.companyForm.addEventListener("submit", (event) => {
 window.addEventListener("hashchange", () => {
   routeInviteFromLocation({ shouldRender: true });
 });
+
+window.addEventListener("pointermove", handlePointerPresence, { passive: true });
 
 window.addEventListener("focus", () => {
   heartbeatPresence({ force: true });
