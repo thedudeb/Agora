@@ -4,6 +4,7 @@ const ACTIVE_WORKSPACE_ID_KEY = "agora.activeWorkspaceId.v1";
 const API_SESSION_KEY = "agora.api.session.v1";
 const SIDEBAR_STATE_KEY = "agora.sidebar.v1";
 const API_SYNC_QUEUE_KEY = "agora.api.syncQueue.v1";
+const MAX_WORKSPACE_BACKUPS = 12;
 const REALTIME_POLL_MS = 30000;
 const API_BASE_URL = configuredApiBaseUrl();
 
@@ -44,6 +45,10 @@ function storageRemove(key) {
 
 function workspaceSnapshotKey(workspaceId) {
   return `agora.workspace.snapshot.${workspaceId}.v1`;
+}
+
+function workspaceBackupKey(workspaceId = activeWorkspaceId) {
+  return `agora.workspace.backups.${workspaceId}.v1`;
 }
 
 function fallbackWorkspaceRegistry() {
@@ -124,6 +129,26 @@ const workspaceStore = {
   },
   clear() {
     storageRemove(workspaceSnapshotKey(activeWorkspaceId));
+  }
+};
+
+const workspaceBackupStore = {
+  load(workspaceId = activeWorkspaceId) {
+    const stored = storageGet(workspaceBackupKey(workspaceId));
+    if (!stored) return [];
+
+    try {
+      const backups = JSON.parse(stored);
+      return Array.isArray(backups) ? backups : [];
+    } catch {
+      return [];
+    }
+  },
+  save(backups, workspaceId = activeWorkspaceId) {
+    storageSet(workspaceBackupKey(workspaceId), JSON.stringify(backups));
+  },
+  clear(workspaceId = activeWorkspaceId) {
+    storageRemove(workspaceBackupKey(workspaceId));
   }
 };
 
@@ -3020,9 +3045,101 @@ function exportTimeCsv() {
   return [headers, ...rows].map((row) => row.map(csvValue).join(",")).join("\n");
 }
 
-function importWorkspaceJson(rawJson) {
+function importWorkspaceJson(rawJson, options = {}) {
   const parsed = JSON.parse(rawJson);
+  if (options.backupLabel) saveWorkspaceBackups([workspaceBackupRecord(options.backupLabel), ...loadWorkspaceBackups()]);
   applyWorkspaceSnapshot(parsed);
+}
+
+function normalizeWorkspaceBackup(backup) {
+  if (!backup?.id || !backup?.snapshot) return null;
+  const snapshotWorkspace = backup.snapshot.workspace || {};
+  return {
+    id: backup.id,
+    workspaceId: backup.workspaceId || snapshotWorkspace.id || activeWorkspaceId,
+    name: backup.name || snapshotWorkspace.name || "Untitled workspace",
+    label: backup.label || "Manual backup",
+    createdAt: backup.createdAt || new Date().toISOString(),
+    snapshot: backup.snapshot
+  };
+}
+
+function loadWorkspaceBackups(workspaceId = activeWorkspaceId) {
+  return workspaceBackupStore
+    .load(workspaceId)
+    .map(normalizeWorkspaceBackup)
+    .filter(Boolean)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, MAX_WORKSPACE_BACKUPS);
+}
+
+function saveWorkspaceBackups(backups, workspaceId = activeWorkspaceId) {
+  workspaceBackupStore.save(
+    backups
+      .map(normalizeWorkspaceBackup)
+      .filter(Boolean)
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, MAX_WORKSPACE_BACKUPS),
+    workspaceId
+  );
+}
+
+function workspaceBackupRecord(label = "Manual backup") {
+  return {
+    id: uid("backup"),
+    workspaceId: activeWorkspaceId,
+    name: state.workspace.name,
+    label,
+    createdAt: new Date().toISOString(),
+    snapshot: workspaceSnapshot()
+  };
+}
+
+function createWorkspaceBackup(label = "Manual backup") {
+  saveWorkspaceBackups([workspaceBackupRecord(label), ...loadWorkspaceBackups()]);
+  render();
+  showToast("Workspace backup created", "success");
+}
+
+function restoreWorkspaceBackup(backupId) {
+  const backup = loadWorkspaceBackups().find((item) => item.id === backupId);
+  if (!backup) {
+    showToast("Backup not found", "info");
+    return;
+  }
+
+  applyWorkspaceSnapshot({
+    ...backup.snapshot,
+    selectedRoute: "data",
+    workspace: {
+      ...backup.snapshot.workspace,
+      id: state.workspace.id,
+      name: backup.snapshot.workspace?.name || state.workspace.name,
+      slug: backup.snapshot.workspace?.slug || state.workspace.slug
+    }
+  });
+  render();
+  showToast(`Restored ${backup.label}`, "success");
+}
+
+function deleteWorkspaceBackup(backupId) {
+  const backups = loadWorkspaceBackups().filter((backup) => backup.id !== backupId);
+  saveWorkspaceBackups(backups);
+  render();
+  showToast("Backup deleted", "success");
+}
+
+function downloadWorkspaceExport() {
+  const blob = new Blob([exportWorkspaceJson()], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${slugFromName(state.workspace.name)}-${todayKey()}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  showToast("Workspace export downloaded", "success");
 }
 
 function backendReadinessItems() {
@@ -7964,16 +8081,38 @@ function renderInviteAcceptance() {
   `;
 }
 
+function renderWorkspaceBackupList(backups) {
+  if (!backups.length) return emptyState("No backups yet. Create one before a risky import or big workspace change.");
+
+  return `
+    <div class="backup-list">
+      ${backups.map((backup) => `
+        <article class="backup-row">
+          <div>
+            <strong>${escapeHtml(backup.label)}</strong>
+            <p>${escapeHtml(backup.name)} - ${escapeHtml(formatTimestamp(backup.createdAt))}</p>
+          </div>
+          <div class="backup-actions">
+            <button class="button button-secondary" type="button" data-backup-restore="${backup.id}">Restore</button>
+            <button class="button button-ghost" type="button" data-backup-delete="${backup.id}">Delete</button>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderDataManagement() {
   const taskCsv = exportTasksCsv();
   const timeCsv = exportTimeCsv();
+  const backups = loadWorkspaceBackups();
 
   els.appView.innerHTML = `
     <div class="metric-grid">
       ${metric("Projects", activeProjects().length)}
       ${metric("Tasks", activeTasks().length)}
       ${metric("Time entries", state.timeEntries.length)}
-      ${metric("Sync", apiSession ? apiBackendLabel() : "Browser only")}
+      ${metric("Backups", backups.length)}
     </div>
 
     <div class="data-grid">
@@ -8004,9 +8143,24 @@ function renderDataManagement() {
             <p class="eyebrow">Portable workspace</p>
             <h2>JSON export</h2>
           </div>
-          <button class="button button-secondary" type="button" id="refresh-export">Refresh</button>
+          <div class="data-actions">
+            <button class="button button-secondary" type="button" id="refresh-export">Refresh</button>
+            <button class="button button-secondary" type="button" id="download-json-export">Download</button>
+          </div>
         </div>
         <textarea class="export-textarea" id="json-export" rows="18" readonly>${escapeHtml(exportWorkspaceJson())}</textarea>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Local safety net</p>
+            <h2>Backups</h2>
+          </div>
+          <button class="button button-primary" type="button" id="backup-create">Create Backup</button>
+        </div>
+        <p class="panel-note">Backups stay in this browser for the active workspace. Create one before imports, bulk edits, or API restores.</p>
+        ${renderWorkspaceBackupList(backups)}
       </section>
 
       <section class="panel">
@@ -8037,7 +8191,10 @@ function renderDataManagement() {
         </div>
         <div class="import-panel">
           <textarea id="json-import" rows="12" placeholder="Paste an Agora JSON export"></textarea>
-          <button class="button button-primary" type="button" id="import-json">Import Workspace</button>
+          <div class="data-actions import-actions">
+            <button class="button button-secondary" type="button" id="import-json-new-workspace">Import as New Workspace</button>
+            <button class="button button-primary" type="button" id="import-json">Replace Current Workspace</button>
+          </div>
         </div>
       </section>
 
@@ -10137,10 +10294,68 @@ function importWorkspaceFromTextarea() {
   if (!rawJson) return;
 
   try {
-    importWorkspaceJson(rawJson);
+    importWorkspaceJson(rawJson, { backupLabel: "Before JSON import" });
     render();
     showToast("Workspace imported", "success");
   } catch (error) {
+    showToast("Import failed: check the JSON format", "info");
+  }
+}
+
+function importWorkspaceAsNewFromTextarea() {
+  const textarea = document.querySelector("#json-import");
+  const rawJson = textarea?.value.trim();
+  if (!rawJson) return;
+
+  try {
+    const parsed = JSON.parse(rawJson);
+    const sourceWorkspace = parsed.workspace || {};
+    const workspaceName = `${sourceWorkspace.name || "Imported Workspace"} Import`;
+    const workspaceId = uniqueWorkspaceId(workspaceName);
+    const now = new Date().toISOString();
+    const base = structuredClone(seedData);
+    saveState();
+    workspaceRegistry = normalizeWorkspaceRegistry([
+      {
+        id: workspaceId,
+        name: workspaceName,
+        slug: slugFromName(workspaceName),
+        status: "active",
+        template: "import",
+        createdAt: now,
+        updatedAt: now
+      },
+      ...workspaceRegistry
+    ]);
+    saveWorkspaceRegistry();
+    activeWorkspaceId = workspaceId;
+    saveActiveWorkspaceId(activeWorkspaceId);
+    state = normalizeState({
+      ...base,
+      ...parsed,
+      selectedRoute: "dashboard",
+      selectedProject: "all",
+      selectedCompany: "all",
+      filters: { ...base.filters, ...(parsed.filters || {}) },
+      workspace: {
+        ...base.workspace,
+        ...(parsed.workspace || {}),
+        id: workspaceId,
+        name: workspaceName,
+        slug: slugFromName(workspaceName)
+      },
+      onboarding: {
+        ...base.onboarding,
+        ...(parsed.onboarding || {}),
+        dismissed: false,
+        sampleMode: "import"
+      }
+    });
+    resetWorkspaceViewState();
+    saveState();
+    render();
+    showToast(`Imported ${workspaceName}`, "success");
+  } catch {
     showToast("Import failed: check the JSON format", "info");
   }
 }
@@ -10646,6 +10861,7 @@ async function loadWorkspaceFromApi() {
       showToast("No API workspace snapshot has been saved yet", "info");
       return;
     }
+    saveWorkspaceBackups([workspaceBackupRecord("Before API restore"), ...loadWorkspaceBackups()]);
     applyWorkspaceSnapshot(document.snapshot);
     await loadCoreRecordsFromApi();
     await loadStructuredRecordsFromApi();
@@ -11057,8 +11273,29 @@ document.addEventListener("click", (event) => {
   const importJsonButton = event.target.closest("#import-json");
   if (importJsonButton) importWorkspaceFromTextarea();
 
+  const importJsonNewWorkspaceButton = event.target.closest("#import-json-new-workspace");
+  if (importJsonNewWorkspaceButton) importWorkspaceAsNewFromTextarea();
+
   const refreshExportButton = event.target.closest("#refresh-export");
   if (refreshExportButton) renderDataManagement();
+
+  const downloadExportButton = event.target.closest("#download-json-export");
+  if (downloadExportButton) downloadWorkspaceExport();
+
+  const backupCreateButton = event.target.closest("#backup-create");
+  if (backupCreateButton) createWorkspaceBackup();
+
+  const backupRestoreButton = event.target.closest("[data-backup-restore]");
+  if (backupRestoreButton) {
+    restoreWorkspaceBackup(backupRestoreButton.dataset.backupRestore);
+    return;
+  }
+
+  const backupDeleteButton = event.target.closest("[data-backup-delete]");
+  if (backupDeleteButton) {
+    deleteWorkspaceBackup(backupDeleteButton.dataset.backupDelete);
+    return;
+  }
 
   const apiConnectButton = event.target.closest("#api-connect");
   if (apiConnectButton) connectApiSession();

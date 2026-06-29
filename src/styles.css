@@ -562,6 +562,18 @@ textarea:focus {
   border-color: var(--line-strong);
 }
 
+.button-ghost {
+  color: var(--muted);
+  background: transparent;
+  border-color: transparent;
+}
+
+.button-ghost:hover {
+  color: var(--text);
+  background: var(--surface-strong);
+  border-color: var(--line);
+}
+
 .button-danger {
   color: var(--red);
   border-color: rgba(185, 66, 66, 0.35);
@@ -2286,10 +2298,17 @@ body[data-tutorial-target="view"] #app-view {
 .backend-checklist,
 .backend-record-list,
 .sync-queue-list,
+.backup-list,
 .export-stack,
 .import-panel {
   display: grid;
   gap: 10px;
+}
+
+.panel-note {
+  margin: 0 0 12px;
+  color: var(--muted);
+  line-height: 1.45;
 }
 
 .backend-health-summary {
@@ -2403,12 +2422,33 @@ body[data-tutorial-target="view"] #app-view {
   line-height: 1.4;
 }
 
+.backup-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.backup-row p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
 .api-sync-form,
-.data-actions {
+.data-actions,
+.backup-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: end;
+}
+
+.backup-actions {
+  justify-content: end;
 }
 
 .api-sync-form label {
@@ -2719,6 +2759,10 @@ body[data-tutorial-target="view"] #app-view {
 
 .import-panel .button {
   justify-self: end;
+}
+
+.import-actions {
+  justify-content: end;
 }
 
 .time-grid {
@@ -4593,12 +4637,23 @@ body[data-density="compact"] .main-content {
   .api-state-grid,
   .backend-health-summary,
   .backend-record-list,
-  .source-row {
+  .source-row,
+  .backup-row {
     grid-template-columns: 1fr;
   }
 
   .source-row code {
     justify-self: start;
+  }
+
+  .backup-actions,
+  .import-actions {
+    justify-content: stretch;
+  }
+
+  .backup-actions .button,
+  .import-actions .button {
+    flex: 1 1 140px;
   }
 
   .operator-action-row {
