@@ -4,7 +4,7 @@ This roadmap describes the intended direction for Agora. It will evolve as the p
 
 ## Current Prototype
 
-Agora currently includes a dependency-free browser app, local app server, API scaffold, JSON storage, optional Supabase storage, account signup/login, Supabase email/password auth, invitations, role permissions, company-scoped access controls, API-first company/project/task records, split Settings tabs for account, sync, security, integrations, and developer readiness, merged local/API audit logs, project/task views, saved views, project PM snapshots, company and client portals, docs/files, intake, templates, automations with previews, notifications, time tracking, import/export, command-style search, copyable status reports, polling-based live refresh, task viewer presence, same-page cursor presence, mentions, watched-task inbox signals, stale edit warnings, customizable workspace themes, deployment readiness checks, accessibility basics, and PWA shell support.
+Agora currently includes a dependency-free browser app, local app server, API scaffold, JSON storage, optional Supabase storage, first-run onboarding, clean/demo workspace setup, account signup/login, Supabase email/password auth, invitations, role permissions, company-scoped access controls, API-first company/project/task records, split Settings tabs for account, sync, security, integrations, and developer readiness, merged local/API audit logs, project/task views, saved views, project PM snapshots, company and client portals, docs/files, intake, templates, automations with previews, notifications, time tracking, import/export, command-style search, copyable status reports, polling-based live refresh, task viewer presence, same-page cursor presence, mentions, watched-task inbox signals, stale edit warnings, customizable workspace themes, deployment readiness checks, accessibility basics, and PWA shell support.
 
 ## Phase 0: Project Foundation
 
@@ -28,6 +28,7 @@ Agora currently includes a dependency-free browser app, local app server, API sc
 - Basic in-app notifications.
 - Self-hosting setup guide.
 - Workspace theme presets and deploy-readiness guidance.
+- First-run setup flow with clean/demo workspace choice. ✅
 
 ## Phase 2: Team Planning
 

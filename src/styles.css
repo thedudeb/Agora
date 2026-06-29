@@ -844,6 +844,105 @@ textarea:focus {
   border-radius: 6px;
 }
 
+.connection-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.connection-banner[hidden] {
+  display: none;
+}
+
+.connection-banner > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.connection-banner strong,
+.connection-banner small {
+  overflow-wrap: anywhere;
+}
+
+.connection-banner small {
+  color: var(--muted);
+}
+
+.connection-actions {
+  justify-content: flex-end;
+}
+
+.onboarding-panel {
+  margin-bottom: 16px;
+}
+
+.onboarding-choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.onboarding-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.setup-step {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.setup-step > span {
+  width: fit-content;
+  padding: 3px 8px;
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  background: var(--accent-soft);
+  border-radius: 999px;
+}
+
+.setup-step.is-done > span {
+  color: #ffffff;
+  background: var(--green);
+}
+
+.setup-step strong,
+.setup-step p {
+  display: block;
+}
+
+.setup-step p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.setup-step .button {
+  justify-self: start;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4085,6 +4184,7 @@ body[data-density="compact"] .main-content {
   .project-command-grid,
   .theme-option-grid,
   .mobile-roadmap-list,
+  .onboarding-grid,
   .project-hero {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -4132,6 +4232,15 @@ body[data-density="compact"] .main-content {
   .settings-tabs {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .connection-banner {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .connection-actions {
+    justify-content: flex-start;
   }
 
   .settings-tab {
@@ -4332,6 +4441,7 @@ body[data-density="compact"] .main-content {
   .settings-section-account .api-sync-form,
   .access-summary-grid,
   .theme-option-grid,
+  .onboarding-grid,
   .project-command-grid,
   .mobile-roadmap-list,
   .invite-form,

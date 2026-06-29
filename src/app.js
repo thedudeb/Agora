@@ -226,6 +226,11 @@ const seedData = {
   selectedSettingsTab: "account",
   selectedCalendarMonth: "2026-07",
   selectedDailyDate: "2026-06-27",
+  onboarding: {
+    dismissed: false,
+    sampleMode: "demo",
+    completedAt: ""
+  },
   filters: {
     company: "all",
     assignee: "all",
@@ -988,6 +993,7 @@ const els = {
   mainContent: document.querySelector("#main-content"),
   pageTitle: document.querySelector("#page-title"),
   routeStatus: document.querySelector("#route-status"),
+  connectionBanner: document.querySelector("#connection-banner"),
   projectList: document.querySelector("#project-list"),
   projectSectionCount: document.querySelector("#project-section-count"),
   navInboxCount: document.querySelector("#nav-inbox-count"),
@@ -1088,6 +1094,10 @@ function normalizeState(nextState) {
     selectedSettingsTab: nextState.selectedSettingsTab || seedData.selectedSettingsTab,
     selectedCalendarMonth: nextState.selectedCalendarMonth || seedData.selectedCalendarMonth,
     selectedDailyDate: nextState.selectedDailyDate || todayKey(),
+    onboarding: {
+      ...seedData.onboarding,
+      ...(nextState.onboarding || {})
+    },
     workspace: {
       ...seedData.workspace,
       ...(nextState.workspace || {}),
@@ -1102,8 +1112,8 @@ function normalizeState(nextState) {
     invitations: Array.isArray(nextState.invitations) ? nextState.invitations : [],
     auditEvents: Array.isArray(nextState.auditEvents) ? nextState.auditEvents : seedData.auditEvents,
     savedViews: normalizeSavedViews(nextState.savedViews),
-    dailyNotes: { ...seedData.dailyNotes, ...(nextState.dailyNotes || {}) },
-    dailyPlans: { ...seedData.dailyPlans, ...(nextState.dailyPlans || {}) },
+    dailyNotes: Object.prototype.hasOwnProperty.call(nextState, "dailyNotes") ? nextState.dailyNotes || {} : seedData.dailyNotes,
+    dailyPlans: Object.prototype.hasOwnProperty.call(nextState, "dailyPlans") ? nextState.dailyPlans || {} : seedData.dailyPlans,
     inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
     inboxArchived: Array.isArray(nextState.inboxArchived) ? nextState.inboxArchived : [],
     taskWatchers: normalizeTaskWatchers(nextState.taskWatchers),
@@ -1669,6 +1679,198 @@ function renderSettingsTabs(activeTab) {
         `;
       }).join("")}
     </div>
+  `;
+}
+
+function createBlankWorkspaceState() {
+  const blank = structuredClone(seedData);
+  const owner = members[0];
+  const now = new Date().toISOString();
+  return normalizeState({
+    ...blank,
+    selectedRoute: "dashboard",
+    selectedProject: "all",
+    selectedCompany: "all",
+    selectedSettingsTab: "account",
+    savedViews: [],
+    dailyNotes: {},
+    dailyPlans: {},
+    inboxRead: [],
+    inboxArchived: [],
+    taskWatchers: {},
+    presence: [],
+    approvals: [],
+    comments: [],
+    activities: [],
+    documents: [],
+    files: [],
+    timeEntries: [],
+    intakeForms: [],
+    intakeSubmissions: [],
+    companies: [],
+    projects: [],
+    tasks: [],
+    milestones: [],
+    users: [],
+    invitations: [],
+    auditEvents: [
+      {
+        id: `audit-clean-start-${Date.now()}`,
+        actorId: owner.id,
+        action: "workspace_clean_start",
+        detail: "Clean workspace created",
+        source: "local",
+        createdAt: now
+      }
+    ],
+    memberships: [{ memberId: owner.id, role: "admin", status: "active" }],
+    workspace: {
+      ...blank.workspace,
+      name: "New Agora Workspace",
+      slug: "new-agora-workspace",
+      visibility: "Private"
+    },
+    onboarding: {
+      dismissed: false,
+      sampleMode: "clean",
+      completedAt: ""
+    }
+  });
+}
+
+function onboardingItems() {
+  const activeMemberships = state.memberships.filter((membership) => membership.status !== "revoked");
+  const customUserIds = new Set((state.users || []).map((user) => user.id));
+  const setupMemberships = state.onboarding?.sampleMode === "clean"
+    ? activeMemberships.filter((membership) => membership.memberId === members[0].id || customUserIds.has(membership.memberId))
+    : activeMemberships;
+  const hasChosenDataMode = state.onboarding?.sampleMode === "demo" || state.onboarding?.sampleMode === "clean";
+  const hasWorkspaceName = Boolean(state.workspace.name && state.workspace.name !== "New Agora Workspace");
+  const hasCompany = visibleCompanies().length > 0;
+  const hasProject = activeProjects().length > 0;
+  const hasTeam = setupMemberships.length > 1 || state.invitations.some((invitation) => invitation.status === "pending");
+  const hasApi = Boolean(apiSession);
+  return [
+    {
+      id: "data",
+      label: "Data mode",
+      detail: state.onboarding?.sampleMode === "clean" ? "Clean workspace" : "Demo workspace",
+      done: hasChosenDataMode,
+      action: "start-clean"
+    },
+    {
+      id: "workspace",
+      label: "Workspace",
+      detail: hasWorkspaceName ? state.workspace.name : "Name the workspace",
+      done: hasWorkspaceName,
+      action: "workspace"
+    },
+    {
+      id: "company",
+      label: "First company",
+      detail: hasCompany ? `${visibleCompanies().length} active` : "Create a company",
+      done: hasCompany,
+      action: "company"
+    },
+    {
+      id: "project",
+      label: "First project",
+      detail: hasProject ? `${activeProjects().length} active` : "Create a project",
+      done: hasProject,
+      action: "project"
+    },
+    {
+      id: "team",
+      label: "Team access",
+      detail: hasTeam ? `${setupMemberships.length} member${setupMemberships.length === 1 ? "" : "s"}` : "Invite a teammate",
+      done: hasTeam,
+      action: "invite"
+    },
+    {
+      id: "api",
+      label: "API",
+      detail: apiSession ? apiBackendLabel() : "Browser local",
+      done: hasApi,
+      action: "account"
+    }
+  ];
+}
+
+function onboardingScore() {
+  const items = onboardingItems();
+  return {
+    done: items.filter((item) => item.done).length,
+    total: items.length
+  };
+}
+
+function isOnboardingComplete() {
+  const score = onboardingScore();
+  return score.done === score.total;
+}
+
+function shouldShowOnboardingPanel() {
+  return !state.onboarding?.dismissed || !isOnboardingComplete();
+}
+
+function renderConnectionBanner() {
+  if (!els.connectionBanner) return;
+  if (state.selectedRoute === "landing") {
+    els.connectionBanner.hidden = true;
+    els.connectionBanner.innerHTML = "";
+    return;
+  }
+
+  const score = onboardingScore();
+  const setupComplete = score.done === score.total;
+  const syncLabel = apiSession ? apiBackendLabel() : "Browser local";
+  const queueLabel = apiSyncQueue.length ? `${apiSyncQueue.length} queued` : "Queue clear";
+  els.connectionBanner.hidden = false;
+  els.connectionBanner.innerHTML = `
+    <div>
+      <span class="status-pill ${apiConnectionTone()}">${escapeHtml(syncLabel)}</span>
+      <strong>${escapeHtml(state.workspace.name)}</strong>
+      <small>${escapeHtml(realtimeStatusLabel())} / ${escapeHtml(queueLabel)}</small>
+    </div>
+    <div class="connection-actions">
+      ${setupComplete ? `<span class="status-pill inbox-green">Setup complete</span>` : `<span class="status-pill inbox-amber">${score.done}/${score.total} setup</span>`}
+      ${setupComplete ? "" : `<button class="button button-secondary compact-button" type="button" data-onboarding-action="show">Continue setup</button>`}
+      <button class="button button-secondary compact-button" type="button" data-onboarding-action="sync">Sync</button>
+    </div>
+  `;
+}
+
+function renderOnboardingPanel() {
+  if (!shouldShowOnboardingPanel()) return "";
+  const score = onboardingScore();
+  const setupComplete = score.done === score.total;
+  return `
+    <section class="panel onboarding-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">First run</p>
+          <h2>Workspace setup</h2>
+        </div>
+        <span class="status-pill ${setupComplete ? "inbox-green" : "inbox-amber"}">${score.done}/${score.total}</span>
+      </div>
+      <div class="onboarding-choice-row">
+        <button class="button ${state.onboarding?.sampleMode === "demo" ? "button-primary" : "button-secondary"}" type="button" data-onboarding-action="use-demo">Use Demo Data</button>
+        <button class="button ${state.onboarding?.sampleMode === "clean" ? "button-primary" : "button-secondary"}" type="button" data-onboarding-action="start-clean">Start Clean</button>
+        <button class="button button-secondary" type="button" data-onboarding-action="dismiss">${setupComplete ? "Done" : "Hide"}</button>
+      </div>
+      <div class="onboarding-grid">
+        ${onboardingItems().map((item) => `
+          <article class="setup-step ${item.done ? "is-done" : "is-open"}">
+            <span>${item.done ? "OK" : "Next"}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail)}</p>
+            </div>
+            <button class="button button-secondary compact-button" type="button" data-onboarding-action="${item.action}">${item.done ? "Open" : "Start"}</button>
+          </article>
+        `).join("")}
+      </div>
+    </section>
   `;
 }
 
@@ -3953,6 +4155,88 @@ function setRoute(route) {
   }
 }
 
+function handleOnboardingAction(action) {
+  if (action === "use-demo") {
+    const nextState = normalizeState({
+      ...structuredClone(seedData),
+      selectedRoute: "dashboard",
+      onboarding: {
+        dismissed: false,
+        sampleMode: "demo",
+        completedAt: ""
+      }
+    });
+    state = nextState;
+    saveState();
+    render();
+    showToast("Demo workspace loaded", "success");
+    return;
+  }
+
+  if (action === "start-clean") {
+    state = createBlankWorkspaceState();
+    saveState();
+    render();
+    showToast("Clean workspace started", "success");
+    return;
+  }
+
+  if (action === "dismiss") {
+    state.onboarding = {
+      ...state.onboarding,
+      dismissed: true,
+      completedAt: isOnboardingComplete() ? new Date().toISOString() : state.onboarding?.completedAt || ""
+    };
+    saveState();
+    render();
+    showToast(isOnboardingComplete() ? "Setup complete" : "Setup hidden", "success");
+    return;
+  }
+
+  if (action === "show") {
+    state.onboarding = { ...state.onboarding, dismissed: false };
+    state.selectedRoute = "dashboard";
+    openSidebarGroupForRoute("dashboard");
+    saveState();
+    render();
+    return;
+  }
+
+  if (action === "project") {
+    if (!canWrite("projects:write")) {
+      showToast("Your role cannot create projects", "info");
+      return;
+    }
+    if (!state.companies.length) {
+      populateCompanyForm();
+      openDialog(els.companyDialog);
+      showToast("Create a company before the first project", "info");
+      return;
+    }
+    populateProjectForm();
+    openDialog(els.projectDialog);
+    return;
+  }
+
+  if (action === "company") {
+    if (!canWrite("projects:write")) {
+      showToast("Your role cannot manage companies", "info");
+      return;
+    }
+    populateCompanyForm();
+    openDialog(els.companyDialog);
+    return;
+  }
+
+  if (["account", "sync", "workspace", "invite"].includes(action)) {
+    state.selectedRoute = "settings";
+    state.selectedSettingsTab = action === "invite" ? "members" : action;
+    openSidebarGroupForRoute("settings");
+    saveState();
+    render();
+  }
+}
+
 function inviteTokenFromLocation() {
   const queryToken = new URLSearchParams(window.location.search).get("invite");
   if (queryToken) return queryToken.trim();
@@ -4164,6 +4448,7 @@ function render() {
   renderSearchResults();
   renderNotificationBadges();
   renderPermissionChrome();
+  renderConnectionBanner();
   document.querySelector(".brand small").textContent = state.workspace.name;
   document.body.classList.toggle("is-landing-route", state.selectedRoute === "landing");
 
@@ -4495,6 +4780,8 @@ function renderDashboard() {
   const completionRate = tasks.length ? Math.round((completedTasks.length / tasks.length) * 100) : 0;
 
   els.appView.innerHTML = `
+    ${renderOnboardingPanel()}
+
     <div class="metric-grid">
       ${metric("Open tasks", openTasks.length)}
       ${metric("Completed", completedTasks.length)}
@@ -10137,6 +10424,12 @@ document.addEventListener("click", (event) => {
     state.selectedSettingsTab = settingsTabFallback(settingsTabButton.dataset.settingsTab);
     saveState();
     render();
+    return;
+  }
+
+  const onboardingActionButton = event.target.closest("[data-onboarding-action]");
+  if (onboardingActionButton) {
+    handleOnboardingAction(onboardingActionButton.dataset.onboardingAction);
     return;
   }
 

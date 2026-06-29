@@ -29,7 +29,7 @@
     <link rel="icon" href="./assets/agora-mark.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./assets/agora-mark.svg">
     <link rel="stylesheet" href="https://unpkg.com/lenis@1.3.25/dist/lenis.css">
-    <link rel="stylesheet" href="./src/styles.css?v=settings-polish-v1">
+    <link rel="stylesheet" href="./src/styles.css?v=onboarding-v3">
   </head>
   <body>
     <a class="skip-link" href="#app-view">Skip to main content</a>
@@ -173,6 +173,7 @@
           </div>
         </section>
 
+        <section class="connection-banner" id="connection-banner" aria-label="Workspace connection" hidden></section>
         <p class="sr-only" id="route-status" aria-live="polite" aria-atomic="true">Dashboard view loaded.</p>
         <section id="app-view" class="view" tabindex="-1" aria-labelledby="page-title"></section>
       </main>
@@ -336,8 +337,8 @@
       </form>
     </dialog>
 
-    <script src="./src/boot.js?v=settings-polish-v1"></script>
+    <script src="./src/boot.js?v=onboarding-v3"></script>
     <script src="https://unpkg.com/lenis@1.3.25/dist/lenis.min.js" async></script>
-    <script src="./src/app.js?v=settings-polish-v1"></script>
+    <script src="./src/app.js?v=onboarding-v3"></script>
   </body>
 </html>
