@@ -148,6 +148,16 @@ function createServer(options = {}) {
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/api/backend/health") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const health = await buildBackendHealth(storage, session);
+        sendJson(response, 200, health);
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/ai/operator") {
         if (!hasPermission(session, "workspace:read")) {
           sendError(response, 403, "Missing workspace read permission");
@@ -510,6 +520,103 @@ function createServer(options = {}) {
       sendError(response, error.statusCode || 500, error.publicMessage || "Internal server error");
     }
   });
+}
+
+async function buildBackendHealth(storage, session) {
+  const storageDriver = storage.driver || "json-file";
+  const authDriver = authDriverLabel();
+  const snapshotDocument = await storage.loadWorkspace();
+  const snapshot = snapshotDocument?.snapshot || {};
+  const collectionReports = await Promise.all(Object.entries(recordCollections).map(async ([key, config]) => {
+    try {
+      const records = await storage.loadRecords(key, scopedRecordFilters(session, {}));
+      return {
+        key,
+        label: config.label,
+        status: "ready",
+        count: Array.isArray(records) ? records.length : 0,
+        writePermission: config.writePermission
+      };
+    } catch (error) {
+      return {
+        key,
+        label: config.label,
+        status: "error",
+        count: 0,
+        writePermission: config.writePermission,
+        error: error.message
+      };
+    }
+  }));
+  const failedCollections = collectionReports.filter((collection) => collection.status !== "ready");
+  const snapshotCollections = ["projects", "tasks", "users", "memberships", "invitations"];
+  const snapshotCounts = Object.fromEntries(snapshotCollections.map((key) => [
+    key,
+    Array.isArray(snapshot[key]) ? snapshot[key].length : 0
+  ]));
+  const readiness = [
+    {
+      id: "storage-driver",
+      label: "Storage driver",
+      done: Boolean(storageDriver),
+      detail: storageDriver === "supabase" ? "Supabase adapter is active" : "Local JSON storage is active"
+    },
+    {
+      id: "auth-driver",
+      label: "Authentication driver",
+      done: Boolean(authDriver),
+      detail: authDriver === "supabase" ? "Supabase Auth bearer tokens are accepted" : "Local/demo auth is active"
+    },
+    {
+      id: "workspace-snapshot",
+      label: "Workspace snapshot",
+      done: Boolean(snapshotDocument?.snapshot),
+      detail: snapshotDocument?.metadata?.updatedAt ? `Last saved ${snapshotDocument.metadata.updatedAt}` : "No saved API snapshot yet"
+    },
+    {
+      id: "structured-records",
+      label: "Structured records",
+      done: failedCollections.length === 0,
+      detail: failedCollections.length
+        ? `${failedCollections.length} collection${failedCollections.length === 1 ? "" : "s"} need attention`
+        : `${collectionReports.length} collections are reachable`
+    },
+    {
+      id: "client-scope",
+      label: "Client scoping",
+      done: true,
+      detail: isClientSession(session) ? `Scoped to ${sessionCompanyId(session) || "client membership"}` : "Workspace role can see full workspace"
+    },
+    {
+      id: "production-mode",
+      label: "Production mode",
+      done: storageDriver === "supabase" && authDriver === "supabase",
+      detail: storageDriver === "supabase" && authDriver === "supabase"
+        ? "Supabase storage and Supabase Auth are both active"
+        : "Set AGORA_STORAGE_DRIVER=supabase and AGORA_AUTH_DRIVER=supabase for production mode"
+    }
+  ];
+
+  return {
+    ok: failedCollections.length === 0,
+    service: "agora-api",
+    storage: storageDriver,
+    auth: authDriver,
+    workspace,
+    workspaceId: storage.workspaceId || workspace.id,
+    user: session.user,
+    membership: session.membership,
+    permissions: session.permissions,
+    productionMode: storageDriver === "supabase" && authDriver === "supabase",
+    snapshot: {
+      exists: Boolean(snapshotDocument?.snapshot),
+      metadata: snapshotDocument?.metadata || null,
+      counts: snapshotCounts
+    },
+    records: collectionReports,
+    readiness,
+    generatedAt: new Date().toISOString()
+  };
 }
 
 async function runAiOperator(body, session) {

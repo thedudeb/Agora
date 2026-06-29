@@ -1,6 +1,7 @@
 const STORAGE_KEY = "agora.workspace.v1";
 const API_SESSION_KEY = "agora.api.session.v1";
 const SIDEBAR_STATE_KEY = "agora.sidebar.v1";
+const API_SYNC_QUEUE_KEY = "agora.api.syncQueue.v1";
 const API_BASE_URL = (window.AGORA_API_BASE_URL || window.AGORA_CONFIG?.apiBaseUrl || "http://127.0.0.1:8787").replace(/\/+$/, "");
 
 const workspaceStore = {
@@ -31,6 +32,26 @@ const apiSessionStore = {
   },
   clear() {
     window.localStorage.removeItem(API_SESSION_KEY);
+  }
+};
+
+const apiSyncQueueStore = {
+  load() {
+    const stored = window.localStorage.getItem(API_SYNC_QUEUE_KEY);
+    if (!stored) return [];
+
+    try {
+      const queue = JSON.parse(stored);
+      return Array.isArray(queue) ? queue : [];
+    } catch {
+      return [];
+    }
+  },
+  save(queue) {
+    window.localStorage.setItem(API_SYNC_QUEUE_KEY, JSON.stringify(queue));
+  },
+  clear() {
+    window.localStorage.removeItem(API_SYNC_QUEUE_KEY);
   }
 };
 
@@ -831,6 +852,8 @@ const seedData = {
 
 let state = loadState();
 let apiSession = apiSessionStore.load();
+let apiSyncQueue = apiSyncQueueStore.load();
+let backendHealth = apiSession?.backendHealth || null;
 let sidebarState = loadSidebarState();
 let invitePreview = null;
 let invitePreviewToken = "";
@@ -1013,12 +1036,118 @@ async function apiRequest(path, options = {}) {
 
 function saveApiSession(session) {
   apiSession = session;
+  backendHealth = session?.backendHealth || backendHealth;
   apiSessionStore.save(session);
 }
 
 function clearApiSession() {
   apiSession = null;
+  backendHealth = null;
   apiSessionStore.clear();
+}
+
+function saveApiSyncQueue() {
+  apiSyncQueueStore.save(apiSyncQueue);
+}
+
+function queueApiSyncFailure({ label, path, method = "POST", body = {}, error = "" }) {
+  const id = `${method}:${path}:${body?.project?.id || body?.task?.id || body?.record?.id || JSON.stringify(body).slice(0, 80)}`;
+  const item = {
+    id,
+    label,
+    path,
+    method,
+    body,
+    error: String(error || "API sync failed"),
+    attempts: (apiSyncQueue.find((entry) => entry.id === id)?.attempts || 0) + 1,
+    updatedAt: new Date().toISOString()
+  };
+  apiSyncQueue = [item, ...apiSyncQueue.filter((entry) => entry.id !== id)].slice(0, 50);
+  saveApiSyncQueue();
+}
+
+function clearApiSyncQueueItem(id) {
+  apiSyncQueue = apiSyncQueue.filter((item) => item.id !== id);
+  saveApiSyncQueue();
+}
+
+async function refreshBackendHealth(options = {}) {
+  if (!apiSession) {
+    backendHealth = null;
+    if (!options.silent) render();
+    return null;
+  }
+
+  try {
+    const health = await apiRequest("/api/backend/health");
+    backendHealth = health;
+    saveApiSession({
+      ...apiSession,
+      backendHealth: health,
+      apiHealth: {
+        ok: health.ok,
+        service: health.service,
+        storage: health.storage,
+        auth: health.auth,
+        workspace: health.workspace
+      },
+      storageDriver: health.storage,
+      lastBackendCheckedAt: health.generatedAt
+    });
+    if (!options.silent) {
+      render();
+      showToast("Backend health refreshed", "success");
+    }
+    return health;
+  } catch (error) {
+    backendHealth = {
+      ok: false,
+      storage: apiSession.storageDriver || "unknown",
+      auth: apiSession.apiHealth?.auth || "unknown",
+      readiness: [{
+        id: "backend-health",
+        label: "Backend health",
+        done: false,
+        detail: error.message
+      }],
+      records: [],
+      generatedAt: new Date().toISOString()
+    };
+    if (!options.silent) {
+      render();
+      showToast(`Backend health failed: ${error.message}`, "info");
+    }
+    return null;
+  }
+}
+
+async function retryApiSyncQueue() {
+  if (!apiSession) {
+    showToast("Connect to the API before retrying sync", "info");
+    return;
+  }
+  if (!apiSyncQueue.length) {
+    showToast("No failed API syncs to retry", "info");
+    return;
+  }
+
+  const queue = [...apiSyncQueue].reverse();
+  let synced = 0;
+  for (const item of queue) {
+    try {
+      await apiRequest(item.path, {
+        method: item.method,
+        body: item.body
+      });
+      clearApiSyncQueueItem(item.id);
+      synced += 1;
+    } catch (error) {
+      queueApiSyncFailure({ ...item, error: error.message });
+    }
+  }
+  await refreshBackendHealth({ silent: true });
+  render();
+  showToast(synced ? `Retried ${synced} API sync${synced === 1 ? "" : "s"}` : "API sync retry still blocked", synced ? "success" : "info");
 }
 
 const structuredRecordCollections = ["companies", "approvals", "timeEntries", "comments", "activities", "documents", "files", "presence"];
@@ -1520,15 +1649,23 @@ function importWorkspaceJson(rawJson) {
 }
 
 function backendReadinessItems() {
+  const remoteItems = Array.isArray(backendHealth?.readiness) ? backendHealth.readiness : [];
+  const baseItems = remoteItems.length ? remoteItems : [
+    { label: "Storage adapter", done: true, detail: "Browser local storage is active until the API is connected." },
+    { label: "Workspace metadata", done: true, detail: "Workspace settings are stored in the local snapshot." },
+    { label: "Role model", done: true, detail: "Admin, manager, member, and client roles are available." },
+    { label: "JSON export/import", done: true, detail: "Portable workspace exports are available." },
+    { label: "API health", done: false, detail: "Connect to the API to inspect live backend readiness." }
+  ];
+
   return [
-    { label: "Storage adapter", done: true },
-    { label: "Workspace metadata", done: true },
-    { label: "Role model", done: true },
-    { label: "JSON export/import", done: true },
-    { label: "CSV task/time export", done: true },
-    { label: "API endpoints", done: true },
-    { label: "Database migrations", done: false },
-    { label: "Authentication", done: false }
+    ...baseItems,
+    {
+      id: "failed-sync-queue",
+      label: "Failed sync queue",
+      done: apiSyncQueue.length === 0,
+      detail: apiSyncQueue.length ? `${apiSyncQueue.length} local change${apiSyncQueue.length === 1 ? "" : "s"} waiting to retry` : "No failed API syncs are queued"
+    }
   ];
 }
 
@@ -5637,15 +5774,62 @@ function renderDataManagement() {
 }
 
 function renderBackendChecklist() {
+  const records = Array.isArray(backendHealth?.records) ? backendHealth.records : [];
+  const checkedAt = backendHealth?.generatedAt || apiSession?.lastBackendCheckedAt || "";
   return `
+    <div class="backend-health-summary">
+      <article>
+        <span>Storage</span>
+        <strong>${escapeHtml(backendHealth?.storage || apiSession?.storageDriver || state.workspace.storageMode)}</strong>
+      </article>
+      <article>
+        <span>Auth</span>
+        <strong>${escapeHtml(backendHealth?.auth || apiSession?.apiHealth?.auth || "local")}</strong>
+      </article>
+      <article>
+        <span>Production</span>
+        <strong>${backendHealth?.productionMode ? "Ready" : "Not yet"}</strong>
+      </article>
+      <article>
+        <span>Last check</span>
+        <strong>${checkedAt ? escapeHtml(formatTimestamp(checkedAt)) : "Never"}</strong>
+      </article>
+    </div>
+    <div class="backend-actions">
+      <button class="button button-secondary compact-button" type="button" id="backend-health-refresh" ${apiSession ? "" : "disabled"}>Refresh Health</button>
+      <button class="button button-secondary compact-button" type="button" id="api-sync-retry" ${apiSession && apiSyncQueue.length ? "" : "disabled"}>Retry Failed Syncs</button>
+    </div>
     <div class="backend-checklist">
       ${backendReadinessItems().map((item) => `
         <article class="backend-item ${item.done ? "is-done" : "is-pending"}">
-          <span>${item.done ? "OK" : ""}</span>
-          <strong>${escapeHtml(item.label)}</strong>
+          <span>${item.done ? "OK" : "!"}</span>
+          <div>
+            <strong>${escapeHtml(item.label)}</strong>
+            <p>${escapeHtml(item.detail || "")}</p>
+          </div>
         </article>
       `).join("")}
     </div>
+    ${records.length ? `
+      <div class="backend-record-list">
+        ${records.map((record) => `
+          <article class="${record.status === "ready" ? "is-ready" : "is-pending"}">
+            <strong>${escapeHtml(record.key)}</strong>
+            <span>${escapeHtml(record.status)} / ${Number(record.count || 0)}</span>
+          </article>
+        `).join("")}
+      </div>
+    ` : ""}
+    ${apiSyncQueue.length ? `
+      <div class="sync-queue-list">
+        ${apiSyncQueue.slice(0, 5).map((item) => `
+          <article>
+            <strong>${escapeHtml(item.label || item.path)}</strong>
+            <p>${escapeHtml(item.error)} - ${escapeHtml(formatTimestamp(item.updatedAt))}</p>
+          </article>
+        `).join("")}
+      </div>
+    ` : ""}
   `;
 }
 
@@ -7455,6 +7639,7 @@ async function connectApiSession() {
       storageDriver: health.storage
     });
     await syncAccessFromApi();
+    await refreshBackendHealth({ silent: true });
     render();
     showToast(`Connected to API as ${session.user.name}`, "success");
   } catch (error) {
@@ -7483,6 +7668,7 @@ async function signInWithEmail() {
       storageDriver: health.storage
     });
     await syncAccessFromApi();
+    await refreshBackendHealth({ silent: true });
     render();
     showToast(`Signed in as ${session.user.name}`, "success");
   } catch (error) {
@@ -7517,6 +7703,7 @@ async function signUpWithPassword() {
       storageDriver: health.storage
     });
     await syncAccessFromApi();
+    await refreshBackendHealth({ silent: true });
     await saveWorkspaceToApi({ silent: true });
     render();
     showToast(`Owner account created for ${session.user.name}`, "success");
@@ -7545,6 +7732,7 @@ async function signInWithPassword() {
       storageDriver: health.storage
     });
     await syncAccessFromApi();
+    await refreshBackendHealth({ silent: true });
     render();
     showToast(`Signed in as ${session.user.name}`, "success");
   } catch (error) {
@@ -7571,6 +7759,7 @@ async function signInWithSupabaseToken() {
       storageDriver: health.storage
     });
     await syncAccessFromApi();
+    await refreshBackendHealth({ silent: true });
     render();
     showToast(`Connected with Supabase Auth as ${session.user.name}`, "success");
   } catch (error) {
@@ -7695,6 +7884,7 @@ async function acceptWorkspaceInvite() {
       storageDriver: health.storage
     });
     await syncAccessFromApi();
+    await refreshBackendHealth({ silent: true });
     state.selectedRoute = "dashboard";
     state.selectedInviteToken = "";
     invitePreview = null;
@@ -7720,6 +7910,7 @@ async function saveWorkspaceToApi(options = {}) {
       body: { snapshot: workspaceSnapshot() }
     });
     saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, storageDriver: document.metadata.storage || apiSession.storageDriver });
+    await refreshBackendHealth({ silent: true });
     if (!options.silent) {
       render();
       showToast("Workspace saved to API", "success");
@@ -7745,6 +7936,7 @@ async function loadWorkspaceFromApi() {
     applyWorkspaceSnapshot(document.snapshot);
     await loadStructuredRecordsFromApi();
     saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, storageDriver: document.metadata.storage || apiSession.storageDriver });
+    await refreshBackendHealth({ silent: true });
     render();
     showToast("Workspace loaded from API", "success");
   } catch (error) {
@@ -7771,6 +7963,7 @@ async function importWorkspaceToApi() {
       body: { snapshot }
     });
     saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, storageDriver: document.metadata.storage || apiSession.storageDriver });
+    await refreshBackendHealth({ silent: true });
     render();
     showToast("JSON imported to API", "success");
   } catch (error) {
@@ -7788,6 +7981,13 @@ async function syncProjectToApi(project, action = "Project synced", isNew = fals
     });
     showToast(action, "success");
   } catch (error) {
+    queueApiSyncFailure({
+      label: action,
+      path: isNew ? "/api/projects" : `/api/projects/${encodeURIComponent(project.id)}`,
+      method: isNew ? "POST" : "PUT",
+      body: { project },
+      error: error.message
+    });
     showToast(`Local change saved. API project sync failed: ${error.message}`, "info");
   }
 }
@@ -7802,6 +8002,13 @@ async function syncTaskToApi(task, action = "Task synced", isNew = false) {
     });
     showToast(action, "success");
   } catch (error) {
+    queueApiSyncFailure({
+      label: action,
+      path: isNew ? "/api/tasks" : `/api/tasks/${encodeURIComponent(task.id)}`,
+      method: isNew ? "POST" : "PUT",
+      body: { task },
+      error: error.message
+    });
     showToast(`Local change saved. API task sync failed: ${error.message}`, "info");
   }
 }
@@ -7815,6 +8022,13 @@ async function syncTaskArchiveToApi(taskId) {
     });
     showToast("Task archive synced to API", "success");
   } catch (error) {
+    queueApiSyncFailure({
+      label: "Task archive",
+      path: `/api/tasks/${encodeURIComponent(taskId)}`,
+      method: "DELETE",
+      body: {},
+      error: error.message
+    });
     showToast(`Local change saved. API task archive failed: ${error.message}`, "info");
   }
 }
@@ -7828,6 +8042,13 @@ async function syncProjectArchiveToApi(projectId) {
     });
     showToast("Project archive synced to API", "success");
   } catch (error) {
+    queueApiSyncFailure({
+      label: "Project archive",
+      path: `/api/projects/${encodeURIComponent(projectId)}`,
+      method: "DELETE",
+      body: {},
+      error: error.message
+    });
     showToast(`Local change saved. API project archive failed: ${error.message}`, "info");
   }
 }
@@ -7842,6 +8063,13 @@ async function syncRecordToApi(collection, record, action = "Record synced", sho
     });
     if (showSuccess) showToast(action, "success");
   } catch (error) {
+    queueApiSyncFailure({
+      label: action,
+      path: `/api/records/${encodeURIComponent(collection)}`,
+      method: "POST",
+      body: { record },
+      error: error.message
+    });
     showToast(`Local change saved. API ${collection} sync failed: ${error.message}`, "info");
   }
 }
@@ -8074,6 +8302,18 @@ document.addEventListener("click", (event) => {
 
   const apiDisconnectButton = event.target.closest("#api-disconnect");
   if (apiDisconnectButton) disconnectApiSession();
+
+  const backendHealthRefreshButton = event.target.closest("#backend-health-refresh");
+  if (backendHealthRefreshButton) {
+    refreshBackendHealth();
+    return;
+  }
+
+  const apiSyncRetryButton = event.target.closest("#api-sync-retry");
+  if (apiSyncRetryButton) {
+    retryApiSyncQueue();
+    return;
+  }
 
   const inviteMemberButton = event.target.closest("#invite-member");
   if (inviteMemberButton) inviteWorkspaceMember();

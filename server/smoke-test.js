@@ -28,6 +28,14 @@ async function run() {
     });
     assert(access.users.length === 4, "member list did not include demo users");
 
+    const backendHealth = await request(`${baseUrl}/api/backend/health`, {
+      token: login.token
+    });
+    assert(backendHealth.storage === "json-file", "backend health did not expose storage driver");
+    assert(backendHealth.auth === "local", "backend health did not expose auth driver");
+    assert(backendHealth.records.some((record) => record.key === "comments"), "backend health did not report record collections");
+    assert(backendHealth.readiness.some((item) => item.id === "structured-records"), "backend health did not include readiness items");
+
     const aiOperator = await request(`${baseUrl}/api/ai/operator`, {
       method: "POST",
       token: login.token,
@@ -264,6 +272,13 @@ async function run() {
     assert(workspace.snapshot.documents[0].title === "Smoke Doc", "document not stored in workspace");
     assert(workspace.snapshot.files[0].title === "smoke-plan.pdf", "file not stored in workspace");
 
+    const finalBackendHealth = await request(`${baseUrl}/api/backend/health`, {
+      token: login.token
+    });
+    const commentsReport = finalBackendHealth.records.find((record) => record.key === "comments");
+    assert(commentsReport && commentsReport.count === 1, "backend health did not count structured comments");
+    assert(finalBackendHealth.snapshot.counts.projects === 1, "backend health did not count snapshot projects");
+
     const audit = await request(`${baseUrl}/api/audit-log`, {
       token: login.token
     });
@@ -427,6 +442,13 @@ async function testAccountAuth() {
     });
     assert(clientApprovals.records.length === 1, "client record scope did not filter approvals");
     assert(clientApprovals.records[0].id === "approval-record", "client record scope returned another company's approval");
+
+    const clientBackendHealth = await request(`${baseUrl}/api/backend/health`, {
+      token: clientLogin.token
+    });
+    const clientApprovalReport = clientBackendHealth.records.find((record) => record.key === "approvals");
+    assert(clientBackendHealth.membership.role === "client", "client backend health did not include client membership");
+    assert(clientApprovalReport.count === 1, "client backend health did not use company-scoped record counts");
   } finally {
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(dataDir, { recursive: true, force: true });
@@ -490,6 +512,12 @@ async function testSupabaseAuthBridge() {
       token: "supabase-token"
     });
     assert(directSession.user.email === "supabase@example.test", "direct Supabase bearer token was not accepted");
+
+    const backendHealth = await request(`${baseUrl}/api/backend/health`, {
+      token: exchange.token
+    });
+    assert(backendHealth.auth === "supabase", "backend health did not expose Supabase auth mode");
+    assert(backendHealth.readiness.some((item) => item.id === "production-mode"), "backend health did not include production readiness");
 
     const invalid = await requestError(`${baseUrl}/api/session`, {
       token: "invalid-token"

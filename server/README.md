@@ -32,6 +32,8 @@ npm run dev
 
 Then open Settings, create the first workspace owner account or connect as a demo member, and use the Data page to save or load the workspace snapshot. If the API is not running at the default address, set the API URL in Settings and reload the app.
 
+Settings and Data also expose Backend Health after you connect. It reports the active storage/auth drivers, production-mode readiness, workspace snapshot metadata, structured record collections, client scoping, and any failed browser syncs that can be retried.
+
 ## App Server
 
 The browser app is served by the same dependency-free Node foundation:
@@ -76,6 +78,7 @@ The first migration creates the snapshot/audit tables plus structured record tab
 ## Endpoints
 
 - `GET /api/health`: service health and active workspace metadata.
+- `GET /api/backend/health`: authenticated backend readiness, storage/auth drivers, workspace snapshot metadata, structured collection counts, production-mode status, and current session scope.
 - `POST /api/auth/signup`: creates the first workspace owner account, or accepts a pending invited account. Body: `{ "name": "Mara Chen", "email": "mara@example.com", "password": "8+ characters" }`.
 - `POST /api/auth/demo-login`: creates a demo session. Body: `{ "memberId": "mara" }`.
 - `POST /api/auth/login`: creates a passwordless session for an accepted workspace user. Body: `{ "email": "jordan@example.com" }`.

@@ -47,6 +47,8 @@ Then open `http://127.0.0.1:8787/api/health`.
 
 With both processes running, open Settings in the app and create the first owner account or use "Connect to API" for a demo session. API-connected users can sync the workspace from the Data page. If the API is hosted somewhere other than `http://127.0.0.1:8787`, update the API URL in Settings.
 
+Settings and Data include a Backend Health panel after connecting to the API. It shows the active storage/auth drivers, Supabase production-mode readiness, structured collection status, snapshot metadata, and any failed local syncs waiting to retry.
+
 ## Useful Commands
 
 ```sh
@@ -81,6 +83,8 @@ Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Do not paste it into browser setti
 `002_supabase_auth_rls.sql` adds `public.agora_workspace_memberships`, helper functions around `auth.uid()`, and RLS policies for snapshots, audit events, and structured record tables. The API can exchange a Supabase Auth `access_token` through Settings, or accept that token directly as a Bearer token when `AGORA_AUTH_DRIVER=supabase`.
 
 Client invitations can be assigned to a company. Accepted client accounts land in the Portal view and only receive the company-scoped workspace records they are allowed to see.
+
+Use the Backend Health panel, or `GET /api/backend/health` with an authenticated bearer token, to confirm that Supabase storage, Supabase Auth, RLS-backed memberships, workspace snapshots, and structured records are reachable.
 
 ## AI Operator
 
