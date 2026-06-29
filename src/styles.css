@@ -489,11 +489,13 @@ button {
   color: var(--muted);
 }
 
-.command-dialog {
+.command-dialog,
+.shortcuts-dialog {
   width: min(760px, calc(100vw - 28px));
 }
 
-.command-shell {
+.command-shell,
+.shortcuts-shell {
   display: grid;
   gap: 14px;
   padding: 18px;
@@ -560,6 +562,63 @@ button {
 
 .command-result small {
   color: var(--muted);
+}
+
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.shortcuts-grid section {
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.shortcuts-grid h3 {
+  margin: 0 0 10px;
+  font-size: 0.92rem;
+}
+
+.shortcuts-grid dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.shortcuts-grid dl > div {
+  display: grid;
+  grid-template-columns: minmax(92px, auto) minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.shortcuts-grid dt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.shortcuts-grid dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+kbd {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 7px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 900;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
 }
 
 label {
@@ -4700,6 +4759,7 @@ body[data-density="compact"] .main-content {
   .toolbar,
   .dashboard-grid,
   .readiness-grid,
+  .shortcuts-grid,
   .daily-hero,
   .daily-layout,
   .time-grid,

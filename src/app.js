@@ -1195,11 +1195,14 @@ const els = {
   workspaceFormTitle: document.querySelector("#workspace-form-title"),
   commandDialog: document.querySelector("#command-dialog"),
   commandInput: document.querySelector("#command-input"),
-  commandResults: document.querySelector("#command-results")
+  commandResults: document.querySelector("#command-results"),
+  shortcutsDialog: document.querySelector("#shortcuts-dialog")
 };
 
 let draftSubtasks = [];
 let commandPaletteSelection = 0;
+let shortcutLeaderActive = false;
+let shortcutLeaderTimer = null;
 let toastTimers = new Map();
 let lastFocusedBeforeDialog = null;
 let lastPresenceSignature = "";
@@ -3633,6 +3636,13 @@ function commandPaletteBaseItems() {
       detail: "Walk through setup, navigation, sync, and daily work",
       group: "Help",
       keywords: "guide help onboarding"
+    },
+    {
+      id: "shortcuts:open",
+      title: "Open keyboard shortcuts",
+      detail: "View command, create, backup, search, and navigation keys",
+      group: "Help",
+      keywords: "keyboard shortcuts hotkeys help"
     }
   ];
 }
@@ -3718,6 +3728,152 @@ function openCommandPalette(initialQuery = "") {
 
 function closeCommandPalette() {
   if (els.commandDialog?.open) closeDialog(els.commandDialog);
+}
+
+function openShortcutsDialog() {
+  closeCommandPalette();
+  openDialog(els.shortcutsDialog);
+}
+
+function isShortcutTypingTarget(target) {
+  return Boolean(target?.closest?.("input, textarea, select, [contenteditable='true']"));
+}
+
+function isBlockingShortcutDialogOpen() {
+  return [els.taskDialog, els.projectDialog, els.companyDialog, els.workspaceDialog]
+    .some((dialog) => dialog?.open);
+}
+
+function clearShortcutLeader() {
+  shortcutLeaderActive = false;
+  if (shortcutLeaderTimer) window.clearTimeout(shortcutLeaderTimer);
+  shortcutLeaderTimer = null;
+}
+
+function beginShortcutLeader() {
+  shortcutLeaderActive = true;
+  if (shortcutLeaderTimer) window.clearTimeout(shortcutLeaderTimer);
+  shortcutLeaderTimer = window.setTimeout(clearShortcutLeader, 1800);
+  showToast("Go to: D Dashboard, T Today, B Board, I Inbox, S Settings", "info");
+}
+
+function runGoToShortcut(key) {
+  const routeByKey = {
+    d: "dashboard",
+    t: "daily",
+    b: "board",
+    i: "inbox",
+    s: "settings"
+  };
+  const route = routeByKey[key];
+  clearShortcutLeader();
+  if (!route) {
+    showToast("No shortcut for that destination", "info");
+    return;
+  }
+  setRoute(route);
+}
+
+function focusGlobalSearch() {
+  els.searchInput?.focus();
+  els.searchInput?.select();
+  renderSearchResults();
+}
+
+function handleGlobalShortcut(event) {
+  const key = event.key.toLowerCase();
+  const isCommandShortcut = (event.metaKey || event.ctrlKey) && key === "k";
+  if (isCommandShortcut) {
+    event.preventDefault();
+    openCommandPalette();
+    return true;
+  }
+
+  if (els.commandDialog?.open) {
+    const items = commandPaletteItems();
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      commandPaletteSelection = items.length ? (commandPaletteSelection + 1) % items.length : 0;
+      renderCommandPalette();
+      return true;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      commandPaletteSelection = items.length ? (commandPaletteSelection - 1 + items.length) % items.length : 0;
+      renderCommandPalette();
+      return true;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const selected = items[commandPaletteSelection];
+      if (selected) executeCommand(selected.id);
+      return true;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeCommandPalette();
+      return true;
+    }
+    return false;
+  }
+
+  if (els.shortcutsDialog?.open) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeDialog(els.shortcutsDialog);
+      return true;
+    }
+    return false;
+  }
+
+  if (isShortcutTypingTarget(event.target)) {
+    if (event.key === "Escape" && event.target === els.searchInput) {
+      event.preventDefault();
+      els.searchResults.hidden = true;
+      els.searchInput.blur();
+      return true;
+    }
+    return false;
+  }
+  if (isBlockingShortcutDialogOpen()) return false;
+  if (event.metaKey || event.ctrlKey || event.altKey) return false;
+
+  if (shortcutLeaderActive) {
+    event.preventDefault();
+    runGoToShortcut(key);
+    return true;
+  }
+
+  if (key === "g") {
+    event.preventDefault();
+    beginShortcutLeader();
+    return true;
+  }
+
+  if (event.key === "?") {
+    event.preventDefault();
+    openShortcutsDialog();
+    return true;
+  }
+
+  const commandByKey = {
+    n: "create:task",
+    p: "create:project",
+    b: "backup:create"
+  };
+  if (commandByKey[key]) {
+    event.preventDefault();
+    executeCommand(commandByKey[key]);
+    return true;
+  }
+
+  if (event.key === "/") {
+    event.preventDefault();
+    focusGlobalSearch();
+    return true;
+  }
+
+  return false;
 }
 
 function setSettingsTab(tab) {
@@ -3851,7 +4007,12 @@ function executeCommand(commandId) {
     return;
   }
 
-  if (commandId === "tutorial:start") startTutorial();
+  if (commandId === "tutorial:start") {
+    startTutorial();
+    return;
+  }
+
+  if (commandId === "shortcuts:open") openShortcutsDialog();
 }
 
 function normalizeTaskWatchers(value) {
@@ -12043,38 +12204,7 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
-  const isCommandShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
-  if (isCommandShortcut) {
-    event.preventDefault();
-    openCommandPalette();
-    return;
-  }
-
-  if (els.commandDialog?.open) {
-    const items = commandPaletteItems();
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      commandPaletteSelection = items.length ? (commandPaletteSelection + 1) % items.length : 0;
-      renderCommandPalette();
-      return;
-    }
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      commandPaletteSelection = items.length ? (commandPaletteSelection - 1 + items.length) % items.length : 0;
-      renderCommandPalette();
-      return;
-    }
-    if (event.key === "Enter") {
-      event.preventDefault();
-      const selected = items[commandPaletteSelection];
-      if (selected) executeCommand(selected.id);
-      return;
-    }
-    if (event.key === "Escape") {
-      closeCommandPalette();
-      return;
-    }
-  }
+  if (handleGlobalShortcut(event)) return;
 
   if (event.key === "Enter" && event.target.closest("#subtask-title")) {
     event.preventDefault();
@@ -12100,7 +12230,7 @@ document.querySelector("#new-project-button").addEventListener("click", () => {
   openDialog(els.projectDialog);
 });
 
-[els.taskDialog, els.projectDialog, els.companyDialog, els.workspaceDialog, els.commandDialog].filter(Boolean).forEach((dialog) => {
+[els.taskDialog, els.projectDialog, els.companyDialog, els.workspaceDialog, els.commandDialog, els.shortcutsDialog].filter(Boolean).forEach((dialog) => {
   dialog.addEventListener("close", () => {
     if (dialog === els.taskDialog) {
       const taskId = document.querySelector("#task-id")?.value || "";

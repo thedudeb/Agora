@@ -29,7 +29,7 @@
     <link rel="icon" href="./assets/agora-mark.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./assets/agora-mark.svg">
     <link rel="stylesheet" href="https://unpkg.com/lenis@1.3.25/dist/lenis.css">
-    <link rel="stylesheet" href="./src/styles.css?v=launch-v2">
+    <link rel="stylesheet" href="./src/styles.css?v=shortcuts-v2">
   </head>
   <body>
     <a class="skip-link" href="#app-view">Skip to main content</a>
@@ -389,8 +389,57 @@
       </div>
     </dialog>
 
-    <script src="./src/boot.js?v=launch-v2"></script>
+    <dialog class="modal shortcuts-dialog" id="shortcuts-dialog" aria-labelledby="shortcuts-dialog-title" data-lenis-prevent>
+      <div class="shortcuts-shell">
+        <div class="command-header">
+          <div>
+            <p class="eyebrow">Keyboard</p>
+            <h2 id="shortcuts-dialog-title">Shortcuts</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-dialog="shortcuts-dialog" aria-label="Close">x</button>
+        </div>
+        <div class="shortcuts-grid">
+          <section>
+            <h3>Command</h3>
+            <dl>
+              <div><dt><kbd>Cmd K</kbd><kbd>Ctrl K</kbd></dt><dd>Open command palette</dd></div>
+              <div><dt><kbd>↑</kbd><kbd>↓</kbd></dt><dd>Move through commands</dd></div>
+              <div><dt><kbd>Enter</kbd></dt><dd>Run selected command</dd></div>
+              <div><dt><kbd>Esc</kbd></dt><dd>Close palette or shortcuts</dd></div>
+            </dl>
+          </section>
+          <section>
+            <h3>Create</h3>
+            <dl>
+              <div><dt><kbd>N</kbd></dt><dd>New task</dd></div>
+              <div><dt><kbd>P</kbd></dt><dd>New project</dd></div>
+              <div><dt><kbd>B</kbd></dt><dd>Create backup</dd></div>
+              <div><dt><kbd>/</kbd></dt><dd>Focus search</dd></div>
+            </dl>
+          </section>
+          <section>
+            <h3>Go to</h3>
+            <dl>
+              <div><dt><kbd>G</kbd><kbd>D</kbd></dt><dd>Dashboard</dd></div>
+              <div><dt><kbd>G</kbd><kbd>T</kbd></dt><dd>Today</dd></div>
+              <div><dt><kbd>G</kbd><kbd>B</kbd></dt><dd>Board</dd></div>
+              <div><dt><kbd>G</kbd><kbd>I</kbd></dt><dd>Inbox</dd></div>
+              <div><dt><kbd>G</kbd><kbd>S</kbd></dt><dd>Settings</dd></div>
+            </dl>
+          </section>
+          <section>
+            <h3>Help</h3>
+            <dl>
+              <div><dt><kbd>?</kbd></dt><dd>Open shortcuts</dd></div>
+              <div><dt><kbd>G</kbd></dt><dd>Start navigation mode</dd></div>
+            </dl>
+          </section>
+        </div>
+      </div>
+    </dialog>
+
+    <script src="./src/boot.js?v=shortcuts-v2"></script>
     <script src="https://unpkg.com/lenis@1.3.25/dist/lenis.min.js" async></script>
-    <script src="./src/app.js?v=launch-v2"></script>
+    <script src="./src/app.js?v=shortcuts-v2"></script>
   </body>
 </html>
