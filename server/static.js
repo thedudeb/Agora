@@ -25,26 +25,50 @@ function safeFilePath(urlPath) {
   const decodedPath = decodeURIComponent(urlPath);
   const normalizedPath = decodedPath === "/" ? "/index.html" : decodedPath;
   const filePath = path.resolve(ROOT, `.${normalizedPath}`);
-  return filePath.startsWith(ROOT) ? filePath : "";
+  const relativePath = path.relative(ROOT, filePath);
+  return relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath) ? filePath : "";
+}
+
+function securityHeaders() {
+  return {
+    "Content-Security-Policy": [
+      "default-src 'self'",
+      "script-src 'self' https://unpkg.com",
+      "style-src 'self' 'unsafe-inline' https://unpkg.com",
+      "img-src 'self' data: https://raw.githubusercontent.com",
+      "connect-src 'self' http://127.0.0.1:* http://localhost:* https://*.supabase.co",
+      "font-src 'self'",
+      "manifest-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "form-action 'self'"
+    ].join("; "),
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Content-Type-Options": "nosniff"
+  };
 }
 
 const server = http.createServer((request, response) => {
   const url = new URL(request.url, `http://${request.headers.host || `${HOST}:${PORT}`}`);
   const filePath = safeFilePath(url.pathname);
   if (!filePath) {
-    response.writeHead(403, { "Content-Type": "text/plain; charset=utf-8" });
+    response.writeHead(403, { ...securityHeaders(), "Content-Type": "text/plain; charset=utf-8" });
     response.end("Forbidden");
     return;
   }
 
   fs.readFile(filePath, (error, body) => {
     if (error) {
-      response.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
+      response.writeHead(404, { ...securityHeaders(), "Content-Type": "text/html; charset=utf-8" });
       response.end(fs.readFileSync(path.join(ROOT, "offline.html")));
       return;
     }
 
     response.writeHead(200, {
+      ...securityHeaders(),
       "Content-Type": mimeTypes[path.extname(filePath)] || "application/octet-stream",
       "Cache-Control": "no-store"
     });

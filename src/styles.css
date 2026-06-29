@@ -483,7 +483,7 @@ textarea:focus {
   padding: 28px clamp(18px, 4vw, 64px) 72px;
   overflow: hidden;
   isolation: isolate;
-  background-image: linear-gradient(90deg, rgba(13, 20, 19, 0.94) 0%, rgba(13, 20, 19, 0.76) 43%, rgba(13, 20, 19, 0.2) 100%), var(--landing-hero-image);
+  background-image: linear-gradient(90deg, rgba(13, 20, 19, 0.94) 0%, rgba(13, 20, 19, 0.76) 43%, rgba(13, 20, 19, 0.2) 100%), url("../assets/agora-landing-hero.png");
   background-size: cover;
   background-position: center;
 }
@@ -3446,7 +3446,7 @@ th {
   .landing-hero {
     min-height: auto;
     padding: 18px 16px 76px;
-    background-image: linear-gradient(180deg, rgba(13, 20, 19, 0.9) 0%, rgba(13, 20, 19, 0.78) 48%, rgba(13, 20, 19, 0.28) 100%), var(--landing-hero-image);
+    background-image: linear-gradient(180deg, rgba(13, 20, 19, 0.9) 0%, rgba(13, 20, 19, 0.78) 48%, rgba(13, 20, 19, 0.28) 100%), url("../assets/agora-landing-hero.png");
     background-position: 62% center;
   }
 

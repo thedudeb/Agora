@@ -6,7 +6,7 @@ Agora is a self-hostable project management workspace inspired by tools like Asa
 
 ## Status
 
-Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, PWA installability, an offline app shell, mobile task actions, workspace settings, member roles, team invitations, first-owner signup, password login, passwordless API sessions, structured records endpoints, data import/export, API snapshot sync, a storage adapter foundation, optional Supabase snapshot and structured record persistence, a dependency-free API scaffold, demo auth, a PostgreSQL schema draft, command-center inbox lanes, a dedicated AI Operator page, local AI operator planning, server-side bring-your-own-AI adapters, operator briefs, previewable operator actions, an applied-action log, client/company portals, client approvals, live collaboration presence, task-view awareness, stale edit warnings, workspace pulse, automation recommendations, company portfolios, editable companies, daily task planning, inbox notifications, notification badges and toasts, reporting dashboards, project and task templates, automations, project docs and files, intake forms, custom task fields, task dependencies, Gantt-style timelines, project filters, task creation, subtasks, comments, activity, employee time tracking, list view, board view, calendar view, project workspaces, milestones, project timelines, and a My Work view.
+Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, PWA installability, an offline app shell, mobile task actions, workspace settings, member roles, team invitations, first-owner signup, password login, optional passwordless API sessions, structured records endpoints, data import/export, API snapshot sync, a storage adapter foundation, optional Supabase snapshot and structured record persistence, a dependency-free API scaffold, optional demo auth, API rate limiting, scoped client writes, security headers, a PostgreSQL schema draft, command-center inbox lanes, a dedicated AI Operator page, local AI operator planning, server-side bring-your-own-AI adapters, operator briefs, previewable operator actions, an applied-action log, client/company portals, client approvals, live collaboration presence, task-view awareness, stale edit warnings, workspace pulse, automation recommendations, company portfolios, editable companies, daily task planning, inbox notifications, notification badges and toasts, reporting dashboards, project and task templates, automations, project docs and files, intake forms, custom task fields, task dependencies, Gantt-style timelines, project filters, task creation, subtasks, comments, activity, employee time tracking, list view, board view, calendar view, project workspaces, milestones, project timelines, and a My Work view.
 
 ## Quick Start
 
@@ -45,7 +45,7 @@ npm run dev:api
 
 Then open `http://127.0.0.1:8787/api/health`.
 
-With both processes running, open Settings in the app and create the first owner account or use "Connect to API" for a demo session. API-connected users can sync the workspace from the Data page. If the API is hosted somewhere other than `http://127.0.0.1:8787`, update the API URL in Settings.
+With both processes running, open Settings in the app and create the first owner account, then sign in with email and password. API-connected users can sync the workspace from the Data page. If the API is hosted somewhere other than `http://127.0.0.1:8787`, update the API URL in Settings.
 
 Settings and Data include a Backend Health panel after connecting to the API. It shows the active storage/auth drivers, Supabase production-mode readiness, structured collection status, snapshot metadata, and any failed local syncs waiting to retry.
 
@@ -58,7 +58,9 @@ npm run check     # syntax-check app and server files
 npm run test:api  # run the dependency-free API smoke test
 ```
 
-To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`.
+To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`. Add browser origins to `AGORA_ALLOWED_ORIGINS` when hosting the app somewhere other than localhost.
+
+Demo auth and passwordless email login are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true` or `AGORA_PASSWORDLESS_AUTH=true` and restart `npm run dev:api`.
 
 ## Supabase Storage
 

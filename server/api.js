@@ -10,6 +10,9 @@ const PORT = Number(process.env.AGORA_API_PORT || 8787);
 const BODY_LIMIT_BYTES = 5 * 1024 * 1024;
 const PASSWORD_KEY_LENGTH = 64;
 const PASSWORD_SCRYPT_COST = 16384;
+const SESSION_TTL_MS = positiveNumber(process.env.AGORA_SESSION_TTL_SECONDS, 8 * 60 * 60) * 1000;
+const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const AUTH_RATE_LIMIT_ATTEMPTS = 8;
 
 const workspace = {
   id: "workspace-acme",
@@ -50,16 +53,54 @@ const recordCollections = {
 };
 
 const sessions = new Map();
+const rateLimits = new Map();
+
+function envFlag(name, fallback = false) {
+  const value = cleanString(process.env[name]).toLowerCase();
+  if (!value) return fallback;
+  return ["1", "true", "yes", "on"].includes(value);
+}
+
+function positiveNumber(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function clientIp(request) {
+  const forwarded = cleanString(request.headers["x-forwarded-for"]).split(",")[0]?.trim();
+  return forwarded || request.socket?.remoteAddress || "unknown";
+}
+
+function assertRateLimit(request, scope, limit = AUTH_RATE_LIMIT_ATTEMPTS, windowMs = AUTH_RATE_LIMIT_WINDOW_MS) {
+  const now = Date.now();
+  const key = `${clientIp(request)}:${scope}`;
+  const current = rateLimits.get(key);
+  if (!current || current.resetAt <= now) {
+    rateLimits.set(key, { count: 1, resetAt: now + windowMs });
+    return;
+  }
+
+  current.count += 1;
+  if (current.count > limit) {
+    publicError(429, "Too many attempts. Please wait before trying again.");
+  }
+}
 
 function createServer(options = {}) {
   const storage = options.storage || createStorage();
+  const allowDemoAuth = options.allowDemoAuth ?? envFlag("AGORA_DEMO_AUTH", false);
+  const allowPasswordlessAuth = options.allowPasswordlessAuth ?? envFlag("AGORA_PASSWORDLESS_AUTH", false);
 
   return http.createServer(async (request, response) => {
     try {
-      applyCors(request, response);
+      const corsAllowed = applyCors(request, response);
       if (request.method === "OPTIONS") {
-        response.writeHead(204);
+        response.writeHead(corsAllowed ? 204 : 403);
         response.end();
+        return;
+      }
+      if (!corsAllowed) {
+        sendError(response, 403, "Origin not allowed");
         return;
       }
 
@@ -77,6 +118,11 @@ function createServer(options = {}) {
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/demo-login") {
+        if (!allowDemoAuth) {
+          sendError(response, 404, "Demo auth is disabled");
+          return;
+        }
+        assertRateLimit(request, "demo-login", 20);
         const body = await readJsonBody(request);
         const memberId = body.memberId || "mara";
         const user = demoUsers.find((item) => item.id === memberId);
@@ -92,7 +138,12 @@ function createServer(options = {}) {
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/login") {
+        if (!allowPasswordlessAuth) {
+          sendError(response, 404, "Passwordless auth is disabled");
+          return;
+        }
         const body = await readJsonBody(request);
+        assertRateLimit(request, `passwordless:${normalizeEmail(body.email)}`);
         const session = await createEmailSession(storage, body.email);
         sendJson(response, 200, session);
         return;
@@ -100,12 +151,14 @@ function createServer(options = {}) {
 
       if (request.method === "POST" && url.pathname === "/api/auth/password-login") {
         const body = await readJsonBody(request);
+        assertRateLimit(request, `password:${normalizeEmail(body.email)}`);
         const session = await createPasswordSession(storage, body.email, body.password);
         sendJson(response, 200, session);
         return;
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/signup") {
+        assertRateLimit(request, "signup", 5);
         const body = await readJsonBody(request);
         const session = await createOwnerAccount(storage, body);
         sendJson(response, 201, session);
@@ -113,6 +166,7 @@ function createServer(options = {}) {
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/supabase-login") {
+        assertRateLimit(request, "supabase-login");
         const body = await readJsonBody(request);
         const session = await createSupabaseSessionFromAccessToken(storage, body.accessToken);
         sendJson(response, 200, session);
@@ -121,6 +175,7 @@ function createServer(options = {}) {
 
       const invitationAcceptMatch = url.pathname.match(/^\/api\/invitations\/([^/]+)\/accept$/);
       if (invitationAcceptMatch && request.method === "POST") {
+        assertRateLimit(request, "invitation-accept", 12);
         const body = await readJsonBody(request);
         const session = await acceptInvitation(storage, decodeURIComponent(invitationAcceptMatch[1]), body.name, body.password);
         sendJson(response, 200, session);
@@ -833,13 +888,15 @@ function createSession(user, membership) {
 }
 
 function buildSession(user, membership, token) {
+  const now = Date.now();
   return {
     token,
     user: publicUser(user),
     workspace,
     membership,
     permissions: rolePermissions[membership.role] || [],
-    createdAt: new Date().toISOString()
+    createdAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + SESSION_TTL_MS).toISOString()
   };
 }
 
@@ -847,7 +904,14 @@ async function requireSession(request, response, storage) {
   const header = request.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
   const session = sessions.get(token);
-  if (session) return session;
+  if (session) {
+    if (isSessionExpired(session)) {
+      sessions.delete(token);
+      sendError(response, 401, "Session expired");
+      return null;
+    }
+    return session;
+  }
 
   if (token && supabaseAuthEnabled()) {
     return createSupabaseSessionFromAccessToken(storage, token, { persist: false });
@@ -855,6 +919,11 @@ async function requireSession(request, response, storage) {
 
   sendError(response, 401, "Authentication required");
   return null;
+}
+
+function isSessionExpired(session) {
+  const expiresAt = Date.parse(session?.expiresAt || "");
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now();
 }
 
 function supabaseAuthEnabled() {
@@ -977,7 +1046,7 @@ async function createSupabaseSessionFromAccessToken(storage, accessToken, option
 
 async function fetchSupabaseUser(accessToken) {
   const supabaseUrl = cleanString(process.env.SUPABASE_URL || process.env.AGORA_SUPABASE_URL).replace(/\/+$/, "");
-  const anonKey = cleanString(process.env.SUPABASE_ANON_KEY || process.env.AGORA_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.AGORA_SUPABASE_SERVICE_ROLE_KEY);
+  const anonKey = cleanString(process.env.SUPABASE_ANON_KEY || process.env.AGORA_SUPABASE_ANON_KEY);
   if (!supabaseUrl || !anonKey) {
     publicError(500, "Supabase auth requires SUPABASE_URL and SUPABASE_ANON_KEY on the API server");
   }
@@ -1581,9 +1650,10 @@ async function archiveTask(storage, taskId, session, archived) {
 async function upsertCollectionItem(storage, key, item, normalizer, session, action, detailLabel) {
   const incomingItem = requireRecord(item, "Item");
   const snapshot = await storage.loadWorkspaceSnapshot();
-  const existingItems = await storage.loadRecords(key, {});
+  const existingItems = await storage.loadRecords(key, scopedRecordFilters(session, {}));
   const existingItem = existingItems.find((entry) => entry.id === incomingItem.id);
   const nextItem = enrichRecordScopeFields(normalizer(existingItem ? { ...existingItem, ...incomingItem } : incomingItem), snapshot);
+  assertCanWriteScopedRecord(key, nextItem, snapshot, session);
   const savedItem = await storage.upsertRecord(key, nextItem, {
     storage: storage.driver || "json-file",
     updatedBy: session.user.id,
@@ -1607,8 +1677,39 @@ function enrichRecordScopeFields(record, snapshot = {}) {
   return {
     ...record,
     projectId: projectId || record.projectId || "",
-    companyId: record.companyId || project?.companyId || ""
+    companyId: project?.companyId || record.companyId || ""
   };
+}
+
+function assertCanWriteScopedRecord(key, record, snapshot = {}, session) {
+  const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
+  const projects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
+  const task = record.taskId ? tasks.find((item) => item.id === record.taskId) : null;
+  const projectId = record.projectId || task?.projectId || "";
+  const project = projectId ? projects.find((item) => item.id === projectId) : null;
+
+  if (record.taskId && !task) publicError(400, "Record task is not in this workspace");
+  if (record.taskId && record.projectId && task.projectId !== record.projectId) {
+    publicError(400, "Record project does not match task");
+  }
+  if (projectId && !project) publicError(400, "Record project is not in this workspace");
+  if (project?.companyId && record.companyId && record.companyId !== project.companyId) {
+    publicError(400, "Record company does not match project");
+  }
+  if (key === "presence" && record.memberId !== session.user.id && !hasPermission(session, "members:write")) {
+    publicError(403, "Presence can only be updated for the current user");
+  }
+
+  if (!isClientSession(session)) return;
+
+  const companyId = sessionCompanyId(session);
+  if (!companyId) publicError(403, "Client session is missing company scope");
+  if (record.companyId && record.companyId !== companyId) {
+    publicError(403, "Record is outside the client company scope");
+  }
+  if (project && project.companyId !== companyId) {
+    publicError(403, "Project is outside the client company scope");
+  }
 }
 
 function normalizeProject(project) {
@@ -1858,15 +1959,45 @@ function readJsonBody(request) {
 }
 
 function applyCors(request, response) {
-  const origin = request.headers.origin || "*";
-  response.setHeader("Access-Control-Allow-Origin", origin);
+  setSecurityHeaders(response);
+  const origin = cleanString(request.headers.origin);
   response.setHeader("Vary", "Origin");
   response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  if (!origin) return true;
+  if (!isAllowedOrigin(origin)) return false;
+  response.setHeader("Access-Control-Allow-Origin", origin);
+  return true;
+}
+
+function isAllowedOrigin(origin) {
+  const allowed = allowedOrigins();
+  if (allowed.has(origin)) return true;
+  try {
+    const url = new URL(origin);
+    return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname) && url.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function allowedOrigins() {
+  return new Set(cleanString(process.env.AGORA_ALLOWED_ORIGINS)
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean));
+}
+
+function setSecurityHeaders(response) {
+  response.setHeader("X-Content-Type-Options", "nosniff");
+  response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  response.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
 }
 
 function sendJson(response, statusCode, value) {
-  response.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
+  setSecurityHeaders(response);
+  response.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   response.end(`${JSON.stringify(value, null, 2)}\n`);
 }
 

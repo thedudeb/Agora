@@ -6,7 +6,11 @@ const { createStorage, createSupabaseStorage } = require("./storage");
 
 async function run() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-api-"));
-  const server = createServer({ storage: createStorage({ dataDir, driver: "json" }) });
+  const server = createServer({
+    storage: createStorage({ dataDir, driver: "json" }),
+    allowDemoAuth: true,
+    allowPasswordlessAuth: true
+  });
 
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
@@ -22,6 +26,7 @@ async function run() {
     });
     assert(login.token, "demo login did not return a token");
     assert(login.membership.role === "admin", "demo login did not return admin role");
+    assert(login.expiresAt, "session did not include an expiry");
 
     const access = await request(`${baseUrl}/api/members`, {
       token: login.token
@@ -284,6 +289,7 @@ async function run() {
     });
     assert(audit.events.length === 14, "audit log was not written");
 
+    await testLockedAuthDefaults();
     await testAccountAuth();
     await testSupabaseAuthBridge();
     await testSupabaseStorageAdapter();
@@ -297,7 +303,10 @@ async function run() {
 
 async function testAccountAuth() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-auth-"));
-  const server = createServer({ storage: createStorage({ dataDir, driver: "json" }) });
+  const server = createServer({
+    storage: createStorage({ dataDir, driver: "json" }),
+    allowPasswordlessAuth: true
+  });
 
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
@@ -371,6 +380,34 @@ async function testAccountAuth() {
     });
     assert(otherCompany.record.name === "Other Company", "second record company upsert failed");
 
+    const projectRecord = await request(`${baseUrl}/api/projects`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        project: {
+          id: "project-record",
+          name: "Record Project",
+          companyId: "company-record",
+          owner: "owner"
+        }
+      }
+    });
+    assert(projectRecord.project.companyId === "company-record", "record project create failed");
+
+    const otherProject = await request(`${baseUrl}/api/projects`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        project: {
+          id: "other-project",
+          name: "Other Project",
+          companyId: "other-company",
+          owner: "owner"
+        }
+      }
+    });
+    assert(otherProject.project.companyId === "other-company", "second record project create failed");
+
     const approval = await request(`${baseUrl}/api/records/approvals`, {
       method: "POST",
       token: signup.token,
@@ -443,12 +480,77 @@ async function testAccountAuth() {
     assert(clientApprovals.records.length === 1, "client record scope did not filter approvals");
     assert(clientApprovals.records[0].id === "approval-record", "client record scope returned another company's approval");
 
+    const blockedClientWrite = await requestError(`${baseUrl}/api/records/approvals`, {
+      method: "POST",
+      token: clientLogin.token,
+      body: {
+        record: {
+          id: "approval-escape",
+          companyId: "other-company",
+          projectId: "other-project",
+          title: "Scope Escape",
+          status: "requested"
+        }
+      }
+    });
+    assert(blockedClientWrite.status === 403, "client cross-company record write should be blocked");
+
     const clientBackendHealth = await request(`${baseUrl}/api/backend/health`, {
       token: clientLogin.token
     });
     const clientApprovalReport = clientBackendHealth.records.find((record) => record.key === "approvals");
     assert(clientBackendHealth.membership.role === "client", "client backend health did not include client membership");
     assert(clientApprovalReport.count === 1, "client backend health did not use company-scoped record counts");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+}
+
+async function testLockedAuthDefaults() {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-locked-auth-"));
+  const server = createServer({
+    storage: createStorage({ dataDir, driver: "json" }),
+    allowDemoAuth: false,
+    allowPasswordlessAuth: false
+  });
+
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const demoLogin = await requestError(`${baseUrl}/api/auth/demo-login`, {
+      method: "POST",
+      body: { memberId: "mara" }
+    });
+    assert(demoLogin.status === 404, "demo login should be disabled by default");
+
+    const signup = await request(`${baseUrl}/api/auth/signup`, {
+      method: "POST",
+      body: {
+        name: "Locked Owner",
+        email: "locked@example.test",
+        password: "super-secret",
+        workspaceName: "Locked Workspace"
+      }
+    });
+    assert(signup.token, "locked auth signup did not create owner");
+
+    const passwordlessLogin = await requestError(`${baseUrl}/api/auth/login`, {
+      method: "POST",
+      body: { email: "locked@example.test" }
+    });
+    assert(passwordlessLogin.status === 404, "passwordless login should be disabled by default");
+
+    const passwordLogin = await request(`${baseUrl}/api/auth/password-login`, {
+      method: "POST",
+      body: {
+        email: "locked@example.test",
+        password: "super-secret"
+      }
+    });
+    assert(passwordLogin.user.id === signup.user.id, "password login should keep working when passwordless auth is disabled");
   } finally {
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(dataDir, { recursive: true, force: true });

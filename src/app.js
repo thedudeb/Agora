@@ -2,7 +2,18 @@ const STORAGE_KEY = "agora.workspace.v1";
 const API_SESSION_KEY = "agora.api.session.v1";
 const SIDEBAR_STATE_KEY = "agora.sidebar.v1";
 const API_SYNC_QUEUE_KEY = "agora.api.syncQueue.v1";
-const API_BASE_URL = (window.AGORA_API_BASE_URL || window.AGORA_CONFIG?.apiBaseUrl || "http://127.0.0.1:8787").replace(/\/+$/, "");
+const API_BASE_URL = configuredApiBaseUrl();
+
+function configuredApiBaseUrl() {
+  const fallback = "http://127.0.0.1:8787";
+  const stored = window.localStorage.getItem("agora.api.baseUrl") || "";
+  const candidate = window.AGORA_API_BASE_URL || window.AGORA_CONFIG?.apiBaseUrl || stored || fallback;
+  try {
+    return new URL(candidate, window.location.origin).origin.replace(/\/+$/, "");
+  } catch {
+    return fallback;
+  }
+}
 
 const workspaceStore = {
   load() {
@@ -3067,7 +3078,7 @@ function renderMobileAppPanel() {
 function renderLandingPage() {
   els.appView.innerHTML = `
     <article class="landing-page">
-      <section class="landing-hero" style="--landing-hero-image: url('./assets/agora-landing-hero.png');">
+      <section class="landing-hero">
         <nav class="landing-nav" aria-label="Landing">
           <div class="landing-brand">
             <img src="./assets/agora-mark.svg" alt="" width="38" height="38">

@@ -30,9 +30,11 @@ To test sync from the browser prototype, run the app in a second terminal:
 npm run dev
 ```
 
-Then open Settings, create the first workspace owner account or connect as a demo member, and use the Data page to save or load the workspace snapshot. If the API is not running at the default address, set the API URL in Settings and reload the app.
+Then open Settings, create the first workspace owner account, sign in with email and password, and use the Data page to save or load the workspace snapshot. If the API is not running at the default address, set the API URL in Settings and reload the app.
 
 Settings and Data also expose Backend Health after you connect. It reports the active storage/auth drivers, production-mode readiness, workspace snapshot metadata, structured record collections, client scoping, and any failed browser syncs that can be retried.
+
+Demo auth and passwordless email login are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true` or `AGORA_PASSWORDLESS_AUTH=true` in `.env` and restart the API. Session lifetime defaults to eight hours through `AGORA_SESSION_TTL_SECONDS`, and cross-origin API calls are limited to localhost plus any origins listed in `AGORA_ALLOWED_ORIGINS`.
 
 ## App Server
 
@@ -80,8 +82,8 @@ The first migration creates the snapshot/audit tables plus structured record tab
 - `GET /api/health`: service health and active workspace metadata.
 - `GET /api/backend/health`: authenticated backend readiness, storage/auth drivers, workspace snapshot metadata, structured collection counts, production-mode status, and current session scope.
 - `POST /api/auth/signup`: creates the first workspace owner account, or accepts a pending invited account. Body: `{ "name": "Mara Chen", "email": "mara@example.com", "password": "8+ characters" }`.
-- `POST /api/auth/demo-login`: creates a demo session. Body: `{ "memberId": "mara" }`.
-- `POST /api/auth/login`: creates a passwordless session for an accepted workspace user. Body: `{ "email": "jordan@example.com" }`.
+- `POST /api/auth/demo-login`: creates a demo session when `AGORA_DEMO_AUTH=true`. Body: `{ "memberId": "mara" }`.
+- `POST /api/auth/login`: creates a passwordless session for an accepted workspace user when `AGORA_PASSWORDLESS_AUTH=true`. Body: `{ "email": "jordan@example.com" }`.
 - `POST /api/auth/password-login`: creates a session with email and password. Body: `{ "email": "jordan@example.com", "password": "8+ characters" }`.
 - `POST /api/auth/supabase-login`: exchanges a Supabase Auth access token for an Agora API session when `AGORA_AUTH_DRIVER=supabase`. Body: `{ "accessToken": "supabase-access-token" }`.
 - `POST /api/auth/logout`: clears the current session.
@@ -93,7 +95,7 @@ The first migration creates the snapshot/audit tables plus structured record tab
 - `POST /api/invitations/:token/accept`: accepts an invitation and creates a session. Body: `{ "name": "Jordan Lee", "password": "optional 8+ characters" }`.
 - `GET /api/records`: returns structured collections from the active storage adapter. When no structured rows exist yet, the response includes `snapshotFallback` for bootstrap compatibility.
 - `GET /api/records/:collection`: returns a structured collection such as `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, or `presence`. Supports filters like `?projectId=...`, `?taskId=...`, `?companyId=...`, and `?memberId=...`.
-- `POST /api/records/:collection`: creates or updates one structured record for supported collections.
+- `POST /api/records/:collection`: creates or updates one structured record for supported collections. Writes are checked server-side against the authenticated session scope, project, task, and company relationships.
 - `GET /api/workspace`: returns the latest saved workspace snapshot.
 - `PUT /api/workspace`: saves a workspace snapshot for admin/project-manager roles.
 - `POST /api/workspace/import`: imports a workspace snapshot for admins.
