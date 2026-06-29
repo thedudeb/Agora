@@ -29,7 +29,7 @@
     <link rel="icon" href="./assets/agora-mark.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./assets/agora-mark.svg">
     <link rel="stylesheet" href="https://unpkg.com/lenis@1.3.25/dist/lenis.css">
-    <link rel="stylesheet" href="./src/styles.css?v=backups-v1">
+    <link rel="stylesheet" href="./src/styles.css?v=launch-v2">
   </head>
   <body>
     <a class="skip-link" href="#app-view">Skip to main content</a>
@@ -372,8 +372,25 @@
       </form>
     </dialog>
 
-    <script src="./src/boot.js?v=backups-v1"></script>
+    <dialog class="modal command-dialog" id="command-dialog" aria-labelledby="command-dialog-title" data-lenis-prevent>
+      <div class="command-shell">
+        <div class="command-header">
+          <div>
+            <p class="eyebrow">Command palette</p>
+            <h2 id="command-dialog-title">What do you want to do?</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-dialog="command-dialog" aria-label="Close">x</button>
+        </div>
+        <label class="command-input-wrap">
+          <span class="sr-only">Command</span>
+          <input id="command-input" autocomplete="off" placeholder="Search commands, pages, projects, tasks, and people">
+        </label>
+        <div class="command-results" id="command-results" role="listbox" aria-label="Command results"></div>
+      </div>
+    </dialog>
+
+    <script src="./src/boot.js?v=launch-v2"></script>
     <script src="https://unpkg.com/lenis@1.3.25/dist/lenis.min.js" async></script>
-    <script src="./src/app.js?v=backups-v1"></script>
+    <script src="./src/app.js?v=launch-v2"></script>
   </body>
 </html>

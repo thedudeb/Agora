@@ -1192,10 +1192,14 @@ const els = {
   companyFormTitle: document.querySelector("#company-form-title"),
   workspaceDialog: document.querySelector("#workspace-dialog"),
   workspaceForm: document.querySelector("#workspace-form"),
-  workspaceFormTitle: document.querySelector("#workspace-form-title")
+  workspaceFormTitle: document.querySelector("#workspace-form-title"),
+  commandDialog: document.querySelector("#command-dialog"),
+  commandInput: document.querySelector("#command-input"),
+  commandResults: document.querySelector("#command-results")
 };
 
 let draftSubtasks = [];
+let commandPaletteSelection = 0;
 let toastTimers = new Map();
 let lastFocusedBeforeDialog = null;
 let lastPresenceSignature = "";
@@ -2107,6 +2111,92 @@ function renderOnboardingPanel() {
             <button class="button button-secondary compact-button" type="button" data-onboarding-action="${item.action}">${item.done ? "Open" : "Start"}</button>
           </article>
         `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function launchReadinessItems() {
+  const setup = onboardingScore();
+  const backups = loadWorkspaceBackups();
+  const enabledAutomations = state.automations.filter((automation) => automation.enabled);
+  const docsAndFiles = state.documents.length + state.files.length;
+  const hasTeamAccess = state.memberships.filter((membership) => membership.status !== "revoked").length > 1
+    || state.invitations.some((invitation) => invitation.status === "pending");
+  const backendReady = apiSession && backendReadinessItems().every((item) => item.done);
+  return [
+    {
+      label: "Workspace setup",
+      detail: `${setup.done}/${setup.total} setup steps complete`,
+      done: setup.done === setup.total,
+      commandId: "tutorial:start"
+    },
+    {
+      label: "Server sync",
+      detail: apiSession ? apiConnectionLabel() : "Connect API or Supabase before team use",
+      done: Boolean(apiSession),
+      commandId: "settings:sync"
+    },
+    {
+      label: "Local recovery",
+      detail: backups.length ? `${backups.length} backup${backups.length === 1 ? "" : "s"} available` : "Create a backup before imports or API restores",
+      done: backups.length > 0,
+      commandId: "backup:create"
+    },
+    {
+      label: "Team access",
+      detail: hasTeamAccess ? "Members or invitations are configured" : "Invite a teammate and review roles",
+      done: hasTeamAccess,
+      commandId: "settings:members"
+    },
+    {
+      label: "Workflow defaults",
+      detail: `${state.projectTemplates.length} project templates, ${enabledAutomations.length} enabled automations`,
+      done: state.projectTemplates.length > 0 && enabledAutomations.length > 0,
+      commandId: "route:templates"
+    },
+    {
+      label: "Backend readiness",
+      detail: backendReady ? "Connected backend checks are passing" : "Connect API and review health checks",
+      done: Boolean(backendReady),
+      commandId: "route:data"
+    },
+    {
+      label: "Knowledge base",
+      detail: docsAndFiles ? `${docsAndFiles} docs/files in the workspace` : "Add docs or files for project context",
+      done: docsAndFiles > 0,
+      commandId: "route:docs"
+    }
+  ];
+}
+
+function renderLaunchReadinessPanel() {
+  const items = launchReadinessItems();
+  const doneCount = items.filter((item) => item.done).length;
+  return `
+    <section class="panel readiness-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Launch readiness</p>
+          <h2>Production setup</h2>
+        </div>
+        <span class="status-pill ${doneCount === items.length ? "inbox-green" : "inbox-amber"}">${doneCount}/${items.length}</span>
+      </div>
+      <div class="readiness-grid">
+        ${items.map((item) => `
+          <article class="readiness-item ${item.done ? "is-done" : "is-open"}">
+            <span>${item.done ? "OK" : "Next"}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail)}</p>
+            </div>
+            <button class="button button-secondary compact-button" type="button" data-command-id="${escapeHtml(item.commandId)}">${item.done ? "Open" : "Fix"}</button>
+          </article>
+        `).join("")}
+      </div>
+      <div class="readiness-actions">
+        <button class="button button-primary" type="button" id="open-command-palette">Open Command Palette</button>
+        <span>Press <kbd>Cmd K</kbd> or <kbd>Ctrl K</kbd> anywhere in Agora.</span>
       </div>
     </section>
   `;
@@ -3437,6 +3527,331 @@ function openSearchResult(button) {
     return;
   }
   setRoute(button.dataset.searchRoute || "dashboard");
+}
+
+function commandPaletteBaseItems() {
+  const enabledAutomations = state.automations.filter((automation) => automation.enabled).length;
+  const backupCount = loadWorkspaceBackups().length;
+  return [
+    {
+      id: "create:task",
+      title: "New task",
+      detail: "Capture work in the current workspace",
+      group: "Create",
+      keywords: "task todo issue card"
+    },
+    {
+      id: "create:project",
+      title: "New project",
+      detail: "Start a project with owner, company, and dates",
+      group: "Create",
+      keywords: "project milestone launch"
+    },
+    {
+      id: "create:company",
+      title: "New company",
+      detail: "Add a client, internal group, partner, or vendor",
+      group: "Create",
+      keywords: "client account portfolio"
+    },
+    {
+      id: "backup:create",
+      title: "Create workspace backup",
+      detail: `${backupCount} local backup${backupCount === 1 ? "" : "s"} saved for this workspace`,
+      group: "Data",
+      keywords: "backup restore export json safety"
+    },
+    {
+      id: "route:data",
+      title: "Open Data",
+      detail: "Backups, JSON import/export, CSV exports, and API sync",
+      group: "Navigate",
+      keywords: "backup import export api sync"
+    },
+    {
+      id: "api:save",
+      title: "Save workspace to API",
+      detail: apiSession ? apiConnectionLabel() : "Connect to the API first",
+      group: "Sync",
+      keywords: "server database supabase sync",
+      disabled: !apiSession || !canSaveWholeWorkspace()
+    },
+    {
+      id: "api:load",
+      title: "Load workspace from API",
+      detail: apiSession ? "Restore the latest API snapshot" : "Connect to the API first",
+      group: "Sync",
+      keywords: "server database restore snapshot",
+      disabled: !apiSession
+    },
+    {
+      id: "settings:sync",
+      title: "Open sync settings",
+      detail: "Connect API, Supabase, health checks, and failed syncs",
+      group: "Setup",
+      keywords: "api supabase backend deploy"
+    },
+    {
+      id: "settings:members",
+      title: "Invite and manage members",
+      detail: "Roles, invitations, and company-scoped access",
+      group: "Setup",
+      keywords: "team users roles permissions invite"
+    },
+    {
+      id: "view:save",
+      title: "Save current view",
+      detail: "Turn the active filters into a reusable workspace view",
+      group: "Workflow",
+      keywords: "filter saved view standup"
+    },
+    {
+      id: "automations:run",
+      title: "Run enabled automations",
+      detail: `${enabledAutomations} automation${enabledAutomations === 1 ? "" : "s"} enabled`,
+      group: "Workflow",
+      keywords: "rules alerts automate",
+      disabled: enabledAutomations === 0
+    },
+    {
+      id: "operator:brief",
+      title: "Draft workspace brief",
+      detail: "Ask the AI operator for the highest-signal risks and next actions",
+      group: "AI",
+      keywords: "operator ai summary risks"
+    },
+    {
+      id: "today:generate",
+      title: "Generate Today plan",
+      detail: "Plan due, urgent, and high-signal work for the day",
+      group: "Daily",
+      keywords: "daily today planning"
+    },
+    {
+      id: "tutorial:start",
+      title: "Start tutorial",
+      detail: "Walk through setup, navigation, sync, and daily work",
+      group: "Help",
+      keywords: "guide help onboarding"
+    }
+  ];
+}
+
+function commandPaletteRouteItems() {
+  return Object.entries(routes)
+    .filter(([route]) => !["invite", "project", "company"].includes(route))
+    .map(([route, label]) => ({
+      id: `route:${route}`,
+      title: `Open ${label}`,
+      detail: `Go to ${label}`,
+      group: "Navigate",
+      keywords: `${route} page view`
+    }));
+}
+
+function commandPaletteSearchItems(query) {
+  if (query.trim().length < 2) return [];
+  const previousQuery = state.filters.query;
+  state.filters.query = query;
+  const results = globalSearchResults().slice(0, 6);
+  state.filters.query = previousQuery;
+  return results.map((result, index) => ({
+    id: `search:${index}`,
+    title: result.title,
+    detail: result.detail,
+    group: result.type,
+    keywords: `${result.type} ${result.detail}`,
+    searchResult: result
+  }));
+}
+
+function commandPaletteItems() {
+  const query = els.commandInput?.value.trim() || "";
+  const haystackQuery = query.toLowerCase();
+  const items = [
+    ...commandPaletteBaseItems(),
+    ...commandPaletteRouteItems(),
+    ...commandPaletteSearchItems(query)
+  ];
+  if (!haystackQuery) return items.slice(0, 16);
+
+  return items
+    .filter((item) => [item.title, item.detail, item.group, item.keywords].join(" ").toLowerCase().includes(haystackQuery))
+    .slice(0, 16);
+}
+
+function commandPaletteAllItems() {
+  return [
+    ...commandPaletteBaseItems(),
+    ...commandPaletteRouteItems(),
+    ...commandPaletteSearchItems(els.commandInput?.value.trim() || "")
+  ];
+}
+
+function renderCommandPalette() {
+  if (!els.commandResults) return;
+  const items = commandPaletteItems();
+  commandPaletteSelection = clamp(commandPaletteSelection, 0, Math.max(items.length - 1, 0));
+  els.commandResults.innerHTML = items.length ? items.map((item, index) => `
+    <button
+      class="command-result ${index === commandPaletteSelection ? "is-selected" : ""}"
+      type="button"
+      role="option"
+      aria-selected="${index === commandPaletteSelection ? "true" : "false"}"
+      data-command-id="${escapeHtml(item.id)}"
+      ${item.disabled ? "disabled" : ""}
+    >
+      <span>${escapeHtml(item.group)}</span>
+      <strong>${escapeHtml(item.title)}</strong>
+      <small>${escapeHtml(item.detail)}</small>
+    </button>
+  `).join("") : emptyState("No commands match that search.");
+}
+
+function openCommandPalette(initialQuery = "") {
+  commandPaletteSelection = 0;
+  els.commandInput.value = initialQuery;
+  renderCommandPalette();
+  openDialog(els.commandDialog);
+  window.setTimeout(() => els.commandInput?.select(), 0);
+}
+
+function closeCommandPalette() {
+  if (els.commandDialog?.open) closeDialog(els.commandDialog);
+}
+
+function setSettingsTab(tab) {
+  state.selectedRoute = "settings";
+  state.selectedSettingsTab = settingsTabFallback(tab);
+  openSidebarGroupForRoute("settings");
+  saveState();
+  render();
+}
+
+function openCommandSearchResult(result) {
+  if (result.taskId) {
+    const task = byId(state.tasks, result.taskId);
+    if (task) {
+      state.selectedProject = task.projectId;
+      state.selectedRoute = "project";
+      state.selectedProjectTab = "tasks";
+      saveState();
+      render();
+      openTaskDialog(task);
+    }
+    return;
+  }
+  if (result.projectId) {
+    setProject(result.projectId);
+    return;
+  }
+  if (result.companyId) {
+    setCompany(result.companyId);
+    return;
+  }
+  if (result.assignee) {
+    state.filters.assignee = result.assignee;
+    state.selectedRoute = "my-work";
+    saveState();
+    render();
+    return;
+  }
+  setRoute(result.route || "dashboard");
+}
+
+function executeCommand(commandId) {
+  const item = commandPaletteAllItems().find((command) => command.id === commandId);
+  if (!item || item.disabled) return;
+  closeCommandPalette();
+
+  if (item.searchResult) {
+    openCommandSearchResult(item.searchResult);
+    return;
+  }
+
+  if (commandId.startsWith("route:")) {
+    setRoute(commandId.replace("route:", ""));
+    return;
+  }
+
+  if (commandId === "create:task") {
+    if (!canWrite("tasks:write")) {
+      showToast("Your role cannot create tasks", "info");
+      return;
+    }
+    populateTaskForm();
+    openDialog(els.taskDialog);
+    return;
+  }
+
+  if (commandId === "create:project") {
+    if (!canWrite("projects:write")) {
+      showToast("Your role cannot create projects", "info");
+      return;
+    }
+    populateProjectForm();
+    openDialog(els.projectDialog);
+    return;
+  }
+
+  if (commandId === "create:company") {
+    if (!canWrite("projects:write")) {
+      showToast("Your role cannot manage companies", "info");
+      return;
+    }
+    populateCompanyForm();
+    openDialog(els.companyDialog);
+    return;
+  }
+
+  if (commandId === "backup:create") {
+    state.selectedRoute = "data";
+    saveState();
+    createWorkspaceBackup("Command palette backup");
+    return;
+  }
+
+  if (commandId === "api:save") {
+    saveWorkspaceToApi();
+    return;
+  }
+
+  if (commandId === "api:load") {
+    loadWorkspaceFromApi();
+    return;
+  }
+
+  if (commandId === "settings:sync") {
+    setSettingsTab("sync");
+    return;
+  }
+
+  if (commandId === "settings:members") {
+    setSettingsTab("members");
+    return;
+  }
+
+  if (commandId === "view:save") {
+    saveCurrentView();
+    return;
+  }
+
+  if (commandId === "automations:run") {
+    runAllAutomations();
+    return;
+  }
+
+  if (commandId === "operator:brief") {
+    generateWorkspaceBrief();
+    return;
+  }
+
+  if (commandId === "today:generate") {
+    generateTodayPlan();
+    return;
+  }
+
+  if (commandId === "tutorial:start") startTutorial();
 }
 
 function normalizeTaskWatchers(value) {
@@ -5395,6 +5810,7 @@ function renderDashboard() {
 
   els.appView.innerHTML = `
     ${renderOnboardingPanel()}
+    ${renderLaunchReadinessPanel()}
 
     <div class="metric-grid">
       ${metric("Open tasks", openTasks.length)}
@@ -11152,6 +11568,18 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const commandButton = event.target.closest("[data-command-id]");
+  if (commandButton) {
+    executeCommand(commandButton.dataset.commandId);
+    return;
+  }
+
+  const openCommandPaletteButton = event.target.closest("#open-command-palette");
+  if (openCommandPaletteButton) {
+    openCommandPalette();
+    return;
+  }
+
   const routeButton = event.target.closest("[data-route]");
   if (routeButton) setRoute(routeButton.dataset.route);
 
@@ -11615,6 +12043,39 @@ document.addEventListener("change", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  const isCommandShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
+  if (isCommandShortcut) {
+    event.preventDefault();
+    openCommandPalette();
+    return;
+  }
+
+  if (els.commandDialog?.open) {
+    const items = commandPaletteItems();
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      commandPaletteSelection = items.length ? (commandPaletteSelection + 1) % items.length : 0;
+      renderCommandPalette();
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      commandPaletteSelection = items.length ? (commandPaletteSelection - 1 + items.length) % items.length : 0;
+      renderCommandPalette();
+      return;
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const selected = items[commandPaletteSelection];
+      if (selected) executeCommand(selected.id);
+      return;
+    }
+    if (event.key === "Escape") {
+      closeCommandPalette();
+      return;
+    }
+  }
+
   if (event.key === "Enter" && event.target.closest("#subtask-title")) {
     event.preventDefault();
     addDraftSubtask();
@@ -11639,7 +12100,7 @@ document.querySelector("#new-project-button").addEventListener("click", () => {
   openDialog(els.projectDialog);
 });
 
-[els.taskDialog, els.projectDialog, els.companyDialog, els.workspaceDialog].filter(Boolean).forEach((dialog) => {
+[els.taskDialog, els.projectDialog, els.companyDialog, els.workspaceDialog, els.commandDialog].filter(Boolean).forEach((dialog) => {
   dialog.addEventListener("close", () => {
     if (dialog === els.taskDialog) {
       const taskId = document.querySelector("#task-id")?.value || "";
@@ -11670,6 +12131,11 @@ els.workspaceSwitcher?.addEventListener("change", (event) => {
 els.workspaceCreate?.addEventListener("click", createWorkspaceFromSwitcher);
 els.workspaceDuplicate?.addEventListener("click", duplicateWorkspaceFromSwitcher);
 els.workspaceArchive?.addEventListener("click", archiveActiveWorkspace);
+
+els.commandInput?.addEventListener("input", () => {
+  commandPaletteSelection = 0;
+  renderCommandPalette();
+});
 
 els.searchInput.addEventListener("input", (event) => {
   state.filters.query = event.target.value;
