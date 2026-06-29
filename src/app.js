@@ -1002,6 +1002,120 @@ const seedData = {
         assignee: "eli",
         description: "Route release feedback, bugs, and follow-up requests."
       }
+    },
+    {
+      id: "template-finance-close",
+      name: "Finance Close",
+      category: "Finance",
+      description: "A month-end finance project with reconciliation, review, variance analysis, reporting, and leadership signoff.",
+      owner: "sam",
+      durationDays: 18,
+      tasks: [
+        { key: "close-calendar", title: "Confirm close calendar", description: "Lock dates, owners, source systems, dependencies, and review windows.", assignee: "sam", priority: "high", startOffset: 0, dueOffset: 2, tags: ["finance", "close"], blockedBy: [], subtasks: ["Confirm owners", "Publish close dates", "List source systems"] },
+        { key: "reconcile", title: "Reconcile accounts", description: "Review bank, revenue, expense, payroll, and balance sheet accounts.", assignee: "eli", priority: "urgent", startOffset: 2, dueOffset: 8, tags: ["finance", "reconciliation"], blockedBy: ["close-calendar"], subtasks: ["Bank reconciliation", "Revenue check", "Expense check", "Balance sheet check"] },
+        { key: "variance", title: "Prepare variance analysis", description: "Compare actuals to forecast, identify drivers, and write concise explanations.", assignee: "mara", priority: "high", startOffset: 8, dueOffset: 12, tags: ["forecast", "analysis"], blockedBy: ["reconcile"], subtasks: ["Revenue variance", "Expense variance", "Cash movement"] },
+        { key: "reporting", title: "Package finance report", description: "Prepare summary, dashboard screenshots, risks, and recommended follow-ups.", assignee: "nina", priority: "normal", startOffset: 12, dueOffset: 16, tags: ["reporting"], blockedBy: ["variance"], subtasks: ["Draft summary", "Attach exports", "Check formatting"] },
+        { key: "signoff", title: "Collect leadership signoff", description: "Resolve open questions and capture approval for the finalized finance package.", assignee: "sam", priority: "high", startOffset: 16, dueOffset: 18, tags: ["approval"], blockedBy: ["reporting"], subtasks: ["Review open questions", "Send final package", "Archive close notes"] }
+      ],
+      milestones: [
+        { title: "Accounts reconciled", description: "Core accounts are checked and ready for analysis.", owner: "eli", dueOffset: 9, status: "planned", taskKeys: ["reconcile"] },
+        { title: "Finance package approved", description: "The month-end report is reviewed and signed off.", owner: "sam", dueOffset: 18, status: "planned", taskKeys: ["variance", "reporting", "signoff"] }
+      ],
+      docs: [
+        { title: "Close Checklist", type: "Template", body: "Owners, due dates, source systems, reconciliation checklist, and signoff log." },
+        { title: "Finance Report Outline", type: "Brief", body: "Executive summary, variance notes, cash movement, risks, and follow-up actions." }
+      ],
+      intakeForm: {
+        title: "Finance Close Request",
+        assignee: "sam",
+        description: "Capture finance questions, report requests, and close blockers."
+      }
+    },
+    {
+      id: "template-art-exhibition",
+      name: "Art Exhibition",
+      category: "Creative",
+      description: "A gallery or art show workflow for curating work, production, installation, promotion, opening night, and teardown.",
+      owner: "nina",
+      durationDays: 45,
+      tasks: [
+        { key: "theme", title: "Define exhibition concept", description: "Clarify theme, audience, curatorial point of view, and experience goals.", assignee: "nina", priority: "high", startOffset: 0, dueOffset: 5, tags: ["creative", "concept"], blockedBy: [], subtasks: ["Draft concept", "Confirm audience", "List constraints"] },
+        { key: "artists", title: "Confirm artists and works", description: "Finalize participating artists, artwork list, dimensions, and lender details.", assignee: "mara", priority: "high", startOffset: 5, dueOffset: 14, tags: ["artists", "curation"], blockedBy: ["theme"], subtasks: ["Send invites", "Collect artwork details", "Confirm rights"] },
+        { key: "production", title: "Plan production and installation", description: "Map layout, lighting, labels, framing, insurance, shipping, and install crew.", assignee: "sam", priority: "urgent", startOffset: 12, dueOffset: 28, tags: ["production", "install"], blockedBy: ["artists"], subtasks: ["Floor plan", "Shipping plan", "Label copy", "Install schedule"] },
+        { key: "promotion", title: "Launch exhibition promotion", description: "Prepare imagery, press notes, mailing list, social posts, and opening invitations.", assignee: "nina", priority: "normal", startOffset: 18, dueOffset: 34, tags: ["marketing", "press"], blockedBy: ["theme"], subtasks: ["Press blurb", "Invite list", "Social assets"] },
+        { key: "opening", title: "Run opening night", description: "Coordinate staff, run of show, guest list, artist remarks, and issue response.", assignee: "sam", priority: "high", startOffset: 35, dueOffset: 42, tags: ["event"], blockedBy: ["production", "promotion"], subtasks: ["Guest list", "Run of show", "Staff roles"] },
+        { key: "teardown", title: "Close and return works", description: "Pack work, confirm condition reports, return loans, and archive show materials.", assignee: "eli", priority: "normal", startOffset: 42, dueOffset: 45, tags: ["archive"], blockedBy: ["opening"], subtasks: ["Condition reports", "Return schedule", "Archive assets"] }
+      ],
+      milestones: [
+        { title: "Curation locked", description: "Concept, artists, and core works are confirmed.", owner: "nina", dueOffset: 15, status: "planned", taskKeys: ["theme", "artists"] },
+        { title: "Installation ready", description: "Production plan, promotion, and opening run of show are ready.", owner: "sam", dueOffset: 35, status: "planned", taskKeys: ["production", "promotion"] },
+        { title: "Show closed", description: "Works are returned and exhibition archive is complete.", owner: "eli", dueOffset: 45, status: "planned", taskKeys: ["teardown"] }
+      ],
+      docs: [
+        { title: "Curatorial Brief", type: "Brief", body: "Concept, artists, works, audience, layout notes, and interpretive text." },
+        { title: "Opening Night Run of Show", type: "Template", body: "Timeline, staff roles, guest list, remarks, vendor contacts, and contingency notes." }
+      ],
+      intakeForm: {
+        title: "Artwork Submission",
+        assignee: "nina",
+        description: "Collect artist submissions, artwork details, and installation notes."
+      }
+    },
+    {
+      id: "template-marketing-campaign",
+      name: "Marketing Campaign",
+      category: "Marketing",
+      description: "A campaign workspace for positioning, creative production, channel planning, launch, and performance review.",
+      owner: "mara",
+      durationDays: 35,
+      tasks: [
+        { key: "brief", title: "Write campaign brief", description: "Define audience, offer, message, channels, timeline, and success metrics.", assignee: "mara", priority: "urgent", startOffset: 0, dueOffset: 5, tags: ["brief", "strategy"], blockedBy: [], subtasks: ["Audience", "Offer", "Metrics"] },
+        { key: "creative", title: "Produce creative assets", description: "Create copy, visuals, landing page content, and ad variants.", assignee: "nina", priority: "high", startOffset: 5, dueOffset: 18, tags: ["creative"], blockedBy: ["brief"], subtasks: ["Copy", "Visuals", "Landing page", "Ad variants"] },
+        { key: "channels", title: "Build channel plan", description: "Map email, social, paid, partner, and organic launch sequence.", assignee: "sam", priority: "normal", startOffset: 8, dueOffset: 20, tags: ["channels"], blockedBy: ["brief"], subtasks: ["Email", "Social", "Paid", "Partner"] },
+        { key: "launch", title: "Launch campaign", description: "Schedule assets, QA tracking, publish channels, and monitor first-day performance.", assignee: "eli", priority: "high", startOffset: 20, dueOffset: 28, tags: ["launch"], blockedBy: ["creative", "channels"], subtasks: ["QA links", "Schedule posts", "Monitor launch"] },
+        { key: "retro", title: "Review campaign performance", description: "Analyze results, learnings, channel performance, and follow-up experiments.", assignee: "mara", priority: "normal", startOffset: 28, dueOffset: 35, tags: ["reporting"], blockedBy: ["launch"], subtasks: ["Pull metrics", "Write learnings", "Suggest next tests"] }
+      ],
+      milestones: [
+        { title: "Campaign brief approved", description: "Campaign direction and metrics are approved.", owner: "mara", dueOffset: 6, status: "planned", taskKeys: ["brief"] },
+        { title: "Campaign live", description: "Creative and channels are published.", owner: "eli", dueOffset: 28, status: "planned", taskKeys: ["creative", "channels", "launch"] }
+      ],
+      docs: [
+        { title: "Campaign Brief", type: "Brief", body: "Audience, promise, offer, message, channel plan, launch dates, and metrics." },
+        { title: "Performance Recap", type: "Template", body: "Results, channel breakdown, learnings, assets, and recommended experiments." }
+      ],
+      intakeForm: {
+        title: "Campaign Request",
+        assignee: "mara",
+        description: "Capture campaign ideas, audience notes, deadlines, and creative needs."
+      }
+    },
+    {
+      id: "template-research-sprint",
+      name: "Research Sprint",
+      category: "Research",
+      description: "A compact research project for questions, recruiting, interviews, synthesis, and decision-ready recommendations.",
+      owner: "mara",
+      durationDays: 21,
+      tasks: [
+        { key: "questions", title: "Frame research questions", description: "Clarify decisions, assumptions, research questions, and success criteria.", assignee: "mara", priority: "high", startOffset: 0, dueOffset: 3, tags: ["research", "planning"], blockedBy: [], subtasks: ["Decision list", "Assumptions", "Research questions"] },
+        { key: "recruit", title: "Recruit participants", description: "Define screener, invite participants, and confirm interview schedule.", assignee: "sam", priority: "high", startOffset: 3, dueOffset: 8, tags: ["recruiting"], blockedBy: ["questions"], subtasks: ["Screener", "Invite list", "Schedule"] },
+        { key: "interviews", title: "Run interviews", description: "Conduct sessions, capture notes, and tag recurring signals.", assignee: "nina", priority: "urgent", startOffset: 8, dueOffset: 14, tags: ["interviews"], blockedBy: ["recruit"], subtasks: ["Interview guide", "Session notes", "Signal tags"] },
+        { key: "synthesis", title: "Synthesize insights", description: "Cluster themes, map confidence, and identify product or workflow implications.", assignee: "mara", priority: "high", startOffset: 14, dueOffset: 18, tags: ["synthesis"], blockedBy: ["interviews"], subtasks: ["Theme clusters", "Evidence table", "Confidence notes"] },
+        { key: "readout", title: "Share research readout", description: "Present insights, recommendations, open questions, and next experiments.", assignee: "eli", priority: "normal", startOffset: 18, dueOffset: 21, tags: ["readout"], blockedBy: ["synthesis"], subtasks: ["Slides", "Recommendations", "Next steps"] }
+      ],
+      milestones: [
+        { title: "Participants confirmed", description: "Research recruiting is complete.", owner: "sam", dueOffset: 8, status: "planned", taskKeys: ["recruit"] },
+        { title: "Insights delivered", description: "The team has a decision-ready research readout.", owner: "mara", dueOffset: 21, status: "planned", taskKeys: ["synthesis", "readout"] }
+      ],
+      docs: [
+        { title: "Research Plan", type: "Brief", body: "Questions, audience, method, schedule, risks, and decision criteria." },
+        { title: "Interview Guide", type: "Template", body: "Intro script, consent, warmup, topic questions, probes, and closeout." }
+      ],
+      intakeForm: {
+        title: "Research Request",
+        assignee: "mara",
+        description: "Collect product, customer, or workflow questions for future research."
+      }
     }
   ],
   taskTemplates: [
@@ -1359,6 +1473,7 @@ function normalizeState(nextState) {
     dailyPlans: Object.prototype.hasOwnProperty.call(nextState, "dailyPlans") ? nextState.dailyPlans || {} : seedData.dailyPlans,
     inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
     inboxArchived: Array.isArray(nextState.inboxArchived) ? nextState.inboxArchived : [],
+    deletedProjectTemplateIds: Array.isArray(nextState.deletedProjectTemplateIds) ? nextState.deletedProjectTemplateIds : [],
     taskWatchers: normalizeTaskWatchers(nextState.taskWatchers),
     presence: Array.isArray(nextState.presence) ? nextState.presence : [],
     approvals: Array.isArray(nextState.approvals) ? nextState.approvals : seedData.approvals,
@@ -1367,7 +1482,7 @@ function normalizeState(nextState) {
     files: Array.isArray(nextState.files) ? nextState.files : seedData.files,
     intakeForms: Array.isArray(nextState.intakeForms) ? nextState.intakeForms : seedData.intakeForms,
     intakeSubmissions: Array.isArray(nextState.intakeSubmissions) ? nextState.intakeSubmissions : seedData.intakeSubmissions,
-    projectTemplates: Array.isArray(nextState.projectTemplates) ? nextState.projectTemplates : seedData.projectTemplates,
+    projectTemplates: normalizeProjectTemplates(nextState.projectTemplates, nextState.deletedProjectTemplateIds),
     taskTemplates: Array.isArray(nextState.taskTemplates) ? nextState.taskTemplates : seedData.taskTemplates,
     automations: Array.isArray(nextState.automations) ? nextState.automations : seedData.automations,
     automationHistory: Array.isArray(nextState.automationHistory) ? nextState.automationHistory : [],
@@ -1622,6 +1737,14 @@ function normalizeTaskRecord(task = {}) {
     subtasks: Array.isArray(task.subtasks) ? task.subtasks : [],
     customFields: task.customFields && typeof task.customFields === "object" ? task.customFields : {}
   };
+}
+
+function normalizeProjectTemplates(templates, deletedIds = []) {
+  const existing = Array.isArray(templates) ? templates : [];
+  const deleted = new Set(Array.isArray(deletedIds) ? deletedIds : []);
+  const existingIds = new Set(existing.map((template) => template?.id).filter(Boolean));
+  const missingBuiltIns = seedData.projectTemplates.filter((template) => !deleted.has(template.id) && !existingIds.has(template.id));
+  return [...existing, ...missingBuiltIns].filter((template) => template?.id && template?.name);
 }
 
 function coreRecordSignature({ projects = state.projects, tasks = state.tasks } = {}) {
@@ -10122,6 +10245,9 @@ function saveTaskAsTemplate() {
 }
 
 function deleteProjectTemplate(templateId) {
+  if (seedData.projectTemplates.some((template) => template.id === templateId)) {
+    state.deletedProjectTemplateIds = Array.from(new Set([...(state.deletedProjectTemplateIds || []), templateId]));
+  }
   state.projectTemplates = state.projectTemplates.filter((template) => template.id !== templateId);
   saveState();
   render();
