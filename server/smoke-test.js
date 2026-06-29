@@ -239,10 +239,33 @@ async function run() {
     });
     assert(createdFile.file.title === "smoke-plan.pdf", "file create failed");
 
+    const uploadedFile = await request(`${baseUrl}/api/files/upload`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        file: {
+          id: "file-upload-smoke",
+          projectId: "project-smoke",
+          taskId: "task-smoke",
+          title: "smoke-upload.txt",
+          kind: "TXT",
+          contentType: "text/plain",
+          dataUrl: `data:text/plain;base64,${Buffer.from("Uploaded by the smoke test").toString("base64")}`
+        }
+      }
+    });
+    assert(uploadedFile.file.url === "/api/files/file-upload-smoke/download", "file upload did not return download URL");
+    assert(uploadedFile.file.storageProvider === "json-file", "file upload did not use local storage provider");
+
+    const downloadedFile = await requestRaw(`${baseUrl}${uploadedFile.file.url}`, {
+      token: login.token
+    });
+    assert(downloadedFile.body.toString("utf8") === "Uploaded by the smoke test", "file download did not return uploaded content");
+
     const files = await request(`${baseUrl}/api/files?projectId=project-smoke`, {
       token: login.token
     });
-    assert(files.files.length === 1, "file list failed");
+    assert(files.files.length === 2, "file list failed");
 
     const archivedTask = await request(`${baseUrl}/api/tasks/task-smoke`, {
       method: "DELETE",
@@ -275,7 +298,8 @@ async function run() {
     assert(workspace.snapshot.comments[0].body === "Smoke test comment", "comment not stored in workspace");
     assert(workspace.snapshot.activities[0].message === "commented on Updated Smoke Task", "activity not stored in workspace");
     assert(workspace.snapshot.documents[0].title === "Smoke Doc", "document not stored in workspace");
-    assert(workspace.snapshot.files[0].title === "smoke-plan.pdf", "file not stored in workspace");
+    assert(workspace.snapshot.files.some((file) => file.title === "smoke-plan.pdf"), "file not stored in workspace");
+    assert(workspace.snapshot.files.some((file) => file.title === "smoke-upload.txt"), "uploaded file not stored in workspace");
 
     const finalBackendHealth = await request(`${baseUrl}/api/backend/health`, {
       token: login.token
@@ -287,7 +311,7 @@ async function run() {
     const audit = await request(`${baseUrl}/api/audit-log`, {
       token: login.token
     });
-    assert(audit.events.length === 14, "audit log was not written");
+    assert(audit.events.length === 15, "audit log was not written");
 
     await testLockedAuthDefaults();
     await testAccountAuth();
@@ -302,11 +326,13 @@ async function run() {
 }
 
 async function testAccountAuth() {
+  const originalResetReturnToken = process.env.AGORA_PASSWORD_RESET_RETURN_TOKEN;
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-auth-"));
   const server = createServer({
     storage: createStorage({ dataDir, driver: "json" }),
     allowPasswordlessAuth: true
   });
+  process.env.AGORA_PASSWORD_RESET_RETURN_TOKEN = "true";
 
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const { port } = server.address();
@@ -338,11 +364,46 @@ async function testAccountAuth() {
     });
     assert(duplicateSignup.status === 403, "second open signup should be blocked");
 
-    const passwordLogin = await request(`${baseUrl}/api/auth/password-login`, {
+    const passwordChange = await request(`${baseUrl}/api/auth/change-password`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        currentPassword: "super-secret",
+        newPassword: "owner-secret-2"
+      }
+    });
+    assert(passwordChange.ok === true, "password change failed");
+
+    const oldPasswordLogin = await requestError(`${baseUrl}/api/auth/password-login`, {
       method: "POST",
       body: {
         email: "owner@example.test",
         password: "super-secret"
+      }
+    });
+    assert(oldPasswordLogin.status === 401, "old password should not work after password change");
+
+    const resetRequest = await request(`${baseUrl}/api/auth/password-reset/request`, {
+      method: "POST",
+      body: { email: "owner@example.test" }
+    });
+    assert(resetRequest.resetToken, "password reset request did not return manual token in test mode");
+
+    const resetConfirm = await request(`${baseUrl}/api/auth/password-reset/confirm`, {
+      method: "POST",
+      body: {
+        email: "owner@example.test",
+        token: resetRequest.resetToken,
+        password: "owner-secret-3"
+      }
+    });
+    assert(resetConfirm.ok === true, "password reset confirm failed");
+
+    const passwordLogin = await request(`${baseUrl}/api/auth/password-login`, {
+      method: "POST",
+      body: {
+        email: "owner@example.test",
+        password: "owner-secret-3"
       }
     });
     assert(passwordLogin.user.id === signup.user.id, "password login did not return owner");
@@ -453,7 +514,29 @@ async function testAccountAuth() {
         companyId: "company-record"
       }
     });
-    const accepted = await request(`${baseUrl}/api/invitations/${invitation.invitation.token}/accept`, {
+    const resentInvitation = await request(`${baseUrl}/api/invitations/${invitation.invitation.id}/resend`, {
+      method: "POST",
+      token: signup.token
+    });
+    assert(resentInvitation.invitation.token && resentInvitation.invitation.token !== invitation.invitation.token, "invite resend did not refresh token");
+    assert(resentInvitation.invitation.expiresAt, "invite resend did not set expiry");
+
+    const revokedInvite = await request(`${baseUrl}/api/invitations`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        name: "Revoked User",
+        email: "revoked@example.test",
+        role: "member"
+      }
+    });
+    const revoked = await request(`${baseUrl}/api/invitations/${revokedInvite.invitation.id}`, {
+      method: "DELETE",
+      token: signup.token
+    });
+    assert(revoked.invitation.status === "revoked", "invite revoke failed");
+
+    const accepted = await request(`${baseUrl}/api/invitations/${resentInvitation.invitation.token}/accept`, {
       method: "POST",
       body: {
         name: "Client User",
@@ -504,6 +587,11 @@ async function testAccountAuth() {
   } finally {
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(dataDir, { recursive: true, force: true });
+    if (originalResetReturnToken === undefined) {
+      delete process.env.AGORA_PASSWORD_RESET_RETURN_TOKEN;
+    } else {
+      process.env.AGORA_PASSWORD_RESET_RETURN_TOKEN = originalResetReturnToken;
+    }
   }
 }
 
@@ -797,6 +885,20 @@ async function requestError(url, options = {}) {
     throw new Error(`Expected request to fail: ${url}`);
   }
   return { status: response.status, body };
+}
+
+async function requestRaw(url, options = {}) {
+  const response = await fetch(url, {
+    method: options.method || "GET",
+    headers: {
+      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
+    }
+  });
+  const body = Buffer.from(await response.arrayBuffer());
+  if (!response.ok) {
+    throw new Error(`${response.status} ${body.toString("utf8") || "Request failed"}`);
+  }
+  return { status: response.status, headers: response.headers, body };
 }
 
 function assert(condition, message) {

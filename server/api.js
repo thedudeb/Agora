@@ -1,5 +1,7 @@
 const http = require("node:http");
 const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 const { URL } = require("node:url");
 const { loadEnvFile } = require("./env");
 const { createStorage } = require("./storage");
@@ -7,12 +9,15 @@ const { createStorage } = require("./storage");
 loadEnvFile();
 
 const PORT = Number(process.env.AGORA_API_PORT || 8787);
-const BODY_LIMIT_BYTES = 5 * 1024 * 1024;
+const BODY_LIMIT_BYTES = 15 * 1024 * 1024;
+const UPLOAD_LIMIT_BYTES = 10 * 1024 * 1024;
 const PASSWORD_KEY_LENGTH = 64;
 const PASSWORD_SCRYPT_COST = 16384;
 const SESSION_TTL_MS = positiveNumber(process.env.AGORA_SESSION_TTL_SECONDS, 8 * 60 * 60) * 1000;
 const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_RATE_LIMIT_ATTEMPTS = 8;
+const PASSWORD_RESET_TTL_MS = positiveNumber(process.env.AGORA_PASSWORD_RESET_TTL_MINUTES, 30) * 60 * 1000;
+const INVITATION_TTL_MS = positiveNumber(process.env.AGORA_INVITATION_TTL_DAYS, 14) * 24 * 60 * 60 * 1000;
 
 const workspace = {
   id: "workspace-acme",
@@ -157,6 +162,22 @@ function createServer(options = {}) {
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/auth/password-reset/request") {
+        const body = await readJsonBody(request);
+        assertRateLimit(request, `password-reset:${normalizeEmail(body.email)}`, 5);
+        const result = await requestPasswordReset(storage, body.email);
+        sendJson(response, 200, result);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/auth/password-reset/confirm") {
+        const body = await readJsonBody(request);
+        assertRateLimit(request, `password-reset-confirm:${normalizeEmail(body.email)}`, 8);
+        const result = await confirmPasswordReset(storage, body);
+        sendJson(response, 200, result);
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/auth/signup") {
         assertRateLimit(request, "signup", 5);
         const body = await readJsonBody(request);
@@ -200,6 +221,13 @@ function createServer(options = {}) {
 
       if (request.method === "GET" && url.pathname === "/api/session") {
         sendJson(response, 200, session);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/auth/change-password") {
+        const body = await readJsonBody(request);
+        const result = await changePassword(storage, session, body);
+        sendJson(response, 200, result);
         return;
       }
 
@@ -256,6 +284,28 @@ function createServer(options = {}) {
         const body = await readJsonBody(request);
         const invitation = await createInvitation(storage, body, session);
         sendJson(response, 201, { invitation });
+        return;
+      }
+
+      const invitationResendMatch = url.pathname.match(/^\/api\/invitations\/([^/]+)\/resend$/);
+      if (invitationResendMatch && request.method === "POST") {
+        if (!hasPermission(session, "members:write")) {
+          sendError(response, 403, "Missing members write permission");
+          return;
+        }
+        const invitation = await resendInvitation(storage, decodeURIComponent(invitationResendMatch[1]), session);
+        sendJson(response, 200, { invitation });
+        return;
+      }
+
+      const invitationManageMatch = url.pathname.match(/^\/api\/invitations\/([^/]+)$/);
+      if (invitationManageMatch && request.method === "DELETE") {
+        if (!hasPermission(session, "members:write")) {
+          sendError(response, 403, "Missing members write permission");
+          return;
+        }
+        const invitation = await revokeInvitation(storage, decodeURIComponent(invitationManageMatch[1]), session);
+        sendJson(response, 200, { invitation });
         return;
       }
 
@@ -518,6 +568,27 @@ function createServer(options = {}) {
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/files/upload") {
+        if (!hasPermission(session, "attachments:write")) {
+          sendError(response, 403, "Missing attachments write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const file = await uploadFileRecord(storage, body, session);
+        sendJson(response, 201, { file });
+        return;
+      }
+
+      const fileDownloadMatch = url.pathname.match(/^\/api\/files\/([^/]+)\/download$/);
+      if (fileDownloadMatch && request.method === "GET") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        await downloadFileRecord(storage, decodeURIComponent(fileDownloadMatch[1]), session, response);
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/workspace") {
         if (!hasPermission(session, "workspace:read")) {
           sendError(response, 403, "Missing workspace read permission");
@@ -641,6 +712,26 @@ async function buildBackendHealth(storage, session) {
       label: "Client scoping",
       done: true,
       detail: isClientSession(session) ? `Scoped to ${sessionCompanyId(session) || "client membership"}` : "Workspace role can see full workspace"
+    },
+    {
+      id: "auth-hardening",
+      label: "Auth hardening",
+      done: !envFlag("AGORA_DEMO_AUTH", false) && !envFlag("AGORA_PASSWORDLESS_AUTH", false),
+      detail: "Demo and passwordless auth are opt-in, sessions expire, and public auth endpoints are rate limited"
+    },
+    {
+      id: "file-uploads",
+      label: "File uploads",
+      done: true,
+      detail: storageDriver === "supabase"
+        ? `Supabase Storage bucket ${supabaseStorageBucket()} is configured for uploads`
+        : "Local API uploads are stored outside browser local storage"
+    },
+    {
+      id: "audit-log",
+      label: "Audit log",
+      done: hasPermission(session, "audit:read"),
+      detail: hasPermission(session, "audit:read") ? "Audit events are available to admins and project managers" : "Current role cannot read audit events"
     },
     {
       id: "production-mode",
@@ -1033,6 +1124,125 @@ async function createPasswordSession(storage, email, password) {
   return createSession(user, membership);
 }
 
+async function requestPasswordReset(storage, email) {
+  const normalizedEmail = normalizeEmail(email);
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const users = snapshotUsersOnly(snapshot);
+  const user = users.find((item) => normalizeEmail(item.email) === normalizedEmail);
+  const response = {
+    ok: true,
+    delivery: envFlag("AGORA_PASSWORD_RESET_RETURN_TOKEN", false) ? "manual-token" : "email-provider-required",
+    message: "If that account exists, a password reset token has been prepared."
+  };
+  if (!user) return response;
+
+  const token = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS).toISOString();
+  const nextUsers = users.map((item) => item.id === user.id ? {
+    ...item,
+    passwordResetTokenHash: hashResetToken(token),
+    passwordResetExpiresAt: expiresAt
+  } : item);
+  await storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    users: nextUsers,
+    memberships: snapshotMembershipsOnly(snapshot),
+    invitations: workspaceInvitations(snapshot)
+  }, {
+    storage: storage.driver || "json-file",
+    updatedBy: user.id,
+    action: "password_reset_request"
+  });
+  await storage.appendAuditEvent({
+    actorId: user.id,
+    action: "password_reset_request",
+    workspaceId: workspace.id,
+    detail: `${user.name} requested a password reset`
+  });
+
+  return {
+    ...response,
+    expiresAt,
+    ...(envFlag("AGORA_PASSWORD_RESET_RETURN_TOKEN", false) ? { resetToken: token } : {})
+  };
+}
+
+async function confirmPasswordReset(storage, body) {
+  const email = normalizeEmail(body.email);
+  const token = cleanString(body.token);
+  if (!token) publicError(400, "Password reset token is required");
+  const passwordFields = createPasswordFields(body.password);
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const users = snapshotUsersOnly(snapshot);
+  const user = users.find((item) => normalizeEmail(item.email) === email);
+  const tokenHash = hashResetToken(token);
+  const expiresAt = Date.parse(user?.passwordResetExpiresAt || "");
+  if (!user || user.passwordResetTokenHash !== tokenHash || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    publicError(401, "Password reset token is invalid or expired");
+  }
+
+  const nextUsers = users.map((item) => item.id === user.id ? {
+    ...item,
+    ...passwordFields,
+    passwordResetTokenHash: "",
+    passwordResetExpiresAt: ""
+  } : item);
+  await storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    users: nextUsers,
+    memberships: snapshotMembershipsOnly(snapshot),
+    invitations: workspaceInvitations(snapshot)
+  }, {
+    storage: storage.driver || "json-file",
+    updatedBy: user.id,
+    action: "password_reset_confirm"
+  });
+  await storage.appendAuditEvent({
+    actorId: user.id,
+    action: "password_reset_confirm",
+    workspaceId: workspace.id,
+    detail: `${user.name} reset their password`
+  });
+  return { ok: true };
+}
+
+async function changePassword(storage, session, body) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const users = snapshotUsersOnly(snapshot);
+  const user = users.find((item) => item.id === session.user.id);
+  if (!user) publicError(404, "Password account not found");
+  if (!verifyPassword(body.currentPassword, user)) publicError(401, "Current password is incorrect");
+
+  const passwordFields = createPasswordFields(body.newPassword);
+  const nextUsers = users.map((item) => item.id === user.id ? {
+    ...item,
+    ...passwordFields,
+    passwordResetTokenHash: "",
+    passwordResetExpiresAt: ""
+  } : item);
+  await storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    users: nextUsers,
+    memberships: snapshotMembershipsOnly(snapshot),
+    invitations: workspaceInvitations(snapshot)
+  }, {
+    storage: storage.driver || "json-file",
+    updatedBy: session.user.id,
+    action: "password_change"
+  });
+  await storage.appendAuditEvent({
+    actorId: session.user.id,
+    action: "password_change",
+    workspaceId: workspace.id,
+    detail: `${session.user.name} changed their password`
+  });
+  return { ok: true };
+}
+
+function hashResetToken(token) {
+  return crypto.createHash("sha256").update(cleanString(token)).digest("hex");
+}
+
 async function createSupabaseSessionFromAccessToken(storage, accessToken, options = {}) {
   const token = cleanString(accessToken);
   if (!token) publicError(401, "Supabase access token is required");
@@ -1232,6 +1442,8 @@ async function createInvitation(storage, body, session) {
     name: invitation.name || pending.name,
     role: invitation.role,
     companyId: invitation.companyId,
+    token: crypto.randomUUID(),
+    expiresAt: new Date(Date.now() + INVITATION_TTL_MS).toISOString(),
     invitedBy: session.user.id,
     updatedAt: new Date().toISOString()
   } : invitation;
@@ -1258,10 +1470,80 @@ async function createInvitation(storage, body, session) {
   return publicInvitation(nextInvitation);
 }
 
+async function resendInvitation(storage, invitationId, session) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const invitations = workspaceInvitations(snapshot);
+  const invitation = invitations.find((item) => item.id === invitationId);
+  if (!invitation) publicError(404, "Invitation not found");
+  if (invitation.status === "accepted") publicError(409, "Accepted invitations cannot be resent");
+
+  const nextInvitation = {
+    ...invitation,
+    status: "pending",
+    token: crypto.randomUUID(),
+    expiresAt: new Date(Date.now() + INVITATION_TTL_MS).toISOString(),
+    invitedBy: session.user.id,
+    updatedAt: new Date().toISOString()
+  };
+  const nextInvitations = invitations.map((item) => item.id === invitation.id ? nextInvitation : item);
+  await storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    users: snapshotUsersOnly(snapshot),
+    memberships: snapshotMembershipsOnly(snapshot),
+    invitations: nextInvitations
+  }, {
+    storage: storage.driver || "json-file",
+    updatedBy: session.user.id,
+    action: "member_invite_resend"
+  });
+  await storage.appendAuditEvent({
+    actorId: session.user.id,
+    action: "member_invite_resend",
+    workspaceId: workspace.id,
+    detail: `${session.user.name} resent an invitation to ${nextInvitation.email}`
+  });
+  return publicInvitation(nextInvitation);
+}
+
+async function revokeInvitation(storage, invitationId, session) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const invitations = workspaceInvitations(snapshot);
+  const invitation = invitations.find((item) => item.id === invitationId);
+  if (!invitation) publicError(404, "Invitation not found");
+  if (invitation.status === "accepted") publicError(409, "Accepted invitations cannot be revoked");
+
+  const nextInvitation = {
+    ...invitation,
+    status: "revoked",
+    token: "",
+    updatedAt: new Date().toISOString()
+  };
+  const nextInvitations = invitations.map((item) => item.id === invitation.id ? nextInvitation : item);
+  await storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    users: snapshotUsersOnly(snapshot),
+    memberships: snapshotMembershipsOnly(snapshot),
+    invitations: nextInvitations
+  }, {
+    storage: storage.driver || "json-file",
+    updatedBy: session.user.id,
+    action: "member_invite_revoke"
+  });
+  await storage.appendAuditEvent({
+    actorId: session.user.id,
+    action: "member_invite_revoke",
+    workspaceId: workspace.id,
+    detail: `${session.user.name} revoked an invitation to ${nextInvitation.email}`
+  });
+  return publicInvitation(nextInvitation);
+}
+
 async function getInvitation(storage, token) {
   const snapshot = await storage.loadWorkspaceSnapshot();
   const invitation = workspaceInvitations(snapshot).find((item) => item.token === token);
   if (!invitation) publicError(404, "Invitation not found");
+  if (invitation.status !== "pending") publicError(410, "Invitation is no longer active");
+  if (isInvitationExpired(invitation)) publicError(410, "Invitation has expired");
   return publicInvitation(invitation);
 }
 
@@ -1270,6 +1552,7 @@ async function acceptInvitation(storage, token, name, password) {
   const invitations = workspaceInvitations(snapshot);
   const invitation = invitations.find((item) => item.token === token && item.status === "pending");
   if (!invitation) publicError(404, "Invitation not found or already used");
+  if (isInvitationExpired(invitation)) publicError(410, "Invitation has expired");
 
   const now = new Date().toISOString();
   const users = snapshotUsersOnly(snapshot);
@@ -1360,6 +1643,11 @@ function workspaceInvitations(snapshot = {}) {
   return Array.isArray(snapshot.invitations) ? snapshot.invitations.map(normalizeStoredInvitation) : [];
 }
 
+function isInvitationExpired(invitation) {
+  const expiresAt = Date.parse(invitation?.expiresAt || "");
+  return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+}
+
 function snapshotUsersOnly(snapshot = {}) {
   return Array.isArray(snapshot.users) ? snapshot.users.map(normalizeStoredUser).filter(Boolean) : [];
 }
@@ -1404,7 +1692,8 @@ function normalizeInvitationInput(body, session) {
     status: "pending",
     invitedBy: session.user.id,
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    expiresAt: new Date(Date.now() + INVITATION_TTL_MS).toISOString()
   };
 }
 
@@ -1421,7 +1710,8 @@ function normalizeStoredInvitation(invitation) {
     acceptedBy: cleanString(invitation.acceptedBy),
     createdAt: cleanString(invitation.createdAt) || new Date().toISOString(),
     updatedAt: cleanString(invitation.updatedAt),
-    acceptedAt: cleanString(invitation.acceptedAt)
+    acceptedAt: cleanString(invitation.acceptedAt),
+    expiresAt: cleanString(invitation.expiresAt)
   };
 }
 
@@ -1438,6 +1728,8 @@ function normalizeStoredUser(user) {
     passwordSalt: cleanString(user.passwordSalt),
     passwordKeyLength: Number(user.passwordKeyLength || 0),
     passwordCost: Number(user.passwordCost || 0),
+    passwordResetTokenHash: cleanString(user.passwordResetTokenHash),
+    passwordResetExpiresAt: cleanString(user.passwordResetExpiresAt),
     authProvider: cleanString(user.authProvider)
   };
 }
@@ -1712,6 +2004,175 @@ function assertCanWriteScopedRecord(key, record, snapshot = {}, session) {
   }
 }
 
+async function uploadFileRecord(storage, body, session) {
+  const fileInput = requireRecord(body.file || body, "File upload");
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const id = cleanString(fileInput.id) || `file-${crypto.randomUUID()}`;
+  const title = cleanString(fileInput.title || fileInput.fileName || fileInput.name);
+  const projectId = cleanString(fileInput.projectId);
+  if (!title || !projectId) publicError(400, "File upload requires title and projectId");
+
+  const content = decodeUploadContent(fileInput);
+  const normalizedTitle = sanitizeFileName(title);
+  const metadata = await persistFileObject(storage, {
+    id,
+    fileName: normalizedTitle,
+    contentType: content.contentType,
+    buffer: content.buffer
+  });
+  const file = await upsertCollectionItem(storage, "files", {
+    id,
+    projectId,
+    taskId: cleanString(fileInput.taskId),
+    title: title || normalizedTitle,
+    kind: cleanString(fileInput.kind) || fileKindFromName(normalizedTitle),
+    size: formatBytes(content.buffer.length),
+    owner: session.user.id,
+    updatedAt: new Date().toISOString(),
+    url: `/api/files/${encodeURIComponent(id)}/download`,
+    contentType: content.contentType,
+    storageProvider: metadata.storageProvider,
+    storageBucket: metadata.storageBucket,
+    storageKey: metadata.storageKey
+  }, normalizeFile, session, "file_upload", (item) => `file ${item.title}`);
+  return file;
+}
+
+function decodeUploadContent(fileInput) {
+  const raw = cleanString(fileInput.dataUrl || fileInput.base64 || fileInput.content);
+  if (!raw) publicError(400, "File upload requires base64 content");
+
+  const dataUrlMatch = raw.match(/^data:([^;,]+)?;base64,(.+)$/);
+  const contentType = cleanString(fileInput.contentType || dataUrlMatch?.[1]) || "application/octet-stream";
+  const base64 = dataUrlMatch ? dataUrlMatch[2] : raw;
+  let buffer;
+  try {
+    buffer = Buffer.from(base64, "base64");
+  } catch {
+    publicError(400, "File upload content is not valid base64");
+  }
+  if (!buffer.length) publicError(400, "File upload is empty");
+  if (buffer.length > UPLOAD_LIMIT_BYTES) publicError(413, `File upload must be ${formatBytes(UPLOAD_LIMIT_BYTES)} or smaller`);
+  return { buffer, contentType };
+}
+
+async function persistFileObject(storage, file) {
+  if ((storage.driver || "json-file") === "supabase") {
+    return uploadSupabaseFileObject(file);
+  }
+  const uploadRoot = path.join(storage.dataDir || path.join(__dirname, "data"), "uploads");
+  const storageKey = `${file.id}/${file.fileName}`;
+  const outputPath = path.join(uploadRoot, file.id, file.fileName);
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, file.buffer);
+  return {
+    storageProvider: "json-file",
+    storageBucket: "",
+    storageKey
+  };
+}
+
+async function uploadSupabaseFileObject(file) {
+  const supabaseUrl = cleanString(process.env.SUPABASE_URL || process.env.AGORA_SUPABASE_URL).replace(/\/+$/, "");
+  const serviceKey = cleanString(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.AGORA_SUPABASE_SERVICE_ROLE_KEY);
+  if (!supabaseUrl || !serviceKey) {
+    publicError(500, "Supabase file uploads require SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the API server");
+  }
+
+  const bucket = supabaseStorageBucket();
+  const storageKey = `${workspace.id}/${file.id}/${file.fileName}`;
+  const objectPath = storageKey.split("/").map(encodeURIComponent).join("/");
+  const response = await fetch(`${supabaseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${objectPath}`, {
+    method: "PUT",
+    headers: {
+      apikey: serviceKey,
+      Authorization: `Bearer ${serviceKey}`,
+      "Content-Type": file.contentType,
+      "x-upsert": "true"
+    },
+    body: file.buffer
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    publicError(response.status === 404 ? 500 : response.status, body.message || "Supabase Storage upload failed");
+  }
+  return {
+    storageProvider: "supabase",
+    storageBucket: bucket,
+    storageKey
+  };
+}
+
+async function downloadFileRecord(storage, fileId, session, response) {
+  const files = await storage.loadRecords("files", scopedRecordFilters(session, {}));
+  const file = files.find((item) => item.id === fileId);
+  if (!file) {
+    sendError(response, 404, "File not found");
+    return;
+  }
+
+  const body = await readFileObject(storage, file);
+  const contentType = cleanString(file.contentType) || "application/octet-stream";
+  setSecurityHeaders(response);
+  response.writeHead(200, {
+    "Content-Type": contentType,
+    "Content-Disposition": `attachment; filename="${sanitizeFileName(file.title || file.id)}"`,
+    "Cache-Control": "private, no-store"
+  });
+  response.end(body);
+}
+
+async function readFileObject(storage, file) {
+  if (file.storageProvider === "supabase") {
+    const supabaseUrl = cleanString(process.env.SUPABASE_URL || process.env.AGORA_SUPABASE_URL).replace(/\/+$/, "");
+    const serviceKey = cleanString(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.AGORA_SUPABASE_SERVICE_ROLE_KEY);
+    if (!supabaseUrl || !serviceKey) publicError(500, "Supabase file download is not configured");
+    const bucket = cleanString(file.storageBucket) || supabaseStorageBucket();
+    const objectPath = cleanString(file.storageKey).split("/").map(encodeURIComponent).join("/");
+    const remote = await fetch(`${supabaseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${objectPath}`, {
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`
+      }
+    });
+    if (!remote.ok) publicError(remote.status === 404 ? 404 : 502, "File object could not be downloaded");
+    return Buffer.from(await remote.arrayBuffer());
+  }
+
+  const uploadRoot = path.join(storage.dataDir || path.join(__dirname, "data"), "uploads");
+  const storageKey = cleanString(file.storageKey);
+  const filePath = path.resolve(uploadRoot, storageKey);
+  const relativePath = path.relative(uploadRoot, filePath);
+  if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
+    publicError(400, "Stored file path is invalid");
+  }
+  try {
+    return fs.readFileSync(filePath);
+  } catch {
+    publicError(404, "File object is missing from storage");
+  }
+}
+
+function sanitizeFileName(value) {
+  return cleanString(value).replace(/[/\\?%*:|"<>]/g, "-").slice(0, 160) || "file";
+}
+
+function fileKindFromName(fileName) {
+  const ext = path.extname(fileName).replace(".", "").toUpperCase();
+  return ext || "File";
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function supabaseStorageBucket() {
+  return cleanString(process.env.AGORA_SUPABASE_STORAGE_BUCKET || process.env.SUPABASE_STORAGE_BUCKET) || "agora-files";
+}
+
 function normalizeProject(project) {
   requireRecord(project, "Project");
   if (!project.id || !project.name) {
@@ -1851,7 +2312,11 @@ function normalizeFile(file) {
     size: file.size ? String(file.size) : "Unknown size",
     owner: file.owner ? String(file.owner) : "",
     updatedAt: file.updatedAt ? String(file.updatedAt) : new Date().toISOString(),
-    url: file.url ? String(file.url) : ""
+    url: file.url ? String(file.url) : "",
+    contentType: file.contentType ? String(file.contentType) : "",
+    storageProvider: file.storageProvider ? String(file.storageProvider) : "",
+    storageBucket: file.storageBucket ? String(file.storageBucket) : "",
+    storageKey: file.storageKey ? String(file.storageKey) : ""
   };
 }
 

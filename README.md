@@ -6,7 +6,7 @@ Agora is a self-hostable project management workspace inspired by tools like Asa
 
 ## Status
 
-Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, PWA installability, an offline app shell, mobile task actions, workspace settings, member roles, team invitations, first-owner signup, password login, optional passwordless API sessions, structured records endpoints, data import/export, API snapshot sync, a storage adapter foundation, optional Supabase snapshot and structured record persistence, a dependency-free API scaffold, optional demo auth, API rate limiting, scoped client writes, security headers, a PostgreSQL schema draft, command-center inbox lanes, a dedicated AI Operator page, local AI operator planning, server-side bring-your-own-AI adapters, operator briefs, previewable operator actions, an applied-action log, client/company portals, client approvals, live collaboration presence, task-view awareness, stale edit warnings, workspace pulse, automation recommendations, company portfolios, editable companies, daily task planning, inbox notifications, notification badges and toasts, reporting dashboards, project and task templates, automations, project docs and files, intake forms, custom task fields, task dependencies, Gantt-style timelines, project filters, task creation, subtasks, comments, activity, employee time tracking, list view, board view, calendar view, project workspaces, milestones, project timelines, and a My Work view.
+Agora is in early prototype development. The current app is a dependency-free browser prototype with seeded workspace data, local persistence, PWA installability, an offline app shell, mobile task actions, workspace settings, member roles, team invitations, invite expiry/resend/revoke controls, first-owner signup, password login, password reset/change flows, optional passwordless API sessions, structured records endpoints, data import/export, API snapshot sync, polling-based realtime refresh, a storage adapter foundation, optional Supabase snapshot and structured record persistence, authenticated file uploads/downloads, a dependency-free API scaffold, optional demo auth, API rate limiting, scoped client writes, security headers, admin audit log UI, a PostgreSQL schema draft, command-center inbox lanes, a dedicated AI Operator page, local AI operator planning, server-side bring-your-own-AI adapters, operator briefs, previewable operator actions, an applied-action log, client/company portals, client approvals, live collaboration presence, task-view awareness, stale edit warnings, workspace pulse, automation recommendations, company portfolios, editable companies, daily task planning, inbox notifications, notification badges and toasts, reporting dashboards, project and task templates, automations, project docs and files, intake forms, custom task fields, task dependencies, Gantt-style timelines, project filters, task creation, subtasks, comments, activity, employee time tracking, list view, board view, calendar view, project workspaces, milestones, project timelines, and a My Work view.
 
 ## Quick Start
 
@@ -62,13 +62,16 @@ To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`
 
 Demo auth and passwordless email login are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true` or `AGORA_PASSWORDLESS_AUTH=true` and restart `npm run dev:api`.
 
+For deployment details, Supabase Storage setup, password reset delivery, and release checks, see [`docs/deployment.md`](./docs/deployment.md).
+
 ## Supabase Storage
 
 Agora works out of the box with local JSON API storage. To use Supabase for API persistence:
 
 1. Create a Supabase project.
 2. Run `server/migrations/001_supabase_storage.sql` and `server/migrations/002_supabase_auth_rls.sql` in the Supabase SQL editor.
-3. Set these values in `.env`:
+3. Create a private Supabase Storage bucket named `agora-files`.
+4. Set these values in `.env`:
 
 ```sh
 AGORA_STORAGE_DRIVER=supabase
@@ -76,9 +79,10 @@ AGORA_AUTH_DRIVER=supabase
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+AGORA_SUPABASE_STORAGE_BUCKET=agora-files
 ```
 
-4. Restart `npm run dev:api`.
+5. Restart `npm run dev:api`.
 
 Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Do not paste it into browser settings or client code. `SUPABASE_ANON_KEY` is safe for browser-based Supabase Auth clients, but Agora's API still reads it from the server environment when validating access tokens.
 

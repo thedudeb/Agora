@@ -2,6 +2,7 @@ const STORAGE_KEY = "agora.workspace.v1";
 const API_SESSION_KEY = "agora.api.session.v1";
 const SIDEBAR_STATE_KEY = "agora.sidebar.v1";
 const API_SYNC_QUEUE_KEY = "agora.api.syncQueue.v1";
+const REALTIME_POLL_MS = 30000;
 const API_BASE_URL = configuredApiBaseUrl();
 
 function configuredApiBaseUrl() {
@@ -141,6 +142,7 @@ const routes = {
   docs: "Docs & Files",
   intake: "Intake",
   fields: "Custom Fields",
+  audit: "Audit Log",
   data: "Data",
   settings: "Settings",
   companies: "Companies",
@@ -865,6 +867,10 @@ let state = loadState();
 let apiSession = apiSessionStore.load();
 let apiSyncQueue = apiSyncQueueStore.load();
 let backendHealth = apiSession?.backendHealth || null;
+let auditEvents = [];
+let auditLoading = false;
+let realtimePollTimer = null;
+let realtimeLastRefreshAt = "";
 let sidebarState = loadSidebarState();
 let invitePreview = null;
 let invitePreviewToken = "";
@@ -1049,12 +1055,15 @@ function saveApiSession(session) {
   apiSession = session;
   backendHealth = session?.backendHealth || backendHealth;
   apiSessionStore.save(session);
+  startRealtimePolling();
 }
 
 function clearApiSession() {
   apiSession = null;
   backendHealth = null;
+  auditEvents = [];
   apiSessionStore.clear();
+  stopRealtimePolling();
 }
 
 function saveApiSyncQueue() {
@@ -1132,6 +1141,26 @@ async function refreshBackendHealth(options = {}) {
   }
 }
 
+async function loadAuditLogFromApi(options = {}) {
+  if (!apiSession) {
+    if (!options.silent) showToast("Connect to the API from Settings first", "info");
+    return;
+  }
+
+  auditLoading = true;
+  if (!options.silent) render();
+  try {
+    const result = await apiRequest("/api/audit-log");
+    auditEvents = Array.isArray(result.events) ? result.events : [];
+    if (!options.silent) showToast("Audit log refreshed", "success");
+  } catch (error) {
+    if (!options.silent) showToast(`Audit log failed: ${error.message}`, "info");
+  } finally {
+    auditLoading = false;
+    if (!options.silent || state.selectedRoute === "audit") render();
+  }
+}
+
 async function retryApiSyncQueue() {
   if (!apiSession) {
     showToast("Connect to the API before retrying sync", "info");
@@ -1186,6 +1215,43 @@ async function loadStructuredRecordsFromApi() {
 
   if (changed) saveState();
   return changed;
+}
+
+function startRealtimePolling() {
+  stopRealtimePolling();
+  if (!apiSession) return;
+  realtimePollTimer = window.setInterval(pollApiForWorkspaceChanges, REALTIME_POLL_MS);
+}
+
+function stopRealtimePolling() {
+  if (!realtimePollTimer) return;
+  window.clearInterval(realtimePollTimer);
+  realtimePollTimer = null;
+}
+
+async function pollApiForWorkspaceChanges() {
+  if (!apiSession || document.hidden || apiSyncQueue.length) return;
+
+  try {
+    const remoteDocument = await apiRequest("/api/workspace");
+    const updatedAt = remoteDocument.metadata?.updatedAt || "";
+    if (!remoteDocument.snapshot || !updatedAt || updatedAt === apiSession.lastSyncedAt || updatedAt === realtimeLastRefreshAt) return;
+
+    realtimeLastRefreshAt = updatedAt;
+    applyWorkspaceSnapshot(remoteDocument.snapshot);
+    await loadStructuredRecordsFromApi();
+    saveApiSession({ ...apiSession, lastSyncedAt: updatedAt, storageDriver: remoteDocument.metadata.storage || apiSession.storageDriver });
+    if (state.selectedRoute !== "settings" && state.selectedRoute !== "data") {
+      render();
+    }
+    showToast("Workspace refreshed from API", "success");
+  } catch (error) {
+    if (error.message === "Session expired") {
+      clearApiSession();
+      render();
+      showToast("API session expired. Sign in again from Settings.", "info");
+    }
+  }
 }
 
 function apiConnectionLabel() {
@@ -2683,6 +2749,9 @@ function setRoute(route) {
   openSidebarGroupForRoute(state.selectedRoute);
   saveState();
   render();
+  if (state.selectedRoute === "audit" && apiSession && !auditEvents.length) {
+    loadAuditLogFromApi();
+  }
 }
 
 function inviteTokenFromLocation() {
@@ -2897,6 +2966,7 @@ function render() {
     docs: renderDocsAndFiles,
     intake: renderIntake,
     fields: renderCustomFields,
+    audit: renderAuditLog,
     data: renderDataManagement,
     settings: renderSettings,
     companies: renderCompanies,
@@ -2923,7 +2993,7 @@ function sidebarGroupForRoute(route) {
   if (["landing", "dashboard", "portal", "daily", "inbox"].includes(route)) return "home";
   if (["board", "list", "calendar", "my-work", "time", "operator"].includes(route)) return "work";
   if (["reports", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
-  if (["data", "settings"].includes(route)) return "admin";
+  if (["audit", "data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
   if (route === "invite") return "";
   return "";
@@ -5451,6 +5521,29 @@ function renderSettings() {
             <button class="button button-primary" type="button" id="api-password-signup">Create Owner</button>
             <button class="button button-secondary" type="button" id="api-password-login">Password Sign In</button>
             <button class="button button-secondary" type="button" id="api-email-login">Sign In</button>
+            <label>
+              <span>Current password</span>
+              <input id="api-current-password" type="password" placeholder="Current password">
+            </label>
+            <label>
+              <span>New password</span>
+              <input id="api-new-password" type="password" placeholder="8+ characters">
+            </label>
+            <button class="button button-secondary" type="button" id="api-password-change" ${apiSession ? "" : "disabled"}>Change Password</button>
+            <label>
+              <span>Reset email</span>
+              <input id="api-reset-email" type="email" placeholder="teammate@company.com">
+            </label>
+            <label>
+              <span>Reset token</span>
+              <input id="api-reset-token" placeholder="Paste token">
+            </label>
+            <label>
+              <span>Reset password</span>
+              <input id="api-reset-password" type="password" placeholder="8+ characters">
+            </label>
+            <button class="button button-secondary" type="button" id="api-password-reset-request">Request Reset</button>
+            <button class="button button-secondary" type="button" id="api-password-reset-confirm">Confirm Reset</button>
             <label class="wide-field">
               <span>Supabase access token</span>
               <textarea id="api-supabase-token" rows="2" placeholder="Paste a Supabase Auth access_token"></textarea>
@@ -5636,17 +5729,24 @@ function renderInvitationRow(invitation, roleById) {
   const invitedBy = invitation.invitedBy ? memberName(invitation.invitedBy) : "Workspace admin";
   const date = invitation.acceptedAt || invitation.updatedAt || invitation.createdAt || "";
   const company = invitation.companyId ? companyName(invitation.companyId) : "Workspace-wide";
+  const pending = invitation.status === "pending";
+  const expires = invitation.expiresAt ? `Expires ${formatTimestamp(invitation.expiresAt)}` : "";
 
   return `
     <article class="invitation-row">
       <div>
         <h3>${escapeHtml(invitation.name || invitation.email)}</h3>
         <p>${escapeHtml(invitation.email)} - ${escapeHtml(role)} - ${escapeHtml(company)} - invited by ${escapeHtml(invitedBy)}</p>
+        ${expires ? `<p>${escapeHtml(expires)}</p>` : ""}
         ${invitation.status === "pending" ? `<code>${escapeHtml(invitation.acceptUrl || `#invite/${invitation.token || ""}`)}</code>` : ""}
       </div>
       <div>
         <span class="status-pill ${invitation.status === "accepted" ? "inbox-green" : "inbox-amber"}">${escapeHtml(invitation.status || "pending")}</span>
         <small>${date ? escapeHtml(formatDate(date.slice(0, 10))) : ""}</small>
+        ${pending ? `
+          <button class="button button-secondary compact-button" type="button" data-invite-resend="${invitation.id}" ${apiSession ? "" : "disabled"}>Resend</button>
+          <button class="button button-secondary compact-button" type="button" data-invite-revoke="${invitation.id}" ${apiSession ? "" : "disabled"}>Revoke</button>
+        ` : ""}
       </div>
     </article>
   `;
@@ -5781,6 +5881,49 @@ function renderDataManagement() {
         ${renderBackendChecklist()}
       </section>
     </div>
+  `;
+}
+
+function renderAuditLog() {
+  const events = auditEvents;
+  const actions = Array.from(new Set(events.map((event) => event.action).filter(Boolean))).slice(0, 12);
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Events", events.length)}
+      ${metric("Actors", new Set(events.map((event) => event.actorId).filter(Boolean)).size)}
+      ${metric("Actions", actions.length)}
+      ${metric("Status", auditLoading ? "Loading" : apiSession ? "Connected" : "Offline")}
+    </div>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Admin</p>
+          <h2>Audit trail</h2>
+        </div>
+        <button class="button button-secondary" type="button" id="audit-refresh" ${apiSession ? "" : "disabled"}>${auditLoading ? "Refreshing" : "Refresh"}</button>
+      </div>
+      <div class="audit-toolbar">
+        ${actions.length ? actions.map((action) => `<span class="status-pill inbox-neutral">${escapeHtml(action)}</span>`).join("") : `<span class="status-pill inbox-neutral">No API events loaded</span>`}
+      </div>
+      <div class="audit-list">
+        ${events.length ? events.map(renderAuditEvent).join("") : emptyState(apiSession ? "Refresh to load API audit events." : "Connect to the API from Settings to view the audit trail.")}
+      </div>
+    </section>
+  `;
+}
+
+function renderAuditEvent(event) {
+  return `
+    <article class="audit-event">
+      <div>
+        <span class="status-pill inbox-blue">${escapeHtml(event.action || "event")}</span>
+        <h3>${escapeHtml(event.detail || "Workspace event")}</h3>
+        <p>${escapeHtml(memberName(event.actorId) || event.actorId || "System")} - ${escapeHtml(formatTimestamp(event.createdAt))}</p>
+      </div>
+      <code>${escapeHtml(event.id || "")}</code>
+    </article>
   `;
 }
 
@@ -5939,6 +6082,10 @@ function renderDocsAndFiles() {
             <span>File name</span>
             <input id="file-title" placeholder="launch-plan.pdf">
           </label>
+          <label class="wide-field">
+            <span>Upload</span>
+            <input id="file-upload" type="file">
+          </label>
           <label>
             <span>Project</span>
             <select id="file-project">
@@ -5991,8 +6138,10 @@ function renderFileCard(file) {
           <span>${escapeHtml(file.size)}</span>
           <span>${memberName(file.owner)}</span>
           <span>${formatTimestamp(file.updatedAt)}</span>
+          ${file.storageProvider ? `<span>${escapeHtml(file.storageProvider)}</span>` : ""}
         </div>
       </div>
+      ${file.url ? `<button class="button button-secondary compact-button" type="button" data-file-download="${file.id}">Download</button>` : ""}
     </article>
   `;
 }
@@ -6808,11 +6957,12 @@ function createDocument() {
   syncDocumentToApi(document, "Doc synced to API");
 }
 
-function createFileRecord() {
-  const title = document.querySelector("#file-title")?.value.trim();
+async function createFileRecord() {
+  const selectedFile = document.querySelector("#file-upload")?.files?.[0] || null;
+  const title = document.querySelector("#file-title")?.value.trim() || selectedFile?.name || "";
   const projectId = document.querySelector("#file-project")?.value;
-  const kind = document.querySelector("#file-kind")?.value.trim() || "File";
-  const size = document.querySelector("#file-size")?.value.trim() || "Unknown size";
+  const kind = document.querySelector("#file-kind")?.value.trim() || (selectedFile ? fileKindFromBrowserFile(selectedFile) : "File");
+  const size = document.querySelector("#file-size")?.value.trim() || (selectedFile ? formatBrowserFileSize(selectedFile.size) : "Unknown size");
   if (!title || !projectId) return;
 
   const file = {
@@ -6822,19 +6972,99 @@ function createFileRecord() {
     kind,
     size,
     owner: currentMemberId,
-    updatedAt: new Date().toISOString()
+    updatedAt: new Date().toISOString(),
+    contentType: selectedFile?.type || "",
+    url: ""
   };
-  state.files = [file, ...state.files];
 
+  if (selectedFile && apiSession) {
+    try {
+      const dataUrl = await readBrowserFileAsDataUrl(selectedFile);
+      const result = await apiRequest("/api/files/upload", {
+        method: "POST",
+        body: {
+          file: {
+            ...file,
+            fileName: selectedFile.name,
+            dataUrl
+          }
+        }
+      });
+      state.files = [result.file, ...state.files.filter((item) => item.id !== result.file.id)];
+      addActivity({
+        projectId,
+        type: "file_upload",
+        message: `uploaded file ${result.file.title}`
+      });
+      saveState();
+      render();
+      showToast("File uploaded to API", "success");
+      return;
+    } catch (error) {
+      showToast(`Upload failed: ${error.message}. Saving metadata locally.`, "info");
+    }
+  }
+
+  state.files = [file, ...state.files];
   addActivity({
     projectId,
-    type: "file_create",
-    message: `added file ${title}`
+    type: selectedFile ? "file_queue" : "file_create",
+    message: `${selectedFile ? "queued" : "added"} file ${title}`
   });
   saveState();
   render();
-  showToast("File added", "success");
-  syncFileToApi(file, "File synced to API");
+  showToast(selectedFile && !apiSession ? "File metadata saved. Connect API to upload bytes." : "File added", "success");
+  syncFileToApi(file, "File metadata synced to API");
+}
+
+function readBrowserFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("File could not be read"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function fileKindFromBrowserFile(file) {
+  const extension = file.name.split(".").pop();
+  return extension && extension !== file.name ? extension.toUpperCase() : (file.type.split("/")[1] || "File").toUpperCase();
+}
+
+function formatBrowserFileSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+async function downloadFileFromApi(fileId) {
+  const file = byId(state.files, fileId);
+  if (!apiSession || !file?.url) {
+    showToast("This file does not have an API download yet", "info");
+    return;
+  }
+
+  try {
+    const response = await fetch(`${API_BASE_URL}${file.url}`, {
+      headers: {
+        Authorization: `Bearer ${apiSession.token}`
+      }
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || "Download failed");
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = file.title || "agora-file";
+    anchor.click();
+    URL.revokeObjectURL(url);
+    showToast("File download started", "success");
+  } catch (error) {
+    showToast(`Download failed: ${error.message}`, "info");
+  }
 }
 
 function submitIntakeRequest(formId) {
@@ -7751,6 +7981,71 @@ async function signInWithPassword() {
   }
 }
 
+async function changeApiPassword() {
+  if (!apiSession) {
+    showToast("Sign in before changing your password", "info");
+    return;
+  }
+  const currentPassword = document.querySelector("#api-current-password")?.value || "";
+  const newPassword = document.querySelector("#api-new-password")?.value || "";
+  if (!currentPassword || !newPassword) {
+    showToast("Enter current and new password", "info");
+    return;
+  }
+
+  try {
+    await apiRequest("/api/auth/change-password", {
+      method: "POST",
+      body: { currentPassword, newPassword }
+    });
+    render();
+    showToast("Password changed", "success");
+  } catch (error) {
+    showToast(`Password change failed: ${error.message}`, "info");
+  }
+}
+
+async function requestApiPasswordReset() {
+  const email = document.querySelector("#api-reset-email")?.value.trim() || document.querySelector("#api-email")?.value.trim() || "";
+  if (!email) {
+    showToast("Enter the account email first", "info");
+    return;
+  }
+
+  try {
+    const result = await apiRequest("/api/auth/password-reset/request", {
+      method: "POST",
+      body: { email }
+    });
+    const tokenInput = document.querySelector("#api-reset-token");
+    if (result.resetToken && tokenInput) tokenInput.value = result.resetToken;
+    showToast(result.resetToken ? "Reset token generated" : "Reset requested. Check your configured delivery path.", "success");
+  } catch (error) {
+    showToast(`Reset request failed: ${error.message}`, "info");
+  }
+}
+
+async function confirmApiPasswordReset() {
+  const email = document.querySelector("#api-reset-email")?.value.trim() || document.querySelector("#api-email")?.value.trim() || "";
+  const token = document.querySelector("#api-reset-token")?.value.trim() || "";
+  const password = document.querySelector("#api-reset-password")?.value || "";
+  if (!email || !token || !password) {
+    showToast("Enter email, reset token, and new password", "info");
+    return;
+  }
+
+  try {
+    await apiRequest("/api/auth/password-reset/confirm", {
+      method: "POST",
+      body: { email, token, password }
+    });
+    render();
+    showToast("Password reset complete", "success");
+  } catch (error) {
+    showToast(`Reset failed: ${error.message}`, "info");
+  }
+}
+
 async function signInWithSupabaseToken() {
   const accessToken = document.querySelector("#api-supabase-token")?.value.trim();
   if (!accessToken) {
@@ -7844,6 +8139,49 @@ async function inviteWorkspaceMember() {
     showToast(`Invite created for ${invitation.email}`, "success");
   } catch (error) {
     showToast(`Invite failed: ${error.message}`, "info");
+  }
+}
+
+async function resendWorkspaceInvite(invitationId) {
+  if (!apiSession) {
+    showToast("Connect to the API before resending invites", "info");
+    return;
+  }
+
+  try {
+    const result = await apiRequest(`/api/invitations/${encodeURIComponent(invitationId)}/resend`, {
+      method: "POST"
+    });
+    const invitation = result.invitation;
+    state.invitations = [
+      invitation,
+      ...state.invitations.filter((item) => item.id !== invitation.id)
+    ];
+    saveState();
+    render();
+    showToast(`Invite refreshed for ${invitation.email}`, "success");
+  } catch (error) {
+    showToast(`Invite resend failed: ${error.message}`, "info");
+  }
+}
+
+async function revokeWorkspaceInvite(invitationId) {
+  if (!apiSession) {
+    showToast("Connect to the API before revoking invites", "info");
+    return;
+  }
+
+  try {
+    const result = await apiRequest(`/api/invitations/${encodeURIComponent(invitationId)}`, {
+      method: "DELETE"
+    });
+    const invitation = result.invitation;
+    state.invitations = state.invitations.map((item) => item.id === invitation.id ? invitation : item);
+    saveState();
+    render();
+    showToast(`Invite revoked for ${invitation.email}`, "success");
+  } catch (error) {
+    showToast(`Invite revoke failed: ${error.message}`, "info");
   }
 }
 
@@ -8187,6 +8525,12 @@ document.addEventListener("click", (event) => {
   const createFileButton = event.target.closest("#file-create");
   if (createFileButton) createFileRecord();
 
+  const downloadFileButton = event.target.closest("[data-file-download]");
+  if (downloadFileButton) {
+    downloadFileFromApi(downloadFileButton.dataset.fileDownload);
+    return;
+  }
+
   const submitIntakeButton = event.target.closest("[data-submit-intake]");
   if (submitIntakeButton) submitIntakeRequest(submitIntakeButton.dataset.submitIntake);
 
@@ -8308,6 +8652,15 @@ document.addEventListener("click", (event) => {
   const apiPasswordLoginButton = event.target.closest("#api-password-login");
   if (apiPasswordLoginButton) signInWithPassword();
 
+  const apiPasswordChangeButton = event.target.closest("#api-password-change");
+  if (apiPasswordChangeButton) changeApiPassword();
+
+  const apiPasswordResetRequestButton = event.target.closest("#api-password-reset-request");
+  if (apiPasswordResetRequestButton) requestApiPasswordReset();
+
+  const apiPasswordResetConfirmButton = event.target.closest("#api-password-reset-confirm");
+  if (apiPasswordResetConfirmButton) confirmApiPasswordReset();
+
   const apiSupabaseLoginButton = event.target.closest("#api-supabase-login");
   if (apiSupabaseLoginButton) signInWithSupabaseToken();
 
@@ -8320,6 +8673,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const auditRefreshButton = event.target.closest("#audit-refresh");
+  if (auditRefreshButton) {
+    loadAuditLogFromApi();
+    return;
+  }
+
   const apiSyncRetryButton = event.target.closest("#api-sync-retry");
   if (apiSyncRetryButton) {
     retryApiSyncQueue();
@@ -8328,6 +8687,18 @@ document.addEventListener("click", (event) => {
 
   const inviteMemberButton = event.target.closest("#invite-member");
   if (inviteMemberButton) inviteWorkspaceMember();
+
+  const inviteResendButton = event.target.closest("[data-invite-resend]");
+  if (inviteResendButton) {
+    resendWorkspaceInvite(inviteResendButton.dataset.inviteResend);
+    return;
+  }
+
+  const inviteRevokeButton = event.target.closest("[data-invite-revoke]");
+  if (inviteRevokeButton) {
+    revokeWorkspaceInvite(inviteRevokeButton.dataset.inviteRevoke);
+    return;
+  }
 
   const acceptInviteButton = event.target.closest("#invite-accept");
   if (acceptInviteButton) acceptWorkspaceInvite();
@@ -8809,10 +9180,12 @@ window.addEventListener("hashchange", () => {
 window.addEventListener("focus", () => {
   heartbeatPresence({ force: true });
   refreshLiveCollaborationFromApi({ rerender: ["dashboard", "inbox"].includes(state.selectedRoute) });
+  pollApiForWorkspaceChanges();
 });
 
 document.addEventListener("visibilitychange", () => {
   heartbeatPresence({ force: true });
+  if (!document.hidden) pollApiForWorkspaceChanges();
 });
 
 window.addEventListener("beforeinstallprompt", (event) => {
@@ -8837,6 +9210,7 @@ if (reducedMotionQuery?.addEventListener) {
 
 initSmoothScroll();
 registerServiceWorker();
+startRealtimePolling();
 window.setInterval(() => {
   const taskId = document.querySelector("#task-dialog[open] #task-id")?.value || "";
   heartbeatPresence({ taskId });

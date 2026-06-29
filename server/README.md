@@ -34,7 +34,7 @@ Then open Settings, create the first workspace owner account, sign in with email
 
 Settings and Data also expose Backend Health after you connect. It reports the active storage/auth drivers, production-mode readiness, workspace snapshot metadata, structured record collections, client scoping, and any failed browser syncs that can be retried.
 
-Demo auth and passwordless email login are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true` or `AGORA_PASSWORDLESS_AUTH=true` in `.env` and restart the API. Session lifetime defaults to eight hours through `AGORA_SESSION_TTL_SECONDS`, and cross-origin API calls are limited to localhost plus any origins listed in `AGORA_ALLOWED_ORIGINS`.
+Demo auth and passwordless email login are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true` or `AGORA_PASSWORDLESS_AUTH=true` in `.env` and restart the API. Session lifetime defaults to eight hours through `AGORA_SESSION_TTL_SECONDS`, invitations expire through `AGORA_INVITATION_TTL_DAYS`, password reset tokens expire through `AGORA_PASSWORD_RESET_TTL_MINUTES`, and cross-origin API calls are limited to localhost plus any origins listed in `AGORA_ALLOWED_ORIGINS`.
 
 ## App Server
 
@@ -75,7 +75,7 @@ npm run dev:api
 
 Keep `SUPABASE_SERVICE_ROLE_KEY` on the server only. `SUPABASE_ANON_KEY` is used by the API to validate Supabase Auth access tokens.
 
-The first migration creates the snapshot/audit tables plus structured record tables for `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, and `presence`. The second migration creates `agora_workspace_memberships`, RLS helper functions, and policies for Supabase Auth users. The JSON driver stores records inside the workspace snapshot for local development; the Supabase driver writes them to dedicated `agora_*` tables through the same `/api/records/:collection` API.
+The first migration creates the snapshot/audit tables plus structured record tables for `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, and `presence`. The second migration creates `agora_workspace_memberships`, RLS helper functions, and policies for Supabase Auth users. The JSON driver stores records inside the workspace snapshot for local development; the Supabase driver writes them to dedicated `agora_*` tables through the same `/api/records/:collection` API. File objects are stored locally under `server/data/uploads/` with the JSON driver, or in the private Supabase Storage bucket configured by `AGORA_SUPABASE_STORAGE_BUCKET`.
 
 ## Endpoints
 
@@ -85,12 +85,17 @@ The first migration creates the snapshot/audit tables plus structured record tab
 - `POST /api/auth/demo-login`: creates a demo session when `AGORA_DEMO_AUTH=true`. Body: `{ "memberId": "mara" }`.
 - `POST /api/auth/login`: creates a passwordless session for an accepted workspace user when `AGORA_PASSWORDLESS_AUTH=true`. Body: `{ "email": "jordan@example.com" }`.
 - `POST /api/auth/password-login`: creates a session with email and password. Body: `{ "email": "jordan@example.com", "password": "8+ characters" }`.
+- `POST /api/auth/change-password`: changes the current authenticated password. Body: `{ "currentPassword": "...", "newPassword": "8+ characters" }`.
+- `POST /api/auth/password-reset/request`: creates a short-lived password reset token. Body: `{ "email": "jordan@example.com" }`.
+- `POST /api/auth/password-reset/confirm`: completes a password reset. Body: `{ "email": "jordan@example.com", "token": "...", "password": "8+ characters" }`.
 - `POST /api/auth/supabase-login`: exchanges a Supabase Auth access token for an Agora API session when `AGORA_AUTH_DRIVER=supabase`. Body: `{ "accessToken": "supabase-access-token" }`.
 - `POST /api/auth/logout`: clears the current session.
 - `GET /api/session`: returns the current authenticated session.
 - `GET /api/members`: returns workspace users, memberships, and invitations.
 - `GET /api/invitations`: lists workspace invitations for admins.
 - `POST /api/invitations`: creates or refreshes an invitation for admins. Body: `{ "email": "jordan@example.com", "name": "Jordan Lee", "role": "member", "companyId": "optional-company-id" }`.
+- `POST /api/invitations/:id/resend`: refreshes a pending invitation token and expiry for admins.
+- `DELETE /api/invitations/:id`: revokes a pending invitation for admins.
 - `GET /api/invitations/:token`: returns public invitation details for an invite acceptance screen.
 - `POST /api/invitations/:token/accept`: accepts an invitation and creates a session. Body: `{ "name": "Jordan Lee", "password": "optional 8+ characters" }`.
 - `GET /api/records`: returns structured collections from the active storage adapter. When no structured rows exist yet, the response includes `snapshotFallback` for bootstrap compatibility.
@@ -117,6 +122,8 @@ The first migration creates the snapshot/audit tables plus structured record tab
 - `POST /api/documents`: creates or updates a project document.
 - `GET /api/files`: lists attachment records from structured storage. Supports `?projectId=...`.
 - `POST /api/files`: creates or updates an attachment record.
+- `POST /api/files/upload`: uploads a base64 file object and creates the attachment record.
+- `GET /api/files/:id/download`: downloads a stored file object through the authenticated API.
 - `GET /api/audit-log`: returns recent workspace audit events for admin/project-manager roles.
 
 Authenticated routes expect:

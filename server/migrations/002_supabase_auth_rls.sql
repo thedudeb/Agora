@@ -110,6 +110,38 @@ as $$
   end
 $$;
 
+create or replace function public.agora_can_write_team_record(target_workspace_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.agora_workspace_role(target_workspace_id) in ('admin', 'manager', 'member')
+$$;
+
+create or replace function public.agora_can_write_presence(target_workspace_id text, target_company_id text, target_member_id text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select case
+    when public.agora_workspace_role(target_workspace_id) in ('admin', 'manager') then true
+    when public.agora_workspace_role(target_workspace_id) in ('member', 'client')
+      then auth.uid()::text = coalesce(target_member_id, '')
+        and (
+          public.agora_workspace_role(target_workspace_id) = 'member'
+          or (
+            coalesce(target_company_id, '') <> ''
+            and public.agora_workspace_company_id(target_workspace_id) = coalesce(target_company_id, '')
+          )
+        )
+    else false
+  end
+$$;
+
 drop policy if exists agora_memberships_select_own_workspace on public.agora_workspace_memberships;
 create policy agora_memberships_select_own_workspace
 on public.agora_workspace_memberships
@@ -187,8 +219,8 @@ using (public.agora_can_read_workspace(workspace_id));
 drop policy if exists agora_time_entries_member_write on public.agora_time_entries;
 create policy agora_time_entries_member_write on public.agora_time_entries
 for all to authenticated
-using (public.agora_can_write_member_record(workspace_id, company_id))
-with check (public.agora_can_write_member_record(workspace_id, company_id));
+using (public.agora_can_write_team_record(workspace_id))
+with check (public.agora_can_write_team_record(workspace_id));
 
 drop policy if exists agora_comments_member_read on public.agora_comments;
 create policy agora_comments_member_read on public.agora_comments
@@ -220,8 +252,8 @@ using (public.agora_can_read_record(workspace_id, company_id));
 drop policy if exists agora_documents_member_write on public.agora_documents;
 create policy agora_documents_member_write on public.agora_documents
 for all to authenticated
-using (public.agora_can_write_member_record(workspace_id, company_id))
-with check (public.agora_can_write_member_record(workspace_id, company_id));
+using (public.agora_can_write_team_record(workspace_id))
+with check (public.agora_can_write_team_record(workspace_id));
 
 drop policy if exists agora_files_member_read on public.agora_files;
 create policy agora_files_member_read on public.agora_files
@@ -231,8 +263,8 @@ using (public.agora_can_read_record(workspace_id, company_id));
 drop policy if exists agora_files_member_write on public.agora_files;
 create policy agora_files_member_write on public.agora_files
 for all to authenticated
-using (public.agora_can_write_member_record(workspace_id, company_id))
-with check (public.agora_can_write_member_record(workspace_id, company_id));
+using (public.agora_can_write_team_record(workspace_id))
+with check (public.agora_can_write_team_record(workspace_id));
 
 drop policy if exists agora_presence_member_read on public.agora_presence;
 create policy agora_presence_member_read on public.agora_presence
@@ -242,5 +274,5 @@ using (public.agora_can_read_workspace(workspace_id));
 drop policy if exists agora_presence_member_write on public.agora_presence;
 create policy agora_presence_member_write on public.agora_presence
 for all to authenticated
-using (public.agora_can_write_member_record(workspace_id, company_id))
-with check (public.agora_can_write_member_record(workspace_id, company_id));
+using (public.agora_can_write_presence(workspace_id, company_id, member_id))
+with check (public.agora_can_write_presence(workspace_id, company_id, member_id));
