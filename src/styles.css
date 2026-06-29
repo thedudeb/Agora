@@ -1826,7 +1826,9 @@ textarea:focus {
 
 .settings-section-account,
 .settings-section-workspace,
-.settings-section-backend {
+.settings-section-sync,
+.settings-section-security,
+.settings-section-developer {
   grid-template-columns: 1fr;
 }
 
@@ -2107,6 +2109,66 @@ textarea:focus {
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 10px;
+}
+
+.api-state-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.api-state-grid article,
+.source-row {
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.api-state-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.api-state-grid strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.api-state-grid p,
+.source-row p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.source-list {
+  display: grid;
+  gap: 8px;
+}
+
+.source-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(120px, auto);
+  gap: 10px;
+  align-items: center;
+}
+
+.source-row > span {
+  color: var(--accent-strong);
+  font-weight: 900;
+}
+
+.source-row code {
+  justify-self: end;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .api-sync-card {
@@ -4029,7 +4091,9 @@ body[data-density="compact"] .main-content {
 
   .settings-section-account,
   .settings-section-workspace,
-  .settings-section-backend {
+  .settings-section-sync,
+  .settings-section-security,
+  .settings-section-developer {
     grid-template-columns: 1fr;
   }
 
@@ -4288,9 +4352,15 @@ body[data-density="compact"] .main-content {
 
   .operator-signal-grid,
   .operator-doc-row,
+  .api-state-grid,
   .backend-health-summary,
-  .backend-record-list {
+  .backend-record-list,
+  .source-row {
     grid-template-columns: 1fr;
+  }
+
+  .source-row code {
+    justify-self: start;
   }
 
   .operator-action-row {

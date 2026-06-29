@@ -151,7 +151,9 @@ const settingsTabs = [
   { id: "workspace", label: "Workspace" },
   { id: "members", label: "Members" },
   { id: "integrations", label: "Integrations" },
-  { id: "backend", label: "Backend" }
+  { id: "sync", label: "Sync" },
+  { id: "security", label: "Security" },
+  { id: "developer", label: "Developer" }
 ];
 
 const themePresets = [
@@ -1639,8 +1641,8 @@ function canUseSettingsTab(tabId) {
   if (!apiSession) return true;
   const role = currentWorkspaceRole();
   if (role === "client") return false;
-  if (tabId === "members") return role === "admin";
-  if (tabId === "workspace" || tabId === "backend") return role === "admin" || role === "manager";
+  if (tabId === "members" || tabId === "security") return role === "admin";
+  if (tabId === "workspace" || tabId === "sync" || tabId === "developer" || tabId === "integrations") return role === "admin" || role === "manager";
   return true;
 }
 
@@ -1845,6 +1847,185 @@ function renderCurrentAccessPanel() {
         ${permissions.map((permission) => `<span class="status-pill inbox-neutral">${escapeHtml(permission)}</span>`).join("")}
       </div>
       ${membership?.invitedBy ? `<p class="settings-help">Invited by ${escapeHtml(memberName(membership.invitedBy))}${membership.joinedAt ? ` on ${escapeHtml(formatDate(membership.joinedAt.slice(0, 10)))}` : ""}.</p>` : ""}
+    </section>
+  `;
+}
+
+function renderApiAccountPanel() {
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Account</p>
+          <h2>Identity and sign in</h2>
+        </div>
+        <span class="status-pill ${apiConnectionTone()}">${escapeHtml(apiStatusLabel())}</span>
+      </div>
+      <div class="api-sync-card">
+        <div>
+          <strong>${escapeHtml(apiConnectionLabel())}</strong>
+          <p>${apiSession ? `${escapeHtml(realtimeStatusLabel())} - Last saved ${escapeHtml(apiLastSyncedLabel())}` : "Start the API server, create the workspace owner account, or connect as a demo member."}</p>
+        </div>
+        <div class="api-sync-form">
+          <label class="api-url-field">
+            <span>API URL</span>
+            <input id="api-base-url" value="${escapeHtml(API_BASE_URL)}" placeholder="http://127.0.0.1:8787">
+          </label>
+          <button class="button button-secondary" type="button" id="api-url-save">Save API URL</button>
+          <label>
+            <span>Name</span>
+            <input id="api-account-name" placeholder="Workspace owner" value="${escapeHtml(apiSession?.user?.name || "")}">
+          </label>
+          <label>
+            <span>Email</span>
+            <input id="api-email" type="email" placeholder="teammate@company.com" value="${escapeHtml(apiSession?.user?.email || "")}">
+          </label>
+          <label>
+            <span>Password</span>
+            <input id="api-password" type="password" placeholder="8+ characters">
+          </label>
+          <button class="button button-primary" type="button" id="api-password-signup">Create Owner</button>
+          <button class="button button-secondary" type="button" id="api-password-login">Password Sign In</button>
+          <button class="button button-secondary" type="button" id="api-email-login">Sign In</button>
+          <button class="button button-secondary" type="button" id="api-supabase-password-signup">Supabase Sign Up</button>
+          <button class="button button-secondary" type="button" id="api-supabase-password-login">Supabase Sign In</button>
+          <label>
+            <span>Current password</span>
+            <input id="api-current-password" type="password" placeholder="Current password">
+          </label>
+          <label>
+            <span>New password</span>
+            <input id="api-new-password" type="password" placeholder="8+ characters">
+          </label>
+          <button class="button button-secondary" type="button" id="api-password-change" ${apiSession ? "" : "disabled"}>Change Password</button>
+          <label>
+            <span>Reset email</span>
+            <input id="api-reset-email" type="email" placeholder="teammate@company.com">
+          </label>
+          <label>
+            <span>Reset token</span>
+            <input id="api-reset-token" placeholder="Paste token">
+          </label>
+          <label>
+            <span>Reset password</span>
+            <input id="api-reset-password" type="password" placeholder="8+ characters">
+          </label>
+          <button class="button button-secondary" type="button" id="api-password-reset-request">Request Reset</button>
+          <button class="button button-secondary" type="button" id="api-password-reset-confirm">Confirm Reset</button>
+          <label class="wide-field">
+            <span>Supabase access token</span>
+            <textarea id="api-supabase-token" rows="2" placeholder="Advanced: paste a Supabase Auth access_token"></textarea>
+          </label>
+          <button class="button button-secondary" type="button" id="api-supabase-login">Use Supabase Token</button>
+          <label>
+            <span>Demo member</span>
+            <select id="api-member">
+              ${members.map((member) => `<option value="${member.id}" ${member.id === (apiSession?.user?.id || currentMemberId) ? "selected" : ""}>${escapeHtml(member.name)}</option>`).join("")}
+            </select>
+          </label>
+          <button class="button button-primary" type="button" id="api-connect">${apiSession ? "Switch User" : "Connect to API"}</button>
+          <button class="button button-secondary" type="button" id="api-disconnect" ${apiSession ? "" : "disabled"}>Disconnect</button>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderApiStatePanel() {
+  const recordSourceLabel = apiSession ? "API records" : "Browser snapshot";
+  const syncSources = [
+    { label: "Companies", count: state.companies.length, source: "/api/records", detail: "Company records and scopes." },
+    { label: "Projects", count: state.projects.length, source: "/api/projects", detail: "Project metadata and company ownership." },
+    { label: "Tasks", count: state.tasks.length, source: "/api/tasks", detail: "Task CRUD, assignments, status, dates, and custom fields." },
+    {
+      label: "Collaboration",
+      count: state.comments.length + state.activities.length + state.documents.length + state.files.length + state.timeEntries.length,
+      source: "/api/records",
+      detail: "Comments, activity, docs, files, time, approvals, and presence."
+    },
+    { label: "Snapshot", count: 1, source: "/api/workspace", detail: "Portable whole-workspace save and restore path." }
+  ];
+  const checkedAt = backendHealth?.generatedAt || apiSession?.lastBackendCheckedAt || "";
+
+  return `
+    <section class="panel api-state-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Source of truth</p>
+          <h2>API state</h2>
+        </div>
+        <span class="status-pill ${apiConnectionTone()}">${escapeHtml(apiBackendLabel())}</span>
+      </div>
+      <div class="api-state-grid">
+        <article>
+          <span>Connection</span>
+          <strong>${escapeHtml(apiConnectionLabel())}</strong>
+          <p>${escapeHtml(realtimeStatusLabel())}</p>
+        </article>
+        <article>
+          <span>Writes</span>
+          <strong>${canSaveWholeWorkspace() ? "Whole workspace" : apiSession ? "Scoped session" : "Local only"}</strong>
+          <p>${canSaveWholeWorkspace() ? "Save to API is enabled." : apiSession ? "Create and update individual records from allowed views." : "Connect before saving to the backend."}</p>
+        </article>
+        <article>
+          <span>Queue</span>
+          <strong>${apiSyncQueue.length ? `${apiSyncQueue.length} pending` : "Clear"}</strong>
+          <p>${apiSyncQueue.length ? "Retry failed syncs after the API is healthy." : "No failed syncs are waiting."}</p>
+        </article>
+        <article>
+          <span>Health check</span>
+          <strong>${checkedAt ? escapeHtml(formatTimestamp(checkedAt)) : "Not checked"}</strong>
+          <p>${backendHealth?.productionMode ? "Production mode is ready." : "Refresh backend health for the latest server report."}</p>
+        </article>
+      </div>
+      <div class="source-list">
+        ${syncSources.map((source) => `
+          <article class="source-row">
+            <div>
+              <strong>${escapeHtml(source.label)}</strong>
+              <p>${escapeHtml(source.detail)}</p>
+            </div>
+            <span>${Number(source.count).toLocaleString()}</span>
+            <code>${escapeHtml(apiSession ? source.source : recordSourceLabel)}</code>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderApiSyncPanel() {
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Sync</p>
+          <h2>Save, load, and repair</h2>
+        </div>
+        <span class="status-pill ${apiConnectionTone()}">${escapeHtml(apiStatusLabel())}</span>
+      </div>
+      <div class="api-sync-card">
+        <div>
+          <strong>${escapeHtml(apiConnectionLabel())}</strong>
+          <p>${apiSession ? `${escapeHtml(realtimeStatusLabel())} - Last saved ${escapeHtml(apiLastSyncedLabel())}` : "Connect an account before saving or loading backend workspace data."}</p>
+        </div>
+        <div class="data-actions">
+          <button class="button button-primary" type="button" id="api-save-workspace" ${canSaveWholeWorkspace() ? "" : "disabled"}>Save to API</button>
+          <button class="button button-secondary" type="button" id="api-load-workspace" ${apiSession ? "" : "disabled"}>Load from API</button>
+          <button class="button button-secondary" type="button" id="api-sync-retry" ${apiSession && apiSyncQueue.length ? "" : "disabled"}>Retry Failed Syncs</button>
+          <button class="button button-secondary" type="button" id="backend-health-refresh" ${apiSession ? "" : "disabled"}>Refresh Health</button>
+        </div>
+      </div>
+      ${apiSyncQueue.length ? `
+        <div class="sync-queue-list">
+          ${apiSyncQueue.slice(0, 5).map((item) => `
+            <article>
+              <strong>${escapeHtml(item.label || item.path)}</strong>
+              <p>${escapeHtml(item.error)} - ${escapeHtml(formatTimestamp(item.updatedAt))}</p>
+            </article>
+          `).join("")}
+        </div>
+      ` : ""}
     </section>
   `;
 }
@@ -6713,86 +6894,7 @@ function renderSettings() {
 
     <div class="settings-grid settings-section settings-section-${activeSettingsTab}">
       ${activeSettingsTab === "account" ? `
-      ${renderCurrentAccessPanel()}
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <p class="eyebrow">Account</p>
-            <h2>Access and sync</h2>
-          </div>
-          <span class="status-pill ${apiConnectionTone()}">${escapeHtml(apiStatusLabel())}</span>
-        </div>
-        <div class="api-sync-card">
-          <div>
-            <strong>${escapeHtml(apiConnectionLabel())}</strong>
-            <p>${apiSession ? `${escapeHtml(realtimeStatusLabel())} - Last saved ${escapeHtml(apiLastSyncedLabel())}` : "Start the API server, create the workspace owner account, or connect as a demo member."}</p>
-          </div>
-          <div class="api-sync-form">
-            <label class="api-url-field">
-              <span>API URL</span>
-              <input id="api-base-url" value="${escapeHtml(API_BASE_URL)}" placeholder="http://127.0.0.1:8787">
-            </label>
-            <button class="button button-secondary" type="button" id="api-url-save">Save API URL</button>
-            <label>
-              <span>Name</span>
-              <input id="api-account-name" placeholder="Workspace owner" value="${escapeHtml(apiSession?.user?.name || "")}">
-            </label>
-            <label>
-              <span>Email</span>
-              <input id="api-email" type="email" placeholder="teammate@company.com" value="${escapeHtml(apiSession?.user?.email || "")}">
-            </label>
-            <label>
-              <span>Password</span>
-              <input id="api-password" type="password" placeholder="8+ characters">
-            </label>
-            <button class="button button-primary" type="button" id="api-password-signup">Create Owner</button>
-            <button class="button button-secondary" type="button" id="api-password-login">Password Sign In</button>
-            <button class="button button-secondary" type="button" id="api-email-login">Sign In</button>
-            <button class="button button-secondary" type="button" id="api-supabase-password-signup">Supabase Sign Up</button>
-            <button class="button button-secondary" type="button" id="api-supabase-password-login">Supabase Sign In</button>
-            <label>
-              <span>Current password</span>
-              <input id="api-current-password" type="password" placeholder="Current password">
-            </label>
-            <label>
-              <span>New password</span>
-              <input id="api-new-password" type="password" placeholder="8+ characters">
-            </label>
-            <button class="button button-secondary" type="button" id="api-password-change" ${apiSession ? "" : "disabled"}>Change Password</button>
-            <label>
-              <span>Reset email</span>
-              <input id="api-reset-email" type="email" placeholder="teammate@company.com">
-            </label>
-            <label>
-              <span>Reset token</span>
-              <input id="api-reset-token" placeholder="Paste token">
-            </label>
-            <label>
-              <span>Reset password</span>
-              <input id="api-reset-password" type="password" placeholder="8+ characters">
-            </label>
-            <button class="button button-secondary" type="button" id="api-password-reset-request">Request Reset</button>
-            <button class="button button-secondary" type="button" id="api-password-reset-confirm">Confirm Reset</button>
-            <label class="wide-field">
-              <span>Supabase access token</span>
-              <textarea id="api-supabase-token" rows="2" placeholder="Advanced: paste a Supabase Auth access_token"></textarea>
-            </label>
-            <button class="button button-secondary" type="button" id="api-supabase-login">Use Supabase Token</button>
-            <label>
-              <span>Demo member</span>
-              <select id="api-member">
-                ${members.map((member) => `<option value="${member.id}" ${member.id === (apiSession?.user?.id || currentMemberId) ? "selected" : ""}>${escapeHtml(member.name)}</option>`).join("")}
-              </select>
-            </label>
-            <button class="button button-primary" type="button" id="api-connect">${apiSession ? "Switch User" : "Connect to API"}</button>
-            <button class="button button-secondary" type="button" id="api-disconnect" ${apiSession ? "" : "disabled"}>Disconnect</button>
-          </div>
-          <div class="data-actions">
-            <button class="button button-primary" type="button" id="api-save-workspace" ${canSaveWholeWorkspace() ? "" : "disabled"}>Save to API</button>
-            <button class="button button-secondary" type="button" id="api-load-workspace" ${apiSession ? "" : "disabled"}>Load from API</button>
-          </div>
-        </div>
-      </section>
+      ${renderApiAccountPanel()}
       ` : ""}
 
       ${activeSettingsTab === "workspace" ? `
@@ -6945,8 +7047,6 @@ function renderSettings() {
         </div>
       </section>
 
-      ${renderPermissionMatrix()}
-
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -6985,11 +7085,21 @@ function renderSettings() {
       </section>
       ` : ""}
 
-      ${activeSettingsTab === "backend" ? `
+      ${activeSettingsTab === "sync" ? `
+      ${renderApiStatePanel()}
+      ${renderApiSyncPanel()}
+      ` : ""}
+
+      ${activeSettingsTab === "security" ? `
+      ${renderCurrentAccessPanel()}
+      ${renderPermissionMatrix()}
+      ` : ""}
+
+      ${activeSettingsTab === "developer" ? `
       <section class="panel">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Migration</p>
+            <p class="eyebrow">Developer</p>
             <h2>Backend readiness</h2>
           </div>
         </div>
