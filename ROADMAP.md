@@ -4,7 +4,7 @@ This roadmap describes the intended direction for Agora. It will evolve as the p
 
 ## Current Prototype
 
-Agora currently includes a dependency-free browser app, local app server, API scaffold, JSON storage, optional Supabase storage, account signup/login, invitations, role permissions, project/task views, company and client portals, docs/files, intake, templates, automations, notifications, time tracking, import/export, polling-based live refresh, task viewer presence, same-page cursor presence, mentions, watched-task inbox signals, stale edit warnings, accessibility basics, and PWA shell support.
+Agora currently includes a dependency-free browser app, local app server, API scaffold, JSON storage, optional Supabase storage, account signup/login, invitations, role permissions, project/task views, project PM snapshots, company and client portals, docs/files, intake, templates, automations with previews, notifications, time tracking, import/export, command-style search, polling-based live refresh, task viewer presence, same-page cursor presence, mentions, watched-task inbox signals, stale edit warnings, customizable workspace themes, deployment readiness checks, accessibility basics, and PWA shell support.
 
 ## Phase 0: Project Foundation
 
@@ -27,6 +27,7 @@ Agora currently includes a dependency-free browser app, local app server, API sc
 - My Work view for assigned tasks across projects.
 - Basic in-app notifications.
 - Self-hosting setup guide.
+- Workspace theme presets and deploy-readiness guidance.
 
 ## Phase 2: Team Planning
 
@@ -35,6 +36,7 @@ Agora currently includes a dependency-free browser app, local app server, API sc
 - Project templates and project duplication.
 - Guest access for client or stakeholder collaboration.
 - Saved filters and saved project views.
+- Production-grade search and command palette actions.
 - Data export for workspace and project content.
 
 ## Phase 3: Extensibility
@@ -51,5 +53,6 @@ Agora currently includes a dependency-free browser app, local app server, API sc
 - Advanced automations.
 - Resource planning and capacity views.
 - Native mobile apps.
+- Theme marketplace/export support for self-hosters.
 - Deeper third-party integrations.
 - Hosted cloud option, if the community and maintainers decide to pursue it.

@@ -130,6 +130,38 @@ const settingsTabs = [
   { id: "backend", label: "Backend" }
 ];
 
+const themePresets = [
+  {
+    id: "agora",
+    label: "Agora",
+    description: "Warm neutral workspace with the classic Agora teal accent.",
+    swatches: ["#f6f5f0", "#245a58", "#dce8e5"]
+  },
+  {
+    id: "night",
+    label: "Night",
+    description: "Low-glare dark surfaces for long planning sessions.",
+    swatches: ["#151817", "#76b7ad", "#263432"]
+  },
+  {
+    id: "cobalt",
+    label: "Cobalt",
+    description: "Cooler product-team palette with a sharper blue accent.",
+    swatches: ["#f4f7fb", "#2f5f9d", "#dde8fb"]
+  },
+  {
+    id: "olive",
+    label: "Olive",
+    description: "Quiet operations palette for delivery teams and client work.",
+    swatches: ["#f5f4ec", "#536b38", "#e4ead7"]
+  }
+];
+
+const densityOptions = [
+  { id: "comfortable", label: "Comfortable" },
+  { id: "compact", label: "Compact" }
+];
+
 const currentMemberId = "mara";
 
 const routes = {
@@ -191,6 +223,10 @@ const seedData = {
     defaultRole: "member",
     storageMode: "Browser local storage",
     backendTarget: "API + PostgreSQL",
+    theme: {
+      preset: "agora",
+      density: "comfortable"
+    },
     ai: {
       provider: "local",
       model: "Agora deterministic operator",
@@ -905,6 +941,7 @@ const els = {
   notificationCount: document.querySelector("#notification-count"),
   toastRegion: document.querySelector("#toast-region"),
   searchInput: document.querySelector("#search-input"),
+  searchResults: document.querySelector("#search-results"),
   companyFilter: document.querySelector("#company-filter"),
   projectFilter: document.querySelector("#project-filter"),
   assigneeFilter: document.querySelector("#assignee-filter"),
@@ -997,6 +1034,7 @@ function normalizeState(nextState) {
     workspace: {
       ...seedData.workspace,
       ...(nextState.workspace || {}),
+      theme: normalizeWorkspaceTheme((nextState.workspace || {}).theme),
       ai: {
         ...seedData.workspace.ai,
         ...((nextState.workspace || {}).ai || {})
@@ -1049,7 +1087,22 @@ function normalizeState(nextState) {
 }
 
 function saveState() {
+  applyWorkspaceTheme();
   workspaceStore.save(state);
+}
+
+function normalizeWorkspaceTheme(theme = {}) {
+  const preset = themePresets.some((item) => item.id === theme.preset) ? theme.preset : seedData.workspace.theme.preset;
+  const density = densityOptions.some((item) => item.id === theme.density) ? theme.density : seedData.workspace.theme.density;
+  return { preset, density };
+}
+
+function applyWorkspaceTheme() {
+  const theme = normalizeWorkspaceTheme(state?.workspace?.theme);
+  document.body.dataset.theme = theme.preset;
+  document.body.dataset.density = theme.density;
+  const activePreset = themePresets.find((preset) => preset.id === theme.preset) || themePresets[0];
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", activePreset.swatches[1]);
 }
 
 async function apiRequest(path, options = {}) {
@@ -1409,6 +1462,168 @@ function renderSettingsTabs(activeTab) {
           >${escapeHtml(tab.label)}</button>
         `;
       }).join("")}
+    </div>
+  `;
+}
+
+function renderThemeOption(theme) {
+  const active = state.workspace.theme?.preset === theme.id;
+  return `
+    <label class="theme-option ${active ? "is-active" : ""}">
+      <input type="radio" name="workspace-theme" value="${theme.id}" ${active ? "checked" : ""}>
+      <span class="theme-swatches" aria-hidden="true">
+        ${theme.swatches.map((color) => `<i style="background: ${color}"></i>`).join("")}
+      </span>
+      <strong>${escapeHtml(theme.label)}</strong>
+      <small>${escapeHtml(theme.description)}</small>
+    </label>
+  `;
+}
+
+function productionReadinessItems() {
+  const hasApi = Boolean(apiSession);
+  const health = backendHealth || apiSession?.backendHealth || {};
+  return [
+    {
+      label: "Supabase or API connected",
+      done: hasApi,
+      detail: hasApi ? apiBackendLabel() : "Connect Settings to the API before production launch."
+    },
+    {
+      label: "Backend health checked",
+      done: Boolean(health.generatedAt || apiSession?.lastBackendCheckedAt),
+      detail: health.generatedAt ? `Last checked ${formatTimestamp(health.generatedAt)}` : "Run Backend Health after connecting."
+    },
+    {
+      label: "Auth driver selected",
+      done: Boolean(health.auth || apiSession?.apiHealth?.auth),
+      detail: health.auth || apiSession?.apiHealth?.auth || "Use local auth for dev or Supabase Auth for hosted installs."
+    },
+    {
+      label: "Role model configured",
+      done: state.memberships.length >= workspaceMembers().length && Boolean(state.workspace.defaultRole),
+      detail: `${state.memberships.length} active memberships, default role ${state.workspace.defaultRole}.`
+    },
+    {
+      label: "Data export path verified",
+      done: state.tasks.length > 0 && state.projects.length > 0,
+      detail: "JSON and CSV export are available from Data."
+    },
+    {
+      label: "PWA shell ready",
+      done: Boolean(navigator.serviceWorker),
+      detail: pwaStatusLabel()
+    },
+    {
+      label: "Theme selected",
+      done: Boolean(state.workspace.theme?.preset),
+      detail: `${themePresets.find((theme) => theme.id === state.workspace.theme?.preset)?.label || "Agora"} / ${state.workspace.theme?.density || "comfortable"}`
+    }
+  ];
+}
+
+function productionReadinessScore() {
+  const items = productionReadinessItems();
+  return {
+    done: items.filter((item) => item.done).length,
+    total: items.length
+  };
+}
+
+function renderProductionReadinessPanel() {
+  return `
+    <div class="readiness-list">
+      ${productionReadinessItems().map((item) => `
+        <article class="readiness-item ${item.done ? "is-done" : "is-pending"}">
+          <span>${item.done ? "OK" : "Next"}</span>
+          <div>
+            <strong>${escapeHtml(item.label)}</strong>
+            <p>${escapeHtml(item.detail)}</p>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderPermissionMatrix() {
+  const permissions = [
+    ["workspace:read", "Read workspace"],
+    ["workspace:write", "Edit workspace"],
+    ["members:write", "Manage members"],
+    ["projects:write", "Manage projects"],
+    ["tasks:write", "Manage tasks"],
+    ["comments:write", "Comment"],
+    ["time:write", "Log time"],
+    ["approvals:write", "Approvals"],
+    ["audit:read", "Audit log"]
+  ];
+  const rolePermissions = {
+    admin: ["workspace:read", "workspace:write", "members:write", "projects:write", "tasks:write", "comments:write", "time:write", "approvals:write", "audit:read"],
+    manager: ["workspace:read", "workspace:write", "projects:write", "tasks:write", "comments:write", "time:write", "approvals:write", "audit:read"],
+    member: ["workspace:read", "comments:write", "time:write"],
+    client: ["workspace:read", "comments:write", "approvals:write"]
+  };
+
+  return `
+    <section class="panel permission-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Permissions</p>
+          <h2>Role matrix</h2>
+        </div>
+      </div>
+      <div class="permission-matrix" role="table" aria-label="Role permission matrix">
+        <div class="permission-row permission-head" role="row">
+          <span role="columnheader">Permission</span>
+          ${workspaceRoles.map((role) => `<strong role="columnheader">${escapeHtml(role.label)}</strong>`).join("")}
+        </div>
+        ${permissions.map(([permission, label]) => `
+          <div class="permission-row" role="row">
+            <span role="rowheader">${escapeHtml(label)}</span>
+            ${workspaceRoles.map((role) => `<span class="${rolePermissions[role.id]?.includes(permission) ? "is-allowed" : "is-denied"}">${rolePermissions[role.id]?.includes(permission) ? "Yes" : "No"}</span>`).join("")}
+          </div>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderAiProviderChecklist(ai) {
+  const items = [
+    {
+      label: "Provider mode",
+      done: Boolean(ai.provider),
+      detail: aiProviderLabel()
+    },
+    {
+      label: "Model name",
+      done: Boolean(ai.model),
+      detail: ai.model || "Choose the model your server adapter should call."
+    },
+    {
+      label: "Server-held key",
+      done: ai.provider === "local" || ai.keySource === "Server environment" || ai.keySource === "Self-hosted secret store",
+      detail: ai.provider === "local" ? "No key needed for deterministic local mode." : "Keep provider secrets out of the browser."
+    },
+    {
+      label: "Base URL",
+      done: ai.provider === "local" || Boolean(ai.baseUrl),
+      detail: ai.baseUrl || "Use the API server default unless a provider needs a custom endpoint."
+    }
+  ];
+
+  return `
+    <div class="readiness-list compact-readiness">
+      ${items.map((item) => `
+        <article class="readiness-item ${item.done ? "is-done" : "is-pending"}">
+          <span>${item.done ? "OK" : "Next"}</span>
+          <div>
+            <strong>${escapeHtml(item.label)}</strong>
+            <p>${escapeHtml(item.detail)}</p>
+          </div>
+        </article>
+      `).join("")}
     </div>
   `;
 }
@@ -1954,6 +2169,158 @@ function isTaskVisibleForContext(task) {
     (state.filters.priority === "all" || task.priority === state.filters.priority) &&
     (!query || haystack.includes(query))
   );
+}
+
+function globalSearchResults() {
+  const query = state.filters.query.trim().toLowerCase();
+  if (query.length < 2) return [];
+
+  const matches = (values) => values.filter(Boolean).join(" ").toLowerCase().includes(query);
+  const taskResults = activeTasks()
+    .filter((task) => matches([
+      task.title,
+      task.description,
+      projectName(task.projectId),
+      companyName(projectCompany(task.projectId)?.id),
+      memberName(task.assignee),
+      task.tags.join(" ")
+    ]))
+    .slice(0, 5)
+    .map((task) => ({
+      id: task.id,
+      type: "Task",
+      title: task.title,
+      detail: `${projectName(task.projectId)} - ${statusLabel(task.status)} - ${memberName(task.assignee)}`,
+      route: "task",
+      taskId: task.id
+    }));
+
+  const projectResults = activeProjects()
+    .filter((project) => matches([project.name, project.description, companyName(project.companyId), memberName(project.owner)]))
+    .slice(0, 4)
+    .map((project) => ({
+      id: project.id,
+      type: "Project",
+      title: project.name,
+      detail: `${companyName(project.companyId)} - due ${formatDate(project.dueDate)}`,
+      route: "project",
+      projectId: project.id
+    }));
+
+  const companyResults = state.companies
+    .filter((company) => matches([company.name, company.description, company.type, memberName(company.owner)]))
+    .slice(0, 3)
+    .map((company) => ({
+      id: company.id,
+      type: "Company",
+      title: company.name,
+      detail: `${company.type} - ${company.status}`,
+      route: "company",
+      companyId: company.id
+    }));
+
+  const documentResults = getVisibleDocuments()
+    .filter((document) => matches([document.title, document.type, document.body, projectName(document.projectId)]))
+    .slice(0, 3)
+    .map((document) => ({
+      id: document.id,
+      type: "Doc",
+      title: document.title,
+      detail: `${document.type} - ${projectName(document.projectId)}`,
+      route: "project",
+      projectId: document.projectId
+    }));
+
+  const peopleResults = workspaceMembers()
+    .filter((member) => matches([member.name, member.role, member.email]))
+    .slice(0, 3)
+    .map((member) => ({
+      id: member.id,
+      type: "Person",
+      title: member.name,
+      detail: member.role || "Workspace member",
+      route: "my-work",
+      assignee: member.id
+    }));
+
+  return [...taskResults, ...projectResults, ...companyResults, ...documentResults, ...peopleResults].slice(0, 10);
+}
+
+function renderSearchResults() {
+  if (!els.searchResults) return;
+  const query = state.filters.query.trim();
+  const results = globalSearchResults();
+  els.searchResults.hidden = query.length < 2;
+  if (els.searchResults.hidden) {
+    els.searchResults.innerHTML = "";
+    return;
+  }
+
+  els.searchResults.innerHTML = `
+    <div class="search-results-header">
+      <strong>${results.length ? "Jump to" : "No matches"}</strong>
+      <span>${escapeHtml(query)}</span>
+    </div>
+    <div class="search-result-list">
+      ${results.length ? results.map(renderSearchResult).join("") : `<p>No task, project, company, doc, or person matches this search.</p>`}
+    </div>
+  `;
+}
+
+function renderSearchResult(result) {
+  return `
+    <button
+      class="search-result"
+      type="button"
+      data-search-route="${result.route}"
+      data-search-task="${result.taskId || ""}"
+      data-search-project="${result.projectId || ""}"
+      data-search-company="${result.companyId || ""}"
+      data-search-assignee="${result.assignee || ""}"
+    >
+      <span>${escapeHtml(result.type)}</span>
+      <strong>${escapeHtml(result.title)}</strong>
+      <small>${escapeHtml(result.detail)}</small>
+    </button>
+  `;
+}
+
+function openSearchResult(button) {
+  if (!button) return;
+  const taskId = button.dataset.searchTask || "";
+  const projectId = button.dataset.searchProject || "";
+  const companyId = button.dataset.searchCompany || "";
+  const assignee = button.dataset.searchAssignee || "";
+  els.searchResults.hidden = true;
+
+  if (taskId) {
+    const task = byId(state.tasks, taskId);
+    if (task) {
+      state.selectedProject = task.projectId;
+      state.selectedRoute = "project";
+      state.selectedProjectTab = "tasks";
+      saveState();
+      render();
+      openTaskDialog(task);
+    }
+    return;
+  }
+  if (projectId) {
+    setProject(projectId);
+    return;
+  }
+  if (companyId) {
+    setCompany(companyId);
+    return;
+  }
+  if (assignee) {
+    state.filters.assignee = assignee;
+    state.selectedRoute = "my-work";
+    saveState();
+    render();
+    return;
+  }
+  setRoute(button.dataset.searchRoute || "dashboard");
 }
 
 function normalizeTaskWatchers(value) {
@@ -3173,6 +3540,7 @@ function recordTaskChanges(previous, next) {
 }
 
 function render() {
+  applyWorkspaceTheme();
   const allowedRoute = routeFallback(state.selectedRoute);
   if (allowedRoute !== state.selectedRoute) {
     state.selectedRoute = allowedRoute;
@@ -3204,6 +3572,7 @@ function render() {
 
   renderSidebarProjects();
   renderFilters();
+  renderSearchResults();
   renderNotificationBadges();
   renderPermissionChrome();
   document.querySelector(".brand small").textContent = state.workspace.name;
@@ -3402,6 +3771,18 @@ function renderMobileAppPanel() {
           <span>Home screen install</span>
           <span>Touch task actions</span>
           <span>Notification-ready</span>
+          <span>iPhone safe areas</span>
+          <span>iPad layouts</span>
+        </div>
+        <div class="mobile-roadmap-list">
+          <article>
+            <strong>Next native step</strong>
+            <p>Keep the PWA as the canonical mobile surface, then wrap the proven flows for app-store distribution.</p>
+          </article>
+          <article>
+            <strong>Offline capture</strong>
+            <p>Queue tasks, comments, and time entries locally before syncing through the API.</p>
+          </article>
         </div>
       </div>
     </section>
@@ -4491,6 +4872,8 @@ function renderProjectOverview(project, details) {
       ${metric("Tracked", formatDuration(trackedMinutes))}
     </div>
 
+    ${renderProjectCommandCenter(project, details)}
+
     <div class="dashboard-grid">
       <section class="panel">
         <div class="panel-header">
@@ -4526,6 +4909,57 @@ function renderProjectOverview(project, details) {
         ${renderActivityList(getProjectActivity(project.id, 5))}
       </section>
     </div>
+  `;
+}
+
+function renderProjectCommandCenter(project, details) {
+  const { openTasks, overdueTasks, filteredProjectTasks, nextMilestone, trackedMinutes } = details;
+  const projectApprovals = state.approvals.filter((approval) => approval.projectId === project.id && approval.status !== "approved");
+  const projectDocs = state.documents.filter((document) => document.projectId === project.id);
+  const projectFiles = state.files.filter((file) => file.projectId === project.id);
+  const blockedTasks = openTasks.filter(isTaskBlocked);
+  const risks = [
+    overdueTasks.length ? `${overdueTasks.length} overdue ${overdueTasks.length === 1 ? "task" : "tasks"}` : "",
+    blockedTasks.length ? `${blockedTasks.length} blocked ${blockedTasks.length === 1 ? "task" : "tasks"}` : "",
+    projectApprovals.length ? `${projectApprovals.length} approval ${projectApprovals.length === 1 ? "needs" : "items need"} attention` : "",
+    !nextMilestone ? "No upcoming milestone" : ""
+  ].filter(Boolean);
+  const nextTask = filteredProjectTasks
+    .filter((task) => task.status !== "done")
+    .sort((a, b) => operatorTaskScore(b) - operatorTaskScore(a))[0];
+
+  return `
+    <section class="panel project-command-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Command center</p>
+          <h2>PM snapshot</h2>
+        </div>
+        <button class="button button-secondary compact-button" type="button" data-project-tab="timeline">Open timeline</button>
+      </div>
+      <div class="project-command-grid">
+        <article>
+          <span>Next action</span>
+          <strong>${escapeHtml(nextTask?.title || "Review project plan")}</strong>
+          <p>${escapeHtml(nextTask ? operatorReasonForTask(nextTask) : "No active task is currently scoring as urgent.")}</p>
+        </article>
+        <article>
+          <span>Risks</span>
+          <strong>${risks.length || "Clear"}</strong>
+          <p>${escapeHtml(risks.join(" - ") || "No immediate overdue, blocked, or approval risk detected.")}</p>
+        </article>
+        <article>
+          <span>Client assets</span>
+          <strong>${projectDocs.length + projectFiles.length}</strong>
+          <p>${projectDocs.length} docs, ${projectFiles.length} files, ${projectApprovals.length} open approvals.</p>
+        </article>
+        <article>
+          <span>Time</span>
+          <strong>${formatDuration(trackedMinutes)}</strong>
+          <p>${escapeHtml(nextMilestone ? `Next milestone: ${nextMilestone.title}` : "Add a milestone to anchor delivery.")}</p>
+        </article>
+      </div>
+    </section>
   `;
 }
 
@@ -5780,6 +6214,7 @@ function renderSettings() {
       ${metric("Roles", workspaceRoles.length)}
       ${metric("Companies", state.companies.length)}
       ${metric("Storage", apiBackendLabel())}
+      ${metric("Theme", themePresets.find((theme) => theme.id === state.workspace.theme?.preset)?.label || "Agora")}
     </div>
 
     ${renderSettingsTabs(activeSettingsTab)}
@@ -5902,8 +6337,31 @@ function renderSettings() {
             <span>Backend target</span>
             <input id="workspace-backend-target" value="${escapeHtml(state.workspace.backendTarget)}">
           </label>
+          <div class="wide-field theme-picker" role="radiogroup" aria-label="Workspace theme">
+            <span>Theme</span>
+            <div class="theme-option-grid">
+              ${themePresets.map(renderThemeOption).join("")}
+            </div>
+          </div>
+          <label>
+            <span>Density</span>
+            <select id="workspace-density">
+              ${densityOptions.map((option) => `<option value="${option.id}" ${option.id === state.workspace.theme?.density ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+            </select>
+          </label>
           <button class="button button-primary" type="button" id="workspace-save">Save Settings</button>
         </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Launch checklist</p>
+            <h2>Deploy confidence</h2>
+          </div>
+          <span class="status-pill ${productionReadinessScore().done === productionReadinessScore().total ? "inbox-green" : "inbox-amber"}">${productionReadinessScore().done}/${productionReadinessScore().total}</span>
+        </div>
+        ${renderProductionReadinessPanel()}
       </section>
       ` : ""}
 
@@ -5943,6 +6401,7 @@ function renderSettings() {
             </select>
           </label>
           <p class="settings-help">Agora uses the local deterministic operator by default. External providers run through the API server; put keys in .env with AGORA_AI_API_KEY or OPENAI_API_KEY. Browser-saved base URLs are only used when the server enables AGORA_AI_ALLOW_CLIENT_BASE_URL.</p>
+          ${renderAiProviderChecklist(ai)}
           <button class="button button-primary" type="button" id="ai-save-settings">Save AI Settings</button>
         </div>
       </section>
@@ -5978,6 +6437,8 @@ function renderSettings() {
           }).join("")}
         </div>
       </section>
+
+      ${renderPermissionMatrix()}
 
       <section class="panel">
         <div class="panel-header">
@@ -6272,6 +6733,16 @@ function renderBackendChecklist() {
         </article>
       `).join("")}
     </div>
+    <div class="backend-launch-block">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Production path</p>
+          <h3>Launch readiness</h3>
+        </div>
+        <span class="status-pill ${productionReadinessScore().done === productionReadinessScore().total ? "inbox-green" : "inbox-amber"}">${productionReadinessScore().done}/${productionReadinessScore().total}</span>
+      </div>
+      ${renderProductionReadinessPanel()}
+    </div>
     ${records.length ? `
       <div class="backend-record-list">
         ${records.map((record) => `
@@ -6296,6 +6767,7 @@ function renderBackendChecklist() {
 }
 
 function renderAutomationCard(automation) {
+  const preview = automationPreview(automation);
   return `
     <article class="automation-card ${automation.enabled ? "is-enabled" : "is-disabled"}">
       <div>
@@ -6303,6 +6775,11 @@ function renderAutomationCard(automation) {
         <h3>${escapeHtml(automation.name)}</h3>
         <p><strong>When:</strong> ${escapeHtml(automation.trigger)}</p>
         <p><strong>Then:</strong> ${escapeHtml(automation.action)}</p>
+        <div class="automation-preview">
+          <span>${escapeHtml(preview.label)}</span>
+          <strong>${escapeHtml(preview.value)}</strong>
+          <small>${escapeHtml(preview.detail)}</small>
+        </div>
         <div class="meta-row">
           <span>${automation.runCount || 0} runs</span>
           <span>${automation.lastRun ? formatTimestamp(automation.lastRun) : "Never run"}</span>
@@ -6314,6 +6791,46 @@ function renderAutomationCard(automation) {
       </div>
     </article>
   `;
+}
+
+function automationPreview(automation) {
+  if (automation.id === "automation-high-intake") {
+    const highSubmissions = getVisibleIntakeSubmissions().filter((submission) => submission.urgency === "High" || submission.urgency === "Urgent");
+    return {
+      label: "Preview",
+      value: `${highSubmissions.length} intake ${highSubmissions.length === 1 ? "item" : "items"}`,
+      detail: "Would convert or flag high-urgency requests for triage."
+    };
+  }
+  if (automation.id === "automation-blocked-alert") {
+    const blocked = activeTasks().filter((task) => task.status !== "done" && isTaskBlocked(task));
+    return {
+      label: "Preview",
+      value: `${blocked.length} blocked`,
+      detail: "Would post blocker activity and surface watched-task notifications."
+    };
+  }
+  if (automation.id === "automation-due-risk") {
+    const due = dueSoonTasks(activeTasks());
+    return {
+      label: "Preview",
+      value: `${due.length} due soon`,
+      detail: "Would pull urgent due-soon work into daily planning."
+    };
+  }
+  if (automation.id === "automation-milestone-watch") {
+    const milestones = state.milestones.filter((milestone) => milestone.status !== "completed" && daysBetween(todayKey(), milestone.dueDate) <= 14);
+    return {
+      label: "Preview",
+      value: `${milestones.length} milestones`,
+      detail: "Would watch upcoming milestones and create project activity."
+    };
+  }
+  return {
+    label: "Preview",
+    value: automation.enabled ? "Ready" : "Draft",
+    detail: "Run this rule manually to record its impact in history."
+  };
 }
 
 function renderAutomationHistory(run) {
@@ -8116,6 +8633,8 @@ function saveWorkspaceSettings() {
   const visibility = document.querySelector("#workspace-visibility")?.value || state.workspace.visibility;
   const defaultRole = document.querySelector("#workspace-default-role")?.value || state.workspace.defaultRole;
   const backendTarget = document.querySelector("#workspace-backend-target")?.value.trim();
+  const themePreset = document.querySelector('input[name="workspace-theme"]:checked')?.value || state.workspace.theme?.preset;
+  const density = document.querySelector("#workspace-density")?.value || state.workspace.theme?.density;
   if (!name || !slug) return;
 
   state.workspace = {
@@ -8124,6 +8643,7 @@ function saveWorkspaceSettings() {
     slug,
     visibility,
     defaultRole,
+    theme: normalizeWorkspaceTheme({ preset: themePreset, density }),
     backendTarget: backendTarget || state.workspace.backendTarget
   };
   saveState();
@@ -8828,6 +9348,16 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const searchResult = event.target.closest("[data-search-route]");
+  if (searchResult) {
+    openSearchResult(searchResult);
+    return;
+  }
+
+  if (!event.target.closest(".search-control") && !event.target.closest("#search-results") && els.searchResults) {
+    els.searchResults.hidden = true;
+  }
+
   const sidebarToggle = event.target.closest("[data-sidebar-toggle]");
   if (sidebarToggle) {
     const groupId = sidebarToggle.dataset.sidebarToggle;
@@ -9296,6 +9826,8 @@ els.searchInput.addEventListener("input", (event) => {
   saveState();
   render();
 });
+
+els.searchInput.addEventListener("focus", renderSearchResults);
 
 els.companyFilter.addEventListener("change", (event) => {
   state.filters.company = event.target.value;

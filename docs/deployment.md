@@ -103,10 +103,15 @@ curl https://your-api.example.com/api/health
 
 Then sign in and open Settings or Data. Backend Health should show storage, auth, structured records, auth hardening, file uploads, audit log, and production mode readiness.
 
+Settings also includes a Deploy Confidence checklist. Use it before inviting a real team: connect the API, refresh backend health, confirm auth mode, review the role matrix, verify export paths, and choose a workspace theme/density.
+
 ## Release Checklist
 
 - Create the first owner account.
 - Save or import the workspace snapshot to the API.
+- Choose the workspace theme and density in Settings.
+- Review the Settings permission matrix for admin, manager, member, and client access.
+- Confirm Deploy Confidence shows every expected item as ready for the chosen environment.
 - Confirm `AGORA_DEMO_AUTH=false`.
 - Confirm `AGORA_PASSWORDLESS_AUTH=false` unless intentionally enabled.
 - Confirm CORS only includes trusted app origins.

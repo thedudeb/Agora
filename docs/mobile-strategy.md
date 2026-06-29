@@ -23,6 +23,7 @@ The highest-value mobile use cases are short actions:
 - Triage inbox alerts.
 - Log quick time.
 - Review project status on tablet.
+- Switch between comfortable and compact density when the same workspace is used across phone, tablet, and desktop.
 
 These should stay available in the PWA before a native app is considered.
 
@@ -37,7 +38,11 @@ Agora now has the browser-side pieces needed for notification readiness:
 
 The next backend step is a durable push subscription model tied to users and workspace memberships.
 
-## 4. Dedicated app decision
+## 4. Themes and density
+
+Mobile usability should stay tied to the workspace theme system rather than a separate mobile skin. Theme presets control the accent and surface palette, while density lets teams pick a more compact task-heavy layout for tablets or a more comfortable layout for touch-heavy phone use.
+
+## 5. Dedicated app decision
 
 Move beyond the PWA when at least two of these are true:
 
