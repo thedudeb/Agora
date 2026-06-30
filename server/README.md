@@ -87,6 +87,8 @@ The first migration creates the snapshot/audit tables plus structured record tab
 - `GET /api/backend/health`: authenticated backend readiness, storage/auth drivers, workspace snapshot metadata, structured collection counts, production-mode status, and current session scope.
 - `GET /api/scheduler/notifications/due`: returns due, unsent notification reminders visible to the authenticated session.
 - `POST /api/scheduler/notifications/run`: processes due reminders, marks them sent, and writes notification-history records. Use it from trusted cron, or set `AGORA_SCHEDULER_ENABLED=true` to run the scheduler inside the API process.
+- `POST /api/payments/checkout-intent`: creates a server-side checkout intent for paid marketplace templates and other billable workspace items.
+- `POST /api/payments/events`: records trusted payment events and grants matching entitlements when checkout or manual payment confirmation succeeds.
 - `POST /api/auth/signup`: creates the first workspace owner account, or accepts a pending invited account. Body: `{ "name": "Mara Chen", "email": "mara@example.com", "password": "8+ characters" }`.
 - `POST /api/auth/demo-login`: creates a demo session when `AGORA_DEMO_AUTH=true`. Body: `{ "memberId": "mara" }`.
 - `POST /api/auth/login`: creates a passwordless session for an accepted workspace user when `AGORA_PASSWORDLESS_AUTH=true`. Body: `{ "email": "jordan@example.com" }`.
@@ -142,12 +144,14 @@ Authorization: Bearer <token>
 
 ## Roles
 
-- `admin`: read/write/import workspace data, read audit log, manage members, and respond to approvals.
-- `manager`: read/write workspace data, read audit log, and respond to approvals.
+- `admin`: read/write/import workspace data, read audit log, manage members, respond to approvals, manage notifications/integrations/payments, and run the server scheduler.
+- `manager`: read/write workspace data, read audit log, respond to approvals, manage notifications/integrations/payments, and run the server scheduler.
 - `member`: read workspace data, log their own time, add comments/activity, and add attachments.
 - `client`: read scoped workspace data, add comments/activity, and respond to existing approvals.
 
 Memberships can include `companyId`. When present, workspace snapshots, project/task reads, structured record reads, and write checks are scoped to that company before data is returned or accepted.
+
+Sensitive operational actions use dedicated permissions in addition to role checks: `notifications:write` for delivery settings, `integrations:write` for integration setup and test events, `scheduler:run` for backend notification processing, and `payments:write` for checkout intents, payment events, entitlement grants, and payment settings.
 
 ## Database Target
 

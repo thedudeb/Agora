@@ -3046,7 +3046,9 @@ function canUseSettingsTab(tabId) {
   const role = currentWorkspaceRole();
   if (role === "client") return false;
   if (tabId === "members" || tabId === "security") return role === "admin";
-  if (tabId === "workspace" || tabId === "sync" || tabId === "developer" || tabId === "integrations" || tabId === "payments" || tabId === "trust") return role === "admin" || role === "manager";
+  if (tabId === "integrations") return hasApiPermission("integrations:write") || hasApiPermission("notifications:write");
+  if (tabId === "payments") return hasApiPermission("payments:write");
+  if (tabId === "workspace" || tabId === "sync" || tabId === "developer" || tabId === "trust") return role === "admin" || role === "manager";
   return true;
 }
 
@@ -3505,11 +3507,15 @@ function renderPermissionMatrix() {
     ["comments:write", "Comment"],
     ["time:write", "Log time"],
     ["approvals:write", "Approvals"],
+    ["notifications:write", "Notification settings"],
+    ["integrations:write", "Integrations"],
+    ["scheduler:run", "Run scheduler"],
+    ["payments:write", "Payments"],
     ["audit:read", "Audit log"]
   ];
   const rolePermissions = {
-    admin: ["workspace:read", "workspace:write", "members:write", "projects:write", "tasks:write", "comments:write", "time:write", "approvals:write", "audit:read"],
-    manager: ["workspace:read", "workspace:write", "projects:write", "tasks:write", "comments:write", "time:write", "approvals:write", "audit:read"],
+    admin: ["workspace:read", "workspace:write", "members:write", "projects:write", "tasks:write", "comments:write", "time:write", "approvals:write", "notifications:write", "integrations:write", "scheduler:run", "payments:write", "audit:read"],
+    manager: ["workspace:read", "workspace:write", "projects:write", "tasks:write", "comments:write", "time:write", "approvals:write", "notifications:write", "integrations:write", "scheduler:run", "payments:write", "audit:read"],
     member: ["workspace:read", "comments:write", "time:write"],
     client: ["workspace:read", "comments:write", "approvals:write"]
   };
@@ -3813,6 +3819,7 @@ function renderAiProviderChecklist(ai) {
 }
 
 function renderPaymentsSettingsPanel(payments) {
+  const canManagePayments = canWrite("payments:write");
   return `
     <section class="panel">
       <div class="panel-header">
@@ -3825,43 +3832,43 @@ function renderPaymentsSettingsPanel(payments) {
       <div class="settings-form">
         <label>
           <span>Provider</span>
-          <select id="payment-provider">
+          <select id="payment-provider" ${canManagePayments ? "" : "disabled"}>
             ${paymentProviderOptions.map((option) => `<option value="${option.id}" ${option.id === payments.provider ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
           </select>
         </label>
         <label>
           <span>Currency</span>
-          <select id="payment-currency">
+          <select id="payment-currency" ${canManagePayments ? "" : "disabled"}>
             ${paymentCurrencyOptions.map((option) => `<option value="${option}" ${option === payments.currency ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
           </select>
         </label>
         <label>
           <span>Spend cap</span>
-          <input id="payment-spending-cap" type="number" min="0" step="0.01" value="${escapeHtml(paymentDollarsInputValue(payments.spendingCapCents))}">
+          <input id="payment-spending-cap" type="number" min="0" step="0.01" value="${escapeHtml(paymentDollarsInputValue(payments.spendingCapCents))}" ${canManagePayments ? "" : "disabled"}>
         </label>
         <label>
           <span>Mode</span>
           <input value="${payments.provider === "none" ? "Planning only" : "Provider configured"}" disabled>
         </label>
         <label class="toggle-row">
-          <input id="payment-marketplace" type="checkbox" ${payments.marketplacePayments ? "checked" : ""}>
+          <input id="payment-marketplace" type="checkbox" ${payments.marketplacePayments ? "checked" : ""} ${canManagePayments ? "" : "disabled"}>
           <span>Enable paid marketplace templates</span>
         </label>
         <label class="toggle-row">
-          <input id="payment-client-portal" type="checkbox" ${payments.clientPortalPayments ? "checked" : ""}>
+          <input id="payment-client-portal" type="checkbox" ${payments.clientPortalPayments ? "checked" : ""} ${canManagePayments ? "" : "disabled"}>
           <span>Enable client portal payments</span>
         </label>
         <label class="toggle-row">
-          <input id="payment-agent-spend" type="checkbox" ${payments.agentPayments ? "checked" : ""}>
+          <input id="payment-agent-spend" type="checkbox" ${payments.agentPayments ? "checked" : ""} ${canManagePayments ? "" : "disabled"}>
           <span>Allow capped agent/tool spend</span>
         </label>
         <label class="toggle-row">
-          <input id="payment-x402-experimental" type="checkbox" ${payments.x402Experimental ? "checked" : ""}>
+          <input id="payment-x402-experimental" type="checkbox" ${payments.x402Experimental ? "checked" : ""} ${canManagePayments ? "" : "disabled"}>
           <span>x402 experimental mode</span>
         </label>
         <p class="settings-help">Payment providers are configuration only in this prototype. Keep provider secrets on the API server, require caps for automated spend, and treat x402 as experimental until the server adapter is implemented.</p>
         ${renderPaymentsChecklist(payments)}
-        <button class="button button-primary" type="button" id="payments-save">Save Payment Settings</button>
+        <button class="button button-primary" type="button" id="payments-save" ${canManagePayments ? "" : "disabled"}>Save Payment Settings</button>
       </div>
     </section>
 
@@ -3871,7 +3878,7 @@ function renderPaymentsSettingsPanel(payments) {
           <p class="eyebrow">Ledger</p>
           <h2>Payment audit</h2>
         </div>
-        <button class="button button-secondary compact-button" type="button" id="payment-test-event" ${payments.provider === "none" ? "disabled" : ""}>Record Test</button>
+        <button class="button button-secondary compact-button" type="button" id="payment-test-event" ${payments.provider === "none" || !canManagePayments ? "disabled" : ""}>Record Test</button>
       </div>
       <div class="payment-audit-list">
         ${payments.audit.length ? payments.audit.map(renderPaymentAuditEvent).join("") : emptyState("No payment events yet.")}
@@ -3953,6 +3960,7 @@ function renderPaymentAuditEvent(event) {
 function renderEntitlementGrantForm(payments) {
   const templates = paidMarketplaceTemplates();
   const hasLockedTemplates = templates.some((template) => !hasEntitlementForItem("project-template", template.id));
+  const canManagePayments = canWrite("payments:write");
   const grantHelp = apiSession
     ? "API-connected grants create a server checkout intent, complete it through the test/manual adapter, and store a server-issued entitlement."
     : "Offline test grants unlock gated marketplace items locally and record a payment audit event without moving money.";
@@ -3963,7 +3971,7 @@ function renderEntitlementGrantForm(payments) {
     <div class="entitlement-grant-form">
       <label>
         <span>Grant access to</span>
-        <select id="entitlement-template">
+        <select id="entitlement-template" ${canManagePayments ? "" : "disabled"}>
           ${templates.map((template) => {
             const unlocked = hasEntitlementForItem("project-template", template.id);
             return `<option value="${template.id}" ${unlocked ? "disabled" : ""}>${escapeHtml(template.name)} - ${escapeHtml(marketplaceTemplatePriceLabel(template))}${unlocked ? " - unlocked" : ""}</option>`;
@@ -3972,11 +3980,11 @@ function renderEntitlementGrantForm(payments) {
       </label>
       <label>
         <span>Grant source</span>
-        <select id="entitlement-source">
+        <select id="entitlement-source" ${canManagePayments ? "" : "disabled"}>
           ${entitlementSourceOptions.map((option) => `<option value="${option.id}" ${option.id === "test" ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
         </select>
       </label>
-      <button class="button button-secondary" type="button" id="payment-grant-entitlement" ${hasLockedTemplates ? "" : "disabled"}>Grant Access</button>
+      <button class="button button-secondary" type="button" id="payment-grant-entitlement" ${hasLockedTemplates && canManagePayments ? "" : "disabled"}>Grant Access</button>
     </div>
     <p class="settings-help">${escapeHtml(grantHelp)}</p>
   `;
@@ -4013,6 +4021,7 @@ function integrationSyncLabel(syncMode) {
 
 function renderIntegrationsHubPanel() {
   const integrations = integrationSettings();
+  const canManageIntegrations = canWrite("integrations:write");
   const connected = integrations.connections.filter((connection) => connection.status === "connected");
   const planned = integrations.connections.filter((connection) => connection.status === "planned");
   const outbound = integrations.connections.filter((connection) => connection.syncMode === "outbound" || connection.syncMode === "two-way");
@@ -4057,8 +4066,8 @@ function renderIntegrationsHubPanel() {
         ${integrationCatalog.map((catalogItem) => renderIntegrationCard(catalogItem, integrations.connections.find((connection) => connection.id === catalogItem.id))).join("")}
       </div>
       <div class="integration-action-row">
-        <button class="button button-secondary" type="button" id="integration-test-event">Log Test Event</button>
-        <button class="button button-primary" type="button" id="integrations-save">Save Integrations</button>
+        <button class="button button-secondary" type="button" id="integration-test-event" ${canManageIntegrations ? "" : "disabled"}>Log Test Event</button>
+        <button class="button button-primary" type="button" id="integrations-save" ${canManageIntegrations ? "" : "disabled"}>Save Integrations</button>
       </div>
     </section>
   `;
@@ -4066,6 +4075,7 @@ function renderIntegrationsHubPanel() {
 
 function renderNotificationDeliveryIntegrationPanel() {
   const settings = notificationSettings();
+  const canManageNotifications = canWrite("notifications:write");
   const payloadPreview = {
     source: "agora",
     type: "notification_digest",
@@ -4085,17 +4095,17 @@ function renderNotificationDeliveryIntegrationPanel() {
       <div class="notification-delivery-grid">
         <label>
           <span>Webhook URL</span>
-          <input id="notification-webhook-url" type="url" value="${escapeHtml(settings.delivery.webhookUrl)}" placeholder="https://hooks.example.com/agora">
+          <input id="notification-webhook-url" type="url" value="${escapeHtml(settings.delivery.webhookUrl)}" placeholder="https://hooks.example.com/agora" ${canManageNotifications ? "" : "disabled"}>
         </label>
         <label>
           <span>Email recipient</span>
-          <input id="notification-email-address" type="email" value="${escapeHtml(settings.delivery.emailAddress)}" placeholder="ops@example.com">
+          <input id="notification-email-address" type="email" value="${escapeHtml(settings.delivery.emailAddress)}" placeholder="ops@example.com" ${canManageNotifications ? "" : "disabled"}>
         </label>
         <label class="checkbox-label notification-resolved-toggle">
-          <input type="checkbox" id="notification-send-resolved" ${settings.delivery.sendResolved ? "checked" : ""}>
+          <input type="checkbox" id="notification-send-resolved" ${settings.delivery.sendResolved ? "checked" : ""} ${canManageNotifications ? "" : "disabled"}>
           <span>Include resolved items in delivery payloads</span>
         </label>
-        <button class="button button-primary compact-button" type="button" id="notification-save-delivery">Save Delivery</button>
+        <button class="button button-primary compact-button" type="button" id="notification-save-delivery" ${canManageNotifications ? "" : "disabled"}>Save Delivery</button>
       </div>
       <div class="notification-delivery-preview">
         <div>
@@ -9010,6 +9020,7 @@ async function copyDigestPayload(digestId) {
 
 function renderNotificationDigestPanel() {
   const settings = notificationSettings();
+  const canManageNotifications = canWrite("notifications:write");
   const rows = notificationDigestRows();
   return `
     <section class="panel notification-digest-panel">
@@ -9018,7 +9029,7 @@ function renderNotificationDigestPanel() {
           <p class="eyebrow">Delivery</p>
           <h2>Notification digests</h2>
         </div>
-        <select id="notification-cadence" aria-label="Digest cadence">
+        <select id="notification-cadence" aria-label="Digest cadence" ${canManageNotifications ? "" : "disabled"}>
           ${["daily", "weekly", "manual"].map((cadence) => `<option value="${cadence}" ${settings.cadence === cadence ? "selected" : ""}>${cadence}</option>`).join("")}
         </select>
       </div>
@@ -9026,7 +9037,7 @@ function renderNotificationDigestPanel() {
         ${rows.map((row) => `
           <article class="digest-row ${row.enabled ? "" : "is-muted"}">
             <label class="checkbox-label">
-              <input type="checkbox" data-digest-rule="${row.id}" ${row.enabled ? "checked" : ""}>
+              <input type="checkbox" data-digest-rule="${row.id}" ${row.enabled ? "checked" : ""} ${canManageNotifications ? "" : "disabled"}>
               <span>${escapeHtml(row.title)}</span>
             </label>
             <strong>${row.count}</strong>
@@ -9045,6 +9056,7 @@ function renderNotificationDigestPanel() {
 
 function renderNotificationPreferencesPanel() {
   const settings = notificationSettings();
+  const canManageNotifications = canWrite("notifications:write");
   const eventOptions = [
     ["assignment", "Assignments"],
     ["overdue", "Overdue"],
@@ -9068,26 +9080,26 @@ function renderNotificationPreferencesPanel() {
       <div class="notification-pref-grid">
         ${eventOptions.map(([id, label]) => `
           <label class="checkbox-label">
-            <input type="checkbox" data-notification-event="${id}" ${settings.events[id] !== false ? "checked" : ""}>
+            <input type="checkbox" data-notification-event="${id}" ${settings.events[id] !== false ? "checked" : ""} ${canManageNotifications ? "" : "disabled"}>
             <span>${escapeHtml(label)}</span>
           </label>
         `).join("")}
       </div>
       <div class="notification-channel-row">
         <label class="checkbox-label">
-          <input type="checkbox" data-notification-channel="inApp" ${settings.channels.inApp !== false ? "checked" : ""}>
+          <input type="checkbox" data-notification-channel="inApp" ${settings.channels.inApp !== false ? "checked" : ""} ${canManageNotifications ? "" : "disabled"}>
           <span>In-app inbox</span>
         </label>
         <label class="checkbox-label">
-          <input type="checkbox" data-notification-channel="browser" ${settings.channels.browser ? "checked" : ""}>
+          <input type="checkbox" data-notification-channel="browser" ${settings.channels.browser ? "checked" : ""} ${canManageNotifications ? "" : "disabled"}>
           <span>Browser alerts</span>
         </label>
         <label class="checkbox-label">
-          <input type="checkbox" data-notification-channel="webhook" ${settings.channels.webhook ? "checked" : ""}>
+          <input type="checkbox" data-notification-channel="webhook" ${settings.channels.webhook ? "checked" : ""} ${canManageNotifications ? "" : "disabled"}>
           <span>Webhook</span>
         </label>
         <label class="checkbox-label">
-          <input type="checkbox" data-notification-channel="email" ${settings.channels.email ? "checked" : ""}>
+          <input type="checkbox" data-notification-channel="email" ${settings.channels.email ? "checked" : ""} ${canManageNotifications ? "" : "disabled"}>
           <span>Email handoff</span>
         </label>
         <button class="button button-secondary compact-button" type="button" id="notification-request" ${notificationPermissionState === "unsupported" || notificationPermissionState === "granted" ? "disabled" : ""}>Enable Permission</button>
@@ -9096,7 +9108,7 @@ function renderNotificationPreferencesPanel() {
       <div class="notification-delivery-summary">
         <span>${escapeHtml(settings.delivery.webhookUrl || "No webhook URL")}</span>
         <span>${escapeHtml(settings.delivery.emailAddress || "No email handoff")}</span>
-        <button class="button button-secondary compact-button" type="button" data-open-settings-tab="integrations">Manage Delivery</button>
+        <button class="button button-secondary compact-button" type="button" data-open-settings-tab="integrations" ${canManageNotifications ? "" : "disabled"}>Manage Delivery</button>
       </div>
     </section>
   `;
@@ -9105,6 +9117,7 @@ function renderNotificationPreferencesPanel() {
 function renderNotificationRemindersPanel() {
   const reminders = activeNotificationReminders();
   const dueCount = reminders.filter((reminder) => reminder.remindAt <= todayKey()).length;
+  const canRunServerScheduler = canWrite("scheduler:run");
   return `
     <section class="panel notification-reminders-panel">
       <div class="panel-header">
@@ -9115,7 +9128,7 @@ function renderNotificationRemindersPanel() {
         <div class="panel-actions">
           <span class="status-pill ${dueCount ? "inbox-amber" : "inbox-neutral"}">${dueCount ? `${dueCount} due` : `${reminders.length} scheduled`}</span>
           <button class="button button-secondary compact-button" type="button" id="notification-reminder-check" ${reminders.length ? "" : "disabled"}>Check Now</button>
-          <button class="button button-secondary compact-button" type="button" id="notification-server-scheduler" ${apiSession ? "" : "disabled"}>Run Server</button>
+          <button class="button button-secondary compact-button" type="button" id="notification-server-scheduler" ${apiSession && canRunServerScheduler ? "" : "disabled"}>Run Server</button>
         </div>
       </div>
       <div class="reminder-list">
@@ -14031,6 +14044,10 @@ async function grantServerMarketplaceTemplateEntitlement(template, source = "tes
 }
 
 async function grantMarketplaceTemplateEntitlement(templateId, source = "test") {
+  if (!canWrite("payments:write")) {
+    showToast("Your role cannot grant payment entitlements", "info");
+    return;
+  }
   const template = marketplaceProjectTemplates.find((item) => item.id === templateId);
   if (!template || !marketplaceTemplateRequiresEntitlement(template)) {
     showToast("Choose a premium marketplace template", "info");
@@ -15361,6 +15378,10 @@ function saveAiSettings() {
 }
 
 function saveIntegrationSettings() {
+  if (!canWrite("integrations:write")) {
+    showToast("Your role cannot manage integrations", "info");
+    return;
+  }
   const existing = integrationSettings();
   const existingById = new Map(existing.connections.map((connection) => [connection.id, connection]));
   const connections = integrationCatalog.map((catalogItem) => {
@@ -15531,6 +15552,10 @@ function addWhiteboardNote() {
 }
 
 function recordIntegrationTestEvent() {
+  if (!canWrite("integrations:write")) {
+    showToast("Your role cannot test integrations", "info");
+    return;
+  }
   const integrations = integrationSettings();
   const connected = integrations.connections.filter((connection) => connection.status === "connected");
   const now = new Date().toISOString();
@@ -15555,6 +15580,10 @@ function recordIntegrationTestEvent() {
 }
 
 function savePaymentSettings() {
+  if (!canWrite("payments:write")) {
+    showToast("Your role cannot manage payments", "info");
+    return;
+  }
   const provider = document.querySelector("#payment-provider")?.value || "none";
   const currency = document.querySelector("#payment-currency")?.value || "USD";
   const capValue = Number(document.querySelector("#payment-spending-cap")?.value || 0);
@@ -15597,6 +15626,10 @@ function savePaymentSettings() {
 }
 
 function recordTestPaymentEvent() {
+  if (!canWrite("payments:write")) {
+    showToast("Your role cannot test payments", "info");
+    return;
+  }
   const payments = paymentSettings();
   if (payments.provider === "none") {
     showToast("Choose a payment provider first", "info");
@@ -16894,6 +16927,10 @@ async function runServerNotificationScheduler() {
     showToast("Connect to the API before running the server scheduler", "info");
     return;
   }
+  if (!canWrite("scheduler:run")) {
+    showToast("Your role cannot run the server scheduler", "info");
+    return;
+  }
   try {
     const result = await apiRequest("/api/scheduler/notifications/run", {
       method: "POST"
@@ -16987,6 +17024,11 @@ async function sendTestNotification() {
 }
 
 function updateNotificationEventPreference(eventType, enabled) {
+  if (!canWrite("notifications:write")) {
+    showToast("Your role cannot manage notification settings", "info");
+    render();
+    return;
+  }
   const settings = notificationSettings();
   state.notificationSettings = {
     ...settings,
@@ -17002,6 +17044,11 @@ function updateNotificationEventPreference(eventType, enabled) {
 }
 
 function updateDigestPreference(digestId, enabled) {
+  if (!canWrite("notifications:write")) {
+    showToast("Your role cannot manage notification digests", "info");
+    render();
+    return;
+  }
   const settings = notificationSettings();
   state.notificationSettings = {
     ...settings,
@@ -17017,6 +17064,11 @@ function updateDigestPreference(digestId, enabled) {
 }
 
 function updateNotificationChannel(channelId, enabled) {
+  if (!canWrite("notifications:write")) {
+    showToast("Your role cannot manage notification channels", "info");
+    render();
+    return;
+  }
   const settings = notificationSettings();
   state.notificationSettings = {
     ...settings,
@@ -17032,6 +17084,11 @@ function updateNotificationChannel(channelId, enabled) {
 }
 
 function updateNotificationCadence(cadence) {
+  if (!canWrite("notifications:write")) {
+    showToast("Your role cannot manage notification cadence", "info");
+    render();
+    return;
+  }
   const settings = notificationSettings();
   state.notificationSettings = {
     ...settings,
@@ -17044,6 +17101,10 @@ function updateNotificationCadence(cadence) {
 }
 
 function saveNotificationDeliverySettings() {
+  if (!canWrite("notifications:write")) {
+    showToast("Your role cannot manage notification delivery", "info");
+    return;
+  }
   const settings = notificationSettings();
   const webhookUrl = document.querySelector("#notification-webhook-url")?.value.trim() || "";
   const emailAddress = document.querySelector("#notification-email-address")?.value.trim() || "";
@@ -17057,6 +17118,10 @@ function saveNotificationDeliverySettings() {
       sendResolved
     }
   };
+  addAuditEvent({
+    action: "notification_delivery_update",
+    detail: `Updated notification delivery channels: ${notificationDeliveryChannels(state.notificationSettings)}`
+  });
   syncNotificationSettingsToApi();
   saveState();
   render();

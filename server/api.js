@@ -42,8 +42,8 @@ const demoMemberships = [
 ];
 
 const rolePermissions = {
-  admin: ["workspace:read", "workspace:write", "workspace:import", "audit:read", "members:write", "projects:write", "tasks:write", "time:write", "comments:write", "activity:write", "attachments:write", "approvals:write"],
-  manager: ["workspace:read", "workspace:write", "audit:read", "projects:write", "tasks:write", "time:write", "comments:write", "activity:write", "attachments:write", "approvals:write"],
+  admin: ["workspace:read", "workspace:write", "workspace:import", "audit:read", "members:write", "projects:write", "tasks:write", "time:write", "comments:write", "activity:write", "attachments:write", "approvals:write", "notifications:write", "integrations:write", "scheduler:run", "payments:write"],
+  manager: ["workspace:read", "workspace:write", "audit:read", "projects:write", "tasks:write", "time:write", "comments:write", "activity:write", "attachments:write", "approvals:write", "notifications:write", "integrations:write", "scheduler:run", "payments:write"],
   member: ["workspace:read", "time:write", "comments:write", "activity:write", "attachments:write"],
   client: ["workspace:read", "comments:write", "activity:write", "approvals:write"]
 };
@@ -59,11 +59,11 @@ const recordCollections = {
   presence: { writePermission: "workspace:read", normalizer: normalizePresence, label: "presence" },
   chatMessages: { writePermission: "comments:write", normalizer: normalizeChatMessage, label: "chat message" },
   whiteboards: { writePermission: "comments:write", normalizer: normalizeWhiteboard, label: "whiteboard" },
-  notificationSettings: { writePermission: "workspace:write", normalizer: normalizeNotificationSettingsRecord, label: "notification settings" },
+  notificationSettings: { writePermission: "notifications:write", normalizer: normalizeNotificationSettingsRecord, label: "notification settings" },
   notificationReminders: { writePermission: "workspace:read", normalizer: normalizeNotificationReminder, label: "notification reminder" },
   notificationHistory: { writePermission: "workspace:read", normalizer: normalizeNotificationHistoryEvent, label: "notification history" },
   inboxState: { writePermission: "workspace:read", normalizer: normalizeInboxStateRecord, label: "inbox state" },
-  integrationSettings: { writePermission: "workspace:write", normalizer: normalizeIntegrationSettingsRecord, label: "integration settings" }
+  integrationSettings: { writePermission: "integrations:write", normalizer: normalizeIntegrationSettingsRecord, label: "integration settings" }
 };
 
 const sessions = new Map();
@@ -282,8 +282,8 @@ function createServer(options = {}) {
       }
 
       if (request.method === "POST" && url.pathname === "/api/scheduler/notifications/run") {
-        if (!hasPermission(session, "workspace:read")) {
-          sendError(response, 403, "Missing workspace read permission");
+        if (!hasPermission(session, "scheduler:run")) {
+          sendError(response, 403, "Missing scheduler run permission");
           return;
         }
         const result = await runNotificationScheduler(storage, {
@@ -315,8 +315,8 @@ function createServer(options = {}) {
       }
 
       if (request.method === "POST" && url.pathname === "/api/payments/checkout-intent") {
-        if (!hasPermission(session, "workspace:write")) {
-          sendError(response, 403, "Missing workspace write permission");
+        if (!hasPermission(session, "payments:write")) {
+          sendError(response, 403, "Missing payments write permission");
           return;
         }
         const body = await readJsonBody(request);
@@ -326,8 +326,8 @@ function createServer(options = {}) {
       }
 
       if (request.method === "POST" && url.pathname === "/api/payments/events") {
-        if (!hasPermission(session, "workspace:write")) {
-          sendError(response, 403, "Missing workspace write permission");
+        if (!hasPermission(session, "payments:write")) {
+          sendError(response, 403, "Missing payments write permission");
           return;
         }
         const body = await readJsonBody(request);

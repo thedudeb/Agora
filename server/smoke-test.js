@@ -256,9 +256,15 @@ async function run() {
     });
     assert(memberReminder.record.memberId === accepted.user.id, "member reminder did not use current user");
 
-    const schedulerRun = await request(`${baseUrl}/api/scheduler/notifications/run`, {
+    const blockedMemberScheduler = await requestError(`${baseUrl}/api/scheduler/notifications/run`, {
       method: "POST",
       token: accepted.token
+    });
+    assert(blockedMemberScheduler.status === 403, "member should not run the backend scheduler");
+
+    const schedulerRun = await request(`${baseUrl}/api/scheduler/notifications/run`, {
+      method: "POST",
+      token: login.token
     });
     assert(schedulerRun.processed === 1, "scheduler did not process due reminder");
     assert(schedulerRun.reminders[0].sentAt, "scheduler did not stamp reminder sentAt");
