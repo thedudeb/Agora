@@ -290,6 +290,94 @@ const densityOptions = [
 
 const currentMemberId = "mara";
 
+const marketplaceProjectTemplates = [
+  {
+    id: "marketplace-nonprofit-grant",
+    name: "Nonprofit Grant Campaign",
+    category: "Nonprofit",
+    description: "Coordinate grant research, narrative drafts, budget package, board review, submission, and follow-up reporting.",
+    owner: "mara",
+    durationDays: 42,
+    tasks: [
+      { key: "research", title: "Research grant fit", description: "Confirm eligibility, program fit, deadlines, and submission requirements.", assignee: "mara", priority: "high", startOffset: 0, dueOffset: 5, tags: ["grant", "research"], blockedBy: [], subtasks: ["Check eligibility", "Capture deadline", "List required attachments"] },
+      { key: "narrative", title: "Draft grant narrative", description: "Write need, program design, impact model, and implementation plan.", assignee: "nina", priority: "urgent", startOffset: 5, dueOffset: 18, tags: ["writing", "impact"], blockedBy: ["research"], subtasks: ["Need statement", "Program plan", "Impact measures"] },
+      { key: "budget", title: "Prepare grant budget", description: "Build budget, match notes, staff allocations, and finance assumptions.", assignee: "sam", priority: "high", startOffset: 10, dueOffset: 22, tags: ["budget", "finance"], blockedBy: ["research"], subtasks: ["Budget draft", "Narrative notes", "Finance review"] },
+      { key: "review", title: "Run board and partner review", description: "Collect feedback from leadership, finance, and program partners.", assignee: "eli", priority: "normal", startOffset: 22, dueOffset: 32, tags: ["review"], blockedBy: ["narrative", "budget"], subtasks: ["Leadership review", "Partner feedback", "Final edits"] },
+      { key: "submit", title: "Submit grant package", description: "Finalize forms, attachments, signatures, and submission receipt.", assignee: "mara", priority: "urgent", startOffset: 32, dueOffset: 38, tags: ["submission"], blockedBy: ["review"], subtasks: ["Upload attachments", "Final proof", "Save receipt"] },
+      { key: "followup", title: "Plan reporting follow-up", description: "Create award follow-up, reporting calendar, and measurement owner list.", assignee: "sam", priority: "normal", startOffset: 38, dueOffset: 42, tags: ["reporting"], blockedBy: ["submit"], subtasks: ["Reporting dates", "Metric owners", "Archive package"] }
+    ],
+    milestones: [
+      { title: "Grant package drafted", description: "Narrative and budget are ready for review.", owner: "mara", dueOffset: 24, status: "planned", taskKeys: ["narrative", "budget"] },
+      { title: "Grant submitted", description: "Application package is submitted and receipt is saved.", owner: "mara", dueOffset: 38, status: "planned", taskKeys: ["submit"] }
+    ],
+    docs: [
+      { title: "Grant Narrative Outline", type: "Template", body: "Need, program model, implementation, impact measures, and sustainability." },
+      { title: "Grant Budget Notes", type: "Brief", body: "Budget assumptions, match, staff allocations, restricted funds, and reporting requirements." }
+    ],
+    intakeForm: {
+      title: "Grant Opportunity Intake",
+      assignee: "mara",
+      description: "Capture grant opportunities, eligibility notes, and submission deadlines."
+    }
+  },
+  {
+    id: "marketplace-podcast-season",
+    name: "Podcast Season Production",
+    category: "Media",
+    description: "Plan and produce a podcast season from concept and guests through recording, editing, publishing, and promotion.",
+    owner: "nina",
+    durationDays: 56,
+    tasks: [
+      { key: "season-brief", title: "Define season brief", description: "Lock theme, audience, episode count, tone, and release cadence.", assignee: "nina", priority: "high", startOffset: 0, dueOffset: 6, tags: ["podcast", "strategy"], blockedBy: [], subtasks: ["Theme", "Audience", "Episode count"] },
+      { key: "guest-list", title: "Confirm guests and topics", description: "Build guest list, outreach notes, topics, and scheduling windows.", assignee: "sam", priority: "high", startOffset: 6, dueOffset: 18, tags: ["guests"], blockedBy: ["season-brief"], subtasks: ["Guest shortlist", "Outreach", "Topic notes"] },
+      { key: "record", title: "Record interviews", description: "Schedule sessions, capture audio, collect releases, and log raw files.", assignee: "eli", priority: "urgent", startOffset: 18, dueOffset: 34, tags: ["recording"], blockedBy: ["guest-list"], subtasks: ["Session schedule", "Audio check", "Release forms"] },
+      { key: "edit", title: "Edit season episodes", description: "Edit audio, write show notes, pull clips, and run quality review.", assignee: "nina", priority: "high", startOffset: 28, dueOffset: 48, tags: ["editing"], blockedBy: ["record"], subtasks: ["Episode edits", "Show notes", "Clip list"] },
+      { key: "publish", title: "Publish and promote season", description: "Schedule episodes, publish assets, social clips, newsletter, and partner notes.", assignee: "mara", priority: "normal", startOffset: 48, dueOffset: 56, tags: ["launch", "promotion"], blockedBy: ["edit"], subtasks: ["Schedule episodes", "Newsletter", "Social clips"] }
+    ],
+    milestones: [
+      { title: "Guests confirmed", description: "Season guests and episode topics are locked.", owner: "sam", dueOffset: 20, status: "planned", taskKeys: ["guest-list"] },
+      { title: "Season ready to publish", description: "Edited episodes and launch assets are ready.", owner: "nina", dueOffset: 50, status: "planned", taskKeys: ["edit", "publish"] }
+    ],
+    docs: [
+      { title: "Season Brief", type: "Brief", body: "Season premise, audience, episode list, guests, cadence, and goals." },
+      { title: "Episode Checklist", type: "Template", body: "Guest release, audio, edit, show notes, clips, metadata, and publish QA." }
+    ],
+    intakeForm: {
+      title: "Guest Pitch Intake",
+      assignee: "sam",
+      description: "Collect guest pitches, topics, and availability."
+    }
+  },
+  {
+    id: "marketplace-hiring-pipeline",
+    name: "Hiring Pipeline",
+    category: "People",
+    description: "Run a structured hiring search with role definition, sourcing, interviews, decision loops, offer, and onboarding handoff.",
+    owner: "sam",
+    durationDays: 35,
+    tasks: [
+      { key: "role", title: "Define role scorecard", description: "Align responsibilities, must-haves, interview criteria, and hiring panel.", assignee: "sam", priority: "urgent", startOffset: 0, dueOffset: 4, tags: ["hiring", "role"], blockedBy: [], subtasks: ["Role outcomes", "Criteria", "Panel"] },
+      { key: "sourcing", title: "Launch sourcing plan", description: "Post role, identify candidates, source referrals, and prepare outreach.", assignee: "mara", priority: "high", startOffset: 4, dueOffset: 12, tags: ["sourcing"], blockedBy: ["role"], subtasks: ["Post role", "Referral request", "Outreach copy"] },
+      { key: "screen", title: "Screen candidates", description: "Run initial screens, update scorecards, and shortlist candidates.", assignee: "eli", priority: "high", startOffset: 10, dueOffset: 18, tags: ["screening"], blockedBy: ["sourcing"], subtasks: ["Phone screens", "Scorecards", "Shortlist"] },
+      { key: "interviews", title: "Run interview loop", description: "Schedule interviews, collect panel notes, and identify follow-up gaps.", assignee: "nina", priority: "high", startOffset: 18, dueOffset: 28, tags: ["interviews"], blockedBy: ["screen"], subtasks: ["Schedule loop", "Collect notes", "Debrief"] },
+      { key: "offer", title: "Prepare offer and onboarding handoff", description: "Finalize offer, references, acceptance notes, and onboarding starter plan.", assignee: "sam", priority: "urgent", startOffset: 28, dueOffset: 35, tags: ["offer", "onboarding"], blockedBy: ["interviews"], subtasks: ["References", "Offer package", "Onboarding handoff"] }
+    ],
+    milestones: [
+      { title: "Role open", description: "Scorecard and sourcing plan are ready.", owner: "sam", dueOffset: 5, status: "planned", taskKeys: ["role"] },
+      { title: "Candidate selected", description: "Interview loop is complete and decision is captured.", owner: "sam", dueOffset: 30, status: "planned", taskKeys: ["interviews", "offer"] }
+    ],
+    docs: [
+      { title: "Role Scorecard", type: "Template", body: "Responsibilities, competencies, must-haves, nice-to-haves, interview rubric, and panel notes." },
+      { title: "Hiring Debrief", type: "Brief", body: "Candidate strengths, concerns, evidence, panel recommendation, and follow-up questions." }
+    ],
+    intakeForm: {
+      title: "Hiring Request",
+      assignee: "sam",
+      description: "Capture a new role request, urgency, budget, and hiring manager notes."
+    }
+  }
+];
+
 const routes = {
   landing: "Agora",
   dashboard: "Dashboard",
@@ -3225,6 +3313,128 @@ function workspaceSnapshot() {
 
 function exportWorkspaceJson() {
   return JSON.stringify(workspaceSnapshot(), null, 2);
+}
+
+function downloadJsonFile(filename, json) {
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function uniqueTemplateId(candidateId) {
+  const base = String(candidateId || "template").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || "template";
+  if (!state.projectTemplates.some((template) => template.id === base)) return base;
+  return `${base}-${Date.now().toString(36)}`;
+}
+
+function normalizeTemplateTags(tags) {
+  return Array.isArray(tags) ? tags.map((tag) => String(tag).trim()).filter(Boolean).slice(0, 8) : [];
+}
+
+function validateProjectTemplate(input, options = {}) {
+  if (!input || typeof input !== "object") throw new Error("Template must be an object");
+  const template = input.template && typeof input.template === "object" ? input.template : input;
+  const name = String(template.name || "").trim();
+  if (!name) throw new Error("Template needs a name");
+  const tasks = Array.isArray(template.tasks) ? template.tasks : [];
+  if (!tasks.length) throw new Error("Template needs at least one task");
+  const validMemberIds = new Set(members.map((member) => member.id));
+  const validPriorities = new Set(priorities.map((priority) => priority.id));
+  const taskKeys = new Set();
+  const normalizedTasks = tasks.slice(0, 60).map((task, index) => {
+    const key = String(task.key || `task-${index + 1}`).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") || `task-${index + 1}`;
+    if (taskKeys.has(key)) throw new Error(`Duplicate task key: ${key}`);
+    taskKeys.add(key);
+    const title = String(task.title || "").trim();
+    if (!title) throw new Error(`Task ${index + 1} needs a title`);
+    return {
+      key,
+      title,
+      description: String(task.description || ""),
+      assignee: validMemberIds.has(task.assignee) ? task.assignee : currentMemberId,
+      priority: validPriorities.has(task.priority) ? task.priority : "normal",
+      startOffset: Math.max(0, Number(task.startOffset || 0)),
+      dueOffset: Math.max(0, Number(task.dueOffset || task.startOffset || 1)),
+      tags: normalizeTemplateTags(task.tags),
+      blockedBy: Array.isArray(task.blockedBy) ? task.blockedBy.map(String).filter((keyValue) => taskKeys.has(keyValue)) : [],
+      subtasks: Array.isArray(task.subtasks) ? task.subtasks.map((subtask) => String(subtask).trim()).filter(Boolean).slice(0, 12) : []
+    };
+  });
+
+  const normalized = {
+    id: options.preserveId ? String(template.id || `template-${slugFromName(name)}`) : uniqueTemplateId(template.id || `template-${slugFromName(name)}`),
+    name,
+    category: String(template.category || "Community").trim() || "Community",
+    description: String(template.description || `Community template for ${name}`),
+    owner: validMemberIds.has(template.owner) ? template.owner : currentMemberId,
+    durationDays: Math.max(1, Number(template.durationDays || 14)),
+    tasks: normalizedTasks,
+    milestones: Array.isArray(template.milestones) ? template.milestones.slice(0, 20).map((milestone, index) => ({
+      title: String(milestone.title || `Milestone ${index + 1}`),
+      description: String(milestone.description || ""),
+      owner: validMemberIds.has(milestone.owner) ? milestone.owner : currentMemberId,
+      dueOffset: Math.max(0, Number(milestone.dueOffset || 7)),
+      status: ["planned", "active", "completed"].includes(milestone.status) ? milestone.status : "planned",
+      taskKeys: Array.isArray(milestone.taskKeys) ? milestone.taskKeys.map(String).filter((key) => taskKeys.has(key)) : []
+    })) : [],
+    docs: Array.isArray(template.docs) ? template.docs.slice(0, 20).map((document, index) => ({
+      title: String(document.title || `Template Doc ${index + 1}`),
+      type: String(document.type || "Template"),
+      body: String(document.body || "")
+    })) : [],
+    intakeForm: template.intakeForm && typeof template.intakeForm === "object" ? {
+      title: String(template.intakeForm.title || `${name} Intake`),
+      assignee: validMemberIds.has(template.intakeForm.assignee) ? template.intakeForm.assignee : currentMemberId,
+      description: String(template.intakeForm.description || `Capture requests for ${name}.`)
+    } : {
+      title: `${name} Intake`,
+      assignee: currentMemberId,
+      description: `Capture requests for ${name}.`
+    }
+  };
+  return normalized;
+}
+
+function projectTemplateExportPayload(template) {
+  return {
+    type: "agora.project-template",
+    exportVersion: 1,
+    exportedAt: new Date().toISOString(),
+    template: validateProjectTemplate(template, { preserveId: true })
+  };
+}
+
+function exportProjectTemplateJson(template) {
+  return JSON.stringify(projectTemplateExportPayload(template), null, 2);
+}
+
+function downloadProjectTemplate(templateId) {
+  const template = byId(state.projectTemplates, templateId) || marketplaceProjectTemplates.find((item) => item.id === templateId);
+  if (!template) return;
+  downloadJsonFile(`${slugFromName(template.name)}-agora-template.json`, exportProjectTemplateJson(template));
+  showToast("Template JSON downloaded", "success");
+}
+
+function importProjectTemplateJson(rawJson) {
+  const parsed = JSON.parse(rawJson);
+  const source = Array.isArray(parsed.templates) ? parsed.templates[0] : parsed.template || parsed;
+  const template = validateProjectTemplate(source);
+  state.projectTemplates = [template, ...state.projectTemplates.filter((item) => item.id !== template.id && item.name.toLowerCase() !== template.name.toLowerCase())];
+  state.templateLibrary = {
+    ...(state.templateLibrary || {}),
+    category: "all",
+    query: "",
+    selectedProjectTemplateId: template.id
+  };
+  saveState();
+  render();
+  showToast(`Imported ${template.name}`, "success");
 }
 
 function csvValue(value) {
@@ -8465,6 +8675,7 @@ function renderTemplates() {
   els.appView.innerHTML = `
     <div class="metric-grid">
       ${metric("Project templates", state.projectTemplates.length)}
+      ${metric("Marketplace", marketplaceProjectTemplates.length)}
       ${metric("Task templates", state.taskTemplates.length)}
       ${metric("Template tasks", projectTemplateTaskCount)}
       ${metric("Template docs", projectTemplateDocCount)}
@@ -8511,6 +8722,7 @@ function renderTemplates() {
 
       <div class="template-side-stack">
         ${renderProjectTemplatePreview(selectedTemplate)}
+        ${renderTemplateMarketplacePanel()}
         <section class="panel">
           <div class="panel-header">
             <div>
@@ -8537,6 +8749,52 @@ function renderTemplates() {
         </section>
       </div>
     </div>
+  `;
+}
+
+function renderTemplateMarketplacePanel() {
+  return `
+    <section class="panel template-marketplace-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Community</p>
+          <h2>Template marketplace</h2>
+        </div>
+      </div>
+      <div class="marketplace-list">
+        ${marketplaceProjectTemplates.map(renderMarketplaceTemplateCard).join("")}
+      </div>
+      <div class="template-import-panel">
+        <label>
+          <span>Import shared template JSON</span>
+          <textarea id="template-import-json" rows="6" placeholder="Paste an Agora project-template JSON export"></textarea>
+        </label>
+        <button class="button button-secondary" type="button" id="template-import-button">Import Template</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderMarketplaceTemplateCard(template) {
+  const installed = state.projectTemplates.some((item) => item.id === template.id || item.name.toLowerCase() === template.name.toLowerCase());
+  return `
+    <article class="marketplace-template-card ${installed ? "is-installed" : ""}">
+      <div>
+        <span class="status-pill ${installed ? "inbox-green" : "inbox-blue"}">${installed ? "Installed" : escapeHtml(template.category)}</span>
+        <h3>${escapeHtml(template.name)}</h3>
+        <p>${escapeHtml(template.description)}</p>
+        <div class="template-meta">
+          <span>${template.tasks.length} tasks</span>
+          <span>${template.milestones.length} milestones</span>
+          <span>${template.docs.length} docs</span>
+          <span>${template.durationDays} days</span>
+        </div>
+      </div>
+      <div class="marketplace-actions">
+        <button class="button button-secondary compact-button" type="button" data-export-marketplace-template="${template.id}">Export JSON</button>
+        <button class="button button-primary compact-button" type="button" data-install-marketplace-template="${template.id}" ${installed ? "disabled" : ""}>${installed ? "Installed" : "Install"}</button>
+      </div>
+    </article>
   `;
 }
 
@@ -8573,6 +8831,7 @@ function renderProjectTemplateCard(template, isSelected = false) {
           <input data-template-name placeholder="${escapeHtml(template.name)}">
         </label>
         <button class="button button-secondary" type="button" data-preview-project-template="${template.id}">Preview</button>
+        <button class="button button-secondary" type="button" data-export-project-template="${template.id}">Export JSON</button>
         <button class="button button-primary" type="button" data-use-project-template="${template.id}">Create Project</button>
         <button class="button button-secondary button-danger" type="button" data-delete-project-template="${template.id}">Delete Template</button>
       </div>
@@ -8667,7 +8926,10 @@ function renderProjectTemplatePreview(template) {
           </div>
         </section>
       </div>
-      <button class="button button-primary" type="button" id="template-preview-create">Create Customized Project</button>
+      <div class="template-preview-actions">
+        <button class="button button-secondary" type="button" data-export-project-template="${template.id}">Export JSON</button>
+        <button class="button button-primary" type="button" id="template-preview-create">Create Customized Project</button>
+      </div>
     </section>
   `;
 }
@@ -10416,6 +10678,40 @@ function deleteTaskTemplate(templateId) {
   saveState();
   render();
   showToast("Task template deleted", "success");
+}
+
+function installMarketplaceTemplate(templateId) {
+  const template = marketplaceProjectTemplates.find((item) => item.id === templateId);
+  if (!template) return;
+  if (state.projectTemplates.some((item) => item.id === template.id || item.name.toLowerCase() === template.name.toLowerCase())) {
+    showToast("Template is already installed", "info");
+    return;
+  }
+  const installedTemplate = validateProjectTemplate(template, { preserveId: true });
+  state.projectTemplates = [installedTemplate, ...state.projectTemplates];
+  state.templateLibrary = {
+    ...(state.templateLibrary || {}),
+    category: "all",
+    query: "",
+    selectedProjectTemplateId: installedTemplate.id
+  };
+  saveState();
+  render();
+  showToast(`${installedTemplate.name} installed`, "success");
+}
+
+function importProjectTemplateFromTextarea() {
+  const textarea = document.querySelector("#template-import-json");
+  const rawJson = textarea?.value.trim() || "";
+  if (!rawJson) {
+    showToast("Paste template JSON first", "info");
+    return;
+  }
+  try {
+    importProjectTemplateJson(rawJson);
+  } catch (error) {
+    showToast(`Template import failed: ${error.message}`, "info");
+  }
 }
 
 function createTaskFromSubmissionRecord(submission, form) {
@@ -12407,6 +12703,30 @@ document.addEventListener("click", (event) => {
 
   const copyStatusReportButton = event.target.closest("#copy-status-report");
   if (copyStatusReportButton) copyStatusReport();
+
+  const installMarketplaceTemplateButton = event.target.closest("[data-install-marketplace-template]");
+  if (installMarketplaceTemplateButton) {
+    installMarketplaceTemplate(installMarketplaceTemplateButton.dataset.installMarketplaceTemplate);
+    return;
+  }
+
+  const exportMarketplaceTemplateButton = event.target.closest("[data-export-marketplace-template]");
+  if (exportMarketplaceTemplateButton) {
+    downloadProjectTemplate(exportMarketplaceTemplateButton.dataset.exportMarketplaceTemplate);
+    return;
+  }
+
+  const exportProjectTemplateButton = event.target.closest("[data-export-project-template]");
+  if (exportProjectTemplateButton) {
+    downloadProjectTemplate(exportProjectTemplateButton.dataset.exportProjectTemplate);
+    return;
+  }
+
+  const importTemplateButton = event.target.closest("#template-import-button");
+  if (importTemplateButton) {
+    importProjectTemplateFromTextarea();
+    return;
+  }
 
   const templateCategoryButton = event.target.closest("[data-template-category]");
   if (templateCategoryButton) {

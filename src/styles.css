@@ -2211,6 +2211,54 @@ body[data-tutorial-target="view"] #app-view {
   font-weight: 800;
 }
 
+.marketplace-list {
+  display: grid;
+  gap: 10px;
+}
+
+.marketplace-template-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.marketplace-template-card.is-installed {
+  opacity: 0.82;
+}
+
+.marketplace-template-card h3 {
+  margin: 8px 0 4px;
+}
+
+.marketplace-template-card p {
+  margin: 0 0 8px;
+  color: var(--muted);
+}
+
+.marketplace-actions,
+.template-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.template-import-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.template-import-panel textarea {
+  width: 100%;
+  resize: vertical;
+}
+
 .template-preview-form {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

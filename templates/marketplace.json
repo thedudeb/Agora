@@ -1,0 +1,99 @@
+{
+  "type": "agora.template-marketplace",
+  "version": 1,
+  "templates": [
+    {
+      "id": "marketplace-nonprofit-grant",
+      "name": "Nonprofit Grant Campaign",
+      "category": "Nonprofit",
+      "description": "Coordinate grant research, narrative drafts, budget package, board review, submission, and follow-up reporting.",
+      "owner": "mara",
+      "durationDays": 42,
+      "tasks": [
+        {
+          "key": "research",
+          "title": "Research grant fit",
+          "description": "Confirm eligibility, program fit, deadlines, and submission requirements.",
+          "assignee": "mara",
+          "priority": "high",
+          "startOffset": 0,
+          "dueOffset": 5,
+          "tags": ["grant", "research"],
+          "blockedBy": [],
+          "subtasks": ["Check eligibility", "Capture deadline", "List required attachments"]
+        },
+        {
+          "key": "narrative",
+          "title": "Draft grant narrative",
+          "description": "Write need, program design, impact model, and implementation plan.",
+          "assignee": "nina",
+          "priority": "urgent",
+          "startOffset": 5,
+          "dueOffset": 18,
+          "tags": ["writing", "impact"],
+          "blockedBy": ["research"],
+          "subtasks": ["Need statement", "Program plan", "Impact measures"]
+        },
+        {
+          "key": "budget",
+          "title": "Prepare grant budget",
+          "description": "Build budget, match notes, staff allocations, and finance assumptions.",
+          "assignee": "sam",
+          "priority": "high",
+          "startOffset": 10,
+          "dueOffset": 22,
+          "tags": ["budget", "finance"],
+          "blockedBy": ["research"],
+          "subtasks": ["Budget draft", "Narrative notes", "Finance review"]
+        },
+        {
+          "key": "submit",
+          "title": "Submit grant package",
+          "description": "Finalize forms, attachments, signatures, and submission receipt.",
+          "assignee": "mara",
+          "priority": "urgent",
+          "startOffset": 32,
+          "dueOffset": 38,
+          "tags": ["submission"],
+          "blockedBy": ["narrative", "budget"],
+          "subtasks": ["Upload attachments", "Final proof", "Save receipt"]
+        }
+      ],
+      "milestones": [
+        {
+          "title": "Grant package drafted",
+          "description": "Narrative and budget are ready for review.",
+          "owner": "mara",
+          "dueOffset": 24,
+          "status": "planned",
+          "taskKeys": ["narrative", "budget"]
+        },
+        {
+          "title": "Grant submitted",
+          "description": "Application package is submitted and receipt is saved.",
+          "owner": "mara",
+          "dueOffset": 38,
+          "status": "planned",
+          "taskKeys": ["submit"]
+        }
+      ],
+      "docs": [
+        {
+          "title": "Grant Narrative Outline",
+          "type": "Template",
+          "body": "Need, program model, implementation, impact measures, and sustainability."
+        },
+        {
+          "title": "Grant Budget Notes",
+          "type": "Brief",
+          "body": "Budget assumptions, match, staff allocations, restricted funds, and reporting requirements."
+        }
+      ],
+      "intakeForm": {
+        "title": "Grant Opportunity Intake",
+        "assignee": "mara",
+        "description": "Capture grant opportunities, eligibility notes, and submission deadlines."
+      }
+    }
+  ]
+}
