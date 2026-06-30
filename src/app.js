@@ -1701,7 +1701,10 @@ function normalizePaymentEntitlements(entitlements = []) {
       currency: paymentCurrencyOptions.includes(entitlement.currency) ? entitlement.currency : "USD",
       note: String(entitlement.note || ""),
       grantedAt: entitlement.grantedAt || new Date().toISOString(),
-      expiresAt: entitlement.expiresAt || ""
+      expiresAt: entitlement.expiresAt || "",
+      checkoutIntentId: String(entitlement.checkoutIntentId || ""),
+      provider: String(entitlement.provider || ""),
+      payoutSnapshot: normalizeTemplatePayout({ payout: entitlement.payoutSnapshot || entitlement.payout || {} })
     }))
     .filter((entitlement) => entitlement.itemId)
     .slice(0, 100);
@@ -3157,6 +3160,9 @@ function renderPaymentAuditEvent(event) {
 function renderEntitlementGrantForm(payments) {
   const templates = paidMarketplaceTemplates();
   const hasLockedTemplates = templates.some((template) => !hasEntitlementForItem("project-template", template.id));
+  const grantHelp = apiSession
+    ? "API-connected grants create a server checkout intent, complete it through the test/manual adapter, and store a server-issued entitlement."
+    : "Offline test grants unlock gated marketplace items locally and record a payment audit event without moving money.";
   if (!templates.length) {
     return `<p class="settings-help">Paid marketplace templates will appear here once the marketplace includes premium packs.</p>`;
   }
@@ -3179,7 +3185,7 @@ function renderEntitlementGrantForm(payments) {
       </label>
       <button class="button button-secondary" type="button" id="payment-grant-entitlement" ${hasLockedTemplates ? "" : "disabled"}>Grant Access</button>
     </div>
-    <p class="settings-help">Test grants unlock gated marketplace items locally and record an audit event. Real payment adapters can replace this with server-issued entitlements later.</p>
+    <p class="settings-help">${escapeHtml(grantHelp)}</p>
   `;
 }
 
@@ -11240,48 +11246,64 @@ function installMarketplaceTemplate(templateId) {
   showToast(`${installedTemplate.name} installed`, "success");
 }
 
-function grantMarketplaceTemplateEntitlement(templateId, source = "test") {
-  const template = marketplaceProjectTemplates.find((item) => item.id === templateId);
-  if (!template || !marketplaceTemplateRequiresEntitlement(template)) {
-    showToast("Choose a premium marketplace template", "info");
-    return;
-  }
-  if (hasEntitlementForItem("project-template", template.id)) {
-    showToast("Template access is already active", "info");
-    return;
-  }
+function marketplacePaymentItem(template) {
   const price = marketplaceTemplatePrice(template);
+  return {
+    itemType: "project-template",
+    itemId: template.id,
+    name: template.name,
+    amountCents: price.cents,
+    currency: price.currency,
+    payout: templatePayoutSettings(template)
+  };
+}
+
+function upsertPaymentEntitlement(entitlement, event) {
+  const normalized = normalizePaymentEntitlements([entitlement])[0];
+  if (!normalized) return null;
+  const payments = paymentSettings();
+  state.workspace = {
+    ...state.workspace,
+    payments: {
+      ...payments,
+      entitlements: [
+        normalized,
+        ...payments.entitlements.filter((item) => !(item.itemType === normalized.itemType && item.itemId === normalized.itemId))
+      ].slice(0, 100),
+      audit: event ? [event, ...payments.audit].slice(0, 50) : payments.audit
+    }
+  };
+  return normalized;
+}
+
+function grantLocalMarketplaceTemplateEntitlement(template, source = "test") {
+  const item = marketplacePaymentItem(template);
   const payments = paymentSettings();
   const entitlement = {
     id: uid("entitlement"),
-    itemType: "project-template",
-    itemId: template.id,
+    itemType: item.itemType,
+    itemId: item.itemId,
     source: entitlementSourceOptions.some((option) => option.id === source) ? source : "test",
     status: "active",
-    amountCents: price.cents,
-    currency: price.currency,
+    amountCents: item.amountCents,
+    currency: item.currency,
     note: `${entitlementSourceLabel(source)} for ${template.name}`,
     grantedAt: new Date().toISOString(),
-    expiresAt: ""
+    expiresAt: "",
+    provider: payments.provider,
+    payoutSnapshot: item.payout
   };
   const event = {
     id: uid("payment-audit"),
     action: "entitlement_granted",
     provider: payments.provider,
-    currency: price.currency,
-    amountCents: price.cents,
+    currency: item.currency,
+    amountCents: item.amountCents,
     status: "granted",
     note: `${template.name} unlocked by ${entitlementSourceLabel(entitlement.source).toLowerCase()}`,
     createdAt: new Date().toISOString()
   };
-  state.workspace = {
-    ...state.workspace,
-    payments: {
-      ...payments,
-      entitlements: [entitlement, ...payments.entitlements].slice(0, 100),
-      audit: [event, ...payments.audit].slice(0, 50)
-    }
-  };
+  upsertPaymentEntitlement(entitlement, event);
   addAuditEvent({
     action: "entitlement_granted",
     detail: `Granted access to ${template.name}`
@@ -11291,10 +11313,70 @@ function grantMarketplaceTemplateEntitlement(templateId, source = "test") {
   showToast(`${template.name} unlocked`, "success");
 }
 
-function grantSelectedPaymentEntitlement() {
+async function grantServerMarketplaceTemplateEntitlement(template, source = "test") {
+  const item = marketplacePaymentItem(template);
+  const provider = source === "manual" ? "manual" : "test";
+  const intentResult = await apiRequest("/api/payments/checkout-intent", {
+    method: "POST",
+    body: { provider, item }
+  });
+  const eventResult = await apiRequest("/api/payments/events", {
+    method: "POST",
+    body: {
+      type: provider === "manual" ? "manual_payment.confirmed" : "checkout.test_completed",
+      intentId: intentResult.intent.id
+    }
+  });
+  if (!eventResult.entitlement && eventResult.duplicate) {
+    showToast("Template access is already active on the API", "info");
+    return;
+  }
+  if (!eventResult.entitlement) throw new Error("API did not return an entitlement");
+  const event = {
+    id: uid("payment-audit"),
+    action: "server_entitlement_granted",
+    provider: eventResult.intent?.provider || provider,
+    currency: item.currency,
+    amountCents: item.amountCents,
+    status: "granted",
+    note: `${template.name} unlocked by API checkout intent`,
+    createdAt: new Date().toISOString()
+  };
+  upsertPaymentEntitlement(eventResult.entitlement, event);
+  addAuditEvent({
+    action: "payment_entitlement_granted",
+    detail: `API granted access to ${template.name}`
+  });
+  saveState();
+  render();
+  showToast(`${template.name} unlocked via API`, "success");
+}
+
+async function grantMarketplaceTemplateEntitlement(templateId, source = "test") {
+  const template = marketplaceProjectTemplates.find((item) => item.id === templateId);
+  if (!template || !marketplaceTemplateRequiresEntitlement(template)) {
+    showToast("Choose a premium marketplace template", "info");
+    return;
+  }
+  if (hasEntitlementForItem("project-template", template.id)) {
+    showToast("Template access is already active", "info");
+    return;
+  }
+  if (!apiSession) {
+    grantLocalMarketplaceTemplateEntitlement(template, source);
+    return;
+  }
+  try {
+    await grantServerMarketplaceTemplateEntitlement(template, source);
+  } catch (error) {
+    showToast(`API entitlement failed: ${error.message}`, "info");
+  }
+}
+
+async function grantSelectedPaymentEntitlement() {
   const templateId = document.querySelector("#entitlement-template")?.value || "";
   const source = document.querySelector("#entitlement-source")?.value || "test";
-  grantMarketplaceTemplateEntitlement(templateId, source);
+  await grantMarketplaceTemplateEntitlement(templateId, source);
 }
 
 function importProjectTemplateFromTextarea() {

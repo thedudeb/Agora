@@ -99,6 +99,71 @@ async function run() {
     });
     assert(saved.snapshot.workspace.name === "Smoke Test Studio", "workspace save failed");
 
+    const paymentConfig = await request(`${baseUrl}/api/payments/config`, {
+      token: login.token
+    });
+    assert(paymentConfig.providers.some((provider) => provider.id === "test" && provider.live === true), "payment config did not expose test adapter");
+    assert(paymentConfig.providers.some((provider) => provider.id === "x402"), "payment config did not expose x402 adapter stub");
+
+    const blockedMemberPayment = await requestError(`${baseUrl}/api/payments/checkout-intent`, {
+      method: "POST",
+      token: accepted.token,
+      body: {
+        provider: "test",
+        item: {
+          itemType: "project-template",
+          itemId: "marketplace-agency-retainer-os",
+          name: "Agency Retainer OS",
+          amountCents: 1900,
+          currency: "USD"
+        }
+      }
+    });
+    assert(blockedMemberPayment.status === 403, "member should not create payment intents");
+
+    const checkoutIntent = await request(`${baseUrl}/api/payments/checkout-intent`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        provider: "test",
+        item: {
+          itemType: "project-template",
+          itemId: "marketplace-agency-retainer-os",
+          name: "Agency Retainer OS",
+          amountCents: 1900,
+          currency: "USD",
+          payout: {
+            mode: "charity",
+            recipientName: "Open Project Fund",
+            walletAddress: "0xCharityWalletExample",
+            chain: "Base",
+            charityName: "Open Project Fund",
+            donationPercent: 100
+          }
+        }
+      }
+    });
+    assert(checkoutIntent.intent.status === "requires_test_confirmation", "checkout intent did not use test status");
+    assert(checkoutIntent.intent.payout.charityName === "Open Project Fund", "checkout intent did not preserve payout metadata");
+
+    const completedCheckout = await request(`${baseUrl}/api/payments/events`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        type: "checkout.test_completed",
+        intentId: checkoutIntent.intent.id
+      }
+    });
+    assert(completedCheckout.intent.status === "completed", "payment event did not complete intent");
+    assert(completedCheckout.entitlement.itemId === "marketplace-agency-retainer-os", "payment event did not issue entitlement");
+    assert(completedCheckout.entitlement.checkoutIntentId === checkoutIntent.intent.id, "entitlement did not reference checkout intent");
+    assert(completedCheckout.entitlement.payoutSnapshot.charityName === "Open Project Fund", "entitlement did not preserve payout snapshot");
+
+    const paymentEntitlements = await request(`${baseUrl}/api/payments/entitlements`, {
+      token: login.token
+    });
+    assert(paymentEntitlements.entitlements.some((entitlement) => entitlement.itemId === "marketplace-agency-retainer-os"), "payment entitlement list did not include server grant");
+
     const createdProject = await request(`${baseUrl}/api/projects`, {
       method: "POST",
       token: login.token,
@@ -408,6 +473,7 @@ async function run() {
       token: login.token
     });
     assert(workspace.snapshot.workspace.name === "Smoke Test Studio", "workspace load failed");
+    assert(workspace.snapshot.workspace.payments.entitlements.some((entitlement) => entitlement.itemId === "marketplace-agency-retainer-os"), "workspace snapshot dropped payment entitlement");
     assert(workspace.snapshot.users.some((user) => user.email === "jordan@example.test"), "workspace save dropped accepted invite user");
     assert(workspace.snapshot.invitations.some((invite) => invite.email === "jordan@example.test" && invite.status === "accepted"), "workspace save dropped invitation state");
     assert(workspace.snapshot.projects[0].name === "Updated Smoke Project", "project not stored in workspace");

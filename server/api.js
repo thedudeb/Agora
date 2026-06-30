@@ -61,6 +61,7 @@ const recordCollections = {
 
 const sessions = new Map();
 const rateLimits = new Map();
+const paymentIntents = new Map();
 
 function envFlag(name, fallback = false) {
   const value = cleanString(process.env[name]).toLowerCase();
@@ -256,6 +257,47 @@ function createServer(options = {}) {
         }
         const health = await buildBackendHealth(storage, session);
         sendJson(response, 200, health);
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/payments/config") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        sendJson(response, 200, paymentConfig());
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/payments/entitlements") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const snapshot = await storage.loadWorkspaceSnapshot();
+        sendJson(response, 200, { entitlements: paymentEntitlements(snapshot) });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/payments/checkout-intent") {
+        if (!hasPermission(session, "workspace:write")) {
+          sendError(response, 403, "Missing workspace write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const intent = createPaymentIntent(body, session);
+        sendJson(response, 201, { intent });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/payments/events") {
+        if (!hasPermission(session, "workspace:write")) {
+          sendError(response, 403, "Missing workspace write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const result = await handlePaymentEvent(storage, body, session);
+        sendJson(response, 201, result);
         return;
       }
 
@@ -781,6 +823,198 @@ async function buildBackendHealth(storage, session) {
     readiness,
     generatedAt: new Date().toISOString()
   };
+}
+
+function paymentConfig() {
+  return {
+    mode: "test",
+    testMode: true,
+    providers: [
+      {
+        id: "test",
+        label: "Server test adapter",
+        configured: true,
+        live: true,
+        detail: "Issues server-side entitlements without moving money."
+      },
+      {
+        id: "stripe",
+        label: "Stripe",
+        configured: Boolean(cleanString(process.env.STRIPE_SECRET_KEY || process.env.AGORA_STRIPE_SECRET_KEY)),
+        live: false,
+        detail: "Stubbed until Stripe checkout is configured on the API server."
+      },
+      {
+        id: "x402",
+        label: "x402",
+        configured: envFlag("AGORA_X402_ENABLED", false),
+        live: false,
+        detail: "Stubbed until an x402 facilitator/wallet adapter is configured on the API server."
+      },
+      {
+        id: "manual",
+        label: "Manual invoice",
+        configured: true,
+        live: false,
+        detail: "Records manual-payment intent metadata for admin review."
+      }
+    ]
+  };
+}
+
+function paymentEntitlements(snapshot = {}) {
+  const payments = snapshot.workspace?.payments || {};
+  return Array.isArray(payments.entitlements) ? payments.entitlements.map(normalizeServerEntitlement).filter(Boolean).slice(0, 100) : [];
+}
+
+function createPaymentIntent(body = {}, session) {
+  const item = normalizePaymentItem(body.item || body);
+  const provider = cleanString(body.provider || "test").toLowerCase();
+  const supported = new Set(["test", "manual", "stripe", "x402"]);
+  if (!supported.has(provider)) publicError(400, "Unsupported payment provider");
+  if (provider === "stripe" || provider === "x402") {
+    publicError(400, `${provider} payments are not live yet. Use the server test adapter.`);
+  }
+  const now = new Date().toISOString();
+  const intent = {
+    id: `pay-intent-${crypto.randomUUID()}`,
+    provider,
+    mode: "test",
+    status: provider === "test" ? "requires_test_confirmation" : "requires_manual_review",
+    workspaceId: workspace.id,
+    userId: session.user.id,
+    item,
+    amountCents: item.amountCents,
+    currency: item.currency,
+    payout: item.payout,
+    createdAt: now,
+    expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+  };
+  paymentIntents.set(intent.id, intent);
+  return intent;
+}
+
+async function handlePaymentEvent(storage, body = {}, session) {
+  const type = cleanString(body.type || "checkout.test_completed");
+  if (!["checkout.test_completed", "checkout.completed", "manual_payment.confirmed"].includes(type)) {
+    publicError(400, "Unsupported payment event type");
+  }
+  const intentId = cleanString(body.intentId || body.intent?.id);
+  const intent = paymentIntents.get(intentId);
+  if (!intent) publicError(404, "Payment intent not found");
+  if (intent.workspaceId !== workspace.id) publicError(403, "Payment intent belongs to another workspace");
+  if (intent.status === "completed") {
+    return { intent, entitlement: null, duplicate: true };
+  }
+  if (intent.provider !== "test" && type !== "manual_payment.confirmed") {
+    publicError(400, "Only the server test adapter can auto-complete checkout events");
+  }
+
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const entitlement = normalizeServerEntitlement({
+    id: `entitlement-${crypto.randomUUID()}`,
+    itemType: intent.item.itemType,
+    itemId: intent.item.itemId,
+    source: intent.provider === "manual" ? "manual" : intent.provider === "test" ? "test" : "payment",
+    status: "active",
+    amountCents: intent.amountCents,
+    currency: intent.currency,
+    note: `Server-issued entitlement from ${intent.provider} checkout intent`,
+    grantedAt: new Date().toISOString(),
+    expiresAt: "",
+    checkoutIntentId: intent.id,
+    provider: intent.provider,
+    payoutSnapshot: intent.payout
+  });
+  const existing = paymentEntitlements(snapshot);
+  const nextEntitlements = [entitlement, ...existing.filter((item) => !(item.itemType === entitlement.itemType && item.itemId === entitlement.itemId))].slice(0, 100);
+  const nextSnapshot = {
+    ...snapshot,
+    workspace: {
+      ...workspace,
+      ...(snapshot.workspace || {}),
+      payments: {
+        ...((snapshot.workspace || {}).payments || {}),
+        entitlements: nextEntitlements
+      }
+    }
+  };
+  await storage.saveWorkspaceSnapshot(nextSnapshot, {
+    storage: storage.driver || "json-file",
+    updatedBy: session.user.id,
+    action: "payment_entitlement_granted"
+  });
+  await storage.appendAuditEvent({
+    actorId: session.user.id,
+    action: "payment_entitlement_granted",
+    workspaceId: workspace.id,
+    detail: `${session.user.name} granted ${intent.item.name || intent.item.itemId} via ${intent.provider} checkout intent`
+  });
+  intent.status = "completed";
+  intent.completedAt = new Date().toISOString();
+  paymentIntents.set(intent.id, intent);
+  return { intent, entitlement };
+}
+
+function normalizePaymentItem(item = {}) {
+  const itemType = cleanString(item.itemType || "project-template");
+  if (itemType !== "project-template" && itemType !== "feature") publicError(400, "Unsupported payment item type");
+  const itemId = cleanString(item.itemId || item.id);
+  if (!itemId) publicError(400, "Payment item id is required");
+  const amountCents = Math.max(0, Math.round(Number(item.amountCents ?? item.priceCents ?? 0)));
+  if (amountCents <= 0) publicError(400, "Payment item amount must be greater than zero");
+  const currency = paymentCurrency(item.currency);
+  return {
+    itemType,
+    itemId,
+    name: cleanString(item.name).slice(0, 120),
+    amountCents,
+    currency,
+    payout: normalizePaymentPayout(item.payout || {})
+  };
+}
+
+function normalizePaymentPayout(payout = {}) {
+  const mode = ["creator", "charity", "split"].includes(cleanString(payout.mode)) ? cleanString(payout.mode) : "creator";
+  return {
+    mode,
+    recipientName: cleanString(payout.recipientName).slice(0, 96),
+    walletAddress: cleanString(payout.walletAddress).slice(0, 160),
+    chain: cleanString(payout.chain || "Not set").slice(0, 40),
+    charityName: cleanString(payout.charityName).slice(0, 96),
+    donationPercent: boundedInteger(payout.donationPercent, 0, 100),
+    note: cleanString(payout.note).slice(0, 180)
+  };
+}
+
+function normalizeServerEntitlement(entitlement = {}) {
+  const itemId = cleanString(entitlement.itemId);
+  if (!itemId) return null;
+  return {
+    id: cleanString(entitlement.id) || `entitlement-${crypto.randomUUID()}`,
+    itemType: entitlement.itemType === "feature" ? "feature" : "project-template",
+    itemId,
+    source: ["test", "manual", "payment", "promo"].includes(entitlement.source) ? entitlement.source : "payment",
+    status: ["active", "revoked", "expired"].includes(entitlement.status) ? entitlement.status : "active",
+    amountCents: Math.max(0, Math.round(Number(entitlement.amountCents) || 0)),
+    currency: paymentCurrency(entitlement.currency),
+    note: cleanString(entitlement.note),
+    grantedAt: entitlement.grantedAt || new Date().toISOString(),
+    expiresAt: cleanString(entitlement.expiresAt),
+    checkoutIntentId: cleanString(entitlement.checkoutIntentId),
+    provider: cleanString(entitlement.provider),
+    payoutSnapshot: normalizePaymentPayout(entitlement.payoutSnapshot || {})
+  };
+}
+
+function paymentCurrency(currency) {
+  const value = cleanString(currency || "USD").toUpperCase();
+  return ["USD", "USDC", "CAD", "EUR", "GBP"].includes(value) ? value : "USD";
+}
+
+function boundedInteger(value, min, max) {
+  const parsed = Math.round(Number(value) || 0);
+  return Math.max(min, Math.min(max, parsed));
 }
 
 async function runAiOperator(body, session) {
