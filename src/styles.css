@@ -1585,10 +1585,30 @@ body[data-tutorial-target="view"] #app-view {
   opacity: 0.76;
 }
 
+.inbox-item.is-contextual {
+  border-style: dashed;
+  box-shadow: none;
+}
+
 .inbox-main {
   display: grid;
   gap: 8px;
   min-width: 0;
+}
+
+.inbox-item-kicker,
+.notification-delivery-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.inbox-reason {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
 }
 
 .inbox-actions .button {
@@ -1600,12 +1620,14 @@ body[data-tutorial-target="view"] #app-view {
 .notification-digest-panel,
 .notification-preferences-panel,
 .notification-reminders-panel,
+.notification-intelligence-panel,
 .notification-history-panel {
   align-content: start;
 }
 
 .digest-list,
 .reminder-list,
+.notification-intelligence-list,
 .notification-history-list {
   display: grid;
   gap: 10px;
@@ -1613,6 +1635,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .digest-row,
 .reminder-row,
+.notification-intelligence-list article,
 .notification-history-list article {
   display: grid;
   gap: 6px;
@@ -1649,6 +1672,8 @@ body[data-tutorial-target="view"] #app-view {
 .digest-row small,
 .reminder-row p,
 .reminder-row small,
+.notification-intelligence-list p,
+.notification-intelligence-list small,
 .notification-history-list p,
 .notification-history-list small {
   margin: 0;
@@ -1696,6 +1721,56 @@ body[data-tutorial-target="view"] #app-view {
 
 .notification-resolved-toggle {
   align-content: center;
+}
+
+.notification-delivery-summary {
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.notification-delivery-summary span {
+  max-width: 100%;
+  color: var(--muted);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+}
+
+.notification-delivery-integration {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.notification-delivery-preview {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 12px;
+  align-items: start;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.notification-delivery-preview p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.notification-delivery-preview pre {
+  max-height: 190px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.76rem;
 }
 
 .inbox-blue {
@@ -5676,6 +5751,7 @@ body[data-density="compact"] .main-content {
   }
 
   .notification-delivery-grid,
+  .notification-delivery-preview,
   .reminder-row {
     grid-template-columns: 1fr;
   }

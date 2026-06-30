@@ -3951,12 +3951,57 @@ function renderIntegrationsHubPanel() {
           <span>Mirror workspace events to integrations</span>
         </label>
       </div>
+      ${renderNotificationDeliveryIntegrationPanel()}
       <div class="integration-grid">
         ${integrationCatalog.map((catalogItem) => renderIntegrationCard(catalogItem, integrations.connections.find((connection) => connection.id === catalogItem.id))).join("")}
       </div>
       <div class="integration-action-row">
         <button class="button button-secondary" type="button" id="integration-test-event">Log Test Event</button>
         <button class="button button-primary" type="button" id="integrations-save">Save Integrations</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderNotificationDeliveryIntegrationPanel() {
+  const settings = notificationSettings();
+  const payloadPreview = {
+    source: "agora",
+    type: "notification_digest",
+    workspaceId: state.workspace.id,
+    channels: notificationDeliveryChannels(settings),
+    createdAt: new Date().toISOString()
+  };
+  return `
+    <section class="notification-delivery-integration">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Notification delivery</p>
+          <h2>Webhook and email handoff</h2>
+        </div>
+        <span class="status-pill ${settings.channels.webhook || settings.channels.email ? "inbox-green" : "inbox-neutral"}">${escapeHtml(notificationDeliveryChannels(settings))}</span>
+      </div>
+      <div class="notification-delivery-grid">
+        <label>
+          <span>Webhook URL</span>
+          <input id="notification-webhook-url" type="url" value="${escapeHtml(settings.delivery.webhookUrl)}" placeholder="https://hooks.example.com/agora">
+        </label>
+        <label>
+          <span>Email recipient</span>
+          <input id="notification-email-address" type="email" value="${escapeHtml(settings.delivery.emailAddress)}" placeholder="ops@example.com">
+        </label>
+        <label class="checkbox-label notification-resolved-toggle">
+          <input type="checkbox" id="notification-send-resolved" ${settings.delivery.sendResolved ? "checked" : ""}>
+          <span>Include resolved items in delivery payloads</span>
+        </label>
+        <button class="button button-primary compact-button" type="button" id="notification-save-delivery">Save Delivery</button>
+      </div>
+      <div class="notification-delivery-preview">
+        <div>
+          <strong>Server handoff contract</strong>
+          <p>Agora prepares webhook and email payloads locally. A self-hosted worker can POST the copied payload or mail it through your provider.</p>
+        </div>
+        <pre>${escapeHtml(JSON.stringify(payloadPreview, null, 2))}</pre>
       </div>
     </section>
   `;
@@ -5825,6 +5870,10 @@ function dueNotificationReminders() {
   return activeNotificationReminders().filter((reminder) => reminder.remindAt <= today);
 }
 
+function pendingNotificationReminderAlerts() {
+  return dueNotificationReminders().filter((reminder) => !reminder.sentAt);
+}
+
 function reminderInboxItems() {
   return dueNotificationReminders().map((reminder) => ({
     id: `reminder-${reminder.id}`,
@@ -5890,6 +5939,69 @@ function dismissNotificationReminder(reminderId) {
   saveState();
   render();
   showToast("Reminder dismissed", "success");
+}
+
+async function showReminderBrowserNotification(reminder) {
+  if (notificationPermissionState !== "granted") return false;
+  const options = {
+    body: reminder.message || "You asked Agora to bring this back.",
+    icon: "./assets/agora-mark.svg",
+    badge: "./assets/agora-mark.svg",
+    tag: `agora-reminder-${reminder.id}`,
+    data: {
+      route: "inbox",
+      reminderId: reminder.id,
+      taskId: reminder.taskId || ""
+    }
+  };
+  const registration = await navigator.serviceWorker?.getRegistration?.();
+  if (registration?.showNotification) {
+    await registration.showNotification(`Reminder: ${reminder.title}`, options);
+  } else if (typeof Notification !== "undefined") {
+    new Notification(`Reminder: ${reminder.title}`, options);
+  }
+  return true;
+}
+
+async function runNotificationReminderScheduler({ silent = true } = {}) {
+  const pending = pendingNotificationReminderAlerts();
+  if (!pending.length) return 0;
+  let delivered = 0;
+  const now = new Date().toISOString();
+  const settings = notificationSettings();
+
+  for (const reminder of pending) {
+    let channel = "in-app";
+    if (settings.channels.browser) {
+      try {
+        const didNotify = await showReminderBrowserNotification(reminder);
+        if (didNotify) {
+          delivered += 1;
+          channel = "browser + in-app";
+        }
+      } catch {
+        channel = "in-app";
+      }
+    }
+    logNotificationHistory({
+      kind: "reminder-fired",
+      title: reminder.title,
+      message: reminder.message || "Reminder is due.",
+      reason: `Scheduled for ${formatFullDate(reminder.remindAt)}.`,
+      channel
+    });
+  }
+
+  state.notificationReminders = normalizeNotificationReminders(state.notificationReminders).map((reminder) => (
+    pending.some((item) => item.id === reminder.id)
+      ? { ...reminder, sentAt: now }
+      : reminder
+  ));
+  saveState();
+  renderNotificationBadges();
+  if (state.selectedRoute === "inbox") render();
+  if (!silent) showToast(`${pending.length} reminder ${pending.length === 1 ? "is" : "are"} due`, delivered ? "success" : "info");
+  return pending.length;
 }
 
 function logNotificationHistory({ kind = "digest", title, message, reason = "", count = 0, channel = "in-app" }) {
@@ -7550,6 +7662,19 @@ function routeInviteFromLocation({ shouldRender = false } = {}) {
   return true;
 }
 
+function routeFromLocation({ shouldRender = false } = {}) {
+  const route = new URLSearchParams(window.location.search).get("route");
+  if (!route) return false;
+  const nextRoute = routeFallback(route.trim());
+  if (!routes[nextRoute]) return false;
+  state.selectedRoute = nextRoute;
+  if (nextRoute !== "project") state.selectedProjectTab = "overview";
+  openSidebarGroupForRoute(nextRoute);
+  saveState();
+  if (shouldRender) render();
+  return true;
+}
+
 function setProject(projectId) {
   if (isClientSession()) {
     setRoute("portal");
@@ -8859,20 +8984,10 @@ function renderNotificationPreferencesPanel() {
         <button class="button button-secondary compact-button" type="button" id="notification-request" ${notificationPermissionState === "unsupported" || notificationPermissionState === "granted" ? "disabled" : ""}>Enable Permission</button>
         <button class="button button-secondary compact-button" type="button" id="notification-test" ${notificationPermissionState === "granted" ? "" : "disabled"}>Test</button>
       </div>
-      <div class="notification-delivery-grid">
-        <label>
-          <span>Webhook URL</span>
-          <input id="notification-webhook-url" type="url" value="${escapeHtml(settings.delivery.webhookUrl)}" placeholder="https://hooks.example.com/agora">
-        </label>
-        <label>
-          <span>Email recipient</span>
-          <input id="notification-email-address" type="email" value="${escapeHtml(settings.delivery.emailAddress)}" placeholder="ops@example.com">
-        </label>
-        <label class="checkbox-label notification-resolved-toggle">
-          <input type="checkbox" id="notification-send-resolved" ${settings.delivery.sendResolved ? "checked" : ""}>
-          <span>Include resolved items in delivery payloads</span>
-        </label>
-        <button class="button button-secondary compact-button" type="button" id="notification-save-delivery">Save Delivery</button>
+      <div class="notification-delivery-summary">
+        <span>${escapeHtml(settings.delivery.webhookUrl || "No webhook URL")}</span>
+        <span>${escapeHtml(settings.delivery.emailAddress || "No email handoff")}</span>
+        <button class="button button-secondary compact-button" type="button" data-open-settings-tab="integrations">Manage Delivery</button>
       </div>
     </section>
   `;
@@ -8888,7 +9003,10 @@ function renderNotificationRemindersPanel() {
           <p class="eyebrow">Follow-up</p>
           <h2>Reminders</h2>
         </div>
-        <span class="status-pill ${dueCount ? "inbox-amber" : "inbox-neutral"}">${dueCount ? `${dueCount} due` : `${reminders.length} scheduled`}</span>
+        <div class="panel-actions">
+          <span class="status-pill ${dueCount ? "inbox-amber" : "inbox-neutral"}">${dueCount ? `${dueCount} due` : `${reminders.length} scheduled`}</span>
+          <button class="button button-secondary compact-button" type="button" id="notification-reminder-check" ${reminders.length ? "" : "disabled"}>Check Now</button>
+        </div>
       </div>
       <div class="reminder-list">
         ${reminders.length ? reminders.slice(0, 6).map((reminder) => `
@@ -8901,6 +9019,62 @@ function renderNotificationRemindersPanel() {
             <button class="button button-secondary compact-button" type="button" data-reminder-dismiss="${reminder.id}">Dismiss</button>
           </article>
         `).join("") : emptyState("Use Remind Tomorrow or Next Week on inbox cards to bring work back here.")}
+      </div>
+    </section>
+  `;
+}
+
+function inboxIntelligenceRows(items) {
+  const groups = [
+    {
+      id: "attention",
+      title: "Needs action",
+      tone: "red",
+      items: items.filter((item) => primaryInboxLane(item) === "Needs action"),
+      reason: "Assignments, approvals, mentions, reminders, and overdue work are promoted here first."
+    },
+    {
+      id: "timeline",
+      title: "Time sensitive",
+      tone: "amber",
+      items: items.filter((item) => item.type === "overdue" || item.type === "due soon" || item.type === "reminder"),
+      reason: "Agora groups due dates and reminders so planning does not get buried in activity."
+    },
+    {
+      id: "collaboration",
+      title: "Collaboration",
+      tone: "blue",
+      items: items.filter((item) => item.type === "mention" || item.type === "watched" || item.type === "comment" || item.type === "activity"),
+      reason: "Comments, watched-task updates, and teammate activity are kept together for review."
+    }
+  ];
+  return groups.map((group) => ({
+    ...group,
+    unread: group.items.filter((item) => !isInboxRead(item.id)).length,
+    sample: group.items[0]
+  }));
+}
+
+function renderInboxIntelligencePanel(items) {
+  const rows = inboxIntelligenceRows(items);
+  return `
+    <section class="panel notification-intelligence-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Signals</p>
+          <h2>Why these surfaced</h2>
+        </div>
+        <span class="status-pill inbox-neutral">${items.length} signals</span>
+      </div>
+      <div class="notification-intelligence-list">
+        ${rows.map((row) => `
+          <article>
+            <span class="status-pill inbox-${row.tone}">${row.unread} unread</span>
+            <strong>${escapeHtml(row.title)}</strong>
+            <p>${escapeHtml(row.reason)}</p>
+            <small>${row.sample ? escapeHtml(`Top signal: ${row.sample.title}`) : "No matching signals right now."}</small>
+          </article>
+        `).join("")}
       </div>
     </section>
   `;
@@ -8973,6 +9147,7 @@ function renderInbox() {
       ${renderNotificationDigestPanel()}
       ${renderNotificationPreferencesPanel()}
       ${renderNotificationRemindersPanel()}
+      ${renderInboxIntelligencePanel(items)}
       ${renderNotificationHistoryPanel()}
 
       <section class="panel operator-panel">
@@ -9032,9 +9207,62 @@ function renderInboxLane(title, items) {
         <span>${items.length}</span>
       </div>
       <div class="inbox-list">
-        ${items.length ? items.slice(0, 6).map(renderInboxItem).join("") : emptyState("Nothing here right now.")}
+        ${items.length ? items.slice(0, 6).map((item) => renderInboxItem(item, title)).join("") : emptyState("Nothing here right now.")}
       </div>
     </section>
+  `;
+}
+
+function inboxLaneTitles(item) {
+  const lanes = [];
+  if (item.type === "overdue" || item.type === "assignment" || item.type === "approval" || item.type === "mention" || item.type === "reminder") lanes.push("Needs action");
+  if (item.type === "approval") lanes.push("Approvals");
+  if (item.type === "due soon" || item.type === "reminder") lanes.push("Due soon");
+  if (item.type === "comment" || item.type === "activity" || item.type === "mention" || item.type === "watched") lanes.push("Activity");
+  return lanes.length ? lanes : ["Activity"];
+}
+
+function primaryInboxLane(item) {
+  const lanes = inboxLaneTitles(item);
+  if (lanes.includes("Needs action")) return "Needs action";
+  return lanes[0];
+}
+
+function inboxItemReason(item) {
+  const task = item.taskId ? byId(state.tasks, item.taskId) : null;
+  const project = item.projectId ? byId(state.projects, item.projectId) : null;
+  const projectLabel = project ? ` in ${project.name}` : "";
+  if (item.type === "assignment") return `You are the assignee${projectLabel}, and the task is still open.`;
+  if (item.type === "overdue") return `The due date has passed${task?.dueDate ? `: ${formatFullDate(task.dueDate)}` : ""}.`;
+  if (item.type === "due soon") return `The task is due within the next 7 days${task?.dueDate ? `: ${formatFullDate(task.dueDate)}` : ""}.`;
+  if (item.type === "mention") return "A teammate mentioned you in a comment.";
+  if (item.type === "watched") return "You watch this task, and someone else changed it.";
+  if (item.type === "comment") return "A teammate commented on visible work.";
+  if (item.type === "approval") return "An approval is waiting or needs changes.";
+  if (item.type === "reminder") return "You asked Agora to bring this item back.";
+  return "Recent activity matches your current workspace filters.";
+}
+
+function renderInboxActions(item, isPrimary) {
+  const read = isInboxRead(item.id);
+  if (!isPrimary) {
+    return `
+      ${item.taskId ? `<button class="button button-secondary" type="button" data-edit-task="${item.taskId}" data-inbox-id="${item.id}">Open</button>` : ""}
+      <button class="button button-secondary" type="button" data-inbox-read="${item.id}">${read ? "Mark Unread" : "Mark Read"}</button>
+    `;
+  }
+
+  return `
+    ${item.approvalId ? `<button class="button button-primary" type="button" data-approval-action="approved" data-approval-id="${item.approvalId}" data-inbox-id="${item.id}">Approve</button>` : ""}
+    ${item.approvalId ? `<button class="button button-secondary" type="button" data-approval-action="needs-changes" data-approval-id="${item.approvalId}" data-inbox-id="${item.id}">Needs Changes</button>` : ""}
+    ${item.taskId ? `<button class="button button-secondary" type="button" data-inbox-plan="${item.taskId}" data-inbox-id="${item.id}">Plan Today</button>` : ""}
+    ${item.taskId ? `<button class="button button-secondary" type="button" data-edit-task="${item.taskId}" data-inbox-id="${item.id}">Open</button>` : ""}
+    <button class="button button-secondary" type="button" data-inbox-remind="tomorrow" data-inbox-id="${item.id}">Remind Tomorrow</button>
+    <button class="button button-secondary" type="button" data-inbox-remind="next-week" data-inbox-id="${item.id}">Next Week</button>
+    <button class="button button-secondary" type="button" data-inbox-snooze="${item.id}">Snooze</button>
+    ${item.reminderId ? `<button class="button button-secondary" type="button" data-reminder-dismiss="${item.reminderId}">Dismiss Reminder</button>` : ""}
+    <button class="button button-secondary" type="button" data-inbox-read="${item.id}">${read ? "Mark Unread" : "Mark Read"}</button>
+    <button class="button button-secondary" type="button" data-inbox-clear="${item.id}">Clear</button>
   `;
 }
 
@@ -9067,16 +9295,25 @@ function renderOperatorBrief(brief) {
   `;
 }
 
-function renderInboxItem(item) {
+function renderInboxItem(item, laneTitle = "") {
   const read = isInboxRead(item.id);
+  const primaryLane = primaryInboxLane(item);
+  const isPrimary = laneTitle === primaryLane || !laneTitle;
+  const laneTitles = inboxLaneTitles(item);
+  const secondaryLanes = laneTitles.filter((lane) => lane !== laneTitle);
   return `
-    <article class="inbox-item ${read ? "is-read" : "is-unread"}">
+    <article class="inbox-item ${read ? "is-read" : "is-unread"} ${isPrimary ? "" : "is-contextual"}">
       <div class="inbox-main">
-        <span class="status-pill inbox-${item.tone}">${escapeHtml(item.type)}</span>
+        <div class="inbox-item-kicker">
+          <span class="status-pill inbox-${item.tone}">${escapeHtml(item.type)}</span>
+          ${isPrimary ? "" : `<span class="status-pill inbox-neutral">Actions in ${escapeHtml(primaryLane)}</span>`}
+          ${secondaryLanes.map((lane) => `<span class="status-pill inbox-neutral">Also ${escapeHtml(lane)}</span>`).join("")}
+        </div>
         <button class="table-task-button" type="button" ${item.taskId ? `data-edit-task="${item.taskId}" data-inbox-id="${item.id}"` : ""}>
           <strong>${escapeHtml(item.title)}</strong>
           <span>${escapeHtml(item.message)}</span>
         </button>
+        <p class="inbox-reason"><strong>Why:</strong> ${escapeHtml(inboxItemReason(item))}</p>
         <div class="meta-row">
           <span>${escapeHtml(projectName(item.projectId))}</span>
           <span>${formatTimestamp(item.createdAt)}</span>
@@ -9084,16 +9321,7 @@ function renderInboxItem(item) {
         </div>
       </div>
       <div class="inbox-actions">
-        ${item.approvalId ? `<button class="button button-primary" type="button" data-approval-action="approved" data-approval-id="${item.approvalId}" data-inbox-id="${item.id}">Approve</button>` : ""}
-        ${item.approvalId ? `<button class="button button-secondary" type="button" data-approval-action="needs-changes" data-approval-id="${item.approvalId}" data-inbox-id="${item.id}">Needs Changes</button>` : ""}
-        ${item.taskId ? `<button class="button button-secondary" type="button" data-inbox-plan="${item.taskId}" data-inbox-id="${item.id}">Plan Today</button>` : ""}
-        ${item.taskId ? `<button class="button button-secondary" type="button" data-edit-task="${item.taskId}" data-inbox-id="${item.id}">Open</button>` : ""}
-        <button class="button button-secondary" type="button" data-inbox-remind="tomorrow" data-inbox-id="${item.id}">Remind Tomorrow</button>
-        <button class="button button-secondary" type="button" data-inbox-remind="next-week" data-inbox-id="${item.id}">Next Week</button>
-        <button class="button button-secondary" type="button" data-inbox-snooze="${item.id}">Snooze</button>
-        ${item.reminderId ? `<button class="button button-secondary" type="button" data-reminder-dismiss="${item.reminderId}">Dismiss Reminder</button>` : ""}
-        <button class="button button-secondary" type="button" data-inbox-read="${item.id}">${read ? "Mark Unread" : "Mark Read"}</button>
-        <button class="button button-secondary" type="button" data-inbox-clear="${item.id}">Clear</button>
+        ${renderInboxActions(item, isPrimary)}
       </div>
     </article>
   `;
@@ -16778,6 +17006,16 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const openSettingsTabButton = event.target.closest("[data-open-settings-tab]");
+  if (openSettingsTabButton) {
+    state.selectedRoute = "settings";
+    state.selectedSettingsTab = settingsTabFallback(openSettingsTabButton.dataset.openSettingsTab);
+    openSidebarGroupForRoute("settings");
+    saveState();
+    render();
+    return;
+  }
+
   const onboardingActionButton = event.target.closest("[data-onboarding-action]");
   if (onboardingActionButton) {
     handleOnboardingAction(onboardingActionButton.dataset.onboardingAction);
@@ -17114,6 +17352,12 @@ document.addEventListener("click", (event) => {
   const notificationSaveDeliveryButton = event.target.closest("#notification-save-delivery");
   if (notificationSaveDeliveryButton) {
     saveNotificationDeliverySettings();
+    return;
+  }
+
+  const notificationReminderCheckButton = event.target.closest("#notification-reminder-check");
+  if (notificationReminderCheckButton) {
+    runNotificationReminderScheduler({ silent: false });
     return;
   }
 
@@ -17935,12 +18179,16 @@ initSmoothScroll();
 registerServiceWorker();
 startRealtimePolling();
 window.setInterval(() => {
+  runNotificationReminderScheduler();
+}, 60000);
+runNotificationReminderScheduler();
+window.setInterval(() => {
   const taskId = document.querySelector("#task-dialog[open] #task-id")?.value || "";
   heartbeatPresence({ taskId });
   refreshLiveCollaborationFromApi();
 }, 15000);
 
-if (!routeInviteFromLocation()) {
+if (!routeInviteFromLocation() && !routeFromLocation()) {
   openSidebarGroupForRoute(state.selectedRoute);
 }
 render();

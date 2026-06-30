@@ -1,4 +1,4 @@
-const CACHE_VERSION = "agora-pwa-v53";
+const CACHE_VERSION = "agora-pwa-v54";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -68,8 +68,11 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       const existingClient = clients.find((client) => "focus" in client);
-      if (existingClient) return existingClient.focus();
-      if (self.clients.openWindow) return self.clients.openWindow("./#inbox");
+      if (existingClient) {
+        if ("navigate" in existingClient) return existingClient.navigate("./?route=inbox").then((client) => client.focus());
+        return existingClient.focus();
+      }
+      if (self.clients.openWindow) return self.clients.openWindow("./?route=inbox");
       return undefined;
     })
   );
