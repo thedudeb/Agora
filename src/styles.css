@@ -2515,6 +2515,94 @@ body[data-tutorial-target="view"] #app-view {
   line-height: 1.45;
 }
 
+.integrations-hub-panel {
+  grid-column: 1 / -1;
+}
+
+.integration-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.integrations-admin-form {
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.integration-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.integration-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.integration-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.integration-card-header span:not(.status-pill) {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.integration-card h3,
+.integration-card p {
+  margin: 0;
+}
+
+.integration-card p,
+.integration-card small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.integration-signal-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.integration-signal-list span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.integration-control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.integration-action-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .payment-audit-list {
   display: grid;
   gap: 10px;
@@ -4815,6 +4903,8 @@ body[data-density="compact"] .main-content {
   .portal-grid,
   .client-portal-grid,
   .project-command-grid,
+  .integration-grid,
+  .integration-summary-grid,
   .theme-option-grid,
   .mobile-roadmap-list,
   .onboarding-grid,
@@ -5092,6 +5182,9 @@ body[data-density="compact"] .main-content {
   .settings-section-account .api-sync-form,
   .entitlement-grant-form,
   .access-summary-grid,
+  .integration-grid,
+  .integration-summary-grid,
+  .integration-control-grid,
   .theme-option-grid,
   .onboarding-grid,
   .project-command-grid,

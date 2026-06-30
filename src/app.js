@@ -281,6 +281,72 @@ const templatePayoutModes = [
 
 const templatePayoutChains = ["Not set", "Base", "Ethereum", "Solana", "Polygon", "Bitcoin", "Other"];
 
+const integrationCatalog = [
+  {
+    id: "slack",
+    name: "Slack",
+    category: "Chat",
+    description: "Route inbox alerts, watched task mentions, and project status changes into team channels.",
+    signals: ["Mentions", "Task updates", "Daily digest"]
+  },
+  {
+    id: "github",
+    name: "GitHub",
+    category: "Development",
+    description: "Link issues, pull requests, release milestones, and engineering task status.",
+    signals: ["Issues", "Pull requests", "Releases"]
+  },
+  {
+    id: "google-drive",
+    name: "Google Drive",
+    category: "Files",
+    description: "Attach shared files and keep project docs discoverable from the workspace.",
+    signals: ["Files", "Docs", "Folders"]
+  },
+  {
+    id: "google-calendar",
+    name: "Google Calendar",
+    category: "Calendar",
+    description: "Mirror due dates, milestones, review meetings, and focus blocks.",
+    signals: ["Due dates", "Milestones", "Focus time"]
+  },
+  {
+    id: "zapier",
+    name: "Zapier",
+    category: "Automation",
+    description: "Send Agora events into no-code automations and receive intake triggers from other apps.",
+    signals: ["Webhooks", "Intake", "Automation"]
+  },
+  {
+    id: "webhooks",
+    name: "Custom Webhooks",
+    category: "API",
+    description: "Publish workspace events to a self-hosted endpoint with a signing-secret workflow.",
+    signals: ["Outbound events", "Signed payloads", "Retries"]
+  },
+  {
+    id: "api",
+    name: "Agora API",
+    category: "API",
+    description: "Use authenticated API access for internal tools, reporting scripts, and custom adapters.",
+    signals: ["Records", "Snapshots", "Audit log"]
+  }
+];
+
+const integrationStatuses = [
+  { id: "planned", label: "Planned" },
+  { id: "connected", label: "Connected" },
+  { id: "paused", label: "Paused" },
+  { id: "disabled", label: "Disabled" }
+];
+
+const integrationSyncModes = [
+  { id: "none", label: "No sync" },
+  { id: "inbound", label: "Inbound" },
+  { id: "outbound", label: "Outbound" },
+  { id: "two-way", label: "Two-way" }
+];
+
 const themePresets = [
   {
     id: "agora",
@@ -598,6 +664,38 @@ const seedData = {
       model: "Agora deterministic operator",
       baseUrl: "",
       keySource: "Server environment"
+    },
+    integrations: {
+      defaultOwner: "mara",
+      webhookEndpoint: "",
+      apiAccess: true,
+      eventMirroring: true,
+      connections: [
+        {
+          id: "api",
+          status: "connected",
+          syncMode: "two-way",
+          owner: "mara",
+          notes: "Local API is the canonical adapter surface for self-hosted integrations.",
+          lastSyncedAt: "2026-06-27T12:00:00.000Z"
+        },
+        {
+          id: "webhooks",
+          status: "planned",
+          syncMode: "outbound",
+          owner: "eli",
+          notes: "Use signed outbound events for automations and external reporting.",
+          lastSyncedAt: ""
+        },
+        {
+          id: "github",
+          status: "planned",
+          syncMode: "inbound",
+          owner: "eli",
+          notes: "Map pull requests and issues back to project tasks.",
+          lastSyncedAt: ""
+        }
+      ]
     },
     payments: {
       provider: "none",
@@ -1644,6 +1742,7 @@ function normalizeState(nextState) {
         ...seedData.workspace.ai,
         ...((nextState.workspace || {}).ai || {})
       },
+      integrations: normalizeWorkspaceIntegrations((nextState.workspace || {}).integrations),
       payments: normalizeWorkspacePayments((nextState.workspace || {}).payments)
     },
     memberships: Array.isArray(nextState.memberships) ? nextState.memberships : seedData.memberships,
@@ -1685,6 +1784,37 @@ function normalizeWorkspaceTheme(theme = {}) {
   const preset = themePresets.some((item) => item.id === theme.preset) ? theme.preset : seedData.workspace.theme.preset;
   const density = densityOptions.some((item) => item.id === theme.density) ? theme.density : seedData.workspace.theme.density;
   return { preset, density };
+}
+
+function normalizeIntegrationConnection(connection = {}) {
+  const catalogItem = integrationCatalog.find((item) => item.id === connection.id);
+  if (!catalogItem) return null;
+  const memberIds = new Set(members.map((member) => member.id));
+  return {
+    id: catalogItem.id,
+    status: integrationStatuses.some((option) => option.id === connection.status) ? connection.status : "planned",
+    syncMode: integrationSyncModes.some((option) => option.id === connection.syncMode) ? connection.syncMode : "none",
+    owner: memberIds.has(connection.owner) ? connection.owner : "",
+    notes: String(connection.notes || "").trim().slice(0, 180),
+    lastSyncedAt: connection.lastSyncedAt || ""
+  };
+}
+
+function normalizeWorkspaceIntegrations(integrations = {}) {
+  const fallback = seedData.workspace.integrations || {};
+  const storedConnections = Array.isArray(integrations.connections) ? integrations.connections : fallback.connections || [];
+  const byId = new Map(storedConnections.map((connection) => [connection?.id, connection]));
+  const memberIds = new Set(members.map((member) => member.id));
+  return {
+    defaultOwner: memberIds.has(integrations.defaultOwner) ? integrations.defaultOwner : fallback.defaultOwner || currentMemberId,
+    webhookEndpoint: String(integrations.webhookEndpoint || "").trim().slice(0, 240),
+    apiAccess: Object.prototype.hasOwnProperty.call(integrations, "apiAccess") ? Boolean(integrations.apiAccess) : Boolean(fallback.apiAccess),
+    eventMirroring: Object.prototype.hasOwnProperty.call(integrations, "eventMirroring") ? Boolean(integrations.eventMirroring) : Boolean(fallback.eventMirroring),
+    connections: integrationCatalog.map((catalogItem) => normalizeIntegrationConnection({
+      id: catalogItem.id,
+      ...(byId.get(catalogItem.id) || {})
+    })).filter(Boolean)
+  };
 }
 
 function normalizePaymentEntitlements(entitlements = []) {
@@ -3202,6 +3332,117 @@ function renderPaymentEntitlement(entitlement) {
         <span>${escapeHtml(formatPaymentAmount(entitlement.amountCents, entitlement.currency))}</span>
         <small>${escapeHtml(formatTimestamp(entitlement.grantedAt))}</small>
       </div>
+    </article>
+  `;
+}
+
+function integrationSettings() {
+  return normalizeWorkspaceIntegrations(state.workspace?.integrations);
+}
+
+function integrationStatusLabel(status) {
+  return integrationStatuses.find((option) => option.id === status)?.label || "Planned";
+}
+
+function integrationSyncLabel(syncMode) {
+  return integrationSyncModes.find((option) => option.id === syncMode)?.label || "No sync";
+}
+
+function renderIntegrationsHubPanel() {
+  const integrations = integrationSettings();
+  const connected = integrations.connections.filter((connection) => connection.status === "connected");
+  const planned = integrations.connections.filter((connection) => connection.status === "planned");
+  const outbound = integrations.connections.filter((connection) => connection.syncMode === "outbound" || connection.syncMode === "two-way");
+  return `
+    <section class="panel integrations-hub-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Integrations</p>
+          <h2>Connected tools</h2>
+        </div>
+        <span class="status-pill ${connected.length ? "inbox-green" : "inbox-neutral"}">${connected.length}/${integrationCatalog.length} connected</span>
+      </div>
+      <div class="integration-summary-grid">
+        ${metric("Connected", connected.length)}
+        ${metric("Planned", planned.length)}
+        ${metric("Outbound", outbound.length)}
+        ${metric("API access", integrations.apiAccess ? "On" : "Off")}
+      </div>
+      <div class="settings-form integrations-admin-form">
+        <label>
+          <span>Default owner</span>
+          <select id="integration-default-owner">
+            ${workspaceMembers().map((member) => `<option value="${member.id}" ${member.id === integrations.defaultOwner ? "selected" : ""}>${escapeHtml(member.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Webhook endpoint</span>
+          <input id="integration-webhook-endpoint" value="${escapeHtml(integrations.webhookEndpoint)}" placeholder="https://hooks.example.com/agora">
+        </label>
+        <label class="toggle-row">
+          <input id="integration-api-access" type="checkbox" ${integrations.apiAccess ? "checked" : ""}>
+          <span>Enable API adapter access</span>
+        </label>
+        <label class="toggle-row">
+          <input id="integration-event-mirroring" type="checkbox" ${integrations.eventMirroring ? "checked" : ""}>
+          <span>Mirror workspace events to integrations</span>
+        </label>
+      </div>
+      <div class="integration-grid">
+        ${integrationCatalog.map((catalogItem) => renderIntegrationCard(catalogItem, integrations.connections.find((connection) => connection.id === catalogItem.id))).join("")}
+      </div>
+      <div class="integration-action-row">
+        <button class="button button-secondary" type="button" id="integration-test-event">Log Test Event</button>
+        <button class="button button-primary" type="button" id="integrations-save">Save Integrations</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderIntegrationCard(catalogItem, connection = {}) {
+  const status = connection.status || "planned";
+  const syncMode = connection.syncMode || "none";
+  const owner = connection.owner || integrationSettings().defaultOwner;
+  const statusClass = status === "connected" ? "inbox-green" : status === "paused" ? "inbox-amber" : "inbox-neutral";
+  return `
+    <article class="integration-card">
+      <div class="integration-card-header">
+        <div>
+          <span>${escapeHtml(catalogItem.category)}</span>
+          <h3>${escapeHtml(catalogItem.name)}</h3>
+        </div>
+        <span class="status-pill ${statusClass}">${escapeHtml(integrationStatusLabel(status))}</span>
+      </div>
+      <p>${escapeHtml(catalogItem.description)}</p>
+      <div class="integration-signal-list">
+        ${catalogItem.signals.map((signal) => `<span>${escapeHtml(signal)}</span>`).join("")}
+      </div>
+      <div class="integration-control-grid">
+        <label>
+          <span>Status</span>
+          <select data-integration-status="${catalogItem.id}">
+            ${integrationStatuses.map((option) => `<option value="${option.id}" ${option.id === status ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Sync</span>
+          <select data-integration-sync="${catalogItem.id}">
+            ${integrationSyncModes.map((option) => `<option value="${option.id}" ${option.id === syncMode ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Owner</span>
+          <select data-integration-owner="${catalogItem.id}">
+            <option value="">Unassigned</option>
+            ${workspaceMembers().map((member) => `<option value="${member.id}" ${member.id === owner ? "selected" : ""}>${escapeHtml(member.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Notes</span>
+          <input data-integration-notes="${catalogItem.id}" value="${escapeHtml(connection.notes || "")}" placeholder="Adapter notes">
+        </label>
+      </div>
+      <small>${connection.lastSyncedAt ? `Last synced ${escapeHtml(formatTimestamp(connection.lastSyncedAt))}` : `${escapeHtml(integrationSyncLabel(syncMode))} adapter not synced yet`}</small>
     </article>
   `;
 }
@@ -9665,6 +9906,8 @@ function renderSettings() {
       ` : ""}
 
       ${activeSettingsTab === "integrations" ? `
+      ${renderIntegrationsHubPanel()}
+
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -12431,6 +12674,58 @@ function saveAiSettings() {
   showToast("AI operator settings saved", "success");
 }
 
+function saveIntegrationSettings() {
+  const existing = integrationSettings();
+  const existingById = new Map(existing.connections.map((connection) => [connection.id, connection]));
+  const connections = integrationCatalog.map((catalogItem) => {
+    const previous = existingById.get(catalogItem.id) || {};
+    const status = document.querySelector(`[data-integration-status="${catalogItem.id}"]`)?.value || previous.status || "planned";
+    const syncMode = document.querySelector(`[data-integration-sync="${catalogItem.id}"]`)?.value || previous.syncMode || "none";
+    const owner = document.querySelector(`[data-integration-owner="${catalogItem.id}"]`)?.value || "";
+    const notes = document.querySelector(`[data-integration-notes="${catalogItem.id}"]`)?.value || "";
+    return normalizeIntegrationConnection({
+      id: catalogItem.id,
+      status,
+      syncMode,
+      owner,
+      notes,
+      lastSyncedAt: status === "connected" && previous.status !== "connected" ? new Date().toISOString() : previous.lastSyncedAt
+    });
+  }).filter(Boolean);
+
+  state.workspace = {
+    ...state.workspace,
+    integrations: normalizeWorkspaceIntegrations({
+      defaultOwner: document.querySelector("#integration-default-owner")?.value || existing.defaultOwner,
+      webhookEndpoint: document.querySelector("#integration-webhook-endpoint")?.value || "",
+      apiAccess: document.querySelector("#integration-api-access")?.checked,
+      eventMirroring: document.querySelector("#integration-event-mirroring")?.checked,
+      connections
+    })
+  };
+  addAuditEvent({
+    action: "integrations_update",
+    detail: `Updated ${connections.filter((connection) => connection.status === "connected").length} connected integrations`
+  });
+  saveState();
+  render();
+  showToast("Integrations saved", "success");
+}
+
+function recordIntegrationTestEvent() {
+  const integrations = integrationSettings();
+  const connected = integrations.connections.filter((connection) => connection.status === "connected");
+  addAuditEvent({
+    action: "integration_test_event",
+    detail: connected.length
+      ? `Test event queued for ${connected.map((connection) => integrationCatalog.find((item) => item.id === connection.id)?.name || connection.id).join(", ")}`
+      : "Test event recorded with no connected integrations"
+  });
+  saveState();
+  render();
+  showToast(connected.length ? "Integration test event logged" : "No connected integrations yet", connected.length ? "success" : "info");
+}
+
 function savePaymentSettings() {
   const provider = document.querySelector("#payment-provider")?.value || "none";
   const currency = document.querySelector("#payment-currency")?.value || "USD";
@@ -13644,6 +13939,18 @@ document.addEventListener("click", (event) => {
   const aiSaveButton = event.target.closest("#ai-save-settings");
   if (aiSaveButton) {
     saveAiSettings();
+    return;
+  }
+
+  const integrationsSaveButton = event.target.closest("#integrations-save");
+  if (integrationsSaveButton) {
+    saveIntegrationSettings();
+    return;
+  }
+
+  const integrationTestButton = event.target.closest("#integration-test-event");
+  if (integrationTestButton) {
+    recordIntegrationTestEvent();
     return;
   }
 
