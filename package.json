@@ -9,8 +9,9 @@
     "dev:api": "node server/api.js",
     "start": "node server/static.js",
     "start:api": "node server/api.js",
-    "check": "node --check src/app.js && node --check server/api.js && node --check server/storage.js && node --check server/static.js && node --check server/env.js && node --check server/smoke-test.js",
-    "test:api": "node server/smoke-test.js"
+    "check": "node --check src/app.js && node --check server/api.js && node --check server/storage.js && node --check server/static.js && node --check server/env.js && node --check server/smoke-test.js && node --check server/supabase-verify.js",
+    "test:api": "node server/smoke-test.js",
+    "test:supabase": "node server/supabase-verify.js"
   },
   "license": "AGPL-3.0-only"
 }

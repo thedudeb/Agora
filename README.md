@@ -71,6 +71,7 @@ npm start         # serve the browser app for a host/runtime
 npm run start:api # start the API for a host/runtime
 npm run check     # syntax-check app and server files
 npm run test:api  # run the dependency-free API smoke test
+npm run test:supabase # verify a real Supabase project end to end
 ```
 
 To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`. Add browser origins to `AGORA_ALLOWED_ORIGINS` when hosting the app somewhere other than localhost.
@@ -106,6 +107,8 @@ Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Do not paste it into browser setti
 Invitations and memberships can be assigned to a company. Scoped users only receive the company workspace records they are allowed to see, and whole-workspace snapshot saves stay limited to workspace-wide admin sessions.
 
 Use the Backend Health panel, or `GET /api/backend/health` with an authenticated bearer token, to confirm that Supabase storage, Supabase Auth, RLS-backed memberships, workspace snapshots, and structured records are reachable.
+
+After running both migrations and creating the private storage bucket, run `npm run test:supabase` to verify the real Supabase project through the Agora API. The verifier uses a unique temporary workspace by default and checks snapshots, structured records, notification scheduler permissions, payment entitlements, audit events, and Supabase Storage upload/download without deleting existing rows.
 
 ## AI Operator
 

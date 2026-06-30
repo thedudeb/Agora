@@ -51,6 +51,34 @@ Never expose `SUPABASE_SERVICE_ROLE_KEY` in browser code or client settings. Ago
 
 With `AGORA_AUTH_DRIVER=supabase`, the Settings account form can sign users up or in with Supabase email/password auth through the Agora API server. The browser never needs Supabase service-role credentials; it only talks to Agora.
 
+After the migrations and bucket are ready, verify the real Supabase project through the Agora API:
+
+```sh
+npm run test:supabase
+```
+
+This starts a temporary local API server using the configured Supabase credentials. It writes to a unique verification workspace by default, then checks snapshots, structured records, notification scheduler permissions, payments/entitlements, audit events, and Supabase Storage upload/download. To reuse a stable verification workspace, set:
+
+```sh
+AGORA_VERIFY_WORKSPACE_ID=agora-verify-your-name
+```
+
+The verification script is non-destructive. It does not delete existing rows and does not touch the main `AGORA_WORKSPACE_ID` unless you explicitly set `AGORA_VERIFY_WORKSPACE_ID` to the same value.
+
+## Backend Scheduler
+
+The notification scheduler can run two ways:
+
+```sh
+AGORA_SCHEDULER_ENABLED=false
+AGORA_SCHEDULER_INTERVAL_SECONDS=60
+```
+
+- `AGORA_SCHEDULER_ENABLED=true`: the API process runs the scheduler loop.
+- `AGORA_SCHEDULER_ENABLED=false`: call `POST /api/scheduler/notifications/run` from a trusted cron worker with an admin/manager session.
+
+Only sessions with `scheduler:run` can process due reminders. Keep cron credentials server-side and avoid calling the scheduler directly from public browser automation.
+
 ## Password Reset
 
 Agora supports reset-token creation and confirmation through the API. Production deployments should deliver reset tokens through SMTP or a webhook-backed email workflow.
@@ -107,6 +135,12 @@ Then sign in and open Settings or Data. Backend Health should show storage, auth
 
 Settings also includes a Deploy Confidence checklist. Use it before inviting a real team: connect the API, refresh backend health, confirm auth mode, review the role matrix, verify export paths, and choose a workspace theme/density.
 
+For Supabase-backed deployments, run the deeper verifier after every migration or environment change:
+
+```sh
+npm run test:supabase
+```
+
 ## Release Checklist
 
 - Create the first owner account.
@@ -118,6 +152,9 @@ Settings also includes a Deploy Confidence checklist. Use it before inviting a r
 - Confirm `AGORA_PASSWORDLESS_AUTH=false` unless intentionally enabled.
 - Confirm CORS only includes trusted app origins.
 - Confirm Supabase Storage bucket exists before uploading files.
+- Run `npm run test:supabase` when Supabase storage/auth is configured.
+- Confirm `AGORA_SCHEDULER_ENABLED` matches your hosting model.
+- Confirm payment providers are in test mode unless real checkout adapters and webhook validation are configured.
 - Confirm Audit Log loads for admins/project managers.
 - Run `npm run check` and `npm run test:api`.
 

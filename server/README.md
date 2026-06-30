@@ -81,6 +81,14 @@ Keep `SUPABASE_SERVICE_ROLE_KEY` on the server only. `SUPABASE_ANON_KEY` is used
 
 The first migration creates the snapshot/audit tables plus structured record tables for work records, collaboration records, first-class notification records, inbox state, and integration settings. The second migration creates `agora_workspace_memberships`, RLS helper functions, and policies for Supabase Auth users. The JSON driver stores records inside the workspace snapshot for local development; the Supabase driver writes them to dedicated `agora_*` tables through the same `/api/records/:collection` API. File objects are stored locally under `server/data/uploads/` with the JSON driver, or in the private Supabase Storage bucket configured by `AGORA_SUPABASE_STORAGE_BUCKET`.
 
+To verify a real Supabase project end to end, run:
+
+```sh
+npm run test:supabase
+```
+
+The verifier starts a temporary Agora API server with Supabase storage, uses a unique `workspace_id` by default, and checks workspace snapshots, structured records, notification scheduler permissions, payment entitlements, audit events, and Supabase Storage upload/download. Set `AGORA_VERIFY_WORKSPACE_ID=agora-verify-your-name` if you want a stable verification workspace. The script is intentionally non-destructive and does not delete existing workspace rows.
+
 ## Endpoints
 
 - `GET /api/health`: service health and active workspace metadata.
