@@ -273,6 +273,14 @@ const entitlementSourceOptions = [
   { id: "promo", label: "Promo" }
 ];
 
+const templatePayoutModes = [
+  { id: "creator", label: "Creator wallet" },
+  { id: "charity", label: "Charity wallet" },
+  { id: "split", label: "Creator + charity split" }
+];
+
+const templatePayoutChains = ["Not set", "Base", "Ethereum", "Solana", "Polygon", "Bitcoin", "Other"];
+
 const themePresets = [
   {
     id: "agora",
@@ -399,9 +407,19 @@ const marketplaceProjectTemplates = [
     category: "Premium",
     description: "A paid-style operating system for retainers: client health, monthly planning, approvals, scope control, billing notes, and renewal prep.",
     owner: "mara",
+    creatorName: "Agora Community Lab",
     durationDays: 30,
     priceCents: 1900,
     currency: "USD",
+    payout: {
+      mode: "charity",
+      recipientName: "Open Project Fund",
+      walletAddress: "0xCharityWalletExample",
+      chain: "Base",
+      charityName: "Open Project Fund",
+      donationPercent: 100,
+      note: "Demo payout route for charity-directed premium templates."
+    },
     tasks: [
       { key: "health", title: "Score client health", description: "Review delivery confidence, open risks, relationship strength, and renewal signals.", assignee: "mara", priority: "high", startOffset: 0, dueOffset: 3, tags: ["retainer", "health"], blockedBy: [], subtasks: ["Delivery score", "Relationship score", "Renewal signal"] },
       { key: "plan", title: "Plan monthly outcomes", description: "Turn client goals into a scoped monthly plan with owners and acceptance criteria.", assignee: "sam", priority: "urgent", startOffset: 2, dueOffset: 7, tags: ["planning"], blockedBy: ["health"], subtasks: ["Outcome list", "Owner map", "Acceptance criteria"] },
@@ -1687,6 +1705,21 @@ function normalizePaymentEntitlements(entitlements = []) {
     }))
     .filter((entitlement) => entitlement.itemId)
     .slice(0, 100);
+}
+
+function normalizeTemplatePayout(template = {}) {
+  const payout = template.payout && typeof template.payout === "object" ? template.payout : {};
+  const mode = templatePayoutModes.some((option) => option.id === payout.mode) ? payout.mode : "creator";
+  const chain = templatePayoutChains.includes(payout.chain) ? payout.chain : "Not set";
+  return {
+    mode,
+    recipientName: String(payout.recipientName || template.creatorName || "").trim().slice(0, 96),
+    walletAddress: String(payout.walletAddress || "").trim().slice(0, 160),
+    chain,
+    charityName: String(payout.charityName || "").trim().slice(0, 96),
+    donationPercent: clamp(Math.round(Number(payout.donationPercent) || 0), 0, 100),
+    note: String(payout.note || "").trim().slice(0, 180)
+  };
 }
 
 function normalizeWorkspacePayments(payments = {}) {
@@ -3277,6 +3310,32 @@ function marketplaceTemplatePriceLabel(template) {
   return price.cents ? formatPaymentAmount(price.cents, price.currency) : "Free";
 }
 
+function templatePayoutSettings(template) {
+  return normalizeTemplatePayout(template);
+}
+
+function templateCreatorLabel(template) {
+  return template.creatorName || memberName(template.owner) || "Community creator";
+}
+
+function templatePayoutModeLabel(mode) {
+  return templatePayoutModes.find((option) => option.id === mode)?.label || "Creator wallet";
+}
+
+function templatePayoutLabel(template) {
+  if (!marketplaceTemplatePrice(template).cents) return "Free template";
+  const payout = templatePayoutSettings(template);
+  if (payout.mode === "charity") return `Fees to ${payout.charityName || payout.recipientName || "charity"}`;
+  if (payout.mode === "split") return `${payout.donationPercent}% to ${payout.charityName || "charity"}`;
+  return `Fees to ${payout.recipientName || "creator"}`;
+}
+
+function templateWalletLabel(template) {
+  const payout = templatePayoutSettings(template);
+  if (!payout.walletAddress) return "Wallet not set";
+  return `${payout.chain || "Wallet"} / ${payout.walletAddress}`;
+}
+
 function marketplaceTemplateRequiresEntitlement(template) {
   return marketplaceTemplatePrice(template).cents > 0;
 }
@@ -3755,9 +3814,11 @@ function validateProjectTemplate(input, options = {}) {
     category: String(template.category || "Community").trim() || "Community",
     description: String(template.description || `Community template for ${name}`),
     owner: validMemberIds.has(template.owner) ? template.owner : currentMemberId,
+    creatorName: String(template.creatorName || memberName(template.owner) || "Community creator").trim().slice(0, 96),
     durationDays: Math.max(1, Number(template.durationDays || 14)),
     priceCents: Math.max(0, Math.round(Number(template.priceCents) || 0)),
     currency: paymentCurrencyOptions.includes(template.currency) ? template.currency : "USD",
+    payout: normalizeTemplatePayout(template),
     tasks: normalizedTasks,
     milestones: Array.isArray(template.milestones) ? template.milestones.slice(0, 20).map((milestone, index) => ({
       title: String(milestone.title || `Milestone ${index + 1}`),
@@ -9096,10 +9157,52 @@ function renderTemplates() {
             <input id="project-template-name" placeholder="Client launch pack">
           </label>
           <label>
+            <span>Creator</span>
+            <input id="project-template-creator" placeholder="Creator or organization">
+          </label>
+          <label>
             <span>Source project</span>
             <select id="project-template-source">
               ${activeProjects().map((project) => `<option value="${project.id}">${escapeHtml(project.name)}</option>`).join("")}
             </select>
+          </label>
+          <label>
+            <span>Price</span>
+            <input id="project-template-price" type="number" min="0" step="0.01" placeholder="0.00">
+          </label>
+          <label>
+            <span>Currency</span>
+            <select id="project-template-currency">
+              ${paymentCurrencyOptions.map((currency) => `<option value="${currency}">${escapeHtml(currency)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Payout mode</span>
+            <select id="project-template-payout-mode">
+              ${templatePayoutModes.map((mode) => `<option value="${mode.id}">${escapeHtml(mode.label)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Recipient / wallet owner</span>
+            <input id="project-template-payout-recipient" placeholder="Creator, charity, or org">
+          </label>
+          <label>
+            <span>Wallet chain</span>
+            <select id="project-template-payout-chain">
+              ${templatePayoutChains.map((chain) => `<option value="${chain}">${escapeHtml(chain)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Wallet address</span>
+            <input id="project-template-payout-wallet" placeholder="0x..., solana address, or payment handle">
+          </label>
+          <label>
+            <span>Charity</span>
+            <input id="project-template-payout-charity" placeholder="Charity or fund name">
+          </label>
+          <label>
+            <span>Donation %</span>
+            <input id="project-template-donation-percent" type="number" min="0" max="100" step="1" value="0">
           </label>
           <button class="button button-secondary" type="button" id="project-template-create">Save Project Template</button>
         </div>
@@ -9179,6 +9282,7 @@ function renderMarketplaceTemplateCard(template) {
         </div>
         <h3>${escapeHtml(template.name)}</h3>
         <p>${escapeHtml(template.description)}</p>
+        <p class="template-payout-summary">${escapeHtml(templateCreatorLabel(template))} - ${escapeHtml(templatePayoutLabel(template))}</p>
         <div class="template-meta">
           <span>${template.tasks.length} tasks</span>
           <span>${template.milestones.length} milestones</span>
@@ -9204,11 +9308,13 @@ function renderProjectTemplateCard(template, isSelected = false) {
         <span class="status-pill inbox-blue">${escapeHtml(template.category)}</span>
         <h3>${escapeHtml(template.name)}</h3>
         <p>${escapeHtml(template.description)}</p>
+        <p class="template-payout-summary">${escapeHtml(templateCreatorLabel(template))} - ${escapeHtml(templatePayoutLabel(template))}</p>
         <div class="template-meta">
           <span>${template.tasks.length} tasks</span>
           <span>${template.milestones.length} milestones</span>
           <span>${template.docs.length} docs</span>
           <span>${template.durationDays} days</span>
+          <span>${escapeHtml(marketplaceTemplatePriceLabel(template))}</span>
           <span>${template.intakeForm ? "Includes intake" : "No intake"}</span>
         </div>
       </div>
@@ -9266,7 +9372,13 @@ function renderProjectTemplatePreview(template) {
         <span>${template.tasks.length} tasks</span>
         <span>${template.milestones.length} milestones</span>
         <span>${template.docs.length} docs</span>
+        <span>${escapeHtml(marketplaceTemplatePriceLabel(template))}</span>
         <span>${template.intakeForm ? "Intake included" : "No intake form"}</span>
+      </div>
+      <div class="template-payout-panel">
+        <strong>${escapeHtml(templateCreatorLabel(template))}</strong>
+        <span>${escapeHtml(templatePayoutLabel(template))}</span>
+        <small>${escapeHtml(templateWalletLabel(template))}</small>
       </div>
       <div class="template-preview-form">
         <label>
@@ -10990,6 +11102,15 @@ function saveProjectAsTemplate() {
   const sourceProjectId = document.querySelector("#project-template-source")?.value;
   const project = byId(state.projects, sourceProjectId);
   const name = document.querySelector("#project-template-name")?.value.trim() || `${project?.name || "Project"} Template`;
+  const creatorName = document.querySelector("#project-template-creator")?.value.trim() || memberName(project?.owner) || "Community creator";
+  const priceCents = Math.max(0, Math.round(Number(document.querySelector("#project-template-price")?.value || 0) * 100));
+  const currency = document.querySelector("#project-template-currency")?.value || "USD";
+  const payoutMode = document.querySelector("#project-template-payout-mode")?.value || "creator";
+  const payoutRecipient = document.querySelector("#project-template-payout-recipient")?.value.trim() || creatorName;
+  const payoutChain = document.querySelector("#project-template-payout-chain")?.value || "Not set";
+  const payoutWallet = document.querySelector("#project-template-payout-wallet")?.value.trim() || "";
+  const payoutCharity = document.querySelector("#project-template-payout-charity")?.value.trim() || "";
+  const donationPercent = clamp(Math.round(Number(document.querySelector("#project-template-donation-percent")?.value || 0)), 0, 100);
   if (!project) {
     showToast("Choose a source project", "info");
     return;
@@ -11003,7 +11124,19 @@ function saveProjectAsTemplate() {
     category: companyName(project.companyId) || "Custom",
     description: project.description || `Reusable template from ${project.name}`,
     owner: project.owner,
+    creatorName,
     durationDays: Math.max(7, daysBetween(startDate, project.dueDate || shiftDate(startDate, 14))),
+    priceCents,
+    currency,
+    payout: {
+      mode: payoutMode,
+      recipientName: payoutRecipient,
+      walletAddress: payoutWallet,
+      chain: payoutChain,
+      charityName: payoutCharity,
+      donationPercent,
+      note: priceCents ? "Creator-defined payout route. Payment adapters should verify destination details server-side before moving funds." : ""
+    },
     tasks: tasks.map((task, index) => ({
       key: taskKeys[task.id] || `task-${index + 1}`,
       title: task.title,

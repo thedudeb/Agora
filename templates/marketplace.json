@@ -101,9 +101,19 @@
       "category": "Premium",
       "description": "A paid-style operating system for retainers: client health, monthly planning, approvals, scope control, billing notes, and renewal prep.",
       "owner": "mara",
+      "creatorName": "Agora Community Lab",
       "durationDays": 30,
       "priceCents": 1900,
       "currency": "USD",
+      "payout": {
+        "mode": "charity",
+        "recipientName": "Open Project Fund",
+        "walletAddress": "0xCharityWalletExample",
+        "chain": "Base",
+        "charityName": "Open Project Fund",
+        "donationPercent": 100,
+        "note": "Demo payout route for charity-directed premium templates."
+      },
       "tasks": [
         {
           "key": "health",

@@ -2116,6 +2116,15 @@ body[data-tutorial-target="view"] #app-view {
   border-radius: 8px;
 }
 
+.template-library-panel .template-composer {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.template-library-panel .template-composer .button {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
 .automation-composer {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
@@ -2157,6 +2166,30 @@ body[data-tutorial-target="view"] #app-view {
 .automation-card p {
   margin: 0 0 8px;
   color: var(--muted);
+}
+
+.template-payout-summary {
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.template-payout-panel {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 10px;
+  color: var(--muted);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.template-payout-panel strong {
+  color: var(--text);
+}
+
+.template-payout-panel small {
+  overflow-wrap: anywhere;
 }
 
 .template-meta {
@@ -5050,6 +5083,7 @@ body[data-density="compact"] .main-content {
   .file-composer,
   .field-composer,
   .template-composer,
+  .template-library-panel .template-composer,
   .template-controls,
   .template-preview-form,
   .template-preview-grid,
