@@ -56,7 +56,9 @@ const recordCollections = {
   activities: { writePermission: "activity:write", normalizer: normalizeActivity, label: "activity" },
   documents: { writePermission: "attachments:write", normalizer: normalizeDocument, label: "document" },
   files: { writePermission: "attachments:write", normalizer: normalizeFile, label: "file" },
-  presence: { writePermission: "workspace:read", normalizer: normalizePresence, label: "presence" }
+  presence: { writePermission: "workspace:read", normalizer: normalizePresence, label: "presence" },
+  chatMessages: { writePermission: "comments:write", normalizer: normalizeChatMessage, label: "chat message" },
+  whiteboards: { writePermission: "comments:write", normalizer: normalizeWhiteboard, label: "whiteboard" }
 };
 
 const sessions = new Map();
@@ -1305,6 +1307,8 @@ function scopedSnapshot(snapshot = {}, session) {
       comments: [],
       activities: [],
       presence: [],
+      chatMessages: [],
+      whiteboards: [],
       timeEntries: [],
       milestones: [],
       intakeForms: [],
@@ -1333,6 +1337,8 @@ function scopedSnapshot(snapshot = {}, session) {
     comments: filterByTask(Array.isArray(snapshot.comments) ? snapshot.comments : []),
     activities: filterByProject(filterByTask(Array.isArray(snapshot.activities) ? snapshot.activities : [])),
     presence: filterByProject(filterByTask(Array.isArray(snapshot.presence) ? snapshot.presence : [])),
+    chatMessages: filterByProject(Array.isArray(snapshot.chatMessages) ? snapshot.chatMessages : []),
+    whiteboards: filterByProject(Array.isArray(snapshot.whiteboards) ? snapshot.whiteboards : []),
     timeEntries: filterByTask(Array.isArray(snapshot.timeEntries) ? snapshot.timeEntries : []),
     milestones: filterByProject(Array.isArray(snapshot.milestones) ? snapshot.milestones : []),
     intakeForms: filterByProject(Array.isArray(snapshot.intakeForms) ? snapshot.intakeForms : []),
@@ -2493,6 +2499,7 @@ async function upsertCollectionItem(storage, key, item, normalizer, session, act
 function prepareRecordForSession(key, item, session) {
   const record = requireRecord(item, "Item");
   if (key === "comments") return { ...record, author: session.user.id };
+  if (key === "chatMessages") return { ...record, author: session.user.id };
   if (key === "activities") return { ...record, memberId: session.user.id };
   if (key === "documents" || key === "files") return { ...record, owner: session.user.id };
   if (key === "presence" && !hasPermission(session, "members:write")) return { ...record, memberId: session.user.id };
@@ -2803,6 +2810,52 @@ function normalizeComment(comment) {
   };
 }
 
+function normalizeChatMessage(message) {
+  requireRecord(message, "Chat message");
+  if (!message.id || !message.body) {
+    publicError(400, "Chat message requires id and body");
+  }
+  const channel = cleanString(message.channel);
+  return {
+    id: String(message.id),
+    channel: ["general", "delivery", "product", "client"].includes(channel) ? channel : "general",
+    author: message.author ? String(message.author) : "",
+    body: cleanString(message.body).slice(0, 600),
+    projectId: message.projectId ? String(message.projectId) : "",
+    createdAt: message.createdAt ? String(message.createdAt) : new Date().toISOString()
+  };
+}
+
+function normalizeWhiteboard(board) {
+  requireRecord(board, "Whiteboard");
+  if (!board.id || !board.title) {
+    publicError(400, "Whiteboard requires id and title");
+  }
+  return {
+    id: String(board.id),
+    title: cleanString(board.title).slice(0, 96),
+    projectId: board.projectId ? String(board.projectId) : "",
+    items: Array.isArray(board.items) ? board.items.map(normalizeWhiteboardItem).filter(Boolean).slice(0, 80) : [],
+    updatedAt: board.updatedAt ? String(board.updatedAt) : new Date().toISOString()
+  };
+}
+
+function normalizeWhiteboardItem(item) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+  const text = cleanString(item.text).slice(0, 180);
+  if (!text) return null;
+  const type = cleanString(item.type);
+  const color = cleanString(item.color);
+  return {
+    id: item.id ? String(item.id) : `wb-note-${crypto.randomUUID()}`,
+    type: ["note", "risk", "decision"].includes(type) ? type : "note",
+    text,
+    x: clampInteger(item.x, 0, 86, 8),
+    y: clampInteger(item.y, 0, 78, 10),
+    color: ["green", "amber", "blue", "neutral"].includes(color) ? color : "neutral"
+  };
+}
+
 function normalizeActivity(activity) {
   requireRecord(activity, "Activity");
   if (!activity.id || !activity.projectId || !activity.type || !activity.message) {
@@ -2843,6 +2896,12 @@ function normalizePresence(presence) {
     lastActiveAt: presence.lastActiveAt ? String(presence.lastActiveAt) : new Date().toISOString(),
     updatedAt: presence.updatedAt ? String(presence.updatedAt) : new Date().toISOString()
   };
+}
+
+function clampInteger(value, min, max, fallback) {
+  const parsed = Math.round(Number(value));
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
 }
 
 function optionalNumber(value) {

@@ -12,7 +12,9 @@ const recordTables = {
   activities: "agora_activities",
   documents: "agora_documents",
   files: "agora_files",
-  presence: "agora_presence"
+  presence: "agora_presence",
+  chatMessages: "agora_chat_messages",
+  whiteboards: "agora_whiteboards"
 };
 
 function createStorage(options = {}) {

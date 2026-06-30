@@ -1297,6 +1297,14 @@ body[data-tutorial-target="view"] #app-view {
   gap: 10px;
 }
 
+.dashboard-layout-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.9fr) minmax(180px, 1fr) auto auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
 .dashboard-widget-picker .toggle-row span {
   display: grid;
   gap: 3px;
@@ -3060,6 +3068,36 @@ body[data-tutorial-target="view"] #app-view {
 
 .switcher-import-panel {
   grid-column: 1 / -1;
+}
+
+.switcher-preview-empty,
+.switcher-preview-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+.switcher-preview-empty span,
+.switcher-preview-list span {
+  color: var(--muted);
+}
+
+.switcher-preview-list {
+  display: grid;
+  gap: 8px;
+}
+
+.switcher-preview-list article {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
 }
 
 .panel-note {
@@ -5198,6 +5236,7 @@ body[data-density="compact"] .main-content {
 
   .dashboard-grid,
   .dashboard-widget-picker,
+  .dashboard-layout-controls,
   .readiness-grid,
   .daily-hero,
   .daily-layout,
@@ -5464,6 +5503,7 @@ body[data-density="compact"] .main-content {
   .toolbar,
   .dashboard-grid,
   .dashboard-widget-picker,
+  .dashboard-layout-controls,
   .readiness-grid,
   .shortcuts-grid,
   .daily-hero,

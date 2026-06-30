@@ -364,6 +364,43 @@ async function run() {
     assert(memberPresence.record.memberId === accepted.user.id, "member presence was not canonicalized");
     assert(memberPresence.record.cursorX === 120 && memberPresence.record.cursorY === 240, "presence cursor fields were not stored");
 
+    const memberChat = await request(`${baseUrl}/api/records/chatMessages`, {
+      method: "POST",
+      token: accepted.token,
+      body: {
+        record: {
+          id: "chat-member-smoke",
+          channel: "delivery",
+          author: "mara",
+          body: "Member chat smoke test",
+          projectId: "project-smoke"
+        }
+      }
+    });
+    assert(memberChat.record.author === accepted.user.id, "member chat author was not canonicalized");
+
+    const savedWhiteboard = await request(`${baseUrl}/api/records/whiteboards`, {
+      method: "POST",
+      token: accepted.token,
+      body: {
+        record: {
+          id: "whiteboard-smoke",
+          title: "Smoke Whiteboard",
+          projectId: "project-smoke",
+          items: [
+            { id: "wb-smoke-note", type: "decision", text: "Ship the smoke board", x: 42, y: 18, color: "blue" }
+          ]
+        }
+      }
+    });
+    assert(savedWhiteboard.record.items.length === 1, "whiteboard item was not stored");
+
+    const collaborationRecords = await request(`${baseUrl}/api/records`, {
+      token: login.token
+    });
+    assert(collaborationRecords.records.chatMessages.some((message) => message.id === "chat-member-smoke"), "chat message list failed");
+    assert(collaborationRecords.records.whiteboards.some((board) => board.id === "whiteboard-smoke"), "whiteboard list failed");
+
     const comments = await request(`${baseUrl}/api/comments?taskId=task-smoke`, {
       token: login.token
     });
@@ -483,6 +520,8 @@ async function run() {
     assert(workspace.snapshot.comments.some((comment) => comment.body === "Smoke test comment"), "comment not stored in workspace");
     assert(workspace.snapshot.comments.some((comment) => comment.author === accepted.user.id), "member comment author not stored correctly");
     assert(workspace.snapshot.timeEntries.some((entry) => entry.memberId === accepted.user.id), "member time entry not stored correctly");
+    assert(workspace.snapshot.chatMessages.some((message) => message.author === accepted.user.id), "member chat message not stored correctly");
+    assert(workspace.snapshot.whiteboards.some((board) => board.title === "Smoke Whiteboard"), "whiteboard not stored in workspace");
     assert(workspace.snapshot.activities[0].message === "commented on Updated Smoke Task", "activity not stored in workspace");
     assert(workspace.snapshot.documents[0].title === "Smoke Doc", "document not stored in workspace");
     assert(workspace.snapshot.files.some((file) => file.title === "smoke-plan.pdf"), "file not stored in workspace");
@@ -492,7 +531,9 @@ async function run() {
       token: login.token
     });
     const commentsReport = finalBackendHealth.records.find((record) => record.key === "comments");
+    const chatReport = finalBackendHealth.records.find((record) => record.key === "chatMessages");
     assert(commentsReport && commentsReport.count === 2, "backend health did not count structured comments");
+    assert(chatReport && chatReport.count === 1, "backend health did not count structured chat");
     assert(finalBackendHealth.snapshot.counts.projects === 1, "backend health did not count snapshot projects");
 
     const audit = await request(`${baseUrl}/api/audit-log`, {

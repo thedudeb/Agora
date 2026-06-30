@@ -666,6 +666,38 @@ const seedData = {
     { id: "due-soon", visible: true },
     { id: "mobile", visible: false }
   ],
+  dashboardLayouts: [
+    {
+      id: "layout-command-center",
+      name: "Command Center",
+      widgets: [
+        { id: "projects", visible: true },
+        { id: "goals", visible: true },
+        { id: "capacity", visible: true },
+        { id: "operator", visible: true },
+        { id: "due-soon", visible: true },
+        { id: "mobile", visible: false }
+      ],
+      createdAt: "2026-06-27T12:00:00.000Z",
+      updatedAt: "2026-06-27T12:00:00.000Z"
+    },
+    {
+      id: "layout-mobile-ops",
+      name: "Mobile Ops",
+      widgets: [
+        { id: "projects", visible: true },
+        { id: "goals", visible: false },
+        { id: "capacity", visible: true },
+        { id: "operator", visible: true },
+        { id: "due-soon", visible: true },
+        { id: "mobile", visible: true }
+      ],
+      createdAt: "2026-06-27T12:05:00.000Z",
+      updatedAt: "2026-06-27T12:05:00.000Z"
+    }
+  ],
+  selectedDashboardLayoutId: "layout-command-center",
+  switcherImportPreview: null,
   workspace: {
     id: "workspace-acme",
     name: "Acme Studio",
@@ -1859,6 +1891,9 @@ function normalizeState(nextState) {
     dailyNotes: Object.prototype.hasOwnProperty.call(nextState, "dailyNotes") ? nextState.dailyNotes || {} : seedData.dailyNotes,
     dailyPlans: Object.prototype.hasOwnProperty.call(nextState, "dailyPlans") ? nextState.dailyPlans || {} : seedData.dailyPlans,
     dashboardWidgets: normalizeDashboardWidgets(nextState.dashboardWidgets),
+    dashboardLayouts: normalizeDashboardLayouts(nextState.dashboardLayouts),
+    selectedDashboardLayoutId: normalizeSelectedDashboardLayoutId(nextState.selectedDashboardLayoutId, nextState.dashboardLayouts),
+    switcherImportPreview: normalizeSwitcherImportPreview(nextState.switcherImportPreview),
     inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
     inboxArchived: Array.isArray(nextState.inboxArchived) ? nextState.inboxArchived : [],
     deletedProjectTemplateIds: Array.isArray(nextState.deletedProjectTemplateIds) ? nextState.deletedProjectTemplateIds : [],
@@ -1903,6 +1938,54 @@ function normalizeDashboardWidgets(widgets = []) {
     id: widget.id,
     visible: byId.has(widget.id) ? byId.get(widget.id)?.visible !== false : true
   }));
+}
+
+function normalizeDashboardLayouts(layouts = []) {
+  const source = Array.isArray(layouts) && layouts.length ? layouts : seedData.dashboardLayouts;
+  return source
+    .filter((layout) => layout && typeof layout === "object")
+    .map((layout) => ({
+      id: layout.id || uid("dashboard-layout"),
+      name: String(layout.name || "Untitled dashboard").trim().slice(0, 64),
+      widgets: normalizeDashboardWidgets(layout.widgets),
+      createdAt: layout.createdAt || new Date().toISOString(),
+      updatedAt: layout.updatedAt || layout.createdAt || new Date().toISOString()
+    }))
+    .filter((layout) => layout.name)
+    .slice(0, 12);
+}
+
+function normalizeSelectedDashboardLayoutId(selectedId, layouts = []) {
+  const normalizedLayouts = normalizeDashboardLayouts(layouts);
+  if (normalizedLayouts.some((layout) => layout.id === selectedId)) return selectedId;
+  return normalizedLayouts[0]?.id || "";
+}
+
+function normalizeSwitcherImportPreview(preview = null) {
+  if (!preview || typeof preview !== "object") return null;
+  const projects = Array.isArray(preview.projects) ? preview.projects.map(normalizeProjectRecord).filter((project) => project.id && project.name) : [];
+  const tasks = Array.isArray(preview.tasks) ? preview.tasks.map(normalizeTaskRecord).filter((task) => task.id && task.title) : [];
+  if (!tasks.length) return null;
+  return {
+    id: preview.id || uid("switcher-preview"),
+    source: String(preview.source || "Generic CSV").slice(0, 48),
+    createdAt: preview.createdAt || new Date().toISOString(),
+    stats: {
+      rows: Number(preview.stats?.rows || tasks.length),
+      projects: projects.length,
+      tasks: tasks.length,
+      skipped: Number(preview.stats?.skipped || 0)
+    },
+    projects,
+    tasks,
+    samples: Array.isArray(preview.samples) ? preview.samples.slice(0, 6) : tasks.slice(0, 6).map((task) => ({
+      title: task.title,
+      projectName: projects.find((project) => project.id === task.projectId)?.name || task.projectId || "Imported project",
+      assignee: memberName(task.assignee),
+      status: task.status,
+      priority: task.priority
+    }))
+  };
 }
 
 function normalizeChatMessages(messages = []) {
@@ -2253,7 +2336,7 @@ async function retryApiSyncQueue() {
   showToast(synced ? `Retried ${synced} API sync${synced === 1 ? "" : "s"}` : "API sync retry still blocked", synced ? "success" : "info");
 }
 
-const structuredRecordCollections = ["companies", "approvals", "timeEntries", "comments", "activities", "documents", "files", "presence"];
+const structuredRecordCollections = ["companies", "approvals", "timeEntries", "comments", "activities", "documents", "files", "presence", "chatMessages", "whiteboards"];
 
 function mergeRecordsById(existingItems = [], incomingItems = []) {
   const next = new Map();
@@ -2283,6 +2366,8 @@ function normalizeCompanyRecord(company = {}) {
 
 function normalizeCollectionRecords(collection, items = []) {
   if (collection === "companies") return items.map(normalizeCompanyRecord).filter((company) => company.id);
+  if (collection === "chatMessages") return normalizeChatMessages(items);
+  if (collection === "whiteboards") return normalizeWhiteboards(items);
   return items;
 }
 
@@ -2649,6 +2734,9 @@ function createBlankWorkspaceState(options = {}) {
     dailyNotes: {},
     dailyPlans: {},
     dashboardWidgets: normalizeDashboardWidgets(seedData.dashboardWidgets),
+    dashboardLayouts: normalizeDashboardLayouts(seedData.dashboardLayouts),
+    selectedDashboardLayoutId: seedData.selectedDashboardLayoutId,
+    switcherImportPreview: null,
     inboxRead: [],
     inboxArchived: [],
     taskWatchers: {},
@@ -7470,6 +7558,8 @@ function activeDashboardWidgets() {
 
 function renderDashboardBuilder() {
   const widgets = normalizeDashboardWidgets(state.dashboardWidgets);
+  const layouts = normalizeDashboardLayouts(state.dashboardLayouts);
+  const selectedLayout = layouts.find((layout) => layout.id === state.selectedDashboardLayoutId) || layouts[0];
   return `
     <section class="panel dashboard-builder-panel">
       <div class="panel-header">
@@ -7478,6 +7568,20 @@ function renderDashboardBuilder() {
           <h2>Workspace command center</h2>
         </div>
         <span class="status-pill inbox-blue">${widgets.filter((widget) => widget.visible).length}/${widgets.length} widgets</span>
+      </div>
+      <div class="dashboard-layout-controls">
+        <label>
+          <span>Saved layout</span>
+          <select id="dashboard-layout-select">
+            ${layouts.map((layout) => `<option value="${layout.id}" ${layout.id === selectedLayout?.id ? "selected" : ""}>${escapeHtml(layout.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Layout name</span>
+          <input id="dashboard-layout-name" value="${escapeHtml(selectedLayout?.name || "Command Center")}" placeholder="Dashboard layout name">
+        </label>
+        <button class="button button-secondary compact-button" type="button" id="dashboard-apply-layout">Apply</button>
+        <button class="button button-primary compact-button" type="button" id="dashboard-save-named-layout">Save Layout</button>
       </div>
       <div class="dashboard-widget-picker">
         ${dashboardWidgetCatalog.map((widget) => {
@@ -7490,7 +7594,7 @@ function renderDashboardBuilder() {
           `;
         }).join("")}
       </div>
-      <button class="button button-secondary compact-button" type="button" id="dashboard-save-layout">Save Dashboard</button>
+      <button class="button button-secondary compact-button" type="button" id="dashboard-save-layout">Update Visible Widgets</button>
     </section>
   `;
 }
@@ -10945,8 +11049,9 @@ function renderDataManagement() {
             <textarea id="switcher-import-payload" rows="10" placeholder="Paste a task export. Headers like title/name, project/list/board, assignee, status, priority, due date, and description are supported."></textarea>
           </label>
           <p class="settings-help">This importer creates missing projects, maps common task fields, and keeps a backup before changing the workspace. It is intentionally conservative so messy exports do not overwrite existing work.</p>
-          <button class="button button-primary" type="button" id="switcher-import-button">Import Tasks</button>
+          <button class="button button-primary" type="button" id="switcher-import-button">Preview Import</button>
         </div>
+        ${renderSwitcherImportPreview()}
       </section>
 
       <section class="panel">
@@ -10958,6 +11063,48 @@ function renderDataManagement() {
         </div>
         ${renderBackendChecklist()}
       </section>
+    </div>
+  `;
+}
+
+function renderSwitcherImportPreview() {
+  const preview = normalizeSwitcherImportPreview(state.switcherImportPreview);
+  if (!preview) {
+    return `
+      <div class="switcher-preview-empty">
+        <strong>No import preview yet</strong>
+        <span>Paste an export and preview it before applying changes.</span>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="switcher-preview-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Review</p>
+          <h3>${escapeHtml(preview.source)} import preview</h3>
+        </div>
+        <span class="status-pill inbox-neutral">${escapeHtml(formatTimestamp(preview.createdAt))}</span>
+      </div>
+      <div class="metric-grid compact-metrics">
+        ${metric("Rows read", preview.stats.rows)}
+        ${metric("Tasks ready", preview.stats.tasks)}
+        ${metric("Projects", preview.stats.projects)}
+        ${metric("Skipped", preview.stats.skipped)}
+      </div>
+      <div class="switcher-preview-list">
+        ${preview.samples.map((sample) => `
+          <article>
+            <strong>${escapeHtml(sample.title || "Untitled task")}</strong>
+            <span>${escapeHtml(sample.projectName || "Imported project")} / ${escapeHtml(sample.assignee || "Unassigned")} / ${escapeHtml(sample.status || "todo")} / ${escapeHtml(sample.priority || "normal")}</span>
+          </article>
+        `).join("")}
+      </div>
+      <div class="data-actions import-actions">
+        <button class="button button-primary" type="button" id="switcher-apply-preview">Apply Import</button>
+        <button class="button button-secondary" type="button" id="switcher-clear-preview">Clear Preview</button>
+      </div>
     </div>
   `;
 }
@@ -13432,6 +13579,11 @@ function saveDashboardLayout() {
     id: widget.id,
     visible: document.querySelector(`[data-dashboard-widget="${widget.id}"]`)?.checked !== false
   }));
+  state.dashboardLayouts = normalizeDashboardLayouts(state.dashboardLayouts).map((layout) => (
+    layout.id === state.selectedDashboardLayoutId
+      ? { ...layout, widgets: state.dashboardWidgets, updatedAt: new Date().toISOString() }
+      : layout
+  ));
   addAuditEvent({
     action: "dashboard_layout_update",
     detail: `Saved ${state.dashboardWidgets.filter((widget) => widget.visible).length} dashboard widgets`
@@ -13441,26 +13593,80 @@ function saveDashboardLayout() {
   showToast("Dashboard layout saved", "success");
 }
 
+function saveNamedDashboardLayout() {
+  const widgets = dashboardWidgetCatalog.map((widget) => ({
+    id: widget.id,
+    visible: document.querySelector(`[data-dashboard-widget="${widget.id}"]`)?.checked !== false
+  }));
+  const name = document.querySelector("#dashboard-layout-name")?.value.trim() || "Untitled dashboard";
+  const selectedId = document.querySelector("#dashboard-layout-select")?.value || state.selectedDashboardLayoutId || "";
+  const layouts = normalizeDashboardLayouts(state.dashboardLayouts);
+  const existing = layouts.find((layout) => layout.id === selectedId && layout.name.toLowerCase() === name.toLowerCase());
+  const now = new Date().toISOString();
+  const layout = {
+    id: existing?.id || uid("dashboard-layout"),
+    name,
+    widgets,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now
+  };
+
+  state.dashboardWidgets = widgets;
+  state.dashboardLayouts = normalizeDashboardLayouts([
+    layout,
+    ...layouts.filter((item) => item.id !== layout.id)
+  ]);
+  state.selectedDashboardLayoutId = layout.id;
+  addAuditEvent({
+    action: "dashboard_named_layout_save",
+    detail: `Saved dashboard layout ${layout.name}`
+  });
+  saveState();
+  render();
+  showToast(`Saved ${layout.name}`, "success");
+}
+
+function applyDashboardLayout() {
+  const selectedId = document.querySelector("#dashboard-layout-select")?.value || state.selectedDashboardLayoutId;
+  const layout = normalizeDashboardLayouts(state.dashboardLayouts).find((item) => item.id === selectedId);
+  if (!layout) {
+    showToast("Pick a dashboard layout first", "info");
+    return;
+  }
+
+  state.dashboardWidgets = normalizeDashboardWidgets(layout.widgets);
+  state.selectedDashboardLayoutId = layout.id;
+  addAuditEvent({
+    action: "dashboard_named_layout_apply",
+    detail: `Applied dashboard layout ${layout.name}`
+  });
+  saveState();
+  render();
+  showToast(`Applied ${layout.name}`, "success");
+}
+
 function sendWorkspaceChatMessage() {
   const body = document.querySelector("#chat-message-body")?.value.trim() || "";
   if (!body) {
     showToast("Write a message first", "info");
     return;
   }
+  const message = {
+    id: uid("chat"),
+    channel: document.querySelector("#chat-channel")?.value || "general",
+    author: activeMemberId(),
+    body,
+    projectId: document.querySelector("#chat-project")?.value || "",
+    createdAt: new Date().toISOString()
+  };
   state.chatMessages = normalizeChatMessages([
     ...state.chatMessages,
-    {
-      id: uid("chat"),
-      channel: document.querySelector("#chat-channel")?.value || "general",
-      author: activeMemberId(),
-      body,
-      projectId: document.querySelector("#chat-project")?.value || "",
-      createdAt: new Date().toISOString()
-    }
+    message
   ]);
   addAuditEvent({ action: "chat_message", detail: "Posted a workspace chat message" });
   saveState();
   render();
+  syncRecordToApi("chatMessages", message, "Chat synced to API", false);
   showToast("Message sent", "success");
 }
 
@@ -13489,6 +13695,7 @@ function addWhiteboardNote() {
   addAuditEvent({ action: "whiteboard_note", detail: `Added ${item.type} to ${board.title}` });
   saveState();
   render();
+  syncRecordToApi("whiteboards", state.whiteboards[0], "Whiteboard synced to API", false);
   showToast("Board note added", "success");
 }
 
@@ -13712,8 +13919,15 @@ function importSwitcherPayload() {
   }
   try {
     const rows = format === "json" ? rowsFromSwitcherJson(payload) : rowsFromSwitcherCsv(payload);
-    const result = applySwitcherRows(rows, source);
-    showToast(`Imported ${result.tasks} tasks and ${result.projects} projects`, "success");
+    const preview = prepareSwitcherImport(rows, source);
+    state.switcherImportPreview = normalizeSwitcherImportPreview(preview);
+    addAuditEvent({
+      action: "switcher_import_preview",
+      detail: `Previewed ${preview.stats.tasks} tasks from ${source}`
+    });
+    saveState();
+    renderDataManagement();
+    showToast(`Preview ready: ${preview.stats.tasks} tasks`, "success");
   } catch (error) {
     showToast(`Import failed: ${error.message}`, "info");
   }
@@ -13782,18 +13996,22 @@ function importValue(row, keys) {
   return "";
 }
 
-function applySwitcherRows(rows, source) {
-  saveWorkspaceBackups([workspaceBackupRecord(`Before ${source} import`), ...loadWorkspaceBackups()]);
+function prepareSwitcherImport(rows, source) {
   const now = new Date().toISOString();
   const existingProjectNames = new Map(state.projects.map((project) => [project.name.toLowerCase(), project]));
   const nextProjects = [...state.projects];
   const nextTasks = [...state.tasks];
-  let projectCount = 0;
-  let taskCount = 0;
+  const preparedProjects = [];
+  const preparedTasks = [];
+  const samples = [];
+  let skipped = 0;
 
   rows.forEach((row, index) => {
     const title = importValue(row, ["title", "task", "name", "task_name", "card_name", "item_name", "summary"]);
-    if (!title) return;
+    if (!title) {
+      skipped += 1;
+      return;
+    }
     const projectNameValue = importValue(row, ["project", "list", "board", "space", "folder", "group", "section", "workspace"]) || `${source} Import`;
     const projectKey = projectNameValue.toLowerCase();
     let project = existingProjectNames.get(projectKey);
@@ -13808,8 +14026,8 @@ function applySwitcherRows(rows, source) {
         dueDate: ""
       });
       nextProjects.push(project);
+      preparedProjects.push(project);
       existingProjectNames.set(projectKey, project);
-      projectCount += 1;
     }
     const task = normalizeTaskRecord({
       id: uniqueImportedId(`task-${slugFromName(title)}`, nextTasks),
@@ -13828,19 +14046,71 @@ function applySwitcherRows(rows, source) {
     });
     task.sortOrder = index;
     nextTasks.push(task);
-    taskCount += 1;
+    preparedTasks.push(task);
+    samples.push({
+      title: task.title,
+      projectName: project.name,
+      assignee: memberName(task.assignee),
+      status: task.status,
+      priority: task.priority
+    });
   });
 
-  if (!taskCount) throw new Error("No tasks found in import payload");
-  state.projects = nextProjects;
-  state.tasks = nextTasks;
+  if (!preparedTasks.length) throw new Error("No tasks found in import payload");
+  return {
+    id: uid("switcher-preview"),
+    source,
+    createdAt: now,
+    stats: {
+      rows: rows.length,
+      projects: preparedProjects.length,
+      tasks: preparedTasks.length,
+      skipped
+    },
+    projects: preparedProjects,
+    tasks: preparedTasks,
+    samples: samples.slice(0, 6)
+  };
+}
+
+function applySwitcherRows(rows, source) {
+  const preview = prepareSwitcherImport(rows, source);
+  return applySwitcherPreview(preview);
+}
+
+function applySwitcherImportPreview() {
+  const preview = normalizeSwitcherImportPreview(state.switcherImportPreview);
+  if (!preview) {
+    showToast("Preview an import before applying it", "info");
+    return;
+  }
+  const result = applySwitcherPreview(preview);
+  showToast(`Imported ${result.tasks} tasks and ${result.projects} projects`, "success");
+}
+
+function applySwitcherPreview(preview) {
+  saveWorkspaceBackups([workspaceBackupRecord(`Before ${preview.source} import`), ...loadWorkspaceBackups()]);
+  const projectIds = new Set(state.projects.map((project) => project.id));
+  const taskIds = new Set(state.tasks.map((task) => task.id));
+  const projects = preview.projects.filter((project) => !projectIds.has(project.id));
+  const tasks = preview.tasks.filter((task) => !taskIds.has(task.id));
+  state.projects = [...state.projects, ...projects];
+  state.tasks = [...state.tasks, ...tasks];
+  state.switcherImportPreview = null;
   addAuditEvent({
     action: "switcher_import",
-    detail: `Imported ${taskCount} tasks from ${source}`
+    detail: `Imported ${tasks.length} tasks from ${preview.source}`
   });
   saveState();
   render();
-  return { projects: projectCount, tasks: taskCount };
+  return { projects: projects.length, tasks: tasks.length };
+}
+
+function clearSwitcherImportPreview() {
+  state.switcherImportPreview = null;
+  saveState();
+  renderDataManagement();
+  showToast("Import preview cleared", "info");
 }
 
 function uniqueImportedId(base, collection) {
@@ -14717,6 +14987,18 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const dashboardSaveNamedLayoutButton = event.target.closest("#dashboard-save-named-layout");
+  if (dashboardSaveNamedLayoutButton) {
+    saveNamedDashboardLayout();
+    return;
+  }
+
+  const dashboardApplyLayoutButton = event.target.closest("#dashboard-apply-layout");
+  if (dashboardApplyLayoutButton) {
+    applyDashboardLayout();
+    return;
+  }
+
   const chatSendButton = event.target.closest("#chat-send");
   if (chatSendButton) {
     sendWorkspaceChatMessage();
@@ -14966,6 +15248,18 @@ document.addEventListener("click", (event) => {
   const switcherImportButton = event.target.closest("#switcher-import-button");
   if (switcherImportButton) {
     importSwitcherPayload();
+    return;
+  }
+
+  const switcherApplyPreviewButton = event.target.closest("#switcher-apply-preview");
+  if (switcherApplyPreviewButton) {
+    applySwitcherImportPreview();
+    return;
+  }
+
+  const switcherClearPreviewButton = event.target.closest("#switcher-clear-preview");
+  if (switcherClearPreviewButton) {
+    clearSwitcherImportPreview();
     return;
   }
 
