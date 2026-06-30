@@ -267,6 +267,34 @@ function createServer(options = {}) {
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/api/scheduler/notifications/due") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const reminders = await dueNotificationRemindersForScheduler(storage, session);
+        sendJson(response, 200, {
+          reminders,
+          count: reminders.length,
+          generatedAt: new Date().toISOString()
+        });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/scheduler/notifications/run") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const result = await runNotificationScheduler(storage, {
+          session,
+          actorId: session.user.id,
+          source: "manual"
+        });
+        sendJson(response, 200, result);
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/payments/config") {
         if (!hasPermission(session, "workspace:read")) {
           sendError(response, 403, "Missing workspace read permission");
@@ -801,6 +829,14 @@ async function buildBackendHealth(storage, session) {
       detail: hasPermission(session, "audit:read") ? "Audit events are available to admins and project managers" : "Current role cannot read audit events"
     },
     {
+      id: "notification-scheduler",
+      label: "Notification scheduler",
+      done: true,
+      detail: envFlag("AGORA_SCHEDULER_ENABLED", false)
+        ? "API scheduler worker is enabled"
+        : "Scheduler endpoints are available for cron or manual runs"
+    },
+    {
       id: "production-mode",
       label: "Production mode",
       done: storageDriver === "supabase" && authDriver === "supabase",
@@ -829,6 +865,81 @@ async function buildBackendHealth(storage, session) {
     records: collectionReports,
     readiness,
     generatedAt: new Date().toISOString()
+  };
+}
+
+function schedulerRecordFilters(session) {
+  if (!session) return {};
+  const filters = scopedRecordFilters(session, {});
+  if (hasPermission(session, "members:write")) return filters;
+  return {
+    ...filters,
+    memberId: session.user.id
+  };
+}
+
+async function dueNotificationRemindersForScheduler(storage, session = null) {
+  const today = new Date().toISOString().slice(0, 10);
+  const reminders = await storage.loadRecords("notificationReminders", schedulerRecordFilters(session));
+  return reminders
+    .filter((reminder) => reminder.status === "scheduled")
+    .filter((reminder) => cleanString(reminder.remindAt) <= today)
+    .filter((reminder) => !cleanString(reminder.sentAt))
+    .sort((a, b) => cleanString(a.remindAt).localeCompare(cleanString(b.remindAt)));
+}
+
+async function runNotificationScheduler(storage, options = {}) {
+  const reminders = await dueNotificationRemindersForScheduler(storage, options.session || null);
+  const now = new Date().toISOString();
+  const actorId = options.actorId || "scheduler";
+  const source = options.source || "worker";
+  const processed = [];
+
+  for (const reminder of reminders) {
+    const nextReminder = {
+      ...reminder,
+      sentAt: now,
+      updatedAt: now
+    };
+    const savedReminder = await storage.upsertRecord("notificationReminders", nextReminder, {
+      storage: storage.driver || "json-file",
+      updatedBy: actorId,
+      action: "notification_scheduler_reminder_sent"
+    });
+    const history = await storage.upsertRecord("notificationHistory", {
+      id: `notification-history-${crypto.randomUUID()}`,
+      memberId: reminder.memberId || "",
+      kind: "reminder-fired",
+      title: reminder.title || "Reminder",
+      message: reminder.message || "Reminder is due.",
+      reason: `Scheduled for ${reminder.remindAt}.`,
+      count: 1,
+      channel: "server scheduler",
+      createdAt: now,
+      updatedAt: now
+    }, {
+      storage: storage.driver || "json-file",
+      updatedBy: actorId,
+      action: "notification_scheduler_history"
+    });
+    processed.push({ reminder: savedReminder, history });
+  }
+
+  if (processed.length) {
+    await storage.appendAuditEvent({
+      actorId,
+      action: "notification_scheduler_run",
+      workspaceId: workspace.id,
+      detail: `${source} scheduler processed ${processed.length} reminder${processed.length === 1 ? "" : "s"}`
+    });
+  }
+
+  return {
+    ok: true,
+    processed: processed.length,
+    reminders: processed.map((item) => item.reminder),
+    history: processed.map((item) => item.history),
+    generatedAt: now
   };
 }
 
@@ -3231,13 +3342,28 @@ function sendError(response, statusCode, message) {
 }
 
 if (require.main === module) {
-  const server = createServer();
+  const storage = createStorage();
+  const server = createServer({ storage });
+  if (envFlag("AGORA_SCHEDULER_ENABLED", false)) {
+    const intervalMs = positiveNumber(process.env.AGORA_SCHEDULER_INTERVAL_SECONDS, 60) * 1000;
+    windowlessInterval(() => {
+      runNotificationScheduler(storage, { source: "worker" }).catch((error) => {
+        console.error(`Agora scheduler failed: ${error.message}`);
+      });
+    }, intervalMs);
+  }
   server.listen(PORT, "127.0.0.1", () => {
     console.log(`Agora API listening at http://127.0.0.1:${PORT}`);
   });
 }
 
+function windowlessInterval(callback, intervalMs) {
+  callback();
+  return setInterval(callback, intervalMs);
+}
+
 module.exports = {
   createServer,
-  rolePermissions
+  rolePermissions,
+  runNotificationScheduler
 };

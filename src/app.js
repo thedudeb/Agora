@@ -9115,6 +9115,7 @@ function renderNotificationRemindersPanel() {
         <div class="panel-actions">
           <span class="status-pill ${dueCount ? "inbox-amber" : "inbox-neutral"}">${dueCount ? `${dueCount} due` : `${reminders.length} scheduled`}</span>
           <button class="button button-secondary compact-button" type="button" id="notification-reminder-check" ${reminders.length ? "" : "disabled"}>Check Now</button>
+          <button class="button button-secondary compact-button" type="button" id="notification-server-scheduler" ${apiSession ? "" : "disabled"}>Run Server</button>
         </div>
       </div>
       <div class="reminder-list">
@@ -16888,6 +16889,33 @@ async function syncFileToApi(file, action = "File synced") {
   await syncRecordToApi("files", file, action);
 }
 
+async function runServerNotificationScheduler() {
+  if (!apiSession) {
+    showToast("Connect to the API before running the server scheduler", "info");
+    return;
+  }
+  try {
+    const result = await apiRequest("/api/scheduler/notifications/run", {
+      method: "POST"
+    });
+    let changed = false;
+    if (Array.isArray(result.reminders)) {
+      changed = mergeCollectionFromApi("notificationReminders", result.reminders) || changed;
+    }
+    if (Array.isArray(result.history)) {
+      changed = mergeCollectionFromApi("notificationHistory", result.history) || changed;
+    }
+    if (changed) {
+      markRealtimeChanged();
+      saveState();
+      render();
+    }
+    showToast(result.processed ? `Server scheduler processed ${result.processed} reminder${result.processed === 1 ? "" : "s"}` : "No due reminders on the server", result.processed ? "success" : "info");
+  } catch (error) {
+    showToast(`Server scheduler failed: ${error.message}`, "info");
+  }
+}
+
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator)) return;
 
@@ -17473,6 +17501,12 @@ document.addEventListener("click", (event) => {
   const notificationReminderCheckButton = event.target.closest("#notification-reminder-check");
   if (notificationReminderCheckButton) {
     runNotificationReminderScheduler({ silent: false });
+    return;
+  }
+
+  const notificationServerSchedulerButton = event.target.closest("#notification-server-scheduler");
+  if (notificationServerSchedulerButton) {
+    runServerNotificationScheduler();
     return;
   }
 

@@ -64,6 +64,8 @@ Agora can use Supabase Postgres for API persistence without adding a Node depend
 AGORA_STORAGE_DRIVER=supabase
 AGORA_AUTH_DRIVER=supabase
 AGORA_WORKSPACE_ID=workspace-acme
+AGORA_SCHEDULER_ENABLED=false
+AGORA_SCHEDULER_INTERVAL_SECONDS=60
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
@@ -77,12 +79,14 @@ npm run dev:api
 
 Keep `SUPABASE_SERVICE_ROLE_KEY` on the server only. `SUPABASE_ANON_KEY` is used by the API to validate Supabase Auth access tokens.
 
-The first migration creates the snapshot/audit tables plus structured record tables for `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, and `presence`. The second migration creates `agora_workspace_memberships`, RLS helper functions, and policies for Supabase Auth users. The JSON driver stores records inside the workspace snapshot for local development; the Supabase driver writes them to dedicated `agora_*` tables through the same `/api/records/:collection` API. File objects are stored locally under `server/data/uploads/` with the JSON driver, or in the private Supabase Storage bucket configured by `AGORA_SUPABASE_STORAGE_BUCKET`.
+The first migration creates the snapshot/audit tables plus structured record tables for work records, collaboration records, first-class notification records, inbox state, and integration settings. The second migration creates `agora_workspace_memberships`, RLS helper functions, and policies for Supabase Auth users. The JSON driver stores records inside the workspace snapshot for local development; the Supabase driver writes them to dedicated `agora_*` tables through the same `/api/records/:collection` API. File objects are stored locally under `server/data/uploads/` with the JSON driver, or in the private Supabase Storage bucket configured by `AGORA_SUPABASE_STORAGE_BUCKET`.
 
 ## Endpoints
 
 - `GET /api/health`: service health and active workspace metadata.
 - `GET /api/backend/health`: authenticated backend readiness, storage/auth drivers, workspace snapshot metadata, structured collection counts, production-mode status, and current session scope.
+- `GET /api/scheduler/notifications/due`: returns due, unsent notification reminders visible to the authenticated session.
+- `POST /api/scheduler/notifications/run`: processes due reminders, marks them sent, and writes notification-history records. Use it from trusted cron, or set `AGORA_SCHEDULER_ENABLED=true` to run the scheduler inside the API process.
 - `POST /api/auth/signup`: creates the first workspace owner account, or accepts a pending invited account. Body: `{ "name": "Mara Chen", "email": "mara@example.com", "password": "8+ characters" }`.
 - `POST /api/auth/demo-login`: creates a demo session when `AGORA_DEMO_AUTH=true`. Body: `{ "memberId": "mara" }`.
 - `POST /api/auth/login`: creates a passwordless session for an accepted workspace user when `AGORA_PASSWORDLESS_AUTH=true`. Body: `{ "email": "jordan@example.com" }`.
