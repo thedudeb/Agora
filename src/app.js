@@ -356,6 +356,32 @@ const integrationSyncModes = [
   { id: "two-way", label: "Two-way" }
 ];
 
+const integrationEventOptions = ["task.updated", "approval.requested", "comment.created", "file.shared", "daily.digest", "intake.submitted"];
+
+const automationTriggerOptions = [
+  { id: "task_due_soon", label: "Task due soon" },
+  { id: "task_blocked", label: "Task is blocked" },
+  { id: "intake_high", label: "High urgency intake" },
+  { id: "approval_pending", label: "Approval pending" },
+  { id: "milestone_due", label: "Milestone due soon" }
+];
+
+const automationConditionOptions = [
+  { id: "any", label: "Any matching record" },
+  { id: "project", label: "Specific project" },
+  { id: "assignee", label: "Specific assignee" },
+  { id: "company", label: "Specific company" },
+  { id: "priority", label: "Specific priority" }
+];
+
+const automationActionOptions = [
+  { id: "create_task", label: "Create follow-up task" },
+  { id: "set_risk", label: "Set risk field" },
+  { id: "add_activity", label: "Record activity" },
+  { id: "draft_update", label: "Draft client update" },
+  { id: "notify_channel", label: "Notify integration channel" }
+];
+
 const themePresets = [
   {
     id: "agora",
@@ -728,7 +754,10 @@ const seedData = {
           syncMode: "two-way",
           owner: "mara",
           notes: "Local API is the canonical adapter surface for self-hosted integrations.",
-          lastSyncedAt: "2026-06-27T12:00:00.000Z"
+          lastSyncedAt: "2026-06-27T12:00:00.000Z",
+          health: "healthy",
+          events: ["task.updated", "approval.requested", "comment.created"],
+          secretStatus: "configured"
         },
         {
           id: "webhooks",
@@ -736,7 +765,10 @@ const seedData = {
           syncMode: "outbound",
           owner: "eli",
           notes: "Use signed outbound events for automations and external reporting.",
-          lastSyncedAt: ""
+          lastSyncedAt: "",
+          health: "needs-config",
+          events: ["task.updated", "approval.requested"],
+          secretStatus: "missing"
         },
         {
           id: "github",
@@ -744,7 +776,10 @@ const seedData = {
           syncMode: "inbound",
           owner: "eli",
           notes: "Map pull requests and issues back to project tasks.",
-          lastSyncedAt: ""
+          lastSyncedAt: "",
+          health: "planned",
+          events: ["task.updated"],
+          secretStatus: "not-required"
         }
       ]
     },
@@ -1569,6 +1604,11 @@ const seedData = {
       name: "Convert high urgency intake",
       trigger: "Open intake urgency is High",
       action: "Create a task in the intake form project",
+      triggerKind: "intake_high",
+      conditionKind: "any",
+      conditionValue: "",
+      actionKind: "create_task",
+      actionTarget: "intake triage",
       enabled: true,
       lastRun: "",
       runCount: 0
@@ -1578,6 +1618,11 @@ const seedData = {
       name: "Flag blocked work",
       trigger: "Task has open dependencies",
       action: "Record an activity alert for the task owner",
+      triggerKind: "task_blocked",
+      conditionKind: "any",
+      conditionValue: "",
+      actionKind: "add_activity",
+      actionTarget: "task owner",
       enabled: true,
       lastRun: "",
       runCount: 0
@@ -1587,6 +1632,11 @@ const seedData = {
       name: "Escalate due-soon risk",
       trigger: "Open task is due within 7 days",
       action: "Set Risk custom field to High",
+      triggerKind: "task_due_soon",
+      conditionKind: "priority",
+      conditionValue: "high",
+      actionKind: "set_risk",
+      actionTarget: "High",
       enabled: true,
       lastRun: "",
       runCount: 0
@@ -1596,6 +1646,11 @@ const seedData = {
       name: "Watch upcoming milestones",
       trigger: "Milestone is due within 14 days",
       action: "Record a milestone watch activity",
+      triggerKind: "milestone_due",
+      conditionKind: "any",
+      conditionValue: "",
+      actionKind: "add_activity",
+      actionTarget: "project activity",
       enabled: true,
       lastRun: "",
       runCount: 0
@@ -1909,7 +1964,7 @@ function normalizeState(nextState) {
     intakeSubmissions: Array.isArray(nextState.intakeSubmissions) ? nextState.intakeSubmissions : seedData.intakeSubmissions,
     projectTemplates: normalizeProjectTemplates(nextState.projectTemplates, nextState.deletedProjectTemplateIds),
     taskTemplates: Array.isArray(nextState.taskTemplates) ? nextState.taskTemplates : seedData.taskTemplates,
-    automations: Array.isArray(nextState.automations) ? nextState.automations : seedData.automations,
+    automations: normalizeAutomations(nextState.automations),
     automationHistory: Array.isArray(nextState.automationHistory) ? nextState.automationHistory : [],
     operatorActions: Array.isArray(nextState.operatorActions) ? nextState.operatorActions : [],
     companies: nextState.companies.map(normalizeCompanyRecord),
@@ -2029,13 +2084,19 @@ function normalizeIntegrationConnection(connection = {}) {
   const catalogItem = integrationCatalog.find((item) => item.id === connection.id);
   if (!catalogItem) return null;
   const memberIds = new Set(members.map((member) => member.id));
+  const events = Array.isArray(connection.events)
+    ? connection.events.filter((eventName) => integrationEventOptions.includes(eventName))
+    : catalogItem.signals.slice(0, 2).map((signal) => signal.toLowerCase().replace(/[^a-z0-9]+/g, ".")).filter((eventName) => integrationEventOptions.includes(eventName));
   return {
     id: catalogItem.id,
     status: integrationStatuses.some((option) => option.id === connection.status) ? connection.status : "planned",
     syncMode: integrationSyncModes.some((option) => option.id === connection.syncMode) ? connection.syncMode : "none",
     owner: memberIds.has(connection.owner) ? connection.owner : "",
     notes: String(connection.notes || "").trim().slice(0, 180),
-    lastSyncedAt: connection.lastSyncedAt || ""
+    lastSyncedAt: connection.lastSyncedAt || "",
+    health: ["healthy", "planned", "needs-config", "error"].includes(connection.health) ? connection.health : connection.status === "connected" ? "healthy" : "planned",
+    events: events.length ? events : ["task.updated"],
+    secretStatus: ["configured", "missing", "not-required"].includes(connection.secretStatus) ? connection.secretStatus : catalogItem.id === "api" || catalogItem.id === "google-calendar" ? "not-required" : "missing"
   };
 }
 
@@ -2054,6 +2115,57 @@ function normalizeWorkspaceIntegrations(integrations = {}) {
       ...(byId.get(catalogItem.id) || {})
     })).filter(Boolean)
   };
+}
+
+function normalizeAutomationRule(automation = {}) {
+  const triggerKind = automationTriggerOptions.some((option) => option.id === automation.triggerKind) ? automation.triggerKind : triggerKindFromText(automation.trigger);
+  const actionKind = automationActionOptions.some((option) => option.id === automation.actionKind) ? automation.actionKind : actionKindFromText(automation.action);
+  const conditionKind = automationConditionOptions.some((option) => option.id === automation.conditionKind) ? automation.conditionKind : "any";
+  return {
+    id: automation.id || uid("automation"),
+    name: String(automation.name || "Untitled automation").trim().slice(0, 80),
+    trigger: String(automation.trigger || automationTriggerLabel(triggerKind)).trim().slice(0, 160),
+    action: String(automation.action || automationActionLabel(actionKind)).trim().slice(0, 180),
+    triggerKind,
+    conditionKind,
+    conditionValue: String(automation.conditionValue || "").trim().slice(0, 80),
+    actionKind,
+    actionTarget: String(automation.actionTarget || "").trim().slice(0, 96),
+    enabled: automation.enabled !== false,
+    lastRun: automation.lastRun || "",
+    runCount: Number(automation.runCount || 0)
+  };
+}
+
+function normalizeAutomations(automations = []) {
+  const source = Array.isArray(automations) ? automations : seedData.automations;
+  return source.map(normalizeAutomationRule).filter((automation) => automation.name).slice(0, 50);
+}
+
+function triggerKindFromText(value = "") {
+  const text = String(value).toLowerCase();
+  if (text.includes("intake")) return "intake_high";
+  if (text.includes("blocked") || text.includes("dependencies")) return "task_blocked";
+  if (text.includes("approval")) return "approval_pending";
+  if (text.includes("milestone")) return "milestone_due";
+  return "task_due_soon";
+}
+
+function actionKindFromText(value = "") {
+  const text = String(value).toLowerCase();
+  if (text.includes("risk")) return "set_risk";
+  if (text.includes("update")) return "draft_update";
+  if (text.includes("notify")) return "notify_channel";
+  if (text.includes("activity") || text.includes("alert")) return "add_activity";
+  return "create_task";
+}
+
+function automationTriggerLabel(triggerKind) {
+  return automationTriggerOptions.find((option) => option.id === triggerKind)?.label || "Task due soon";
+}
+
+function automationActionLabel(actionKind) {
+  return automationActionOptions.find((option) => option.id === actionKind)?.label || "Create follow-up task";
 }
 
 function normalizeWorkspaceCapacity(capacity = {}) {
@@ -3647,6 +3759,7 @@ function renderIntegrationsHubPanel() {
   const connected = integrations.connections.filter((connection) => connection.status === "connected");
   const planned = integrations.connections.filter((connection) => connection.status === "planned");
   const outbound = integrations.connections.filter((connection) => connection.syncMode === "outbound" || connection.syncMode === "two-way");
+  const healthy = integrations.connections.filter((connection) => connection.health === "healthy");
   return `
     <section class="panel integrations-hub-panel">
       <div class="panel-header">
@@ -3660,7 +3773,7 @@ function renderIntegrationsHubPanel() {
         ${metric("Connected", connected.length)}
         ${metric("Planned", planned.length)}
         ${metric("Outbound", outbound.length)}
-        ${metric("API access", integrations.apiAccess ? "On" : "Off")}
+        ${metric("Healthy", healthy.length)}
       </div>
       <div class="settings-form integrations-admin-form">
         <label>
@@ -3698,6 +3811,8 @@ function renderIntegrationCard(catalogItem, connection = {}) {
   const syncMode = connection.syncMode || "none";
   const owner = connection.owner || integrationSettings().defaultOwner;
   const statusClass = status === "connected" ? "inbox-green" : status === "paused" ? "inbox-amber" : "inbox-neutral";
+  const healthClass = connection.health === "healthy" ? "inbox-green" : connection.health === "error" ? "inbox-red" : connection.health === "needs-config" ? "inbox-amber" : "inbox-neutral";
+  const events = Array.isArray(connection.events) ? connection.events : ["task.updated"];
   return `
     <article class="integration-card">
       <div class="integration-card-header">
@@ -3708,6 +3823,11 @@ function renderIntegrationCard(catalogItem, connection = {}) {
         <span class="status-pill ${statusClass}">${escapeHtml(integrationStatusLabel(status))}</span>
       </div>
       <p>${escapeHtml(catalogItem.description)}</p>
+      <div class="integration-health-row">
+        <span class="status-pill ${healthClass}">${escapeHtml(connection.health || "planned")}</span>
+        <span>${escapeHtml(connection.secretStatus || "missing")} secret</span>
+        <span>${events.length} events</span>
+      </div>
       <div class="integration-signal-list">
         ${catalogItem.signals.map((signal) => `<span>${escapeHtml(signal)}</span>`).join("")}
       </div>
@@ -3735,6 +3855,26 @@ function renderIntegrationCard(catalogItem, connection = {}) {
           <span>Notes</span>
           <input data-integration-notes="${catalogItem.id}" value="${escapeHtml(connection.notes || "")}" placeholder="Adapter notes">
         </label>
+        <label>
+          <span>Health</span>
+          <select data-integration-health="${catalogItem.id}">
+            ${["planned", "needs-config", "healthy", "error"].map((option) => `<option value="${option}" ${option === connection.health ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Secret</span>
+          <select data-integration-secret="${catalogItem.id}">
+            ${["missing", "configured", "not-required"].map((option) => `<option value="${option}" ${option === connection.secretStatus ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+          </select>
+        </label>
+      </div>
+      <div class="integration-event-grid">
+        ${integrationEventOptions.map((eventName) => `
+          <label class="checkbox-label">
+            <input type="checkbox" data-integration-event="${catalogItem.id}" value="${eventName}" ${events.includes(eventName) ? "checked" : ""}>
+            <span>${escapeHtml(eventName)}</span>
+          </label>
+        `).join("")}
       </div>
       <small>${connection.lastSyncedAt ? `Last synced ${escapeHtml(formatTimestamp(connection.lastSyncedAt))}` : `${escapeHtml(integrationSyncLabel(syncMode))} adapter not synced yet`}</small>
     </article>
@@ -5933,6 +6073,9 @@ function companyPortalSnapshot(companyId) {
   const files = state.files.filter((file) => projects.some((project) => project.id === file.projectId));
   const documents = state.documents.filter((document) => projects.some((project) => project.id === document.projectId));
   const openTasks = tasks.filter((task) => task.status !== "done");
+  const updates = [...state.activities, ...state.comments]
+    .filter((item) => projects.some((project) => project.id === item.projectId || byId(state.tasks, item.taskId)?.projectId === project.id))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   return {
     projects,
@@ -5942,10 +6085,9 @@ function companyPortalSnapshot(companyId) {
     pendingApprovals: approvals.filter((approval) => approval.status !== "approved"),
     files,
     documents,
+    updates,
     progress: projectProgress(tasks),
-    updatedAt: [...state.activities, ...state.comments]
-      .filter((item) => projects.some((project) => project.id === item.projectId || byId(state.tasks, item.taskId)?.projectId === project.id))
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]?.createdAt || ""
+    updatedAt: updates[0]?.createdAt || ""
   };
 }
 
@@ -7726,6 +7868,10 @@ function renderOperatorCenter() {
         </div>
         <div class="operator-command-actions">
           <button class="button button-primary" type="button" id="ai-workspace-brief">Draft Workspace Brief</button>
+          <button class="button button-secondary" type="button" data-operator-command="triage">Triage Risks</button>
+          <button class="button button-secondary" type="button" data-operator-command="approval-packet">Approval Packet</button>
+          <button class="button button-secondary" type="button" data-operator-command="portal-updates">Portal Updates</button>
+          <button class="button button-secondary" type="button" data-operator-command="integration-digest">Integration Digest</button>
           <button class="button button-secondary" type="button" id="ai-generate-today">Generate Today</button>
           <button class="button button-secondary" type="button" data-route="settings">AI Settings</button>
         </div>
@@ -8234,6 +8380,7 @@ function renderCompanyPortal(company) {
   const sharedAssets = [...portal.documents, ...portal.files]
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
     .slice(0, 5);
+  const recentUpdates = portal.updates.slice(0, 5);
 
   return `
     <section class="panel portal-panel">
@@ -8242,7 +8389,10 @@ function renderCompanyPortal(company) {
           <p class="eyebrow">Client portal</p>
           <h2>${escapeHtml(company.name)} portal</h2>
         </div>
-        <button class="button button-primary" type="button" data-company-update="${company.id}">Draft Update</button>
+        <div class="portal-actions">
+          <button class="button button-secondary" type="button" data-copy-portal-packet="${company.id}">Copy Share Packet</button>
+          <button class="button button-primary" type="button" data-company-update="${company.id}">Draft Update</button>
+        </div>
       </div>
       <div class="portal-grid">
         <article class="portal-status-card">
@@ -8275,6 +8425,14 @@ function renderCompanyPortal(company) {
             </article>
           `).join("") : emptyState("No shared docs or files yet.")}
         </div>
+
+        <div class="portal-list">
+          <div class="portal-list-header">
+            <h3>Recent updates</h3>
+            <span>${recentUpdates.length}</span>
+          </div>
+          ${recentUpdates.length ? recentUpdates.map(renderPortalUpdateRow).join("") : emptyState("No recent portal updates yet.")}
+        </div>
       </div>
     </section>
   `;
@@ -8303,6 +8461,7 @@ function renderClientPortal() {
   const sharedAssets = [...portal.documents, ...portal.files]
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
     .slice(0, 6);
+  const recentUpdates = portal.updates.slice(0, 5);
 
   els.appView.innerHTML = `
     <section class="project-hero portal-hero">
@@ -8387,7 +8546,33 @@ function renderClientPortal() {
           ${visibleTasks.length ? visibleTasks.map(renderClientTaskSummary).join("") : emptyState("No open work is visible right now.")}
         </div>
       </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Updates</p>
+            <h2>Latest activity</h2>
+          </div>
+        </div>
+        <div class="portal-list">
+          ${recentUpdates.length ? recentUpdates.map(renderPortalUpdateRow).join("") : emptyState("No recent updates are visible yet.")}
+        </div>
+      </section>
     </div>
+  `;
+}
+
+function renderPortalUpdateRow(update) {
+  const task = update.taskId ? byId(state.tasks, update.taskId) : null;
+  const projectId = update.projectId || task?.projectId || "";
+  return `
+    <article class="portal-asset-row">
+      <div>
+        <strong>${escapeHtml(update.message || update.body || "Workspace update")}</strong>
+        <span>${escapeHtml(projectName(projectId))} / ${escapeHtml(memberName(update.memberId || update.author || currentMemberId))}</span>
+      </div>
+      <small>${formatTimestamp(update.createdAt)}</small>
+    </article>
   `;
 }
 
@@ -9875,6 +10060,43 @@ async function copyStatusReport() {
   }
 }
 
+function portalSharePacket(companyId) {
+  const company = byId(state.companies, companyId);
+  if (!company) return "";
+  const portal = companyPortalSnapshot(companyId);
+  const openTasks = portal.openTasks.slice(0, 6);
+  const approvals = portal.pendingApprovals.slice(0, 6);
+  const assets = [...portal.documents, ...portal.files]
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+    .slice(0, 6);
+  return [
+    `# ${company.name} Portal Update`,
+    "",
+    `Progress: ${portal.progress}% complete across ${portal.projects.length} ${portal.projects.length === 1 ? "project" : "projects"}.`,
+    `Open work: ${portal.openTasks.length}. Pending approvals: ${portal.pendingApprovals.length}. Shared assets: ${portal.documents.length + portal.files.length}.`,
+    "",
+    "## Approvals",
+    ...(approvals.length ? approvals.map((approval) => `- ${approval.title}: ${approvalStatusLabel(approval.status)} by ${formatDate(approval.dueDate)}.`) : ["- No approvals are pending."]),
+    "",
+    "## Next Work",
+    ...(openTasks.length ? openTasks.map((task) => `- ${task.title}: ${statusLabel(task.status)}, due ${formatDate(task.dueDate)}.`) : ["- No open work is visible right now."]),
+    "",
+    "## Shared Assets",
+    ...(assets.length ? assets.map((asset) => `- ${asset.title} (${asset.type || asset.kind}) in ${projectName(asset.projectId)}.`) : ["- No shared docs or files yet."])
+  ].join("\n");
+}
+
+async function copyPortalSharePacket(companyId) {
+  const packet = portalSharePacket(companyId);
+  if (!packet) return;
+  try {
+    await navigator.clipboard.writeText(packet);
+    showToast("Portal share packet copied", "success");
+  } catch {
+    showToast("Portal packet ready in the generated client update flow", "info");
+  }
+}
+
 function renderCompanyReportRow(row) {
   return `
     <article class="portfolio-report-row">
@@ -10506,12 +10728,30 @@ function renderAutomations() {
             <input id="automation-name" placeholder="Escalate overdue client work">
           </label>
           <label>
-            <span>When</span>
-            <input id="automation-trigger" placeholder="Task is overdue">
+            <span>Trigger</span>
+            <select id="automation-trigger-kind">
+              ${automationTriggerOptions.map((option) => `<option value="${option.id}">${escapeHtml(option.label)}</option>`).join("")}
+            </select>
           </label>
           <label>
-            <span>Then</span>
-            <input id="automation-action" placeholder="Mark risk high and notify PM">
+            <span>Condition</span>
+            <select id="automation-condition-kind">
+              ${automationConditionOptions.map((option) => `<option value="${option.id}">${escapeHtml(option.label)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Condition value</span>
+            <input id="automation-condition-value" placeholder="Project, assignee, company, or priority">
+          </label>
+          <label>
+            <span>Action</span>
+            <select id="automation-action-kind">
+              ${automationActionOptions.map((option) => `<option value="${option.id}">${escapeHtml(option.label)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Action target</span>
+            <input id="automation-action-target" placeholder="High, #delivery, client update, owner">
           </label>
           <label class="checkbox-label automation-enabled-control">
             <input id="automation-enabled" type="checkbox" checked>
@@ -11235,8 +11475,8 @@ function renderAutomationCard(automation) {
       <div>
         <span class="status-pill ${automation.enabled ? "inbox-green" : "inbox-neutral"}">${automation.enabled ? "enabled" : "paused"}</span>
         <h3>${escapeHtml(automation.name)}</h3>
-        <p><strong>When:</strong> ${escapeHtml(automation.trigger)}</p>
-        <p><strong>Then:</strong> ${escapeHtml(automation.action)}</p>
+        <p><strong>When:</strong> ${escapeHtml(automation.trigger)}${automation.conditionKind !== "any" ? ` / ${escapeHtml(automationConditionOptions.find((option) => option.id === automation.conditionKind)?.label || "Condition")}: ${escapeHtml(automation.conditionValue || "not set")}` : ""}</p>
+        <p><strong>Then:</strong> ${escapeHtml(automation.action)}${automation.actionTarget ? ` / ${escapeHtml(automation.actionTarget)}` : ""}</p>
         <div class="automation-preview">
           <span>${escapeHtml(preview.label)}</span>
           <strong>${escapeHtml(preview.value)}</strong>
@@ -11258,31 +11498,32 @@ function renderAutomationCard(automation) {
 }
 
 function automationPreview(automation) {
-  if (automation.id === "automation-high-intake") {
+  const rule = normalizeAutomationRule(automation);
+  if (rule.triggerKind === "intake_high") {
     const highSubmissions = getVisibleIntakeSubmissions().filter((submission) => submission.urgency === "High" || submission.urgency === "Urgent");
     return {
       label: "Preview",
       value: `${highSubmissions.length} intake ${highSubmissions.length === 1 ? "item" : "items"}`,
-      detail: "Would convert or flag high-urgency requests for triage."
+      detail: `Would ${automationActionLabel(rule.actionKind).toLowerCase()}${rule.actionTarget ? `: ${rule.actionTarget}` : ""}.`
     };
   }
-  if (automation.id === "automation-blocked-alert") {
-    const blocked = activeTasks().filter((task) => task.status !== "done" && isTaskBlocked(task));
+  if (rule.triggerKind === "task_blocked") {
+    const blocked = matchingAutomationTasks(rule).filter(isTaskBlocked);
     return {
       label: "Preview",
       value: `${blocked.length} blocked`,
-      detail: "Would post blocker activity and surface watched-task notifications."
+      detail: `Would ${automationActionLabel(rule.actionKind).toLowerCase()} for matching blocked work.`
     };
   }
-  if (automation.id === "automation-due-risk") {
-    const due = dueSoonTasks(activeTasks());
+  if (rule.triggerKind === "task_due_soon") {
+    const due = dueSoonTasks(matchingAutomationTasks(rule));
     return {
       label: "Preview",
       value: `${due.length} due soon`,
-      detail: "Would pull urgent due-soon work into daily planning."
+      detail: `Would ${automationActionLabel(rule.actionKind).toLowerCase()} for due-soon work.`
     };
   }
-  if (automation.id === "automation-milestone-watch") {
+  if (rule.triggerKind === "milestone_due") {
     const milestones = state.milestones.filter((milestone) => milestone.status !== "completed" && daysBetween(todayKey(), milestone.dueDate) <= 14);
     return {
       label: "Preview",
@@ -11290,9 +11531,17 @@ function automationPreview(automation) {
       detail: "Would watch upcoming milestones and create project activity."
     };
   }
+  if (rule.triggerKind === "approval_pending") {
+    const approvals = state.approvals.filter((approval) => approval.status !== "approved");
+    return {
+      label: "Preview",
+      value: `${approvals.length} approvals`,
+      detail: `Would ${automationActionLabel(rule.actionKind).toLowerCase()} for pending approvals.`
+    };
+  }
   return {
     label: "Preview",
-    value: automation.enabled ? "Ready" : "Draft",
+    value: rule.enabled ? "Ready" : "Draft",
     detail: "Run this rule manually to record its impact in history."
   };
 }
@@ -12826,11 +13075,13 @@ function updateAutomationRun(ruleId, changedCount) {
 }
 
 function runAutomation(ruleId) {
-  const automation = byId(state.automations, ruleId);
-  if (!automation || !automation.enabled) return 0;
+  const rawAutomation = byId(state.automations, ruleId);
+  if (!rawAutomation) return 0;
+  const automation = normalizeAutomationRule(rawAutomation);
+  if (!automation.enabled) return 0;
 
   let changedCount = 0;
-  if (ruleId === "automation-high-intake") {
+  if (automation.triggerKind === "intake_high") {
     state.intakeSubmissions
       .filter((submission) => !submission.taskId && submission.urgency === "High")
       .forEach((submission) => {
@@ -12841,9 +13092,9 @@ function runAutomation(ruleId) {
       });
   }
 
-  if (ruleId === "automation-blocked-alert") {
-    state.tasks
-      .filter((task) => task.status !== "done" && isTaskBlocked(task))
+  if (automation.triggerKind === "task_blocked") {
+    matchingAutomationTasks(automation)
+      .filter(isTaskBlocked)
       .forEach((task) => {
         addActivity({
           projectId: task.projectId,
@@ -12856,25 +13107,15 @@ function runAutomation(ruleId) {
       });
   }
 
-  if (ruleId === "automation-due-risk") {
-    dueSoonTasks(activeTasks())
+  if (automation.triggerKind === "task_due_soon") {
+    dueSoonTasks(matchingAutomationTasks(automation))
       .filter((task) => task.customFields?.risk !== "High")
       .forEach((task) => {
-        state.tasks = state.tasks.map((item) => item.id === task.id ? {
-          ...item,
-          customFields: { ...(item.customFields || {}), risk: "High" }
-        } : item);
-        addActivity({
-          projectId: task.projectId,
-          taskId: task.id,
-          type: "automation_risk",
-          message: `escalated risk for ${task.title}`
-        });
-        changedCount += 1;
+        changedCount += applyAutomationAction(automation, task);
       });
   }
 
-  if (ruleId === "automation-milestone-watch") {
+  if (automation.triggerKind === "milestone_due") {
     const today = todayKey();
     const limit = shiftDate(today, 14);
     state.milestones
@@ -12890,11 +13131,85 @@ function runAutomation(ruleId) {
       });
   }
 
+  if (automation.triggerKind === "approval_pending") {
+    state.approvals
+      .filter((approval) => approval.status !== "approved")
+      .filter((approval) => automation.conditionKind !== "company" || companyName(approval.companyId).toLowerCase().includes(automation.conditionValue.toLowerCase()) || approval.companyId === automation.conditionValue)
+      .forEach((approval) => {
+        const task = byId(state.tasks, approval.taskId) || getProjectTasks(approval.projectId, false).find((item) => item.status !== "done");
+        if (task) changedCount += applyAutomationAction(automation, task, approval);
+      });
+  }
+
   updateAutomationRun(ruleId, changedCount);
   saveState();
   render();
   showToast(changedCount ? `Automation ran on ${changedCount} ${changedCount === 1 ? "item" : "items"}` : "Automation ran with no changes", changedCount ? "success" : "info");
   return changedCount;
+}
+
+function matchingAutomationTasks(automation) {
+  return activeTasks().filter((task) => {
+    if (task.status === "done") return false;
+    const value = automation.conditionValue.toLowerCase();
+    if (automation.conditionKind === "project") return projectName(task.projectId).toLowerCase().includes(value) || task.projectId === automation.conditionValue;
+    if (automation.conditionKind === "assignee") return memberName(task.assignee).toLowerCase().includes(value) || task.assignee === automation.conditionValue;
+    if (automation.conditionKind === "company") return projectCompany(task.projectId).name.toLowerCase().includes(value) || projectCompany(task.projectId).id === automation.conditionValue;
+    if (automation.conditionKind === "priority") return task.priority === value || priorityLabel(task.priority).toLowerCase() === value;
+    return true;
+  });
+}
+
+function applyAutomationAction(automation, task, approval = null) {
+  if (!task) return 0;
+  if (automation.actionKind === "set_risk") {
+    state.tasks = state.tasks.map((item) => item.id === task.id ? {
+      ...item,
+      customFields: { ...(item.customFields || {}), risk: automation.actionTarget || "High" }
+    } : item);
+    addActivity({
+      projectId: task.projectId,
+      taskId: task.id,
+      type: "automation_risk",
+      message: `set risk for ${task.title} to ${automation.actionTarget || "High"}`
+    });
+    return 1;
+  }
+  if (automation.actionKind === "create_task") {
+    const project = byId(state.projects, task.projectId);
+    if (!project) return 0;
+    createOperatorTask({
+      project,
+      sourceTask: task,
+      title: `${automation.actionTarget || "Follow up"}: ${task.title}`,
+      description: `Automation ${automation.name} created this follow-up from ${task.title}.`,
+      assignee: task.assignee,
+      priority: task.priority === "urgent" ? "urgent" : "high",
+      tags: ["automation"]
+    });
+    return 1;
+  }
+  if (automation.actionKind === "draft_update") {
+    const document = draftCompanyUpdate(projectCompany(task.projectId).id);
+    return document ? 1 : 0;
+  }
+  if (automation.actionKind === "notify_channel") {
+    addActivity({
+      projectId: task.projectId,
+      taskId: task.id,
+      type: "automation_notify",
+      message: `would notify ${automation.actionTarget || "connected channel"} about ${approval?.title || task.title}`
+    });
+    return 1;
+  }
+  addActivity({
+    projectId: task.projectId,
+    taskId: task.id,
+    memberId: task.assignee,
+    type: "automation_action",
+    message: `${automation.name} recorded activity for ${approval?.title || task.title}`
+  });
+  return 1;
 }
 
 function toggleAutomation(ruleId) {
@@ -12908,8 +13223,13 @@ function saveAutomationRule() {
   const id = document.querySelector("#automation-id")?.value || uid("automation");
   const existing = byId(state.automations, id);
   const name = document.querySelector("#automation-name")?.value.trim();
-  const trigger = document.querySelector("#automation-trigger")?.value.trim();
-  const action = document.querySelector("#automation-action")?.value.trim();
+  const triggerKind = document.querySelector("#automation-trigger-kind")?.value || "task_due_soon";
+  const conditionKind = document.querySelector("#automation-condition-kind")?.value || "any";
+  const conditionValue = document.querySelector("#automation-condition-value")?.value.trim() || "";
+  const actionKind = document.querySelector("#automation-action-kind")?.value || "create_task";
+  const actionTarget = document.querySelector("#automation-action-target")?.value.trim() || "";
+  const trigger = automationTriggerLabel(triggerKind);
+  const action = automationActionLabel(actionKind);
   const enabled = Boolean(document.querySelector("#automation-enabled")?.checked);
 
   if (!name || !trigger || !action) {
@@ -12922,6 +13242,11 @@ function saveAutomationRule() {
     name,
     trigger,
     action,
+    triggerKind,
+    conditionKind,
+    conditionValue,
+    actionKind,
+    actionTarget,
     enabled,
     lastRun: existing?.lastRun || "",
     runCount: Number(existing?.runCount || 0)
@@ -12942,6 +13267,11 @@ function editAutomationRule(ruleId) {
   const nameInput = document.querySelector("#automation-name");
   const triggerInput = document.querySelector("#automation-trigger");
   const actionInput = document.querySelector("#automation-action");
+  const triggerKindInput = document.querySelector("#automation-trigger-kind");
+  const conditionKindInput = document.querySelector("#automation-condition-kind");
+  const conditionValueInput = document.querySelector("#automation-condition-value");
+  const actionKindInput = document.querySelector("#automation-action-kind");
+  const actionTargetInput = document.querySelector("#automation-action-target");
   const enabledInput = document.querySelector("#automation-enabled");
   if (idInput) idInput.value = automation.id;
   if (nameInput) {
@@ -12950,6 +13280,11 @@ function editAutomationRule(ruleId) {
   }
   if (triggerInput) triggerInput.value = automation.trigger;
   if (actionInput) actionInput.value = automation.action;
+  if (triggerKindInput) triggerKindInput.value = automation.triggerKind || triggerKindFromText(automation.trigger);
+  if (conditionKindInput) conditionKindInput.value = automation.conditionKind || "any";
+  if (conditionValueInput) conditionValueInput.value = automation.conditionValue || "";
+  if (actionKindInput) actionKindInput.value = automation.actionKind || actionKindFromText(automation.action);
+  if (actionTargetInput) actionTargetInput.value = automation.actionTarget || "";
   if (enabledInput) enabledInput.checked = automation.enabled;
   showToast("Automation loaded for editing", "info");
 }
@@ -13162,6 +13497,50 @@ function draftOperatorClientUpdate(companyId) {
     projectId: document?.projectId || ""
   });
   return document;
+}
+
+function runOperatorCommand(command) {
+  let changedCount = 0;
+  if (command === "triage") {
+    operatorActionSuggestions(3).forEach((action) => {
+      applyOperatorSuggestion(action.type, action.projectId, action.sourceTaskId, action.approvalId, action.companyId);
+      changedCount += 1;
+    });
+  } else if (command === "approval-packet") {
+    const candidate = operatorActionSuggestions(6).find((action) => action.type === "approval_request" || action.type === "approval_chase");
+    if (candidate) {
+      applyOperatorSuggestion(candidate.type, candidate.projectId, candidate.sourceTaskId, candidate.approvalId, candidate.companyId);
+      changedCount += 1;
+    }
+  } else if (command === "portal-updates") {
+    state.companies
+      .filter((company) => company.type === "Client")
+      .slice(0, 3)
+      .forEach((company) => {
+        if (draftOperatorClientUpdate(company.id)) changedCount += 1;
+      });
+  } else if (command === "integration-digest") {
+    recordIntegrationTestEvent();
+    logOperatorAction({
+      type: "integration_digest",
+      title: "Prepared integration digest",
+      detail: "Updated connected adapter health and logged an integration test event."
+    });
+    changedCount += 1;
+  }
+
+  if (!changedCount) {
+    showToast("Operator command had nothing to apply", "info");
+    return;
+  }
+  logOperatorAction({
+    type: `command_${command}`,
+    title: `Ran ${command.replaceAll("-", " ")} command`,
+    detail: `Applied ${changedCount} ${changedCount === 1 ? "change" : "changes"} from the Operator command center.`
+  });
+  saveState();
+  render();
+  showToast(`Operator command applied ${changedCount} ${changedCount === 1 ? "change" : "changes"}`, "success");
 }
 
 function applyOperatorSuggestion(type, projectId, taskId = "", approvalId = "", companyId = "") {
@@ -13545,12 +13924,18 @@ function saveIntegrationSettings() {
     const syncMode = document.querySelector(`[data-integration-sync="${catalogItem.id}"]`)?.value || previous.syncMode || "none";
     const owner = document.querySelector(`[data-integration-owner="${catalogItem.id}"]`)?.value || "";
     const notes = document.querySelector(`[data-integration-notes="${catalogItem.id}"]`)?.value || "";
+    const health = document.querySelector(`[data-integration-health="${catalogItem.id}"]`)?.value || previous.health || "planned";
+    const secretStatus = document.querySelector(`[data-integration-secret="${catalogItem.id}"]`)?.value || previous.secretStatus || "missing";
+    const events = Array.from(document.querySelectorAll(`[data-integration-event="${catalogItem.id}"]:checked`)).map((input) => input.value);
     return normalizeIntegrationConnection({
       id: catalogItem.id,
       status,
       syncMode,
       owner,
       notes,
+      health,
+      secretStatus,
+      events,
       lastSyncedAt: status === "connected" && previous.status !== "connected" ? new Date().toISOString() : previous.lastSyncedAt
     });
   }).filter(Boolean);
@@ -13702,6 +14087,16 @@ function addWhiteboardNote() {
 function recordIntegrationTestEvent() {
   const integrations = integrationSettings();
   const connected = integrations.connections.filter((connection) => connection.status === "connected");
+  const now = new Date().toISOString();
+  state.workspace = {
+    ...state.workspace,
+    integrations: normalizeWorkspaceIntegrations({
+      ...integrations,
+      connections: integrations.connections.map((connection) => connection.status === "connected"
+        ? { ...connection, health: "healthy", lastSyncedAt: now }
+        : connection)
+    })
+  };
   addAuditEvent({
     action: "integration_test_event",
     detail: connected.length
@@ -14981,6 +15376,12 @@ document.addEventListener("click", (event) => {
   const copyStatusReportButton = event.target.closest("#copy-status-report");
   if (copyStatusReportButton) copyStatusReport();
 
+  const copyPortalPacketButton = event.target.closest("[data-copy-portal-packet]");
+  if (copyPortalPacketButton) {
+    copyPortalSharePacket(copyPortalPacketButton.dataset.copyPortalPacket);
+    return;
+  }
+
   const dashboardSaveLayoutButton = event.target.closest("#dashboard-save-layout");
   if (dashboardSaveLayoutButton) {
     saveDashboardLayout();
@@ -15160,6 +15561,12 @@ document.addEventListener("click", (event) => {
   const operatorActionButton = event.target.closest("[data-operator-action]");
   if (operatorActionButton) {
     runOperatorAction(operatorActionButton.dataset.operatorAction, operatorActionButton.dataset.operatorProject);
+    return;
+  }
+
+  const operatorCommandButton = event.target.closest("[data-operator-command]");
+  if (operatorCommandButton) {
+    runOperatorCommand(operatorCommandButton.dataset.operatorCommand);
     return;
   }
 

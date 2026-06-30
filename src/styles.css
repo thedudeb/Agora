@@ -2223,10 +2223,12 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .automation-composer {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.automation-composer label:nth-of-type(3) {
+.automation-composer label:first-of-type,
+.automation-composer .automation-enabled-control,
+.automation-composer .button {
   grid-column: 1 / -1;
 }
 
@@ -2781,6 +2783,16 @@ body[data-tutorial-target="view"] #app-view {
   gap: 6px;
 }
 
+.integration-health-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
 .integration-signal-list span {
   display: inline-flex;
   align-items: center;
@@ -2794,6 +2806,12 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .integration-control-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.integration-event-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
@@ -3652,6 +3670,13 @@ body[data-tutorial-target="view"] #app-view {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.portal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
 }
 
 .portal-hero {
@@ -5546,6 +5571,7 @@ body[data-density="compact"] .main-content {
   .integration-summary-grid,
   .capacity-summary-grid,
   .integration-control-grid,
+  .integration-event-grid,
   .workspace-chat-composer,
   .whiteboard-composer,
   .goals-grid,
