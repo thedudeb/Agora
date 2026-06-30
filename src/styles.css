@@ -2472,6 +2472,10 @@ body[data-tutorial-target="view"] #app-view {
   gap: 3px;
 }
 
+.automation-history-item > div:last-child {
+  justify-items: end;
+}
+
 .automation-history-item span {
   color: var(--muted);
   font-size: 0.78rem;
@@ -3365,6 +3369,43 @@ body[data-tutorial-target="view"] #app-view {
   overflow-wrap: anywhere;
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.trust-center-panel {
+  grid-column: 1 / -1;
+}
+
+.trust-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.trust-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.trust-card span,
+.trust-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.trust-card strong {
+  font-size: 1.2rem;
+}
+
+.trust-export-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 
 .mobile-app-panel {
@@ -5288,6 +5329,7 @@ body[data-density="compact"] .main-content {
   .goals-grid,
   .goal-meta-grid,
   .theme-option-grid,
+  .trust-grid,
   .mobile-roadmap-list,
   .onboarding-grid,
   .project-hero {
@@ -5580,6 +5622,7 @@ body[data-density="compact"] .main-content {
   .goal-meta-grid,
   .goal-project-row,
   .theme-option-grid,
+  .trust-grid,
   .onboarding-grid,
   .project-command-grid,
   .mobile-roadmap-list,

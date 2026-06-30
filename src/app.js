@@ -249,6 +249,7 @@ const workspaceRoles = [
 const settingsTabs = [
   { id: "account", label: "Account" },
   { id: "workspace", label: "Workspace" },
+  { id: "trust", label: "Trust" },
   { id: "members", label: "Members" },
   { id: "integrations", label: "Integrations" },
   { id: "payments", label: "Payments" },
@@ -740,7 +741,10 @@ const seedData = {
       provider: "local",
       model: "Agora deterministic operator",
       baseUrl: "",
-      keySource: "Server environment"
+      keySource: "Server environment",
+      dataPolicy: "Workspace only",
+      promptTemplate: "Transparent project operator",
+      auditMode: "Preview, rationale, undo"
     },
     integrations: {
       defaultOwner: "mara",
@@ -2800,7 +2804,7 @@ function canUseSettingsTab(tabId) {
   const role = currentWorkspaceRole();
   if (role === "client") return false;
   if (tabId === "members" || tabId === "security") return role === "admin";
-  if (tabId === "workspace" || tabId === "sync" || tabId === "developer" || tabId === "integrations" || tabId === "payments") return role === "admin" || role === "manager";
+  if (tabId === "workspace" || tabId === "sync" || tabId === "developer" || tabId === "integrations" || tabId === "payments" || tabId === "trust") return role === "admin" || role === "manager";
   return true;
 }
 
@@ -7960,14 +7964,18 @@ function renderOperatorActionSuggestion(action) {
 }
 
 function renderOperatorActionLogRow(action) {
+  const canUndo = action.undoType && action.undoRecordId && action.status !== "undone";
   return `
     <article class="operator-log-row">
       <div>
         <span class="status-pill inbox-neutral">${escapeHtml(action.status || "applied")}</span>
         <h3>${escapeHtml(action.title)}</h3>
         <p>${escapeHtml(action.detail || "")}</p>
+        ${action.rationale ? `<p><strong>Rationale:</strong> ${escapeHtml(action.rationale)}</p>` : ""}
+        ${Array.isArray(action.dataSources) && action.dataSources.length ? `<div class="tag-row">${action.dataSources.map((source) => `<span>${escapeHtml(source)}</span>`).join("")}</div>` : ""}
         <small>${escapeHtml(formatTimestamp(action.createdAt))} / ${escapeHtml(memberName(action.memberId || currentMemberId))}</small>
       </div>
+      ${canUndo ? `<button class="button button-secondary compact-button" type="button" data-operator-undo="${action.id}">Undo</button>` : ""}
     </article>
   `;
 }
@@ -10076,7 +10084,10 @@ function portalSharePacket(companyId) {
     `Open work: ${portal.openTasks.length}. Pending approvals: ${portal.pendingApprovals.length}. Shared assets: ${portal.documents.length + portal.files.length}.`,
     "",
     "## Approvals",
-    ...(approvals.length ? approvals.map((approval) => `- ${approval.title}: ${approvalStatusLabel(approval.status)} by ${formatDate(approval.dueDate)}.`) : ["- No approvals are pending."]),
+    ...(approvals.length ? approvals.map((approval) => `- ${approval.title}: ${approvalStatusLabel(approval.status)} by ${formatDate(approval.dueDate)}. ${approval.summary || ""}`.trim()) : ["- No approvals are pending."]),
+    "",
+    "## Decision Packet",
+    ...(approvals.length ? approvals.map((approval) => `- Review: ${approval.title}. Requested by ${memberName(approval.requester)} for ${approval.reviewer}.`) : ["- No decision packet is needed right now."]),
     "",
     "## Next Work",
     ...(openTasks.length ? openTasks.map((task) => `- ${task.title}: ${statusLabel(task.status)}, due ${formatDate(task.dueDate)}.`) : ["- No open work is visible right now."]),
@@ -10921,6 +10932,10 @@ function renderSettings() {
       </section>
       ` : ""}
 
+      ${activeSettingsTab === "trust" ? `
+      ${renderTrustCenterPanel()}
+      ` : ""}
+
       ${activeSettingsTab === "integrations" ? `
       ${renderIntegrationsHubPanel()}
 
@@ -10956,6 +10971,24 @@ function renderSettings() {
             <span>API key source</span>
             <select id="ai-key-source">
               ${["Server environment", "Self-hosted secret store", "Not required"].map((option) => `<option value="${option}" ${ai.keySource === option ? "selected" : ""}>${option}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Data policy</span>
+            <select id="ai-data-policy">
+              ${["Workspace only", "Company scoped", "Local summaries only", "No external AI"].map((option) => `<option value="${option}" ${ai.dataPolicy === option ? "selected" : ""}>${option}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Prompt template</span>
+            <select id="ai-prompt-template">
+              ${["Transparent project operator", "Client delivery PM", "Engineering release PM", "Agency operations"].map((option) => `<option value="${option}" ${ai.promptTemplate === option ? "selected" : ""}>${option}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Audit mode</span>
+            <select id="ai-audit-mode">
+              ${["Preview, rationale, undo", "Preview only", "Apply with activity log", "Disabled"].map((option) => `<option value="${option}" ${ai.auditMode === option ? "selected" : ""}>${option}</option>`).join("")}
             </select>
           </label>
           <p class="settings-help">Agora uses the local deterministic operator by default. External providers run through the API server; put keys in .env with AGORA_AI_API_KEY or OPENAI_API_KEY. Browser-saved base URLs are only used when the server enables AGORA_AI_ALLOW_CLIENT_BASE_URL.</p>
@@ -11100,6 +11133,77 @@ function renderInvitationRow(invitation, roleById) {
         ` : ""}
       </div>
     </article>
+  `;
+}
+
+function trustCenterStats() {
+  const backups = loadWorkspaceBackups();
+  const aiActions = Array.isArray(state.operatorActions) ? state.operatorActions : [];
+  const undoableActions = aiActions.filter((action) => action.undoType && action.status !== "undone");
+  return {
+    backups: backups.length,
+    exports: ["JSON", "CSV", "Markdown"].length,
+    aiActions: aiActions.length,
+    undoableActions: undoableActions.length,
+    auditEvents: (state.auditEvents || []).length + (auditEvents || []).length,
+    apiMode: apiSession ? "API connected" : "Local first"
+  };
+}
+
+function renderTrustCenterPanel() {
+  const stats = trustCenterStats();
+  const ai = aiSettings();
+  const recentActions = recentOperatorActions(8);
+  return `
+    <section class="panel trust-center-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Trust center</p>
+          <h2>Open, portable, auditable</h2>
+        </div>
+        <span class="status-pill inbox-green">No ads / no lock-in</span>
+      </div>
+      <div class="trust-grid">
+        <article class="trust-card">
+          <span>Data portability</span>
+          <strong>${stats.exports} export formats</strong>
+          <p>Workspace JSON, task CSV, time CSV, Markdown reports, portal share packets, and local backups keep your project history portable.</p>
+        </article>
+        <article class="trust-card">
+          <span>AI transparency</span>
+          <strong>${stats.aiActions} actions logged</strong>
+          <p>${escapeHtml(ai.auditMode || "Preview, rationale, undo")} with visible rationale, data sources, and undo controls for AI-created work.</p>
+        </article>
+        <article class="trust-card">
+          <span>Privacy posture</span>
+          <strong>${escapeHtml(ai.dataPolicy || "Workspace only")}</strong>
+          <p>Provider keys stay server-side, local mode needs no external AI, and client/company scopes limit what collaborators can see.</p>
+        </article>
+        <article class="trust-card">
+          <span>Auditability</span>
+          <strong>${stats.auditEvents} events</strong>
+          <p>${escapeHtml(stats.apiMode)} with local/server audit trails, integration health events, and rollbackable automation runs.</p>
+        </article>
+      </div>
+      <div class="trust-export-row">
+        <button class="button button-secondary" type="button" data-route="data">Open Exports</button>
+        <button class="button button-secondary" type="button" data-route="audit">Open Audit Log</button>
+        <button class="button button-primary" type="button" data-route="operator">Review AI Ledger</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">AI action ledger</p>
+          <h2>Recent rationale</h2>
+        </div>
+        <span class="status-pill inbox-neutral">${stats.undoableActions} undoable</span>
+      </div>
+      <div class="operator-action-log">
+        ${recentActions.length ? recentActions.map(renderOperatorActionLogRow).join("") : emptyState("AI/operator actions will appear here with rationale and undo metadata.")}
+      </div>
+    </section>
   `;
 }
 
@@ -11548,13 +11652,17 @@ function automationPreview(automation) {
 
 function renderAutomationHistory(run) {
   const automation = byId(state.automations, run.automationId);
+  const canRollback = run.rollbackAvailable && run.status !== "rolled-back";
   return `
     <article class="automation-history-item">
       <div>
         <strong>${escapeHtml(automation?.name || "Automation")}</strong>
-        <span>${formatTimestamp(run.createdAt)}</span>
+        <span>${formatTimestamp(run.createdAt)}${run.status === "rolled-back" ? " / rolled back" : ""}</span>
       </div>
-      <span>${run.changedCount} ${run.changedCount === 1 ? "change" : "changes"}</span>
+      <div>
+        <span>${run.changedCount} ${run.changedCount === 1 ? "change" : "changes"}</span>
+        ${canRollback ? `<button class="button button-secondary compact-button" type="button" data-automation-rollback="${run.id}">Rollback</button>` : ""}
+      </div>
     </article>
   `;
 }
@@ -13061,7 +13169,18 @@ function createCustomField() {
   showToast("Custom field added", "success");
 }
 
-function updateAutomationRun(ruleId, changedCount) {
+function automationRollbackState() {
+  return {
+    tasks: structuredClone(state.tasks),
+    activities: structuredClone(state.activities),
+    documents: structuredClone(state.documents),
+    approvals: structuredClone(state.approvals),
+    intakeSubmissions: structuredClone(state.intakeSubmissions),
+    dailyPlans: structuredClone(state.dailyPlans || {})
+  };
+}
+
+function updateAutomationRun(ruleId, changedCount, rollbackState = null) {
   const now = new Date().toISOString();
   state.automations = state.automations.map((automation) => automation.id === ruleId
     ? { ...automation, lastRun: now, runCount: Number(automation.runCount || 0) + 1 }
@@ -13070,6 +13189,9 @@ function updateAutomationRun(ruleId, changedCount) {
     id: uid("automation-run"),
     automationId: ruleId,
     changedCount,
+    rollbackState,
+    rollbackAvailable: Boolean(rollbackState && changedCount),
+    status: "applied",
     createdAt: now
   }, ...state.automationHistory].slice(0, 20);
 }
@@ -13081,6 +13203,7 @@ function runAutomation(ruleId) {
   if (!automation.enabled) return 0;
 
   let changedCount = 0;
+  const rollbackState = automationRollbackState();
   if (automation.triggerKind === "intake_high") {
     state.intakeSubmissions
       .filter((submission) => !submission.taskId && submission.urgency === "High")
@@ -13141,11 +13264,32 @@ function runAutomation(ruleId) {
       });
   }
 
-  updateAutomationRun(ruleId, changedCount);
+  updateAutomationRun(ruleId, changedCount, changedCount ? rollbackState : null);
   saveState();
   render();
   showToast(changedCount ? `Automation ran on ${changedCount} ${changedCount === 1 ? "item" : "items"}` : "Automation ran with no changes", changedCount ? "success" : "info");
   return changedCount;
+}
+
+function rollbackAutomationRun(runId) {
+  const run = state.automationHistory.find((item) => item.id === runId);
+  if (!run?.rollbackState || run.status === "rolled-back") {
+    showToast("No rollback is available for that run", "info");
+    return;
+  }
+
+  state.tasks = run.rollbackState.tasks || state.tasks;
+  state.activities = run.rollbackState.activities || state.activities;
+  state.documents = run.rollbackState.documents || state.documents;
+  state.approvals = run.rollbackState.approvals || state.approvals;
+  state.intakeSubmissions = run.rollbackState.intakeSubmissions || state.intakeSubmissions;
+  state.dailyPlans = run.rollbackState.dailyPlans || state.dailyPlans;
+  state.automationHistory = state.automationHistory.map((item) => item.id === runId
+    ? { ...item, status: "rolled-back", rolledBackAt: new Date().toISOString() }
+    : item);
+  saveState();
+  render();
+  showToast("Automation run rolled back", "success");
 }
 
 function matchingAutomationTasks(automation) {
@@ -13441,7 +13585,25 @@ function addOperatorComment(task, body) {
   return comment;
 }
 
-function logOperatorAction({ type, title, detail, projectId = "", taskId = "", status = "applied" }) {
+function operatorRationaleFor(type, projectId = "", taskId = "") {
+  const task = taskId ? byId(state.tasks, taskId) : null;
+  const project = projectId ? byId(state.projects, projectId) : null;
+  if (type.includes("approval")) return "Approval work is pending or client-facing delivery needs an explicit review trail.";
+  if (type.includes("client_update")) return "Client-facing stakeholders need a concise status packet from the current portal state.";
+  if (type.includes("plan")) return task ? operatorReasonForTask(task) : "The Operator selected the highest-signal open work for today.";
+  if (type.includes("integration")) return "Connected adapters should expose health, event subscriptions, and last-sync evidence.";
+  return project ? `Project health, due dates, blockers, and recent activity indicated ${project.name} needed action.` : "Workspace signals indicated this action would reduce delivery risk.";
+}
+
+function operatorDataSourcesFor(type) {
+  const sources = ["tasks", "projects", "activity"];
+  if (type.includes("approval")) sources.push("approvals");
+  if (type.includes("client_update")) sources.push("client portal", "docs", "files");
+  if (type.includes("integration")) sources.push("integration settings", "audit log");
+  return Array.from(new Set(sources));
+}
+
+function logOperatorAction({ type, title, detail, projectId = "", taskId = "", status = "applied", rationale = "", dataSources = [], undoType = "", undoRecordId = "" }) {
   const action = {
     id: uid("operator-action"),
     type,
@@ -13450,6 +13612,10 @@ function logOperatorAction({ type, title, detail, projectId = "", taskId = "", s
     projectId,
     taskId,
     status,
+    rationale: rationale || operatorRationaleFor(type, projectId, taskId),
+    dataSources: dataSources.length ? dataSources : operatorDataSourcesFor(type),
+    undoType,
+    undoRecordId,
     memberId: activeMemberId(),
     createdAt: new Date().toISOString()
   };
@@ -13494,7 +13660,9 @@ function draftOperatorClientUpdate(companyId) {
     type: "client_update",
     title: `Drafted client update for ${companyName(companyId)}`,
     detail: "Created a client-facing status update in Docs.",
-    projectId: document?.projectId || ""
+    projectId: document?.projectId || "",
+    undoType: "document",
+    undoRecordId: document?.id || ""
   });
   return document;
 }
@@ -13543,6 +13711,41 @@ function runOperatorCommand(command) {
   showToast(`Operator command applied ${changedCount} ${changedCount === 1 ? "change" : "changes"}`, "success");
 }
 
+function undoOperatorAction(actionId) {
+  const action = (Array.isArray(state.operatorActions) ? state.operatorActions : []).find((item) => item.id === actionId);
+  if (!action || !action.undoType || action.status === "undone") {
+    showToast("This action cannot be undone", "info");
+    return;
+  }
+
+  if (action.undoType === "task") {
+    state.tasks = state.tasks.filter((task) => task.id !== action.undoRecordId);
+    if (state.dailyPlans) delete state.dailyPlans[action.undoRecordId];
+  } else if (action.undoType === "approval") {
+    state.approvals = state.approvals.filter((approval) => approval.id !== action.undoRecordId);
+  } else if (action.undoType === "document") {
+    state.documents = state.documents.filter((document) => document.id !== action.undoRecordId);
+  } else if (action.undoType === "daily-plan") {
+    if (state.dailyPlans) delete state.dailyPlans[action.undoRecordId];
+  } else {
+    showToast("This action cannot be undone yet", "info");
+    return;
+  }
+
+  state.operatorActions = state.operatorActions.map((item) => item.id === actionId
+    ? { ...item, status: "undone", undoneAt: new Date().toISOString() }
+    : item);
+  addActivity({
+    projectId: action.projectId,
+    taskId: action.taskId,
+    type: "operator_undo",
+    message: `undid operator action ${action.title}`
+  });
+  saveState();
+  render();
+  showToast("Operator action undone", "success");
+}
+
 function applyOperatorSuggestion(type, projectId, taskId = "", approvalId = "", companyId = "") {
   const project = byId(state.projects, projectId);
   if (!project) return;
@@ -13568,7 +13771,9 @@ function applyOperatorSuggestion(type, projectId, taskId = "", approvalId = "", 
       title: `Created ${created.title}`,
       detail: "Created and planned an operator follow-up task.",
       projectId,
-      taskId: created.id
+      taskId: created.id,
+      undoType: "task",
+      undoRecordId: created.id
     });
   } else if (type === "approval_chase") {
     const created = createOperatorTask({
@@ -13586,7 +13791,9 @@ function applyOperatorSuggestion(type, projectId, taskId = "", approvalId = "", 
       title: `Queued approval chase for ${approval?.title || project.name}`,
       detail: "Created an approval chase task and planned it for Today.",
       projectId,
-      taskId: created.id
+      taskId: created.id,
+      undoType: "task",
+      undoRecordId: created.id
     });
   } else if (type === "approval_request") {
     const createdApproval = createOperatorApprovalRequest(project, task);
@@ -13595,7 +13802,9 @@ function applyOperatorSuggestion(type, projectId, taskId = "", approvalId = "", 
       title: `Requested approval for ${createdApproval.title}`,
       detail: `New approval routed to ${createdApproval.reviewer}.`,
       projectId,
-      taskId: task?.id || ""
+      taskId: task?.id || "",
+      undoType: "approval",
+      undoRecordId: createdApproval.id
     });
   } else if (type === "client_update") {
     if (!draftOperatorClientUpdate(companyId || project.companyId || projectCompany(project.id)?.id)) return;
@@ -13609,7 +13818,9 @@ function applyOperatorSuggestion(type, projectId, taskId = "", approvalId = "", 
       title: `Planned ${targetTask.title} for Today`,
       detail: "Moved the task into the Now lane and posted an operator note.",
       projectId,
-      taskId: targetTask.id
+      taskId: targetTask.id,
+      undoType: "daily-plan",
+      undoRecordId: targetTask.id
     });
   }
 
@@ -13900,6 +14111,9 @@ function saveAiSettings() {
   const model = document.querySelector("#ai-model")?.value.trim() || (provider === "local" ? "Agora deterministic operator" : "");
   const baseUrl = document.querySelector("#ai-base-url")?.value.trim() || "";
   const keySource = document.querySelector("#ai-key-source")?.value || "Server environment";
+  const dataPolicy = document.querySelector("#ai-data-policy")?.value || "Workspace only";
+  const promptTemplate = document.querySelector("#ai-prompt-template")?.value || "Transparent project operator";
+  const auditMode = document.querySelector("#ai-audit-mode")?.value || "Preview, rationale, undo";
 
   state.workspace = {
     ...state.workspace,
@@ -13907,7 +14121,10 @@ function saveAiSettings() {
       provider,
       model,
       baseUrl,
-      keySource
+      keySource,
+      dataPolicy,
+      promptTemplate,
+      auditMode
     }
   };
   saveState();
@@ -15513,6 +15730,12 @@ document.addEventListener("click", (event) => {
   const runAutomationButton = event.target.closest("[data-run-automation]");
   if (runAutomationButton) runAutomation(runAutomationButton.dataset.runAutomation);
 
+  const rollbackAutomationButton = event.target.closest("[data-automation-rollback]");
+  if (rollbackAutomationButton) {
+    rollbackAutomationRun(rollbackAutomationButton.dataset.automationRollback);
+    return;
+  }
+
   const toggleAutomationButton = event.target.closest("[data-toggle-automation]");
   if (toggleAutomationButton) toggleAutomation(toggleAutomationButton.dataset.toggleAutomation);
 
@@ -15579,6 +15802,12 @@ document.addEventListener("click", (event) => {
       operatorApplyButton.dataset.operatorApproval || "",
       operatorApplyButton.dataset.operatorCompany || ""
     );
+    return;
+  }
+
+  const operatorUndoButton = event.target.closest("[data-operator-undo]");
+  if (operatorUndoButton) {
+    undoOperatorAction(operatorUndoButton.dataset.operatorUndo);
     return;
   }
 
