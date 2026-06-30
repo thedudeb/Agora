@@ -2581,6 +2581,7 @@ async function retryApiSyncQueue() {
       });
       if (result.project) mergeCoreRecordsFromApi({ projects: [result.project] });
       if (result.task) mergeCoreRecordsFromApi({ tasks: [result.task] });
+      if (result.collection && result.record) mergeCollectionFromApi(result.collection, [result.record]);
       clearApiSyncQueueItem(item.id);
       synced += 1;
     } catch (error) {
@@ -2593,7 +2594,65 @@ async function retryApiSyncQueue() {
   showToast(synced ? `Retried ${synced} API sync${synced === 1 ? "" : "s"}` : "API sync retry still blocked", synced ? "success" : "info");
 }
 
-const structuredRecordCollections = ["companies", "approvals", "timeEntries", "comments", "activities", "documents", "files", "presence", "chatMessages", "whiteboards"];
+function notificationSettingsRecord() {
+  return {
+    id: "notification-settings-default",
+    title: "Notification settings",
+    ...notificationSettings(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function inboxStateRecord() {
+  return {
+    id: "inbox-state-default",
+    memberId: activeMemberId(),
+    title: "Inbox state",
+    read: state.inboxRead || [],
+    archived: state.inboxArchived || [],
+    snoozed: state.inboxSnoozed || {},
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function integrationSettingsRecord() {
+  return {
+    id: "integration-settings-default",
+    title: "Integration settings",
+    ...integrationSettings(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function syncNotificationSettingsToApi(action = "Notification settings synced") {
+  syncRecordToApi("notificationSettings", notificationSettingsRecord(), action, false);
+}
+
+function syncInboxStateToApi(action = "Inbox state synced") {
+  syncRecordToApi("inboxState", inboxStateRecord(), action, false);
+}
+
+function syncIntegrationSettingsToApi(action = "Integration settings synced") {
+  syncRecordToApi("integrationSettings", integrationSettingsRecord(), action, false);
+}
+
+const structuredRecordCollections = [
+  "companies",
+  "approvals",
+  "timeEntries",
+  "comments",
+  "activities",
+  "documents",
+  "files",
+  "presence",
+  "chatMessages",
+  "whiteboards",
+  "notificationSettings",
+  "notificationReminders",
+  "notificationHistory",
+  "inboxState",
+  "integrationSettings"
+];
 
 function mergeRecordsById(existingItems = [], incomingItems = []) {
   const next = new Map();
@@ -2625,10 +2684,15 @@ function normalizeCollectionRecords(collection, items = []) {
   if (collection === "companies") return items.map(normalizeCompanyRecord).filter((company) => company.id);
   if (collection === "chatMessages") return normalizeChatMessages(items);
   if (collection === "whiteboards") return normalizeWhiteboards(items);
+  if (collection === "notificationReminders") return normalizeNotificationReminders(items);
+  if (collection === "notificationHistory") return normalizeNotificationHistory(items);
   return items;
 }
 
 function mergeCollectionFromApi(collection, incoming = [], options = {}) {
+  if (collection === "notificationSettings") return mergeNotificationSettingsFromApi(incoming);
+  if (collection === "inboxState") return mergeInboxStateFromApi(incoming);
+  if (collection === "integrationSettings") return mergeIntegrationSettingsFromApi(incoming);
   const current = Array.isArray(state[collection]) ? state[collection] : [];
   const incomingItems = normalizeCollectionRecords(collection, incoming);
   if (!incomingItems.length && !options.replaceEmpty) return false;
@@ -2638,6 +2702,43 @@ function mergeCollectionFromApi(collection, incoming = [], options = {}) {
   if (collectionSignature(nextItems) === collectionSignature(current)) return false;
   state[collection] = nextItems;
   return true;
+}
+
+function mergeNotificationSettingsFromApi(incoming = []) {
+  const record = Array.isArray(incoming) ? incoming[0] : null;
+  if (!record) return false;
+  const currentSignature = JSON.stringify(notificationSettings());
+  state.notificationSettings = normalizeNotificationSettings(record);
+  return JSON.stringify(notificationSettings()) !== currentSignature;
+}
+
+function mergeInboxStateFromApi(incoming = []) {
+  const record = Array.isArray(incoming) ? incoming[0] : null;
+  if (!record) return false;
+  const currentSignature = JSON.stringify({
+    read: state.inboxRead,
+    archived: state.inboxArchived,
+    snoozed: state.inboxSnoozed
+  });
+  state.inboxRead = Array.isArray(record.read) ? record.read.map(String) : state.inboxRead;
+  state.inboxArchived = Array.isArray(record.archived) ? record.archived.map(String) : state.inboxArchived;
+  state.inboxSnoozed = normalizeInboxSnoozed(record.snoozed);
+  return JSON.stringify({
+    read: state.inboxRead,
+    archived: state.inboxArchived,
+    snoozed: state.inboxSnoozed
+  }) !== currentSignature;
+}
+
+function mergeIntegrationSettingsFromApi(incoming = []) {
+  const record = Array.isArray(incoming) ? incoming[0] : null;
+  if (!record) return false;
+  const currentSignature = JSON.stringify(integrationSettings());
+  state.workspace = {
+    ...state.workspace,
+    integrations: normalizeWorkspaceIntegrations(record)
+  };
+  return JSON.stringify(integrationSettings()) !== currentSignature;
 }
 
 function normalizeProjectRecord(project = {}) {
@@ -5917,6 +6018,7 @@ function scheduleInboxReminder(itemId, preset = "tomorrow") {
     sentAt: ""
   };
   state.notificationReminders = normalizeNotificationReminders([reminder, ...(state.notificationReminders || [])]);
+  syncRecordToApi("notificationReminders", { ...reminder, memberId: activeMemberId() }, "Reminder synced", false);
   logNotificationHistory({
     kind: "reminder",
     title: reminder.title,
@@ -5925,17 +6027,20 @@ function scheduleInboxReminder(itemId, preset = "tomorrow") {
     channel: "in-app"
   });
   markInboxRead(item.id);
+  syncInboxStateToApi();
   saveState();
   render();
   showToast(`Reminder set for ${formatFullDate(remindAt)}`, "success");
 }
 
 function dismissNotificationReminder(reminderId) {
+  let changedReminder = null;
   state.notificationReminders = normalizeNotificationReminders(state.notificationReminders).map((reminder) => (
     reminder.id === reminderId
-      ? { ...reminder, status: "dismissed", sentAt: new Date().toISOString() }
+      ? (changedReminder = { ...reminder, status: "dismissed", sentAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
       : reminder
   ));
+  if (changedReminder) syncRecordToApi("notificationReminders", { ...changedReminder, memberId: activeMemberId() }, "Reminder synced", false);
   saveState();
   render();
   showToast("Reminder dismissed", "success");
@@ -5997,6 +6102,9 @@ async function runNotificationReminderScheduler({ silent = true } = {}) {
       ? { ...reminder, sentAt: now }
       : reminder
   ));
+  pending.forEach((reminder) => {
+    syncRecordToApi("notificationReminders", { ...reminder, memberId: activeMemberId(), sentAt: now, updatedAt: now }, "Reminder synced", false);
+  });
   saveState();
   renderNotificationBadges();
   if (state.selectedRoute === "inbox") render();
@@ -6016,6 +6124,7 @@ function logNotificationHistory({ kind = "digest", title, message, reason = "", 
     createdAt: new Date().toISOString()
   };
   state.notificationHistory = [event, ...(state.notificationHistory || [])].slice(0, 50);
+  syncRecordToApi("notificationHistory", { ...event, memberId: activeMemberId() }, "Notification history synced", false);
   return event;
 }
 
@@ -15289,6 +15398,7 @@ function saveIntegrationSettings() {
     action: "integrations_update",
     detail: `Updated ${connections.filter((connection) => connection.status === "connected").length} connected integrations`
   });
+  syncIntegrationSettingsToApi();
   saveState();
   render();
   showToast("Integrations saved", "success");
@@ -16857,6 +16967,7 @@ function updateNotificationEventPreference(eventType, enabled) {
       [eventType]: enabled
     }
   };
+  syncNotificationSettingsToApi();
   saveState();
   render();
   showToast(`${enabled ? "Enabled" : "Muted"} ${eventType} notifications`, "success");
@@ -16871,6 +16982,7 @@ function updateDigestPreference(digestId, enabled) {
       [digestId]: enabled
     }
   };
+  syncNotificationSettingsToApi();
   saveState();
   render();
   showToast(`${enabled ? "Enabled" : "Paused"} digest`, "success");
@@ -16885,6 +16997,7 @@ function updateNotificationChannel(channelId, enabled) {
       [channelId]: enabled
     }
   };
+  syncNotificationSettingsToApi();
   saveState();
   render();
   showToast(`${enabled ? "Enabled" : "Disabled"} ${channelId} alerts`, "success");
@@ -16896,6 +17009,7 @@ function updateNotificationCadence(cadence) {
     ...settings,
     cadence: ["daily", "weekly", "manual"].includes(cadence) ? cadence : settings.cadence
   };
+  syncNotificationSettingsToApi();
   saveState();
   render();
   showToast("Digest cadence updated", "success");
@@ -16915,6 +17029,7 @@ function saveNotificationDeliverySettings() {
       sendResolved
     }
   };
+  syncNotificationSettingsToApi();
   saveState();
   render();
   showToast("Delivery settings saved", "success");
@@ -17667,6 +17782,7 @@ document.addEventListener("click", (event) => {
     state.inboxRead = isInboxRead(id)
       ? state.inboxRead.filter((itemId) => itemId !== id)
       : [...state.inboxRead, id];
+    syncInboxStateToApi();
     saveState();
     render();
     showToast(isInboxRead(id) ? "Notification marked read" : "Notification marked unread", "success");
@@ -17675,6 +17791,7 @@ document.addEventListener("click", (event) => {
   const inboxClearButton = event.target.closest("[data-inbox-clear]");
   if (inboxClearButton) {
     archiveInboxItem(inboxClearButton.dataset.inboxClear);
+    syncInboxStateToApi();
     saveState();
     render();
     showToast("Notification cleared", "success");
@@ -17683,6 +17800,7 @@ document.addEventListener("click", (event) => {
   const inboxSnoozeButton = event.target.closest("[data-inbox-snooze]");
   if (inboxSnoozeButton) {
     snoozeInboxItem(inboxSnoozeButton.dataset.inboxSnooze);
+    syncInboxStateToApi();
     saveState();
     render();
     showToast("Notification snoozed until tomorrow", "success");
@@ -17713,6 +17831,7 @@ document.addEventListener("click", (event) => {
       state.inboxArchived = Array.from(new Set([...state.inboxArchived, ...readIds]));
       showToast("Read notifications cleared", "success");
     }
+    syncInboxStateToApi();
     saveState();
     render();
   }
@@ -17744,6 +17863,7 @@ document.addEventListener("click", (event) => {
     }
     if (editButton.dataset.inboxId) {
       markInboxRead(editButton.dataset.inboxId);
+      syncInboxStateToApi();
       saveState();
       renderNotificationBadges();
     }

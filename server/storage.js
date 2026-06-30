@@ -14,7 +14,12 @@ const recordTables = {
   files: "agora_files",
   presence: "agora_presence",
   chatMessages: "agora_chat_messages",
-  whiteboards: "agora_whiteboards"
+  whiteboards: "agora_whiteboards",
+  notificationSettings: "agora_notification_settings",
+  notificationReminders: "agora_notification_reminders",
+  notificationHistory: "agora_notification_history",
+  inboxState: "agora_inbox_state",
+  integrationSettings: "agora_integration_settings"
 };
 
 function createStorage(options = {}) {

@@ -58,7 +58,12 @@ const recordCollections = {
   files: { writePermission: "attachments:write", normalizer: normalizeFile, label: "file" },
   presence: { writePermission: "workspace:read", normalizer: normalizePresence, label: "presence" },
   chatMessages: { writePermission: "comments:write", normalizer: normalizeChatMessage, label: "chat message" },
-  whiteboards: { writePermission: "comments:write", normalizer: normalizeWhiteboard, label: "whiteboard" }
+  whiteboards: { writePermission: "comments:write", normalizer: normalizeWhiteboard, label: "whiteboard" },
+  notificationSettings: { writePermission: "workspace:write", normalizer: normalizeNotificationSettingsRecord, label: "notification settings" },
+  notificationReminders: { writePermission: "workspace:read", normalizer: normalizeNotificationReminder, label: "notification reminder" },
+  notificationHistory: { writePermission: "workspace:read", normalizer: normalizeNotificationHistoryEvent, label: "notification history" },
+  inboxState: { writePermission: "workspace:read", normalizer: normalizeInboxStateRecord, label: "inbox state" },
+  integrationSettings: { writePermission: "workspace:write", normalizer: normalizeIntegrationSettingsRecord, label: "integration settings" }
 };
 
 const sessions = new Map();
@@ -2504,6 +2509,9 @@ function prepareRecordForSession(key, item, session) {
   if (key === "documents" || key === "files") return { ...record, owner: session.user.id };
   if (key === "presence" && !hasPermission(session, "members:write")) return { ...record, memberId: session.user.id };
   if (key === "timeEntries" && !record.memberId) return { ...record, memberId: session.user.id };
+  if (key === "notificationReminders" || key === "notificationHistory" || key === "inboxState") {
+    return { ...record, memberId: session.user.id };
+  }
   return record;
 }
 
@@ -2519,6 +2527,10 @@ function applySessionRecordPolicy(key, record, existingItem, session) {
       status: record.status || existingItem.status,
       updatedAt: record.updatedAt || new Date().toISOString()
     };
+  }
+
+  if ((key === "notificationReminders" || key === "notificationHistory" || key === "inboxState") && record.memberId !== session.user.id && !hasPermission(session, "members:write")) {
+    publicError(403, "Notification records can only be updated for the current user");
   }
 
   return record;
@@ -2554,6 +2566,9 @@ function assertCanWriteScopedRecord(key, record, snapshot = {}, session) {
   }
   if (key === "presence" && record.memberId !== session.user.id && !hasPermission(session, "members:write")) {
     publicError(403, "Presence can only be updated for the current user");
+  }
+  if ((key === "notificationReminders" || key === "notificationHistory" || key === "inboxState") && record.memberId !== session.user.id && !hasPermission(session, "members:write")) {
+    publicError(403, "Notification records can only be updated for the current user");
   }
 
   const companyId = sessionCompanyId(session);
@@ -2853,6 +2868,123 @@ function normalizeWhiteboardItem(item) {
     x: clampInteger(item.x, 0, 86, 8),
     y: clampInteger(item.y, 0, 78, 10),
     color: ["green", "amber", "blue", "neutral"].includes(color) ? color : "neutral"
+  };
+}
+
+function normalizeNotificationSettingsRecord(record) {
+  requireRecord(record, "Notification settings");
+  const channels = record.channels && typeof record.channels === "object" && !Array.isArray(record.channels) ? record.channels : {};
+  const events = record.events && typeof record.events === "object" && !Array.isArray(record.events) ? record.events : {};
+  const digests = record.digests && typeof record.digests === "object" && !Array.isArray(record.digests) ? record.digests : {};
+  const delivery = record.delivery && typeof record.delivery === "object" && !Array.isArray(record.delivery) ? record.delivery : {};
+  return {
+    id: cleanString(record.id) || "notification-settings-default",
+    title: "Notification settings",
+    events,
+    digests,
+    channels,
+    cadence: ["daily", "weekly", "manual"].includes(cleanString(record.cadence)) ? cleanString(record.cadence) : "daily",
+    delivery: {
+      webhookUrl: cleanString(delivery.webhookUrl).slice(0, 300),
+      emailAddress: cleanString(delivery.emailAddress).slice(0, 180),
+      sendResolved: Boolean(delivery.sendResolved)
+    },
+    updatedAt: record.updatedAt ? String(record.updatedAt) : new Date().toISOString()
+  };
+}
+
+function normalizeNotificationReminder(reminder) {
+  requireRecord(reminder, "Notification reminder");
+  if (!reminder.id || !reminder.sourceId || !reminder.remindAt) {
+    publicError(400, "Notification reminder requires id, sourceId, and remindAt");
+  }
+  const repeat = cleanString(reminder.repeat);
+  const status = cleanString(reminder.status);
+  return {
+    id: String(reminder.id),
+    memberId: reminder.memberId ? String(reminder.memberId) : "",
+    sourceId: String(reminder.sourceId),
+    taskId: reminder.taskId ? String(reminder.taskId) : "",
+    approvalId: reminder.approvalId ? String(reminder.approvalId) : "",
+    projectId: reminder.projectId ? String(reminder.projectId) : "",
+    companyId: reminder.companyId ? String(reminder.companyId) : "",
+    title: cleanString(reminder.title || "Reminder").slice(0, 140),
+    message: cleanString(reminder.message).slice(0, 260),
+    remindAt: String(reminder.remindAt),
+    repeat: ["none", "daily", "weekly"].includes(repeat) ? repeat : "none",
+    status: ["scheduled", "sent", "dismissed"].includes(status) ? status : "scheduled",
+    createdAt: reminder.createdAt ? String(reminder.createdAt) : new Date().toISOString(),
+    sentAt: reminder.sentAt ? String(reminder.sentAt) : "",
+    updatedAt: reminder.updatedAt ? String(reminder.updatedAt) : new Date().toISOString()
+  };
+}
+
+function normalizeNotificationHistoryEvent(event) {
+  requireRecord(event, "Notification history event");
+  if (!event.id || !event.title) {
+    publicError(400, "Notification history event requires id and title");
+  }
+  return {
+    id: String(event.id),
+    memberId: event.memberId ? String(event.memberId) : "",
+    kind: cleanString(event.kind || "digest").slice(0, 48),
+    title: cleanString(event.title).slice(0, 160),
+    message: cleanString(event.message).slice(0, 500),
+    reason: cleanString(event.reason).slice(0, 500),
+    count: Math.max(0, Math.round(Number(event.count) || 0)),
+    channel: cleanString(event.channel || "in-app").slice(0, 80),
+    createdAt: event.createdAt ? String(event.createdAt) : new Date().toISOString(),
+    updatedAt: event.updatedAt ? String(event.updatedAt) : event.createdAt ? String(event.createdAt) : new Date().toISOString()
+  };
+}
+
+function normalizeInboxStateRecord(record) {
+  requireRecord(record, "Inbox state");
+  const snoozed = record.snoozed && typeof record.snoozed === "object" && !Array.isArray(record.snoozed) ? record.snoozed : {};
+  return {
+    id: cleanString(record.id) || "inbox-state-default",
+    memberId: record.memberId ? String(record.memberId) : "",
+    title: "Inbox state",
+    read: Array.isArray(record.read) ? record.read.map(String).slice(0, 500) : [],
+    archived: Array.isArray(record.archived) ? record.archived.map(String).slice(0, 500) : [],
+    snoozed: Object.fromEntries(Object.entries(snoozed).map(([id, until]) => [String(id), String(until || "")]).filter(([id, until]) => id && until)),
+    updatedAt: record.updatedAt ? String(record.updatedAt) : new Date().toISOString()
+  };
+}
+
+function normalizeIntegrationSettingsRecord(record) {
+  requireRecord(record, "Integration settings");
+  const connections = Array.isArray(record.connections) ? record.connections : [];
+  return {
+    id: cleanString(record.id) || "integration-settings-default",
+    title: "Integration settings",
+    defaultOwner: cleanString(record.defaultOwner),
+    webhookEndpoint: cleanString(record.webhookEndpoint).slice(0, 240),
+    apiAccess: Boolean(record.apiAccess),
+    eventMirroring: Boolean(record.eventMirroring),
+    connections: connections.map(normalizeIntegrationConnectionRecord).filter(Boolean).slice(0, 40),
+    updatedAt: record.updatedAt ? String(record.updatedAt) : new Date().toISOString()
+  };
+}
+
+function normalizeIntegrationConnectionRecord(connection = {}) {
+  if (!connection || typeof connection !== "object" || Array.isArray(connection)) return null;
+  const id = cleanString(connection.id);
+  if (!id) return null;
+  const status = cleanString(connection.status);
+  const syncMode = cleanString(connection.syncMode);
+  const health = cleanString(connection.health);
+  const secretStatus = cleanString(connection.secretStatus);
+  return {
+    id,
+    status: ["planned", "connected", "paused"].includes(status) ? status : "planned",
+    syncMode: ["none", "inbound", "outbound", "two-way"].includes(syncMode) ? syncMode : "none",
+    owner: cleanString(connection.owner),
+    health: ["planned", "healthy", "needs-config", "error"].includes(health) ? health : "planned",
+    secretStatus: ["missing", "stored", "rotate"].includes(secretStatus) ? secretStatus : "missing",
+    events: Array.isArray(connection.events) ? connection.events.map(String).slice(0, 20) : [],
+    notes: cleanString(connection.notes).slice(0, 300),
+    lastSyncedAt: connection.lastSyncedAt ? String(connection.lastSyncedAt) : ""
   };
 }
 

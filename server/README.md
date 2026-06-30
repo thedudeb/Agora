@@ -103,7 +103,7 @@ The first migration creates the snapshot/audit tables plus structured record tab
 - `GET /api/invitations/:token`: returns public invitation details for an invite acceptance screen.
 - `POST /api/invitations/:token/accept`: accepts an invitation and creates a session. Body: `{ "name": "Jordan Lee", "password": "optional 8+ characters" }`.
 - `GET /api/records`: returns structured collections from the active storage adapter. When no structured rows exist yet, the response includes `snapshotFallback` for bootstrap compatibility.
-- `GET /api/records/:collection`: returns a structured collection such as `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, or `presence`. Supports filters like `?projectId=...`, `?taskId=...`, `?companyId=...`, and `?memberId=...`.
+- `GET /api/records/:collection`: returns a structured collection such as `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, `presence`, `chatMessages`, `whiteboards`, `notificationSettings`, `notificationReminders`, `notificationHistory`, `inboxState`, or `integrationSettings`. Supports filters like `?projectId=...`, `?taskId=...`, `?companyId=...`, and `?memberId=...`.
 - `POST /api/records/:collection`: creates or updates one structured record for supported collections. Writes are checked server-side against the authenticated session scope, project, task, company relationships, and member-owned fields. Clients can respond to existing approvals but cannot create new approval records.
 - `GET /api/workspace`: returns the latest saved workspace snapshot.
 - `PUT /api/workspace`: saves a workspace snapshot for workspace-wide admin/project-manager roles. Company-scoped sessions must use project, task, and structured record endpoints.
@@ -147,4 +147,4 @@ Memberships can include `companyId`. When present, workspace snapshots, project/
 
 ## Database Target
 
-`schema.sql` is the normalized PostgreSQL target for the self-hosted backend. `migrations/001_supabase_storage.sql` stores the current workspace snapshot, audit log, and structured record collections in Postgres. `migrations/002_supabase_auth_rls.sql` adds the Supabase Auth membership/RLS layer. The JSON storage adapter remains the low-friction local default while Supabase provides the production-ready persistence path.
+`schema.sql` is the normalized PostgreSQL target for the self-hosted backend. `migrations/001_supabase_storage.sql` stores the current workspace snapshot, audit log, structured work records, first-class notification records, inbox state, and integration settings in Postgres. `migrations/002_supabase_auth_rls.sql` adds the Supabase Auth membership/RLS layer. The JSON storage adapter remains the low-friction local default while Supabase provides the production-ready persistence path.

@@ -276,3 +276,85 @@ create policy agora_presence_member_write on public.agora_presence
 for all to authenticated
 using (public.agora_can_write_presence(workspace_id, company_id, member_id))
 with check (public.agora_can_write_presence(workspace_id, company_id, member_id));
+
+drop policy if exists agora_notification_settings_member_read on public.agora_notification_settings;
+create policy agora_notification_settings_member_read on public.agora_notification_settings
+for select to authenticated
+using (public.agora_can_read_workspace(workspace_id));
+
+drop policy if exists agora_notification_settings_manager_write on public.agora_notification_settings;
+create policy agora_notification_settings_manager_write on public.agora_notification_settings
+for all to authenticated
+using (public.agora_can_write_workspace(workspace_id))
+with check (public.agora_can_write_workspace(workspace_id));
+
+drop policy if exists agora_notification_reminders_member_read on public.agora_notification_reminders;
+create policy agora_notification_reminders_member_read on public.agora_notification_reminders
+for select to authenticated
+using (
+  public.agora_workspace_role(workspace_id) in ('admin', 'manager')
+  or auth.uid()::text = coalesce(member_id, '')
+);
+
+drop policy if exists agora_notification_reminders_member_write on public.agora_notification_reminders;
+create policy agora_notification_reminders_member_write on public.agora_notification_reminders
+for all to authenticated
+using (
+  public.agora_workspace_role(workspace_id) in ('admin', 'manager')
+  or auth.uid()::text = coalesce(member_id, '')
+)
+with check (
+  public.agora_workspace_role(workspace_id) in ('admin', 'manager')
+  or auth.uid()::text = coalesce(member_id, '')
+);
+
+drop policy if exists agora_notification_history_member_read on public.agora_notification_history;
+create policy agora_notification_history_member_read on public.agora_notification_history
+for select to authenticated
+using (
+  public.agora_workspace_role(workspace_id) in ('admin', 'manager')
+  or auth.uid()::text = coalesce(member_id, '')
+);
+
+drop policy if exists agora_notification_history_member_write on public.agora_notification_history;
+create policy agora_notification_history_member_write on public.agora_notification_history
+for all to authenticated
+using (
+  public.agora_workspace_role(workspace_id) in ('admin', 'manager')
+  or auth.uid()::text = coalesce(member_id, '')
+)
+with check (
+  public.agora_workspace_role(workspace_id) in ('admin', 'manager')
+  or auth.uid()::text = coalesce(member_id, '')
+);
+
+drop policy if exists agora_inbox_state_member_read on public.agora_inbox_state;
+create policy agora_inbox_state_member_read on public.agora_inbox_state
+for select to authenticated
+using (
+  public.agora_workspace_role(workspace_id) in ('admin', 'manager')
+  or auth.uid()::text = coalesce(member_id, '')
+);
+
+drop policy if exists agora_inbox_state_member_write on public.agora_inbox_state;
+create policy agora_inbox_state_member_write on public.agora_inbox_state
+for all to authenticated
+using (
+  public.agora_workspace_role(workspace_id) in ('admin', 'manager')
+  or auth.uid()::text = coalesce(member_id, '')
+)
+with check (
+  public.agora_workspace_role(workspace_id) in ('admin', 'manager')
+  or auth.uid()::text = coalesce(member_id, '')
+);
+
+drop policy if exists agora_integration_settings_member_read on public.agora_integration_settings;
+create policy agora_integration_settings_member_read on public.agora_integration_settings
+for select to authenticated
+using (public.agora_can_read_workspace(workspace_id));
+
+drop policy if exists agora_integration_settings_manager_write on public.agora_integration_settings;
+create policy agora_integration_settings_manager_write on public.agora_integration_settings
+for all to authenticated
+using (public.agora_can_write_workspace(workspace_id))
+with check (public.agora_can_write_workspace(workspace_id));
