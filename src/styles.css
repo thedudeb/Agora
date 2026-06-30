@@ -3092,8 +3092,30 @@ body[data-tutorial-target="view"] #app-view {
   grid-column: 1 / -1;
 }
 
+.switcher-safety-grid {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.switcher-safety-grid article {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.switcher-safety-grid span {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .switcher-preview-empty,
-.switcher-preview-panel {
+.switcher-preview-panel,
+.switcher-rollback-panel {
   display: grid;
   gap: 10px;
   margin-top: 12px;
@@ -3104,8 +3126,48 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .switcher-preview-empty span,
-.switcher-preview-list span {
+.switcher-preview-list span,
+.switcher-rollback-panel span,
+.switcher-rollback-panel small {
   color: var(--muted);
+}
+
+.switcher-mapping-panel {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.switcher-mapping-panel > div,
+.switcher-rollback-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.switcher-mapping-panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.switcher-warning-list {
+  display: grid;
+  gap: 6px;
+}
+
+.switcher-warning-list span {
+  padding: 7px 9px;
+  color: var(--text);
+  background: #f8edd9;
+  border: 1px solid #dfc38e;
+  border-radius: 8px;
+  font-weight: 800;
 }
 
 .switcher-preview-list {
@@ -3120,6 +3182,11 @@ body[data-tutorial-target="view"] #app-view {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
+}
+
+.switcher-rollback-panel > div {
+  display: grid;
+  gap: 4px;
 }
 
 .panel-note {
@@ -5466,6 +5533,7 @@ body[data-density="compact"] .main-content {
   .collab-hub-grid,
   .live-collaboration-grid,
   .audit-risk-grid,
+  .switcher-safety-grid,
   .settings-grid,
   .data-grid,
   .docs-grid,

@@ -725,6 +725,7 @@ const seedData = {
   ],
   selectedDashboardLayoutId: "layout-command-center",
   switcherImportPreview: null,
+  switcherImportRollback: null,
   workspace: {
     id: "workspace-acme",
     name: "Acme Studio",
@@ -1953,6 +1954,7 @@ function normalizeState(nextState) {
     dashboardLayouts: normalizeDashboardLayouts(nextState.dashboardLayouts),
     selectedDashboardLayoutId: normalizeSelectedDashboardLayoutId(nextState.selectedDashboardLayoutId, nextState.dashboardLayouts),
     switcherImportPreview: normalizeSwitcherImportPreview(nextState.switcherImportPreview),
+    switcherImportRollback: normalizeSwitcherImportRollback(nextState.switcherImportRollback),
     inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
     inboxArchived: Array.isArray(nextState.inboxArchived) ? nextState.inboxArchived : [],
     deletedProjectTemplateIds: Array.isArray(nextState.deletedProjectTemplateIds) ? nextState.deletedProjectTemplateIds : [],
@@ -2024,17 +2026,24 @@ function normalizeSwitcherImportPreview(preview = null) {
   if (!preview || typeof preview !== "object") return null;
   const projects = Array.isArray(preview.projects) ? preview.projects.map(normalizeProjectRecord).filter((project) => project.id && project.name) : [];
   const tasks = Array.isArray(preview.tasks) ? preview.tasks.map(normalizeTaskRecord).filter((task) => task.id && task.title) : [];
+  const mappedFields = Array.isArray(preview.mappedFields) ? preview.mappedFields.map((field) => String(field || "").trim()).filter(Boolean).slice(0, 12) : [];
+  const warnings = Array.isArray(preview.warnings) ? preview.warnings.map((warning) => String(warning || "").trim()).filter(Boolean).slice(0, 8) : [];
   if (!tasks.length) return null;
   return {
     id: preview.id || uid("switcher-preview"),
     source: String(preview.source || "Generic CSV").slice(0, 48),
+    mode: ["merge", "new-workspace"].includes(preview.mode) ? preview.mode : "merge",
     createdAt: preview.createdAt || new Date().toISOString(),
     stats: {
       rows: Number(preview.stats?.rows || tasks.length),
       projects: projects.length,
       tasks: tasks.length,
-      skipped: Number(preview.stats?.skipped || 0)
+      skipped: Number(preview.stats?.skipped || 0),
+      mappedFields: Number(preview.stats?.mappedFields || mappedFields.length),
+      confidence: Math.max(0, Math.min(100, Number(preview.stats?.confidence || 0)))
     },
+    mappedFields,
+    warnings,
     projects,
     tasks,
     samples: Array.isArray(preview.samples) ? preview.samples.slice(0, 6) : tasks.slice(0, 6).map((task) => ({
@@ -2044,6 +2053,22 @@ function normalizeSwitcherImportPreview(preview = null) {
       status: task.status,
       priority: task.priority
     }))
+  };
+}
+
+function normalizeSwitcherImportRollback(rollback = null) {
+  if (!rollback || typeof rollback !== "object" || !rollback.id || !rollback.snapshot) return null;
+  return {
+    id: rollback.id,
+    source: String(rollback.source || "Import").slice(0, 48),
+    createdAt: rollback.createdAt || new Date().toISOString(),
+    summary: rollback.summary || "Last import can be rolled back.",
+    backupId: rollback.backupId || "",
+    stats: {
+      projects: Number(rollback.stats?.projects || 0),
+      tasks: Number(rollback.stats?.tasks || 0)
+    },
+    snapshot: rollback.snapshot
   };
 }
 
@@ -2905,7 +2930,7 @@ function onboardingItems() {
   const setupMemberships = state.onboarding?.sampleMode === "clean"
     ? activeMemberships.filter((membership) => membership.memberId === members[0].id || customUserIds.has(membership.memberId))
     : activeMemberships;
-  const hasChosenDataMode = state.onboarding?.sampleMode === "demo" || state.onboarding?.sampleMode === "clean";
+  const hasChosenDataMode = ["demo", "clean", "import", "template"].includes(state.onboarding?.sampleMode);
   const hasWorkspaceName = Boolean(state.workspace.name && state.workspace.name !== "New Agora Workspace");
   const hasCompany = visibleCompanies().length > 0;
   const hasProject = activeProjects().length > 0;
@@ -2915,7 +2940,13 @@ function onboardingItems() {
     {
       id: "data",
       label: "Data mode",
-      detail: state.onboarding?.sampleMode === "clean" ? "Clean workspace" : "Demo workspace",
+      detail: state.onboarding?.sampleMode === "clean"
+        ? "Clean workspace"
+        : state.onboarding?.sampleMode === "import"
+          ? "Imported workspace"
+          : state.onboarding?.sampleMode === "template"
+            ? "Template workspace"
+            : "Demo workspace",
       done: hasChosenDataMode,
       action: "start-clean"
     },
@@ -3018,6 +3049,8 @@ function renderOnboardingPanel() {
       <div class="onboarding-choice-row">
         <button class="button ${state.onboarding?.sampleMode === "demo" ? "button-primary" : "button-secondary"}" type="button" data-onboarding-action="use-demo">Use Demo Data</button>
         <button class="button ${state.onboarding?.sampleMode === "clean" ? "button-primary" : "button-secondary"}" type="button" data-onboarding-action="start-clean">Start Clean</button>
+        <button class="button ${state.onboarding?.sampleMode === "import" ? "button-primary" : "button-secondary"}" type="button" data-onboarding-action="import">Import CSV</button>
+        <button class="button ${state.onboarding?.sampleMode === "template" ? "button-primary" : "button-secondary"}" type="button" data-onboarding-action="templates">Use Template</button>
         <button class="button button-secondary" type="button" data-onboarding-action="dismiss">${setupComplete ? "Done" : "Hide"}</button>
       </div>
       <div class="onboarding-grid">
@@ -7185,6 +7218,26 @@ function handleOnboardingAction(action) {
     openSidebarGroupForRoute("dashboard");
     saveState();
     render();
+    return;
+  }
+
+  if (action === "import") {
+    state.onboarding = { ...state.onboarding, dismissed: false, sampleMode: "import" };
+    state.selectedRoute = "data";
+    openSidebarGroupForRoute("data");
+    saveState();
+    render();
+    showToast("Paste a CSV or JSON export to preview the import", "info");
+    return;
+  }
+
+  if (action === "templates") {
+    state.onboarding = { ...state.onboarding, dismissed: false, sampleMode: "template" };
+    state.selectedRoute = "templates";
+    openSidebarGroupForRoute("templates");
+    saveState();
+    render();
+    showToast("Choose a template to start with structured work", "info");
     return;
   }
 
@@ -11621,14 +11674,36 @@ function renderDataManagement() {
               <option value="json">JSON</option>
             </select>
           </label>
+          <label>
+            <span>Apply mode</span>
+            <select id="switcher-mode">
+              <option value="merge">Merge into current workspace</option>
+              <option value="new-workspace">Create new workspace</option>
+            </select>
+          </label>
           <label class="wide-field">
             <span>Export payload</span>
             <textarea id="switcher-import-payload" rows="10" placeholder="Paste a task export. Headers like title/name, project/list/board, assignee, status, priority, due date, and description are supported."></textarea>
           </label>
+          <div class="switcher-safety-grid">
+            <article>
+              <strong>1. Preview</strong>
+              <span>Map columns, sample imported tasks, and spot skipped rows before changes.</span>
+            </article>
+            <article>
+              <strong>2. Backup</strong>
+              <span>Agora creates a local recovery snapshot before applying an import.</span>
+            </article>
+            <article>
+              <strong>3. Rollback</strong>
+              <span>The last applied import can restore the previous workspace state.</span>
+            </article>
+          </div>
           <p class="settings-help">This importer creates missing projects, maps common task fields, and keeps a backup before changing the workspace. It is intentionally conservative so messy exports do not overwrite existing work.</p>
           <button class="button button-primary" type="button" id="switcher-import-button">Preview Import</button>
         </div>
         ${renderSwitcherImportPreview()}
+        ${renderSwitcherImportRollback()}
       </section>
 
       <section class="panel">
@@ -11655,6 +11730,7 @@ function renderSwitcherImportPreview() {
     `;
   }
 
+  const confidenceTone = preview.stats.confidence >= 80 ? "green" : preview.stats.confidence >= 55 ? "amber" : "red";
   return `
     <div class="switcher-preview-panel">
       <div class="panel-header">
@@ -11669,6 +11745,19 @@ function renderSwitcherImportPreview() {
         ${metric("Tasks ready", preview.stats.tasks)}
         ${metric("Projects", preview.stats.projects)}
         ${metric("Skipped", preview.stats.skipped)}
+        ${metric("Confidence", `${preview.stats.confidence}%`)}
+      </div>
+      <div class="switcher-mapping-panel">
+        <div>
+          <span class="status-pill inbox-${confidenceTone}">${preview.stats.confidence >= 80 ? "Strong mapping" : preview.stats.confidence >= 55 ? "Review mapping" : "Low confidence"}</span>
+          <span class="status-pill inbox-neutral">${preview.mode === "new-workspace" ? "New workspace" : "Merge mode"}</span>
+        </div>
+        <p>Mapped fields: ${preview.mappedFields.length ? preview.mappedFields.map((field) => escapeHtml(field)).join(", ") : "none detected"}</p>
+        ${preview.warnings.length ? `
+          <div class="switcher-warning-list">
+            ${preview.warnings.map((warning) => `<span>${escapeHtml(warning)}</span>`).join("")}
+          </div>
+        ` : ""}
       </div>
       <div class="switcher-preview-list">
         ${preview.samples.map((sample) => `
@@ -11682,6 +11771,22 @@ function renderSwitcherImportPreview() {
         <button class="button button-primary" type="button" id="switcher-apply-preview">Apply Import</button>
         <button class="button button-secondary" type="button" id="switcher-clear-preview">Clear Preview</button>
       </div>
+    </div>
+  `;
+}
+
+function renderSwitcherImportRollback() {
+  const rollback = normalizeSwitcherImportRollback(state.switcherImportRollback);
+  if (!rollback) return "";
+
+  return `
+    <div class="switcher-rollback-panel">
+      <div>
+        <strong>Last import recovery</strong>
+        <span>${escapeHtml(rollback.summary)} ${escapeHtml(formatTimestamp(rollback.createdAt))}</span>
+        <small>${rollback.stats.tasks} ${rollback.stats.tasks === 1 ? "task" : "tasks"} and ${rollback.stats.projects} ${rollback.stats.projects === 1 ? "project" : "projects"} can be rolled back.</small>
+      </div>
+      <button class="button button-secondary" type="button" id="switcher-rollback-import">Rollback Last Import</button>
     </div>
   `;
 }
@@ -14800,6 +14905,7 @@ function importWorkspaceAsNewFromTextarea() {
 function importSwitcherPayload() {
   const source = document.querySelector("#switcher-source")?.value || "Generic CSV";
   const format = document.querySelector("#switcher-format")?.value || "csv";
+  const mode = document.querySelector("#switcher-mode")?.value || "merge";
   const payload = document.querySelector("#switcher-import-payload")?.value.trim() || "";
   if (!payload) {
     showToast("Paste an export payload first", "info");
@@ -14808,10 +14914,20 @@ function importSwitcherPayload() {
   try {
     const rows = format === "json" ? rowsFromSwitcherJson(payload) : rowsFromSwitcherCsv(payload);
     const preview = prepareSwitcherImport(rows, source);
+    preview.mode = mode === "new-workspace" ? "new-workspace" : "merge";
     state.switcherImportPreview = normalizeSwitcherImportPreview(preview);
     addAuditEvent({
       action: "switcher_import_preview",
-      detail: `Previewed ${preview.stats.tasks} tasks from ${source}`
+      detail: `Previewed ${preview.stats.tasks} tasks from ${source}`,
+      targetType: "import",
+      targetId: preview.id,
+      impact: "low",
+      reversible: true,
+      metadata: {
+        mode: preview.mode,
+        confidence: preview.stats.confidence,
+        mappedFields: preview.mappedFields
+      }
     });
     saveState();
     renderDataManagement();
@@ -14884,8 +15000,48 @@ function importValue(row, keys) {
   return "";
 }
 
+function importRowHeaders(rows = []) {
+  return Array.from(new Set(rows.flatMap((row) => Object.keys(row || {}).map(normalizeImportHeader).filter(Boolean))));
+}
+
+function importMappedFields(headers = []) {
+  const groups = [
+    ["title", ["title", "task", "name", "task_name", "card_name", "item_name", "summary"]],
+    ["project", ["project", "list", "board", "space", "folder", "group", "section", "workspace"]],
+    ["assignee", ["assignee", "owner", "person", "assigned_to"]],
+    ["status", ["status", "state", "column"]],
+    ["priority", ["priority", "importance"]],
+    ["due date", ["due", "due_date", "deadline", "date"]],
+    ["description", ["description", "notes", "details", "body"]]
+  ];
+  const headerSet = new Set(headers.map(normalizeImportHeader));
+  return groups
+    .filter(([, aliases]) => aliases.some((alias) => headerSet.has(normalizeImportHeader(alias))))
+    .map(([label]) => label);
+}
+
+function switcherPreviewConfidence({ rows, tasks, skipped, mappedFields }) {
+  if (!rows) return 0;
+  const fieldScore = Math.min(55, mappedFields.length * 9);
+  const taskScore = Math.round((tasks / rows) * 35);
+  const skipPenalty = Math.min(25, Math.round((skipped / rows) * 40));
+  return Math.max(10, Math.min(100, fieldScore + taskScore + 10 - skipPenalty));
+}
+
+function switcherPreviewWarnings({ mappedFields, skipped, rows, source }) {
+  const warnings = [];
+  if (!mappedFields.includes("title")) warnings.push("No title/name column was detected. Rows without titles are skipped.");
+  if (!mappedFields.includes("project")) warnings.push("No project/list column was detected. Tasks will use a default import project.");
+  if (!mappedFields.includes("assignee")) warnings.push("No assignee column was detected. Tasks will be assigned to the active user.");
+  if (skipped) warnings.push(`${skipped} ${skipped === 1 ? "row was" : "rows were"} skipped because required task data was missing.`);
+  if (rows > 100) warnings.push(`${source} export has ${rows} rows. Preview samples are limited, so review the imported project after apply.`);
+  return warnings;
+}
+
 function prepareSwitcherImport(rows, source) {
   const now = new Date().toISOString();
+  const headers = importRowHeaders(rows);
+  const mappedFields = importMappedFields(headers);
   const existingProjectNames = new Map(state.projects.map((project) => [project.name.toLowerCase(), project]));
   const nextProjects = [...state.projects];
   const nextTasks = [...state.tasks];
@@ -14945,16 +15101,23 @@ function prepareSwitcherImport(rows, source) {
   });
 
   if (!preparedTasks.length) throw new Error("No tasks found in import payload");
+  const confidence = switcherPreviewConfidence({ rows: rows.length, tasks: preparedTasks.length, skipped, mappedFields });
+  const warnings = switcherPreviewWarnings({ mappedFields, skipped, rows: rows.length, source });
   return {
     id: uid("switcher-preview"),
     source,
+    mode: "merge",
     createdAt: now,
     stats: {
       rows: rows.length,
       projects: preparedProjects.length,
       tasks: preparedTasks.length,
-      skipped
+      skipped,
+      mappedFields: mappedFields.length,
+      confidence
     },
+    mappedFields,
+    warnings,
     projects: preparedProjects,
     tasks: preparedTasks,
     samples: samples.slice(0, 6)
@@ -14973,11 +15136,17 @@ function applySwitcherImportPreview() {
     return;
   }
   const result = applySwitcherPreview(preview);
-  showToast(`Imported ${result.tasks} tasks and ${result.projects} projects`, "success");
+  showToast(preview.mode === "new-workspace" ? `Created workspace with ${result.tasks} imported tasks` : `Imported ${result.tasks} tasks and ${result.projects} projects`, "success");
 }
 
 function applySwitcherPreview(preview) {
-  saveWorkspaceBackups([workspaceBackupRecord(`Before ${preview.source} import`), ...loadWorkspaceBackups()]);
+  const backup = workspaceBackupRecord(`Before ${preview.source} import`);
+  const rollbackSnapshot = structuredClone(state);
+  saveWorkspaceBackups([backup, ...loadWorkspaceBackups()]);
+  if (preview.mode === "new-workspace") {
+    const result = applySwitcherPreviewAsWorkspace(preview, backup);
+    return result;
+  }
   const projectIds = new Set(state.projects.map((project) => project.id));
   const taskIds = new Set(state.tasks.map((task) => task.id));
   const projects = preview.projects.filter((project) => !projectIds.has(project.id));
@@ -14985,13 +15154,162 @@ function applySwitcherPreview(preview) {
   state.projects = [...state.projects, ...projects];
   state.tasks = [...state.tasks, ...tasks];
   state.switcherImportPreview = null;
+  state.switcherImportRollback = {
+    id: uid("switcher-rollback"),
+    source: preview.source,
+    createdAt: new Date().toISOString(),
+    summary: `Restore workspace to before the ${preview.source} import.`,
+    backupId: backup.id,
+    stats: {
+      projects: projects.length,
+      tasks: tasks.length
+    },
+    snapshot: rollbackSnapshot
+  };
+  state.onboarding = {
+    ...state.onboarding,
+    sampleMode: "import",
+    dismissed: false
+  };
   addAuditEvent({
     action: "switcher_import",
-    detail: `Imported ${tasks.length} tasks from ${preview.source}`
+    detail: `Imported ${tasks.length} tasks from ${preview.source}`,
+    targetType: "import",
+    targetId: preview.id,
+    impact: "medium",
+    reversible: true,
+    restoreHint: "Use Rollback Last Import from Data or restore the pre-import backup.",
+    metadata: {
+      mode: preview.mode,
+      backupId: backup.id,
+      projects: projects.length,
+      tasks: tasks.length
+    }
   });
   saveState();
   render();
   return { projects: projects.length, tasks: tasks.length };
+}
+
+function applySwitcherPreviewAsWorkspace(preview, backup) {
+  const workspaceName = `${preview.source} Import`;
+  const workspaceId = uniqueWorkspaceId(workspaceName);
+  const now = new Date().toISOString();
+  const companyId = state.filters.company !== "all" ? state.filters.company : state.companies[0]?.id || seedData.companies[0]?.id || "";
+  const base = structuredClone(seedData);
+  const importCompany = byId(state.companies, companyId) || base.companies[0] || seedData.companies[0];
+  const companies = importCompany ? [normalizeCompanyRecord({
+    ...importCompany,
+    id: companyId || importCompany.id || "company-import",
+    name: importCompany.name || `${preview.source} Import`
+  })] : [];
+  const projects = preview.projects.map((project) => normalizeProjectRecord({
+    ...project,
+    companyId: companyId || project.companyId
+  }));
+  const projectIds = new Set(projects.map((project) => project.id));
+  const tasks = preview.tasks
+    .filter((task) => projectIds.has(task.projectId))
+    .map(normalizeTaskRecord);
+
+  workspaceRegistry = normalizeWorkspaceRegistry([
+    {
+      id: workspaceId,
+      name: workspaceName,
+      slug: slugFromName(workspaceName),
+      status: "active",
+      template: "import",
+      createdAt: now,
+      updatedAt: now
+    },
+    ...workspaceRegistry
+  ]);
+  saveWorkspaceRegistry();
+  activeWorkspaceId = workspaceId;
+  saveActiveWorkspaceId(activeWorkspaceId);
+  state = normalizeState({
+    ...base,
+    selectedRoute: "dashboard",
+    selectedProject: "all",
+    selectedCompany: "all",
+    filters: { ...base.filters },
+    workspace: {
+      ...base.workspace,
+      id: workspaceId,
+      name: workspaceName,
+      slug: slugFromName(workspaceName)
+    },
+    companies,
+    projects,
+    tasks,
+    comments: [],
+    activities: [],
+    documents: [],
+    files: [],
+    approvals: [],
+    timeEntries: [],
+    switcherImportPreview: null,
+    switcherImportRollback: null,
+    onboarding: {
+      ...base.onboarding,
+      dismissed: false,
+      sampleMode: "import",
+      completedAt: ""
+    },
+    auditEvents: [
+      {
+        id: uid("audit"),
+        actorId: activeMemberId(),
+        action: "switcher_import_workspace",
+        detail: `Created import workspace from ${preview.source}`,
+        source: "local",
+        targetType: "import",
+        targetId: preview.id,
+        impact: "medium",
+        reversible: true,
+        restoreHint: "Switch workspaces or restore the source workspace backup if needed.",
+        metadata: {
+          backupId: backup.id,
+          projects: projects.length,
+          tasks: tasks.length
+        },
+        createdAt: now
+      }
+    ]
+  });
+  resetWorkspaceViewState();
+  saveState();
+  render();
+  return { projects: projects.length, tasks: tasks.length };
+}
+
+function rollbackLastSwitcherImport() {
+  const rollback = normalizeSwitcherImportRollback(state.switcherImportRollback);
+  if (!rollback) {
+    showToast("No import rollback is available", "info");
+    return;
+  }
+  state = normalizeState({
+    ...rollback.snapshot,
+    switcherImportRollback: null,
+    switcherImportPreview: null
+  });
+  addAuditEvent({
+    action: "switcher_import_rollback",
+    detail: `Rolled back ${rollback.source} import`,
+    targetType: "import",
+    targetId: rollback.id,
+    impact: "medium",
+    reversible: false,
+    restoreHint: "The workspace was restored to the pre-import snapshot.",
+    metadata: {
+      projects: rollback.stats.projects,
+      tasks: rollback.stats.tasks
+    }
+  });
+  saveState();
+  render();
+  showToast("Last import rolled back", "success");
 }
 
 function clearSwitcherImportPreview() {
@@ -16276,6 +16594,12 @@ document.addEventListener("click", (event) => {
 
   const apiImportButton = event.target.closest("#api-import-workspace");
   if (apiImportButton) importWorkspaceToApi();
+
+  const switcherRollbackButton = event.target.closest("#switcher-rollback-import");
+  if (switcherRollbackButton) {
+    rollbackLastSwitcherImport();
+    return;
+  }
 
   const taskPlanTodayButton = event.target.closest("[data-task-plan-today]");
   if (taskPlanTodayButton) {
