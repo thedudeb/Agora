@@ -2064,6 +2064,45 @@ body[data-tutorial-target="view"] #app-view {
   gap: 10px;
 }
 
+.template-side-stack {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.template-library-toolbar {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.template-search-control {
+  max-width: none;
+}
+
+.template-category-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.template-category-chip {
+  min-height: 32px;
+  padding: 0 12px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.template-category-chip.is-active,
+.template-category-chip:hover {
+  color: var(--accent-strong);
+  background: rgba(36, 90, 88, 0.12);
+  border-color: rgba(36, 90, 88, 0.32);
+}
+
 .template-composer,
 .automation-composer {
   display: grid;
@@ -2104,6 +2143,11 @@ body[data-tutorial-target="view"] #app-view {
   gap: 12px;
 }
 
+.template-card.is-selected {
+  border-color: rgba(36, 90, 88, 0.58);
+  box-shadow: 0 0 0 3px rgba(36, 90, 88, 0.1);
+}
+
 .template-card h3,
 .automation-card h3 {
   margin: 8px 0 4px;
@@ -2142,6 +2186,74 @@ body[data-tutorial-target="view"] #app-view {
 
 .template-controls .button {
   grid-column: 1 / -1;
+}
+
+.template-preview-description {
+  margin: 0 0 12px;
+  color: var(--muted);
+}
+
+.template-preview-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.template-preview-badges span {
+  min-height: 26px;
+  padding: 4px 9px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.template-preview-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.template-preview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.72fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.template-preview-grid h3 {
+  margin: 0 0 8px;
+  font-size: 0.92rem;
+}
+
+.template-task-checklist,
+.template-preview-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.template-task-checklist label,
+.template-preview-stack article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 9px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.template-task-checklist small,
+.template-preview-stack span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .automation-card.is-disabled {
@@ -4812,6 +4924,8 @@ body[data-density="compact"] .main-content {
   .field-composer,
   .template-composer,
   .template-controls,
+  .template-preview-form,
+  .template-preview-grid,
   .automation-composer,
   .settings-form,
   .settings-section-account .api-sync-form,

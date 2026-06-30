@@ -1446,6 +1446,12 @@ function normalizeState(nextState) {
     selectedSettingsTab: nextState.selectedSettingsTab || seedData.selectedSettingsTab,
     selectedCalendarMonth: nextState.selectedCalendarMonth || seedData.selectedCalendarMonth,
     selectedDailyDate: nextState.selectedDailyDate || todayKey(),
+    templateLibrary: {
+      category: "all",
+      query: "",
+      selectedProjectTemplateId: "",
+      ...(nextState.templateLibrary || {})
+    },
     onboarding: {
       ...seedData.onboarding,
       ...(nextState.onboarding || {})
@@ -8417,9 +8423,44 @@ function renderHealthBar(score) {
   `;
 }
 
+function projectTemplateCategories() {
+  return Array.from(new Set(state.projectTemplates.map((template) => template.category).filter(Boolean))).sort();
+}
+
+function templateSearchHaystack(template) {
+  return [
+    template.name,
+    template.category,
+    template.description,
+    ...(template.tasks || []).flatMap((task) => [task.title, task.description, ...(task.tags || [])]),
+    ...(template.milestones || []).map((milestone) => milestone.title),
+    ...(template.docs || []).map((document) => document.title)
+  ].join(" ").toLowerCase();
+}
+
+function filteredProjectTemplates() {
+  const category = state.templateLibrary?.category || "all";
+  const query = (state.templateLibrary?.query || "").trim().toLowerCase();
+  return state.projectTemplates.filter((template) => {
+    const matchesCategory = category === "all" || template.category === category;
+    const matchesQuery = !query || templateSearchHaystack(template).includes(query);
+    return matchesCategory && matchesQuery;
+  });
+}
+
+function selectedProjectTemplate(templates = filteredProjectTemplates()) {
+  const selectedId = state.templateLibrary?.selectedProjectTemplateId;
+  return templates.find((template) => template.id === selectedId) || templates[0] || state.projectTemplates[0] || null;
+}
+
 function renderTemplates() {
   const projectTemplateTaskCount = state.projectTemplates.reduce((total, template) => total + template.tasks.length, 0);
   const projectTemplateDocCount = state.projectTemplates.reduce((total, template) => total + template.docs.length, 0);
+  const templates = filteredProjectTemplates();
+  const selectedTemplate = selectedProjectTemplate(templates);
+  if (selectedTemplate && state.templateLibrary.selectedProjectTemplateId !== selectedTemplate.id) {
+    state.templateLibrary.selectedProjectTemplateId = selectedTemplate.id;
+  }
 
   els.appView.innerHTML = `
     <div class="metric-grid">
@@ -8430,11 +8471,24 @@ function renderTemplates() {
     </div>
 
     <div class="templates-grid">
-      <section class="panel">
+      <section class="panel template-library-panel">
         <div class="panel-header">
           <div>
             <p class="eyebrow">Starter packs</p>
-            <h2>Project templates</h2>
+            <h2>Project template library</h2>
+          </div>
+        </div>
+        <div class="template-library-toolbar">
+          <label class="search-control template-search-control">
+            <span>Search templates</span>
+            <input id="template-search" type="search" value="${escapeHtml(state.templateLibrary?.query || "")}" placeholder="Finance, art, launch, research">
+          </label>
+          <div class="template-category-list" aria-label="Template categories">
+            ${["all", ...projectTemplateCategories()].map((category) => `
+              <button class="template-category-chip ${category === (state.templateLibrary?.category || "all") ? "is-active" : ""}" type="button" data-template-category="${escapeHtml(category)}">
+                ${category === "all" ? "All" : escapeHtml(category)}
+              </button>
+            `).join("")}
           </div>
         </div>
         <div class="template-composer">
@@ -8451,43 +8505,46 @@ function renderTemplates() {
           <button class="button button-secondary" type="button" id="project-template-create">Save Project Template</button>
         </div>
         <div class="template-list">
-          ${state.projectTemplates.map(renderProjectTemplateCard).join("")}
+          ${templates.length ? templates.map((template) => renderProjectTemplateCard(template, selectedTemplate?.id === template.id)).join("") : emptyState("No project templates match that search.")}
         </div>
       </section>
 
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <p class="eyebrow">Reusable work</p>
-            <h2>Task templates</h2>
+      <div class="template-side-stack">
+        ${renderProjectTemplatePreview(selectedTemplate)}
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Reusable work</p>
+              <h2>Task templates</h2>
+            </div>
           </div>
-        </div>
-        <div class="template-composer">
-          <label>
-            <span>Template name</span>
-            <input id="task-template-name" placeholder="Weekly client review">
-          </label>
-          <label>
-            <span>Source task</span>
-            <select id="task-template-source">
-              ${activeTasks().map((task) => `<option value="${task.id}">${escapeHtml(task.title)}</option>`).join("")}
-            </select>
-          </label>
-          <button class="button button-secondary" type="button" id="task-template-create">Save Task Template</button>
-        </div>
-        <div class="template-list">
-          ${state.taskTemplates.map(renderTaskTemplateCard).join("")}
-        </div>
-      </section>
+          <div class="template-composer">
+            <label>
+              <span>Template name</span>
+              <input id="task-template-name" placeholder="Weekly client review">
+            </label>
+            <label>
+              <span>Source task</span>
+              <select id="task-template-source">
+                ${activeTasks().map((task) => `<option value="${task.id}">${escapeHtml(task.title)}</option>`).join("")}
+              </select>
+            </label>
+            <button class="button button-secondary" type="button" id="task-template-create">Save Task Template</button>
+          </div>
+          <div class="template-list">
+            ${state.taskTemplates.map(renderTaskTemplateCard).join("")}
+          </div>
+        </section>
+      </div>
     </div>
   `;
 }
 
-function renderProjectTemplateCard(template) {
+function renderProjectTemplateCard(template, isSelected = false) {
   const companies = visibleCompanies();
   const defaultCompany = state.filters.company === "all" ? companies[0]?.id : state.filters.company;
   return `
-    <article class="template-card" data-project-template-card="${template.id}">
+    <article class="template-card ${isSelected ? "is-selected" : ""}" data-project-template-card="${template.id}">
       <div>
         <span class="status-pill inbox-blue">${escapeHtml(template.category)}</span>
         <h3>${escapeHtml(template.name)}</h3>
@@ -8497,6 +8554,7 @@ function renderProjectTemplateCard(template) {
           <span>${template.milestones.length} milestones</span>
           <span>${template.docs.length} docs</span>
           <span>${template.durationDays} days</span>
+          <span>${template.intakeForm ? "Includes intake" : "No intake"}</span>
         </div>
       </div>
       <div class="template-controls">
@@ -8514,10 +8572,103 @@ function renderProjectTemplateCard(template) {
           <span>Project name</span>
           <input data-template-name placeholder="${escapeHtml(template.name)}">
         </label>
+        <button class="button button-secondary" type="button" data-preview-project-template="${template.id}">Preview</button>
         <button class="button button-primary" type="button" data-use-project-template="${template.id}">Create Project</button>
         <button class="button button-secondary button-danger" type="button" data-delete-project-template="${template.id}">Delete Template</button>
       </div>
     </article>
+  `;
+}
+
+function renderProjectTemplatePreview(template) {
+  if (!template) {
+    return `
+      <section class="panel template-preview-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Preview</p>
+            <h2>Template details</h2>
+          </div>
+        </div>
+        ${emptyState("Choose a template to preview its tasks, milestones, docs, and setup options.")}
+      </section>
+    `;
+  }
+  const companies = visibleCompanies();
+  const defaultCompany = state.filters.company === "all" ? companies[0]?.id : state.filters.company;
+  return `
+    <section class="panel template-preview-panel" data-template-preview="${template.id}">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">${escapeHtml(template.category)} template</p>
+          <h2>${escapeHtml(template.name)}</h2>
+        </div>
+        <span class="status-pill inbox-green">${template.durationDays} days</span>
+      </div>
+      <p class="template-preview-description">${escapeHtml(template.description)}</p>
+      <div class="template-preview-badges">
+        <span>${template.tasks.length} tasks</span>
+        <span>${template.milestones.length} milestones</span>
+        <span>${template.docs.length} docs</span>
+        <span>${template.intakeForm ? "Intake included" : "No intake form"}</span>
+      </div>
+      <div class="template-preview-form">
+        <label>
+          <span>Company</span>
+          <select id="template-preview-company">
+            ${companies.map((company) => `<option value="${company.id}" ${company.id === defaultCompany ? "selected" : ""}>${escapeHtml(company.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Start</span>
+          <input id="template-preview-start" type="date" value="${todayKey()}">
+        </label>
+        <label>
+          <span>Project owner</span>
+          <select id="template-preview-owner">
+            ${workspaceMembers().map((member) => `<option value="${member.id}" ${member.id === template.owner ? "selected" : ""}>${escapeHtml(member.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label class="wide-field">
+          <span>Project name</span>
+          <input id="template-preview-name" placeholder="${escapeHtml(template.name)}">
+        </label>
+      </div>
+      <div class="template-preview-grid">
+        <section>
+          <h3>Included tasks</h3>
+          <div class="template-task-checklist">
+            ${template.tasks.map((task) => `
+              <label>
+                <input type="checkbox" data-template-task-key="${escapeHtml(task.key)}" checked>
+                <span>
+                  <strong>${escapeHtml(task.title)}</strong>
+                  <small>${memberName(task.assignee)} - ${priorityLabel(task.priority)} - day ${task.startOffset} to ${task.dueOffset}</small>
+                </span>
+              </label>
+            `).join("")}
+          </div>
+        </section>
+        <section>
+          <h3>Milestones and docs</h3>
+          <div class="template-preview-stack">
+            ${template.milestones.map((milestone) => `
+              <article>
+                <strong>${escapeHtml(milestone.title)}</strong>
+                <span>Day ${milestone.dueOffset} - ${memberName(milestone.owner)}</span>
+              </article>
+            `).join("")}
+            ${template.docs.map((document) => `
+              <article>
+                <strong>${escapeHtml(document.title)}</strong>
+                <span>${escapeHtml(document.type)}</span>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+      </div>
+      <button class="button button-primary" type="button" id="template-preview-create">Create Customized Project</button>
+    </section>
   `;
 }
 
@@ -10074,22 +10225,26 @@ function createTaskFromTemplate(templateId, projectId) {
   return task;
 }
 
-function createProjectFromTemplate(templateId, { companyId, name, startDate = todayKey() } = {}) {
+function createProjectFromTemplate(templateId, { companyId, name, startDate = todayKey(), ownerId = "", taskKeys = null } = {}) {
   const template = byId(state.projectTemplates, templateId);
   const targetCompanyId = companyId || (state.filters.company === "all" ? state.companies[0].id : state.filters.company);
   if (!template || !targetCompanyId) return null;
+  const includedTaskKeys = Array.isArray(taskKeys) && taskKeys.length ? new Set(taskKeys) : null;
+  const templateTasks = includedTaskKeys
+    ? template.tasks.filter((templateTask) => includedTaskKeys.has(templateTask.key))
+    : template.tasks;
 
   const project = {
     id: uid("project"),
     name: name || template.name,
     companyId: targetCompanyId,
     description: template.description,
-    owner: template.owner,
+    owner: ownerId || template.owner,
     startDate,
     dueDate: shiftDate(startDate, template.durationDays)
   };
   const taskIdsByKey = {};
-  const tasks = template.tasks.map((templateTask) => {
+  const tasks = templateTasks.map((templateTask) => {
     const taskId = uid("task");
     const now = new Date().toISOString();
     taskIdsByKey[templateTask.key] = taskId;
@@ -10116,18 +10271,20 @@ function createProjectFromTemplate(templateId, { companyId, name, startDate = to
     };
   }).map((task, index) => ({
     ...task,
-    blockedBy: (template.tasks[index].blockedBy || []).map((key) => taskIdsByKey[key]).filter(Boolean)
+    blockedBy: (templateTasks[index].blockedBy || []).map((key) => taskIdsByKey[key]).filter(Boolean)
   }));
-  const milestones = template.milestones.map((milestone) => ({
-    id: uid("milestone"),
-    projectId: project.id,
-    title: milestone.title,
-    description: milestone.description,
-    dueDate: shiftDate(startDate, milestone.dueOffset),
-    owner: milestone.owner,
-    status: milestone.status,
-    taskIds: milestone.taskKeys.map((key) => taskIdsByKey[key]).filter(Boolean)
-  }));
+  const milestones = template.milestones
+    .filter((milestone) => !includedTaskKeys || milestone.taskKeys.some((key) => includedTaskKeys.has(key)))
+    .map((milestone) => ({
+      id: uid("milestone"),
+      projectId: project.id,
+      title: milestone.title,
+      description: milestone.description,
+      dueDate: shiftDate(startDate, milestone.dueOffset),
+      owner: milestone.owner,
+      status: milestone.status,
+      taskIds: milestone.taskKeys.map((key) => taskIdsByKey[key]).filter(Boolean)
+    }));
   const documents = template.docs.map((document) => ({
     id: uid("doc"),
     projectId: project.id,
@@ -10491,6 +10648,35 @@ function createProjectTemplateFromButton(button) {
   saveState();
   render();
   showToast("Project template applied", "success");
+  syncProjectToApi(created.project, "Project created in API", true);
+  created.tasks.forEach((task) => syncTaskToApi(task, "Template task synced to API", true));
+}
+
+function createProjectFromPreview() {
+  const preview = document.querySelector("[data-template-preview]");
+  const templateId = preview?.dataset.templatePreview;
+  if (!templateId) return;
+  const taskKeys = Array.from(preview.querySelectorAll("[data-template-task-key]:checked")).map((input) => input.dataset.templateTaskKey);
+  if (!taskKeys.length) {
+    showToast("Keep at least one task in the project", "info");
+    return;
+  }
+  const created = createProjectFromTemplate(templateId, {
+    companyId: document.querySelector("#template-preview-company")?.value,
+    name: document.querySelector("#template-preview-name")?.value.trim() || undefined,
+    startDate: document.querySelector("#template-preview-start")?.value || todayKey(),
+    ownerId: document.querySelector("#template-preview-owner")?.value,
+    taskKeys
+  });
+  if (!created) return;
+
+  state.selectedProject = created.project.id;
+  state.selectedRoute = "project";
+  state.selectedProjectTab = "overview";
+  state.filters.company = created.project.companyId;
+  saveState();
+  render();
+  showToast("Customized project created", "success");
   syncProjectToApi(created.project, "Project created in API", true);
   created.tasks.forEach((task) => syncTaskToApi(task, "Template task synced to API", true));
 }
@@ -12222,11 +12408,46 @@ document.addEventListener("click", (event) => {
   const copyStatusReportButton = event.target.closest("#copy-status-report");
   if (copyStatusReportButton) copyStatusReport();
 
+  const templateCategoryButton = event.target.closest("[data-template-category]");
+  if (templateCategoryButton) {
+    state.templateLibrary = {
+      ...(state.templateLibrary || {}),
+      category: templateCategoryButton.dataset.templateCategory || "all",
+      selectedProjectTemplateId: ""
+    };
+    saveState();
+    render();
+    return;
+  }
+
+  const previewProjectTemplateButton = event.target.closest("[data-preview-project-template]");
+  if (previewProjectTemplateButton) {
+    state.templateLibrary = {
+      ...(state.templateLibrary || {}),
+      selectedProjectTemplateId: previewProjectTemplateButton.dataset.previewProjectTemplate
+    };
+    saveState();
+    render();
+    return;
+  }
+
+  const templatePreviewCreateButton = event.target.closest("#template-preview-create");
+  if (templatePreviewCreateButton) {
+    createProjectFromPreview();
+    return;
+  }
+
   const useProjectTemplateButton = event.target.closest("[data-use-project-template]");
-  if (useProjectTemplateButton) createProjectTemplateFromButton(useProjectTemplateButton);
+  if (useProjectTemplateButton) {
+    createProjectTemplateFromButton(useProjectTemplateButton);
+    return;
+  }
 
   const useTaskTemplateButton = event.target.closest("[data-use-task-template]");
-  if (useTaskTemplateButton) createTaskTemplateFromButton(useTaskTemplateButton);
+  if (useTaskTemplateButton) {
+    createTaskTemplateFromButton(useTaskTemplateButton);
+    return;
+  }
 
   const createProjectTemplateButton = event.target.closest("#project-template-create");
   if (createProjectTemplateButton) {
@@ -12870,6 +13091,24 @@ els.appView.addEventListener("change", (event) => {
 });
 
 els.appView.addEventListener("input", (event) => {
+  const templateSearch = event.target.closest("#template-search");
+  if (templateSearch) {
+    const cursor = templateSearch.selectionStart || templateSearch.value.length;
+    state.templateLibrary = {
+      ...(state.templateLibrary || {}),
+      query: templateSearch.value,
+      selectedProjectTemplateId: ""
+    };
+    saveState();
+    render();
+    const nextSearch = document.querySelector("#template-search");
+    if (nextSearch) {
+      nextSearch.focus();
+      nextSearch.setSelectionRange(cursor, cursor);
+    }
+    return;
+  }
+
   const dailyNote = event.target.closest("#daily-note");
   if (!dailyNote) return;
   state.dailyNotes = {
