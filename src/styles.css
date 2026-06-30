@@ -1953,12 +1953,76 @@ body[data-tutorial-target="view"] #app-view {
   font-size: 0.78rem;
 }
 
+.workload-bar strong {
+  position: relative;
+  display: grid;
+  min-height: 30px;
+  place-items: center;
+  font-size: 0.78rem;
+}
+
 .health-warn span {
   background: var(--amber);
 }
 
 .health-danger span {
   background: var(--red);
+}
+
+.workload-warn span {
+  background: var(--amber);
+}
+
+.workload-danger span {
+  background: var(--red);
+}
+
+.capacity-planning-panel {
+  gap: 14px;
+}
+
+.capacity-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.capacity-settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.capacity-settings-row span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  color: var(--muted);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.capacity-action-list {
+  display: grid;
+  gap: 8px;
+}
+
+.capacity-action-list article {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.capacity-action-list span {
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .report-metrics,
@@ -2034,7 +2098,7 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .workload-bar {
-  min-height: 16px;
+  min-height: 30px;
 }
 
 .workload-bar span {
@@ -4905,6 +4969,7 @@ body[data-density="compact"] .main-content {
   .project-command-grid,
   .integration-grid,
   .integration-summary-grid,
+  .capacity-summary-grid,
   .theme-option-grid,
   .mobile-roadmap-list,
   .onboarding-grid,
@@ -5184,6 +5249,7 @@ body[data-density="compact"] .main-content {
   .access-summary-grid,
   .integration-grid,
   .integration-summary-grid,
+  .capacity-summary-grid,
   .integration-control-grid,
   .theme-option-grid,
   .onboarding-grid,

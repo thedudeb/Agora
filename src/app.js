@@ -697,6 +697,16 @@ const seedData = {
         }
       ]
     },
+    capacity: {
+      weeklyMinutes: 1800,
+      focusTargetPercent: 80,
+      warnAtPercent: 85,
+      overloadAtPercent: 105,
+      memberOverrides: [
+        { memberId: "mara", weeklyMinutes: 1500 },
+        { memberId: "sam", weeklyMinutes: 1800 }
+      ]
+    },
     payments: {
       provider: "none",
       currency: "USD",
@@ -1743,6 +1753,7 @@ function normalizeState(nextState) {
         ...((nextState.workspace || {}).ai || {})
       },
       integrations: normalizeWorkspaceIntegrations((nextState.workspace || {}).integrations),
+      capacity: normalizeWorkspaceCapacity((nextState.workspace || {}).capacity),
       payments: normalizeWorkspacePayments((nextState.workspace || {}).payments)
     },
     memberships: Array.isArray(nextState.memberships) ? nextState.memberships : seedData.memberships,
@@ -1814,6 +1825,25 @@ function normalizeWorkspaceIntegrations(integrations = {}) {
       id: catalogItem.id,
       ...(byId.get(catalogItem.id) || {})
     })).filter(Boolean)
+  };
+}
+
+function normalizeWorkspaceCapacity(capacity = {}) {
+  const fallback = seedData.workspace.capacity || {};
+  const memberIds = new Set(members.map((member) => member.id));
+  const overrides = Array.isArray(capacity.memberOverrides) ? capacity.memberOverrides : fallback.memberOverrides || [];
+  return {
+    weeklyMinutes: clamp(Math.round(Number(capacity.weeklyMinutes ?? fallback.weeklyMinutes ?? 1800)), 300, 3600),
+    focusTargetPercent: clamp(Math.round(Number(capacity.focusTargetPercent ?? fallback.focusTargetPercent ?? 80)), 40, 100),
+    warnAtPercent: clamp(Math.round(Number(capacity.warnAtPercent ?? fallback.warnAtPercent ?? 85)), 50, 140),
+    overloadAtPercent: clamp(Math.round(Number(capacity.overloadAtPercent ?? fallback.overloadAtPercent ?? 105)), 60, 180),
+    memberOverrides: overrides
+      .filter((override) => override && memberIds.has(override.memberId))
+      .map((override) => ({
+        memberId: override.memberId,
+        weeklyMinutes: clamp(Math.round(Number(override.weeklyMinutes) || fallback.weeklyMinutes || 1800), 300, 3600)
+      }))
+      .slice(0, 50)
   };
 }
 
@@ -9080,6 +9110,113 @@ function renderMyWork() {
   `;
 }
 
+function capacitySettings() {
+  return normalizeWorkspaceCapacity(state.workspace?.capacity);
+}
+
+function memberCapacityMinutes(memberId) {
+  const settings = capacitySettings();
+  return settings.memberOverrides.find((override) => override.memberId === memberId)?.weeklyMinutes || settings.weeklyMinutes;
+}
+
+function taskPlannedMinutes(task) {
+  if (!task || task.status === "done") return 0;
+  const baseByPriority = {
+    urgent: 360,
+    high: 240,
+    normal: 150,
+    low: 90
+  };
+  let minutes = baseByPriority[task.priority] || 150;
+  if (isTaskBlocked(task)) minutes += 75;
+  if (isOverdue(task)) minutes += 120;
+  if (dueSoonTasks([task]).length) minutes += 60;
+  minutes += Math.min((task.subtasks || []).length, 5) * 20;
+  return minutes;
+}
+
+function memberCapacityRow(member, tasks, timeEntries) {
+  const assignedTasks = tasks.filter((task) => task.assignee === member.id);
+  const openTasks = assignedTasks.filter((task) => task.status !== "done");
+  const blockedTasks = assignedTasks.filter(isTaskBlocked);
+  const dueSoon = dueSoonTasks(assignedTasks);
+  const plannedMinutes = openTasks.reduce((total, task) => total + taskPlannedMinutes(task), 0);
+  const loggedMinutes = sumMinutes(timeEntries.filter((entry) => entry.memberId === member.id));
+  const capacityMinutes = memberCapacityMinutes(member.id);
+  const utilization = capacityMinutes ? Math.round((Math.max(plannedMinutes, loggedMinutes) / capacityMinutes) * 100) : 0;
+  const settings = capacitySettings();
+  const status = utilization >= settings.overloadAtPercent
+    ? "overloaded"
+    : utilization >= settings.warnAtPercent
+      ? "at-risk"
+      : utilization < 45 && openTasks.length <= 1
+        ? "available"
+        : "steady";
+  return {
+    member,
+    assignedTasks,
+    openTasks,
+    blockedTasks,
+    dueSoon,
+    plannedMinutes,
+    loggedMinutes,
+    capacityMinutes,
+    utilization: clamp(utilization, 0, 220),
+    remainingMinutes: capacityMinutes - Math.max(plannedMinutes, loggedMinutes),
+    status
+  };
+}
+
+function capacityRows(tasks, timeEntries) {
+  return workspaceMembers().map((member) => memberCapacityRow(member, tasks, timeEntries));
+}
+
+function capacityStatusLabel(status) {
+  return {
+    overloaded: "Overloaded",
+    "at-risk": "At risk",
+    available: "Available",
+    steady: "Steady"
+  }[status] || "Steady";
+}
+
+function capacityStatusClass(status) {
+  return status === "overloaded" ? "inbox-red" : status === "at-risk" ? "inbox-amber" : status === "available" ? "inbox-blue" : "inbox-green";
+}
+
+function renderCapacityPlanningPanel(rows) {
+  const settings = capacitySettings();
+  const overloaded = rows.filter((row) => row.status === "overloaded");
+  const available = rows.filter((row) => row.status === "available" || row.remainingMinutes > 240);
+  const averageUtilization = rows.length ? Math.round(rows.reduce((total, row) => total + row.utilization, 0) / rows.length) : 0;
+  return `
+    <section class="panel capacity-planning-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Capacity</p>
+          <h2>Team workload plan</h2>
+        </div>
+        <span class="status-pill ${overloaded.length ? "inbox-red" : averageUtilization >= settings.warnAtPercent ? "inbox-amber" : "inbox-green"}">${averageUtilization}% average</span>
+      </div>
+      <div class="capacity-summary-grid">
+        ${metric("Weekly capacity", formatDuration(rows.reduce((total, row) => total + row.capacityMinutes, 0)))}
+        ${metric("Planned load", formatDuration(rows.reduce((total, row) => total + row.plannedMinutes, 0)))}
+        ${metric("At risk", rows.filter((row) => row.status === "at-risk" || row.status === "overloaded").length)}
+        ${metric("Available", available.length)}
+      </div>
+      <div class="capacity-settings-row">
+        <span>Default ${escapeHtml(formatDuration(settings.weeklyMinutes))} / week</span>
+        <span>Warn ${settings.warnAtPercent}%</span>
+        <span>Overload ${settings.overloadAtPercent}%</span>
+        <span>Focus target ${settings.focusTargetPercent}%</span>
+      </div>
+      <div class="capacity-action-list">
+        ${overloaded.length ? overloaded.map((row) => `<article><strong>Rebalance ${escapeHtml(row.member.name)}</strong><span>${escapeHtml(formatDuration(Math.abs(row.remainingMinutes)))} over capacity. Move due-soon work to ${escapeHtml(available[0]?.member.name || "an available teammate")}.</span></article>`).join("") : `<article><strong>No overload detected</strong><span>Current assignment load is inside the configured capacity thresholds.</span></article>`}
+      </div>
+    </section>
+  `;
+}
+
 function renderReports() {
   const { tasks, projects, timeEntries, submissions } = reportTaskScope();
   const projectRows = projects.map((project) => projectReport(project, tasks, timeEntries, submissions));
@@ -9094,7 +9231,8 @@ function renderReports() {
   const averageHealth = projectRows.length
     ? Math.round(projectRows.reduce((total, row) => total + row.health, 0) / projectRows.length)
     : 100;
-  const statusReport = workspaceStatusReport({ projectRows, companyRows, openTasks, blockedTasks, overdueTasks, openIntake, timeEntries, averageHealth });
+  const workloadRows = capacityRows(tasks, timeEntries);
+  const statusReport = workspaceStatusReport({ projectRows, companyRows, openTasks, blockedTasks, overdueTasks, openIntake, timeEntries, averageHealth, workloadRows });
 
   els.appView.innerHTML = `
     <div class="metric-grid">
@@ -9131,6 +9269,8 @@ function renderReports() {
         </div>
       </section>
 
+      ${renderCapacityPlanningPanel(workloadRows)}
+
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -9154,7 +9294,7 @@ function renderReports() {
           </div>
         </div>
         <div class="workload-report-list">
-          ${workspaceMembers().map((member) => renderWorkloadReportRow(member, tasks, timeEntries)).join("")}
+          ${workloadRows.map(renderWorkloadReportRow).join("")}
         </div>
       </section>
 
@@ -9193,7 +9333,7 @@ function renderProjectReportCard(row) {
   `;
 }
 
-function workspaceStatusReport({ projectRows, companyRows, openTasks, blockedTasks, overdueTasks, openIntake, timeEntries, averageHealth }) {
+function workspaceStatusReport({ projectRows, companyRows, openTasks, blockedTasks, overdueTasks, openIntake, timeEntries, averageHealth, workloadRows = [] }) {
   const scope = [
     state.filters.company !== "all" ? companyName(state.filters.company) : "All companies",
     state.selectedProject !== "all" ? projectName(state.selectedProject) : "All projects",
@@ -9206,6 +9346,9 @@ function workspaceStatusReport({ projectRows, companyRows, openTasks, blockedTas
   const nextTasks = [...openTasks]
     .sort((a, b) => operatorTaskScore(b) - operatorTaskScore(a))
     .slice(0, 5);
+  const overloaded = workloadRows.filter((row) => row.status === "overloaded");
+  const atRisk = workloadRows.filter((row) => row.status === "at-risk");
+  const available = workloadRows.filter((row) => row.status === "available" || row.remainingMinutes > 240);
 
   return [
     `# ${state.workspace.name} Status Report`,
@@ -9220,6 +9363,7 @@ function workspaceStatusReport({ projectRows, companyRows, openTasks, blockedTas
     `- Overdue: ${overdueTasks.length}`,
     `- Open intake: ${openIntake.length}`,
     `- Tracked time: ${formatDuration(sumMinutes(timeEntries))}`,
+    `- Capacity risk: ${overloaded.length} overloaded, ${atRisk.length} at risk, ${available.length} available.`,
     "",
     "## Projects To Watch",
     ...(riskiest.length ? riskiest.map((row) => `- ${row.project.name}: ${row.health}% health, ${row.overdue.length} overdue, ${row.blocked.length} blocked, ${formatDuration(row.trackedMinutes)} tracked.`) : ["- No matching projects."]),
@@ -9262,31 +9406,27 @@ function renderCompanyReportRow(row) {
   `;
 }
 
-function renderWorkloadReportRow(member, tasks, timeEntries) {
-  const assignedTasks = tasks.filter((task) => task.assignee === member.id);
-  const openTasks = assignedTasks.filter((task) => task.status !== "done");
-  const blockedTasks = assignedTasks.filter(isTaskBlocked);
-  const dueSoon = dueSoonTasks(assignedTasks);
-  const loggedMinutes = sumMinutes(timeEntries.filter((entry) => entry.memberId === member.id));
-  const loadScore = clamp(openTasks.length * 16 + dueSoon.length * 12 + blockedTasks.length * 10, 0, 100);
-
+function renderWorkloadReportRow(row) {
+  const width = clamp(row.utilization, 0, 140);
   return `
     <article class="workload-report-row">
       <div>
-        <span class="avatar">${member.name.split(" ").map((part) => part[0]).join("")}</span>
+        <span class="avatar">${row.member.name.split(" ").map((part) => part[0]).join("")}</span>
         <div>
-          <h3>${member.name}</h3>
-          <p>${member.role}</p>
+          <h3>${escapeHtml(row.member.name)}</h3>
+          <p>${escapeHtml(row.member.role)} - ${escapeHtml(capacityStatusLabel(row.status))}</p>
         </div>
       </div>
-      <div class="workload-bar" aria-label="${loadScore}% workload">
-        <span style="width: ${loadScore}%"></span>
+      <span class="status-pill ${capacityStatusClass(row.status)}">${row.utilization}%</span>
+      <div class="workload-bar ${row.status === "overloaded" ? "workload-danger" : row.status === "at-risk" ? "workload-warn" : ""}" aria-label="${row.utilization}% capacity utilization">
+        <span style="width: ${width}%"></span>
+        <strong>${escapeHtml(formatDuration(Math.max(row.plannedMinutes, row.loggedMinutes)))} / ${escapeHtml(formatDuration(row.capacityMinutes))}</strong>
       </div>
       <div class="portfolio-report-metrics">
-        <span>${openTasks.length} open</span>
-        <span>${blockedTasks.length} blocked</span>
-        <span>${dueSoon.length} due soon</span>
-        <span>${formatDuration(loggedMinutes)}</span>
+        <span>${row.openTasks.length} open</span>
+        <span>${row.blockedTasks.length} blocked</span>
+        <span>${row.dueSoon.length} due soon</span>
+        <span>${formatDuration(row.loggedMinutes)} logged</span>
       </div>
     </article>
   `;
@@ -9811,6 +9951,7 @@ function renderSettings() {
   const teamMembers = workspaceMembers();
   const ai = aiSettings();
   const payments = paymentSettings();
+  const capacity = capacitySettings();
   const pendingInvitations = state.invitations.filter((invitation) => invitation.status === "pending");
   const memberships = teamMembers.map((member) => ({
     ...member,
@@ -9888,6 +10029,22 @@ function renderSettings() {
             <select id="workspace-density">
               ${densityOptions.map((option) => `<option value="${option.id}" ${option.id === state.workspace.theme?.density ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
             </select>
+          </label>
+          <label>
+            <span>Default weekly capacity</span>
+            <input id="workspace-capacity-hours" type="number" min="5" max="60" step="1" value="${Math.round(capacity.weeklyMinutes / 60)}">
+          </label>
+          <label>
+            <span>Focus target %</span>
+            <input id="workspace-focus-target" type="number" min="40" max="100" step="5" value="${capacity.focusTargetPercent}">
+          </label>
+          <label>
+            <span>Warn at %</span>
+            <input id="workspace-capacity-warn" type="number" min="50" max="140" step="5" value="${capacity.warnAtPercent}">
+          </label>
+          <label>
+            <span>Overload at %</span>
+            <input id="workspace-capacity-overload" type="number" min="60" max="180" step="5" value="${capacity.overloadAtPercent}">
           </label>
           <button class="button button-primary" type="button" id="workspace-save">Save Settings</button>
         </div>
@@ -12634,6 +12791,11 @@ function saveWorkspaceSettings() {
   const backendTarget = document.querySelector("#workspace-backend-target")?.value.trim();
   const themePreset = document.querySelector('input[name="workspace-theme"]:checked')?.value || state.workspace.theme?.preset;
   const density = document.querySelector("#workspace-density")?.value || state.workspace.theme?.density;
+  const existingCapacity = capacitySettings();
+  const weeklyCapacityHours = Number(document.querySelector("#workspace-capacity-hours")?.value || existingCapacity.weeklyMinutes / 60);
+  const focusTargetPercent = Number(document.querySelector("#workspace-focus-target")?.value || existingCapacity.focusTargetPercent);
+  const warnAtPercent = Number(document.querySelector("#workspace-capacity-warn")?.value || existingCapacity.warnAtPercent);
+  const overloadAtPercent = Number(document.querySelector("#workspace-capacity-overload")?.value || existingCapacity.overloadAtPercent);
   if (!name || !slug) return;
 
   state.workspace = {
@@ -12643,6 +12805,13 @@ function saveWorkspaceSettings() {
     visibility,
     defaultRole,
     theme: normalizeWorkspaceTheme({ preset: themePreset, density }),
+    capacity: normalizeWorkspaceCapacity({
+      ...existingCapacity,
+      weeklyMinutes: weeklyCapacityHours * 60,
+      focusTargetPercent,
+      warnAtPercent,
+      overloadAtPercent
+    }),
     backendTarget: backendTarget || state.workspace.backendTarget
   };
   addAuditEvent({
