@@ -1599,17 +1599,20 @@ body[data-tutorial-target="view"] #app-view {
 
 .notification-digest-panel,
 .notification-preferences-panel,
+.notification-reminders-panel,
 .notification-history-panel {
   align-content: start;
 }
 
 .digest-list,
+.reminder-list,
 .notification-history-list {
   display: grid;
   gap: 10px;
 }
 
 .digest-row,
+.reminder-row,
 .notification-history-list article {
   display: grid;
   gap: 6px;
@@ -1623,17 +1626,40 @@ body[data-tutorial-target="view"] #app-view {
   opacity: 0.62;
 }
 
+.reminder-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.reminder-row.is-due {
+  border-color: var(--accent);
+  box-shadow: 0 8px 22px rgba(36, 90, 88, 0.08);
+}
+
 .digest-row strong {
   font-size: 1.4rem;
 }
 
+.reminder-row strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
 .digest-row p,
 .digest-row small,
+.reminder-row p,
+.reminder-row small,
 .notification-history-list p,
 .notification-history-list small {
   margin: 0;
   color: var(--muted);
   line-height: 1.4;
+}
+
+.digest-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .notification-pref-grid {
@@ -1651,6 +1677,25 @@ body[data-tutorial-target="view"] #app-view {
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
+}
+
+.notification-delivery-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.notification-delivery-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.notification-resolved-toggle {
+  align-content: center;
 }
 
 .inbox-blue {
@@ -5627,6 +5672,11 @@ body[data-density="compact"] .main-content {
   }
 
   .inbox-item {
+    grid-template-columns: 1fr;
+  }
+
+  .notification-delivery-grid,
+  .reminder-row {
     grid-template-columns: 1fr;
   }
 

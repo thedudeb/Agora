@@ -861,11 +861,19 @@ const seedData = {
     },
     channels: {
       inApp: true,
-      browser: false
+      browser: false,
+      webhook: false,
+      email: false
     },
-    cadence: "daily"
+    cadence: "daily",
+    delivery: {
+      webhookUrl: "",
+      emailAddress: "",
+      sendResolved: false
+    }
   },
   notificationHistory: [],
+  notificationReminders: [],
   taskWatchers: {},
   chatMessages: [
     {
@@ -1985,6 +1993,7 @@ function normalizeState(nextState) {
     inboxSnoozed: normalizeInboxSnoozed(nextState.inboxSnoozed),
     notificationSettings: normalizeNotificationSettings(nextState.notificationSettings),
     notificationHistory: normalizeNotificationHistory(nextState.notificationHistory),
+    notificationReminders: normalizeNotificationReminders(nextState.notificationReminders),
     deletedProjectTemplateIds: Array.isArray(nextState.deletedProjectTemplateIds) ? nextState.deletedProjectTemplateIds : [],
     taskWatchers: normalizeTaskWatchers(nextState.taskWatchers),
     presence: Array.isArray(nextState.presence) ? nextState.presence : [],
@@ -2125,6 +2134,13 @@ function normalizeNotificationSettings(settings = null) {
       ...defaults.channels,
       ...(source.channels || {})
     },
+    delivery: {
+      ...defaults.delivery,
+      ...(source.delivery || {}),
+      webhookUrl: String(source.delivery?.webhookUrl || defaults.delivery?.webhookUrl || "").trim().slice(0, 300),
+      emailAddress: String(source.delivery?.emailAddress || defaults.delivery?.emailAddress || "").trim().slice(0, 180),
+      sendResolved: Boolean(source.delivery?.sendResolved ?? defaults.delivery?.sendResolved)
+    },
     cadence: ["daily", "weekly", "manual"].includes(source.cadence) ? source.cadence : defaults.cadence
   };
 }
@@ -2149,6 +2165,27 @@ function normalizeNotificationHistory(history = []) {
       createdAt: event.createdAt || new Date().toISOString()
     }))
     .slice(0, 50);
+}
+
+function normalizeNotificationReminders(reminders = []) {
+  return (Array.isArray(reminders) ? reminders : [])
+    .filter((reminder) => reminder && typeof reminder === "object")
+    .map((reminder) => ({
+      id: reminder.id || uid("reminder"),
+      sourceId: String(reminder.sourceId || ""),
+      taskId: String(reminder.taskId || ""),
+      approvalId: String(reminder.approvalId || ""),
+      projectId: String(reminder.projectId || ""),
+      title: String(reminder.title || "Reminder").trim().slice(0, 140),
+      message: String(reminder.message || "").trim().slice(0, 260),
+      remindAt: String(reminder.remindAt || ""),
+      repeat: ["none", "daily", "weekly"].includes(reminder.repeat) ? reminder.repeat : "none",
+      status: ["scheduled", "sent", "dismissed"].includes(reminder.status) ? reminder.status : "scheduled",
+      createdAt: reminder.createdAt || new Date().toISOString(),
+      sentAt: reminder.sentAt || ""
+    }))
+    .filter((reminder) => reminder.sourceId && reminder.remindAt)
+    .slice(0, 100);
 }
 
 function normalizeChatMessages(messages = []) {
@@ -5771,6 +5808,90 @@ function snoozeInboxItem(id, until = shiftDate(todayKey(), 1)) {
   };
 }
 
+function reminderDateForPreset(preset) {
+  if (preset === "next-week") return shiftDate(todayKey(), 7);
+  if (preset === "later-today") return todayKey();
+  return shiftDate(todayKey(), 1);
+}
+
+function activeNotificationReminders() {
+  return normalizeNotificationReminders(state.notificationReminders)
+    .filter((reminder) => reminder.status === "scheduled")
+    .sort((a, b) => a.remindAt.localeCompare(b.remindAt));
+}
+
+function dueNotificationReminders() {
+  const today = todayKey();
+  return activeNotificationReminders().filter((reminder) => reminder.remindAt <= today);
+}
+
+function reminderInboxItems() {
+  return dueNotificationReminders().map((reminder) => ({
+    id: `reminder-${reminder.id}`,
+    type: "reminder",
+    tone: "blue",
+    title: reminder.title,
+    message: reminder.message || "You asked Agora to bring this back.",
+    taskId: reminder.taskId,
+    projectId: reminder.projectId,
+    approvalId: reminder.approvalId,
+    reminderId: reminder.id,
+    createdAt: `${reminder.remindAt}T09:00:00.000Z`,
+    urgency: 3
+  }));
+}
+
+function scheduleInboxReminder(itemId, preset = "tomorrow") {
+  const item = getInboxItems({ includeArchived: true }).find((candidate) => candidate.id === itemId);
+  if (!item) {
+    showToast("That notification is no longer available", "info");
+    return;
+  }
+  const remindAt = reminderDateForPreset(preset);
+  const existing = activeNotificationReminders().find((reminder) => reminder.sourceId === item.id && reminder.remindAt === remindAt);
+  if (existing) {
+    showToast(`Reminder already set for ${formatFullDate(remindAt)}`, "info");
+    return;
+  }
+  const reminder = {
+    id: uid("reminder"),
+    sourceId: item.id,
+    taskId: item.taskId || "",
+    approvalId: item.approvalId || "",
+    projectId: item.projectId || "",
+    title: item.title,
+    message: item.message,
+    remindAt,
+    repeat: "none",
+    status: "scheduled",
+    createdAt: new Date().toISOString(),
+    sentAt: ""
+  };
+  state.notificationReminders = normalizeNotificationReminders([reminder, ...(state.notificationReminders || [])]);
+  logNotificationHistory({
+    kind: "reminder",
+    title: reminder.title,
+    message: `Reminder scheduled for ${formatFullDate(remindAt)}.`,
+    reason: item.message,
+    channel: "in-app"
+  });
+  markInboxRead(item.id);
+  saveState();
+  render();
+  showToast(`Reminder set for ${formatFullDate(remindAt)}`, "success");
+}
+
+function dismissNotificationReminder(reminderId) {
+  state.notificationReminders = normalizeNotificationReminders(state.notificationReminders).map((reminder) => (
+    reminder.id === reminderId
+      ? { ...reminder, status: "dismissed", sentAt: new Date().toISOString() }
+      : reminder
+  ));
+  saveState();
+  render();
+  showToast("Reminder dismissed", "success");
+}
+
 function logNotificationHistory({ kind = "digest", title, message, reason = "", count = 0, channel = "in-app" }) {
   const event = {
     id: uid("notification-history"),
@@ -5952,6 +6073,8 @@ function getInboxItems({ includeArchived = false } = {}) {
         urgency: approval.status === "needs-changes" ? 4 : 3
       });
     });
+
+  items.push(...reminderInboxItems());
 
   return items
     .filter((item) => includeArchived || !isInboxArchived(item.id))
@@ -8605,6 +8728,52 @@ function notificationDigestRows() {
   ];
 }
 
+function notificationDeliveryChannels(settings = notificationSettings()) {
+  const channels = ["in-app"];
+  if (settings.channels.browser && notificationPermissionState === "granted") channels.push("browser");
+  if (settings.channels.webhook && settings.delivery.webhookUrl) channels.push("webhook preview");
+  if (settings.channels.email && settings.delivery.emailAddress) channels.push("email handoff");
+  return channels.join(" + ");
+}
+
+function notificationDigestPayload(row) {
+  return {
+    source: "agora",
+    workspaceId: state.workspace.id,
+    workspaceName: state.workspace.name,
+    type: "notification_digest",
+    digestId: row.id,
+    title: row.title,
+    message: row.message,
+    reason: row.reason,
+    count: row.count,
+    cadence: notificationSettings().cadence,
+    createdAt: new Date().toISOString()
+  };
+}
+
+async function copyDigestPayload(digestId) {
+  const row = notificationDigestRows().find((digest) => digest.id === digestId);
+  if (!row) return;
+  const payload = JSON.stringify(notificationDigestPayload(row), null, 2);
+  if (!navigator.clipboard?.writeText) {
+    showToast("Clipboard is not available in this browser", "info");
+    return;
+  }
+  await navigator.clipboard.writeText(payload);
+  logNotificationHistory({
+    kind: "webhook-payload",
+    title: row.title,
+    message: "Webhook payload copied for delivery testing.",
+    reason: row.reason,
+    count: row.count,
+    channel: "clipboard"
+  });
+  saveState();
+  render();
+  showToast("Webhook payload copied", "success");
+}
+
 function renderNotificationDigestPanel() {
   const settings = notificationSettings();
   const rows = notificationDigestRows();
@@ -8629,7 +8798,10 @@ function renderNotificationDigestPanel() {
             <strong>${row.count}</strong>
             <p>${escapeHtml(row.message)}</p>
             <small>${escapeHtml(row.reason)}</small>
-            <button class="button button-secondary compact-button" type="button" data-digest-run="${row.id}" ${row.enabled ? "" : "disabled"}>Send Digest</button>
+            <div class="digest-actions">
+              <button class="button button-secondary compact-button" type="button" data-digest-payload="${row.id}">Copy Payload</button>
+              <button class="button button-secondary compact-button" type="button" data-digest-run="${row.id}" ${row.enabled ? "" : "disabled"}>Send Digest</button>
+            </div>
           </article>
         `).join("")}
       </div>
@@ -8643,6 +8815,7 @@ function renderNotificationPreferencesPanel() {
     ["assignment", "Assignments"],
     ["overdue", "Overdue"],
     ["due", "Due soon"],
+    ["reminder", "Reminders"],
     ["mention", "Mentions"],
     ["watched", "Watched tasks"],
     ["comment", "Comments"],
@@ -8656,7 +8829,7 @@ function renderNotificationPreferencesPanel() {
           <p class="eyebrow">Preferences</p>
           <h2>What reaches you</h2>
         </div>
-        <span class="status-pill ${settings.channels.browser ? "inbox-green" : "inbox-neutral"}">${settings.channels.browser ? "Browser on" : "In-app only"}</span>
+        <span class="status-pill ${settings.channels.browser || settings.channels.webhook || settings.channels.email ? "inbox-green" : "inbox-neutral"}">${escapeHtml(notificationDeliveryChannels(settings))}</span>
       </div>
       <div class="notification-pref-grid">
         ${eventOptions.map(([id, label]) => `
@@ -8668,11 +8841,66 @@ function renderNotificationPreferencesPanel() {
       </div>
       <div class="notification-channel-row">
         <label class="checkbox-label">
+          <input type="checkbox" data-notification-channel="inApp" ${settings.channels.inApp !== false ? "checked" : ""}>
+          <span>In-app inbox</span>
+        </label>
+        <label class="checkbox-label">
           <input type="checkbox" data-notification-channel="browser" ${settings.channels.browser ? "checked" : ""}>
           <span>Browser alerts</span>
         </label>
+        <label class="checkbox-label">
+          <input type="checkbox" data-notification-channel="webhook" ${settings.channels.webhook ? "checked" : ""}>
+          <span>Webhook</span>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" data-notification-channel="email" ${settings.channels.email ? "checked" : ""}>
+          <span>Email handoff</span>
+        </label>
         <button class="button button-secondary compact-button" type="button" id="notification-request" ${notificationPermissionState === "unsupported" || notificationPermissionState === "granted" ? "disabled" : ""}>Enable Permission</button>
         <button class="button button-secondary compact-button" type="button" id="notification-test" ${notificationPermissionState === "granted" ? "" : "disabled"}>Test</button>
+      </div>
+      <div class="notification-delivery-grid">
+        <label>
+          <span>Webhook URL</span>
+          <input id="notification-webhook-url" type="url" value="${escapeHtml(settings.delivery.webhookUrl)}" placeholder="https://hooks.example.com/agora">
+        </label>
+        <label>
+          <span>Email recipient</span>
+          <input id="notification-email-address" type="email" value="${escapeHtml(settings.delivery.emailAddress)}" placeholder="ops@example.com">
+        </label>
+        <label class="checkbox-label notification-resolved-toggle">
+          <input type="checkbox" id="notification-send-resolved" ${settings.delivery.sendResolved ? "checked" : ""}>
+          <span>Include resolved items in delivery payloads</span>
+        </label>
+        <button class="button button-secondary compact-button" type="button" id="notification-save-delivery">Save Delivery</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderNotificationRemindersPanel() {
+  const reminders = activeNotificationReminders();
+  const dueCount = reminders.filter((reminder) => reminder.remindAt <= todayKey()).length;
+  return `
+    <section class="panel notification-reminders-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Follow-up</p>
+          <h2>Reminders</h2>
+        </div>
+        <span class="status-pill ${dueCount ? "inbox-amber" : "inbox-neutral"}">${dueCount ? `${dueCount} due` : `${reminders.length} scheduled`}</span>
+      </div>
+      <div class="reminder-list">
+        ${reminders.length ? reminders.slice(0, 6).map((reminder) => `
+          <article class="reminder-row ${reminder.remindAt <= todayKey() ? "is-due" : ""}">
+            <div>
+              <strong>${escapeHtml(reminder.title)}</strong>
+              <p>${escapeHtml(reminder.message || projectName(reminder.projectId))}</p>
+              <small>${formatFullDate(reminder.remindAt)}${reminder.repeat !== "none" ? ` - repeats ${escapeHtml(reminder.repeat)}` : ""}</small>
+            </div>
+            <button class="button button-secondary compact-button" type="button" data-reminder-dismiss="${reminder.id}">Dismiss</button>
+          </article>
+        `).join("") : emptyState("Use Remind Tomorrow or Next Week on inbox cards to bring work back here.")}
       </div>
     </section>
   `;
@@ -8744,6 +8972,7 @@ function renderInbox() {
 
       ${renderNotificationDigestPanel()}
       ${renderNotificationPreferencesPanel()}
+      ${renderNotificationRemindersPanel()}
       ${renderNotificationHistoryPanel()}
 
       <section class="panel operator-panel">
@@ -8859,7 +9088,10 @@ function renderInboxItem(item) {
         ${item.approvalId ? `<button class="button button-secondary" type="button" data-approval-action="needs-changes" data-approval-id="${item.approvalId}" data-inbox-id="${item.id}">Needs Changes</button>` : ""}
         ${item.taskId ? `<button class="button button-secondary" type="button" data-inbox-plan="${item.taskId}" data-inbox-id="${item.id}">Plan Today</button>` : ""}
         ${item.taskId ? `<button class="button button-secondary" type="button" data-edit-task="${item.taskId}" data-inbox-id="${item.id}">Open</button>` : ""}
+        <button class="button button-secondary" type="button" data-inbox-remind="tomorrow" data-inbox-id="${item.id}">Remind Tomorrow</button>
+        <button class="button button-secondary" type="button" data-inbox-remind="next-week" data-inbox-id="${item.id}">Next Week</button>
         <button class="button button-secondary" type="button" data-inbox-snooze="${item.id}">Snooze</button>
+        ${item.reminderId ? `<button class="button button-secondary" type="button" data-reminder-dismiss="${item.reminderId}">Dismiss Reminder</button>` : ""}
         <button class="button button-secondary" type="button" data-inbox-read="${item.id}">${read ? "Mark Unread" : "Mark Read"}</button>
         <button class="button button-secondary" type="button" data-inbox-clear="${item.id}">Clear</button>
       </div>
@@ -16441,6 +16673,25 @@ function updateNotificationCadence(cadence) {
   showToast("Digest cadence updated", "success");
 }
 
+function saveNotificationDeliverySettings() {
+  const settings = notificationSettings();
+  const webhookUrl = document.querySelector("#notification-webhook-url")?.value.trim() || "";
+  const emailAddress = document.querySelector("#notification-email-address")?.value.trim() || "";
+  const sendResolved = Boolean(document.querySelector("#notification-send-resolved")?.checked);
+  state.notificationSettings = {
+    ...settings,
+    delivery: {
+      ...settings.delivery,
+      webhookUrl,
+      emailAddress,
+      sendResolved
+    }
+  };
+  saveState();
+  render();
+  showToast("Delivery settings saved", "success");
+}
+
 function runNotificationDigest(digestId) {
   const row = notificationDigestRows().find((digest) => digest.id === digestId);
   if (!row || !row.enabled) {
@@ -16448,13 +16699,14 @@ function runNotificationDigest(digestId) {
     return;
   }
   const settings = notificationSettings();
+  const channels = notificationDeliveryChannels(settings);
   logNotificationHistory({
     kind: "digest",
     title: row.title,
     message: row.message,
     reason: `${settings.cadence} digest: ${row.reason}`,
     count: row.count,
-    channel: settings.channels.browser && notificationPermissionState === "granted" ? "browser + in-app" : "in-app"
+    channel: channels
   });
   if (settings.channels.browser && notificationPermissionState === "granted") {
     const options = {
@@ -16465,6 +16717,26 @@ function runNotificationDigest(digestId) {
     navigator.serviceWorker?.getRegistration?.().then((registration) => {
       if (registration?.showNotification) registration.showNotification(row.title, options);
       else new Notification(row.title, options);
+    });
+  }
+  if (settings.channels.webhook && settings.delivery.webhookUrl) {
+    logNotificationHistory({
+      kind: "webhook-preview",
+      title: row.title,
+      message: `Prepared digest payload for ${settings.delivery.webhookUrl}.`,
+      reason: "Copy Payload shows the exact JSON body to POST from a server integration.",
+      count: row.count,
+      channel: "webhook preview"
+    });
+  }
+  if (settings.channels.email && settings.delivery.emailAddress) {
+    logNotificationHistory({
+      kind: "email-handoff",
+      title: row.title,
+      message: `Prepared email handoff for ${settings.delivery.emailAddress}.`,
+      reason: "Agora stores the handoff locally until a mail provider is connected.",
+      count: row.count,
+      channel: "email handoff"
     });
   }
   saveState();
@@ -16839,9 +17111,21 @@ document.addEventListener("click", (event) => {
   const notificationTestButton = event.target.closest("#notification-test");
   if (notificationTestButton) sendTestNotification();
 
+  const notificationSaveDeliveryButton = event.target.closest("#notification-save-delivery");
+  if (notificationSaveDeliveryButton) {
+    saveNotificationDeliverySettings();
+    return;
+  }
+
   const digestRunButton = event.target.closest("[data-digest-run]");
   if (digestRunButton) {
     runNotificationDigest(digestRunButton.dataset.digestRun);
+    return;
+  }
+
+  const digestPayloadButton = event.target.closest("[data-digest-payload]");
+  if (digestPayloadButton) {
+    copyDigestPayload(digestPayloadButton.dataset.digestPayload).catch(() => showToast("Could not copy payload", "info"));
     return;
   }
 
@@ -17158,6 +17442,18 @@ document.addEventListener("click", (event) => {
     saveState();
     render();
     showToast("Notification snoozed until tomorrow", "success");
+    return;
+  }
+
+  const inboxRemindButton = event.target.closest("[data-inbox-remind]");
+  if (inboxRemindButton) {
+    scheduleInboxReminder(inboxRemindButton.dataset.inboxId, inboxRemindButton.dataset.inboxRemind);
+    return;
+  }
+
+  const reminderDismissButton = event.target.closest("[data-reminder-dismiss]");
+  if (reminderDismissButton) {
+    dismissNotificationReminder(reminderDismissButton.dataset.reminderDismiss);
     return;
   }
 
