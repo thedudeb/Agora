@@ -2488,6 +2488,112 @@ body[data-tutorial-target="view"] #app-view {
   color: var(--muted);
 }
 
+.goals-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.goal-ladder-panel {
+  margin-bottom: 16px;
+}
+
+.goal-ladder {
+  display: grid;
+  gap: 10px;
+}
+
+.goal-ladder article,
+.goal-card,
+.key-result-row,
+.goal-project-row {
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.goal-ladder article {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.2fr) minmax(0, 1fr) minmax(180px, 0.4fr) minmax(120px, 0.3fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.goal-ladder span,
+.goal-ladder small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.goal-card {
+  display: grid;
+  gap: 14px;
+}
+
+.goal-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.goal-card-header h2 {
+  margin: 2px 0 0;
+  font-size: 1.2rem;
+}
+
+.goal-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.goal-meta-grid span {
+  display: grid;
+  gap: 3px;
+  min-height: 48px;
+  padding: 9px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.goal-meta-grid strong {
+  color: var(--text);
+}
+
+.key-result-list,
+.goal-project-list {
+  display: grid;
+  gap: 8px;
+}
+
+.key-result-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.key-result-row small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.key-result-row .progress-track {
+  grid-column: 1 / -1;
+}
+
+.goal-project-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
 .settings-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -4970,6 +5076,8 @@ body[data-density="compact"] .main-content {
   .integration-grid,
   .integration-summary-grid,
   .capacity-summary-grid,
+  .goals-grid,
+  .goal-meta-grid,
   .theme-option-grid,
   .mobile-roadmap-list,
   .onboarding-grid,
@@ -5251,6 +5359,11 @@ body[data-density="compact"] .main-content {
   .integration-summary-grid,
   .capacity-summary-grid,
   .integration-control-grid,
+  .goals-grid,
+  .goal-ladder article,
+  .goal-card-header,
+  .goal-meta-grid,
+  .goal-project-row,
   .theme-option-grid,
   .onboarding-grid,
   .project-command-grid,

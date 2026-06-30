@@ -522,6 +522,7 @@ const routes = {
   time: "Time",
   operator: "Operator",
   reports: "Reports",
+  goals: "Goals",
   templates: "Templates",
   automations: "Automations",
   docs: "Docs & Files",
@@ -845,6 +846,53 @@ const seedData = {
       owner: "nina",
       startDate: "2026-07-02",
       dueDate: "2026-08-07"
+    }
+  ],
+  goals: [
+    {
+      id: "goal-open-source-launch",
+      title: "Launch a credible open source project management alternative",
+      owner: "mara",
+      companyId: "acme-studio",
+      status: "active",
+      period: "Q3 2026",
+      targetDate: "2026-08-15",
+      projectIds: ["launch"],
+      keyResults: [
+        { id: "kr-launch-scope", title: "MVP scope approved and documented", progress: 72, target: "100%" },
+        { id: "kr-launch-self-hosting", title: "Self-hosting path tested by early contributors", progress: 48, target: "5 testers" },
+        { id: "kr-launch-community", title: "Contribution loop ready for public feedback", progress: 61, target: "10 issues labeled" }
+      ]
+    },
+    {
+      id: "goal-client-delivery-repeatability",
+      title: "Make client delivery repeatable across managed companies",
+      owner: "sam",
+      companyId: "northstar-labs",
+      status: "active",
+      period: "Q3 2026",
+      targetDate: "2026-08-01",
+      projectIds: ["client-delivery"],
+      keyResults: [
+        { id: "kr-client-onboarding", title: "Agency onboarding template installed and approved", progress: 58, target: "1 reusable template" },
+        { id: "kr-client-approvals", title: "Client approvals routed through portal", progress: 65, target: "90% portal approvals" },
+        { id: "kr-client-time", title: "Billable delivery work tracked weekly", progress: 52, target: "100% tracked" }
+      ]
+    },
+    {
+      id: "goal-design-system-polish",
+      title: "Raise product polish without slowing daily execution",
+      owner: "nina",
+      companyId: "brightline-health",
+      status: "active",
+      period: "Q3 2026",
+      targetDate: "2026-08-07",
+      projectIds: ["design-system"],
+      keyResults: [
+        { id: "kr-density", title: "Task card density validated on mobile and desktop", progress: 64, target: "2 breakpoints" },
+        { id: "kr-empty-states", title: "Empty states written for new and filtered views", progress: 35, target: "8 states" },
+        { id: "kr-accessibility", title: "Accessibility polish stays above release bar", progress: 70, target: "No blocker issues" }
+      ]
     }
   ],
   tasks: [
@@ -1781,6 +1829,7 @@ function normalizeState(nextState) {
     operatorActions: Array.isArray(nextState.operatorActions) ? nextState.operatorActions : [],
     companies: nextState.companies.map(normalizeCompanyRecord),
     projects: nextState.projects.map(normalizeProjectRecord),
+    goals: normalizeGoals(nextState.goals, nextState.projects, nextState.companies),
     tasks: nextState.tasks.map(normalizeTaskRecord)
   };
 }
@@ -1845,6 +1894,32 @@ function normalizeWorkspaceCapacity(capacity = {}) {
       }))
       .slice(0, 50)
   };
+}
+
+function normalizeGoals(goals = [], projects = [], companies = []) {
+  const source = Array.isArray(goals) ? goals : seedData.goals;
+  const projectIds = new Set((Array.isArray(projects) ? projects : seedData.projects).map((project) => project.id));
+  const companyIds = new Set((Array.isArray(companies) ? companies : seedData.companies).map((company) => company.id));
+  return source
+    .filter((goal) => goal && typeof goal === "object")
+    .map((goal) => ({
+      id: goal.id || uid("goal"),
+      title: String(goal.title || "Untitled goal").trim().slice(0, 120),
+      owner: members.some((member) => member.id === goal.owner) ? goal.owner : currentMemberId,
+      companyId: companyIds.has(goal.companyId) ? goal.companyId : "",
+      status: ["active", "at-risk", "paused", "complete"].includes(goal.status) ? goal.status : "active",
+      period: String(goal.period || "Current").trim().slice(0, 40),
+      targetDate: goal.targetDate || "",
+      projectIds: Array.isArray(goal.projectIds) ? goal.projectIds.filter((projectId) => projectIds.has(projectId)).slice(0, 12) : [],
+      keyResults: Array.isArray(goal.keyResults) ? goal.keyResults.map((result) => ({
+        id: result.id || uid("kr"),
+        title: String(result.title || "Key result").trim().slice(0, 120),
+        progress: clamp(Math.round(Number(result.progress) || 0), 0, 100),
+        target: String(result.target || "").trim().slice(0, 80)
+      })).slice(0, 8) : []
+    }))
+    .filter((goal) => goal.title)
+    .slice(0, 50);
 }
 
 function normalizePaymentEntitlements(entitlements = []) {
@@ -2367,6 +2442,7 @@ function canAccessRoute(route) {
     data: "workspace:import",
     settings: "workspace:read",
     reports: "workspace:read",
+    goals: "workspace:read",
     templates: "projects:write",
     automations: "projects:write",
     fields: "projects:write",
@@ -6821,6 +6897,7 @@ function render() {
     time: renderTimeTracking,
     operator: renderOperatorCenter,
     reports: renderReports,
+    goals: renderGoals,
     templates: renderTemplates,
     automations: renderAutomations,
     docs: renderDocsAndFiles,
@@ -6854,7 +6931,7 @@ function render() {
 function sidebarGroupForRoute(route) {
   if (["landing", "dashboard", "portal", "daily", "inbox"].includes(route)) return "home";
   if (["board", "list", "calendar", "my-work", "time", "operator"].includes(route)) return "work";
-  if (["reports", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
+  if (["reports", "goals", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
   if (["audit", "data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
   if (route === "invite") return "";
@@ -9428,6 +9505,138 @@ function renderWorkloadReportRow(row) {
         <span>${row.dueSoon.length} due soon</span>
         <span>${formatDuration(row.loggedMinutes)} logged</span>
       </div>
+    </article>
+  `;
+}
+
+function goalRows() {
+  return state.goals.map((goal) => {
+    const linkedProjects = goal.projectIds.map((projectId) => byId(state.projects, projectId)).filter(Boolean);
+    const linkedTasks = state.tasks.filter((task) => goal.projectIds.includes(task.projectId));
+    const projectRows = linkedProjects.map((project) => projectReport(project, linkedTasks, state.timeEntries || [], state.intakeSubmissions || []));
+    const keyResultProgress = goal.keyResults.length
+      ? Math.round(goal.keyResults.reduce((total, result) => total + result.progress, 0) / goal.keyResults.length)
+      : 0;
+    const projectProgressScore = projectRows.length
+      ? Math.round(projectRows.reduce((total, row) => total + row.progress, 0) / projectRows.length)
+      : keyResultProgress;
+    const progress = goal.keyResults.length && projectRows.length
+      ? Math.round((keyResultProgress + projectProgressScore) / 2)
+      : Math.max(keyResultProgress, projectProgressScore);
+    const blocked = linkedTasks.filter(isTaskBlocked);
+    const overdue = linkedTasks.filter(isOverdue);
+    const health = reportHealthScore({ progress, overdue: overdue.length, blocked: blocked.length, openIntake: 0 });
+    return {
+      goal,
+      linkedProjects,
+      linkedTasks,
+      projectRows,
+      keyResultProgress,
+      progress,
+      blocked,
+      overdue,
+      health
+    };
+  });
+}
+
+function renderGoals() {
+  const rows = goalRows().filter((row) => state.filters.company === "all" || row.goal.companyId === state.filters.company);
+  const activeRows = rows.filter((row) => row.goal.status === "active");
+  const atRiskRows = rows.filter((row) => row.health < 70 || row.goal.status === "at-risk");
+  const averageProgress = rows.length ? Math.round(rows.reduce((total, row) => total + row.progress, 0) / rows.length) : 0;
+  const linkedProjects = new Set(rows.flatMap((row) => row.goal.projectIds));
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Active goals", activeRows.length)}
+      ${metric("At risk", atRiskRows.length)}
+      ${metric("Avg progress", `${averageProgress}%`)}
+      ${metric("Linked projects", linkedProjects.size)}
+    </div>
+
+    <section class="panel goal-ladder-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Strategy</p>
+          <h2>Objective ladder</h2>
+        </div>
+        <span class="status-pill ${atRiskRows.length ? "inbox-amber" : "inbox-green"}">${rows.length} goals</span>
+      </div>
+      <div class="goal-ladder">
+        ${rows.length ? rows.map(renderGoalLadderRow).join("") : emptyState("No goals match the current filters.")}
+      </div>
+    </section>
+
+    <div class="goals-grid">
+      ${rows.length ? rows.map(renderGoalCard).join("") : emptyState("No goals yet. Add company objectives to connect strategy to projects.")}
+    </div>
+  `;
+}
+
+function renderGoalLadderRow(row) {
+  return `
+    <article>
+      <span>${escapeHtml(row.goal.period)}</span>
+      <strong>${escapeHtml(row.goal.title)}</strong>
+      <small>${escapeHtml(companyName(row.goal.companyId))} / ${escapeHtml(memberName(row.goal.owner))}</small>
+      <div class="progress-track"><span style="width: ${row.progress}%"></span></div>
+    </article>
+  `;
+}
+
+function renderGoalCard(row) {
+  const healthTone = row.health < 45 ? "red" : row.health < 70 ? "amber" : "green";
+  return `
+    <article class="goal-card">
+      <div class="goal-card-header">
+        <div>
+          <p class="eyebrow">${escapeHtml(row.goal.period)} / ${escapeHtml(companyName(row.goal.companyId))}</p>
+          <h2>${escapeHtml(row.goal.title)}</h2>
+        </div>
+        <span class="status-pill inbox-${healthTone}">${row.health}% health</span>
+      </div>
+      <div class="goal-meta-grid">
+        <span><strong>${row.progress}%</strong> progress</span>
+        <span><strong>${escapeHtml(memberName(row.goal.owner))}</strong> owner</span>
+        <span><strong>${row.overdue.length}</strong> overdue</span>
+        <span><strong>${row.blocked.length}</strong> blocked</span>
+      </div>
+      <div class="progress-block" aria-label="${row.progress}% complete">
+        <strong>${row.progress}%</strong>
+        <span class="progress-track"><span style="width: ${row.progress}%"></span></span>
+      </div>
+      <div class="key-result-list">
+        ${row.goal.keyResults.map(renderKeyResult).join("")}
+      </div>
+      <div class="goal-project-list">
+        ${row.projectRows.length ? row.projectRows.map(renderGoalProjectRow).join("") : emptyState("No linked projects yet.")}
+      </div>
+    </article>
+  `;
+}
+
+function renderKeyResult(result) {
+  return `
+    <article class="key-result-row">
+      <div>
+        <strong>${escapeHtml(result.title)}</strong>
+        <small>${escapeHtml(result.target || "Target not set")}</small>
+      </div>
+      <span>${result.progress}%</span>
+      <div class="progress-track"><span style="width: ${result.progress}%"></span></div>
+    </article>
+  `;
+}
+
+function renderGoalProjectRow(row) {
+  return `
+    <article class="goal-project-row">
+      <button class="table-task-button" type="button" data-project-id="${row.project.id}">
+        <strong>${escapeHtml(row.project.name)}</strong>
+        <span>${row.progress}% progress / ${row.health}% health</span>
+      </button>
+      <span class="status-pill ${row.health < 70 ? "inbox-amber" : "inbox-green"}">${row.openTasks.length} open</span>
     </article>
   `;
 }
