@@ -1597,6 +1597,62 @@ body[data-tutorial-target="view"] #app-view {
   font-size: 0.78rem;
 }
 
+.notification-digest-panel,
+.notification-preferences-panel,
+.notification-history-panel {
+  align-content: start;
+}
+
+.digest-list,
+.notification-history-list {
+  display: grid;
+  gap: 10px;
+}
+
+.digest-row,
+.notification-history-list article {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.digest-row.is-muted {
+  opacity: 0.62;
+}
+
+.digest-row strong {
+  font-size: 1.4rem;
+}
+
+.digest-row p,
+.digest-row small,
+.notification-history-list p,
+.notification-history-list small {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.notification-pref-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.notification-channel-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
 .inbox-blue {
   color: var(--blue);
   background: #e0e8f8;

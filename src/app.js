@@ -841,6 +841,31 @@ const seedData = {
   ],
   inboxRead: [],
   inboxArchived: [],
+  inboxSnoozed: {},
+  notificationSettings: {
+    events: {
+      assignment: true,
+      overdue: true,
+      due: true,
+      mention: true,
+      watched: true,
+      comment: true,
+      activity: false,
+      approval: true
+    },
+    digests: {
+      myWork: true,
+      approvals: true,
+      blockers: true,
+      quietProjects: false
+    },
+    channels: {
+      inApp: true,
+      browser: false
+    },
+    cadence: "daily"
+  },
+  notificationHistory: [],
   taskWatchers: {},
   chatMessages: [
     {
@@ -1957,6 +1982,9 @@ function normalizeState(nextState) {
     switcherImportRollback: normalizeSwitcherImportRollback(nextState.switcherImportRollback),
     inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
     inboxArchived: Array.isArray(nextState.inboxArchived) ? nextState.inboxArchived : [],
+    inboxSnoozed: normalizeInboxSnoozed(nextState.inboxSnoozed),
+    notificationSettings: normalizeNotificationSettings(nextState.notificationSettings),
+    notificationHistory: normalizeNotificationHistory(nextState.notificationHistory),
     deletedProjectTemplateIds: Array.isArray(nextState.deletedProjectTemplateIds) ? nextState.deletedProjectTemplateIds : [],
     taskWatchers: normalizeTaskWatchers(nextState.taskWatchers),
     presence: Array.isArray(nextState.presence) ? nextState.presence : [],
@@ -2070,6 +2098,57 @@ function normalizeSwitcherImportRollback(rollback = null) {
     },
     snapshot: rollback.snapshot
   };
+}
+
+function defaultNotificationSettings() {
+  return structuredClone(seedData.notificationSettings || {
+    events: {},
+    digests: {},
+    channels: {},
+    cadence: "daily"
+  });
+}
+
+function normalizeNotificationSettings(settings = null) {
+  const defaults = defaultNotificationSettings();
+  const source = settings && typeof settings === "object" ? settings : {};
+  return {
+    events: {
+      ...defaults.events,
+      ...(source.events || {})
+    },
+    digests: {
+      ...defaults.digests,
+      ...(source.digests || {})
+    },
+    channels: {
+      ...defaults.channels,
+      ...(source.channels || {})
+    },
+    cadence: ["daily", "weekly", "manual"].includes(source.cadence) ? source.cadence : defaults.cadence
+  };
+}
+
+function normalizeInboxSnoozed(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value)
+    .map(([id, until]) => [String(id), String(until || "")])
+    .filter(([id, until]) => id && until));
+}
+
+function normalizeNotificationHistory(history = []) {
+  return (Array.isArray(history) ? history : [])
+    .map((event) => ({
+      id: event.id || uid("notification-history"),
+      kind: event.kind || "digest",
+      title: event.title || "Notification event",
+      message: event.message || "",
+      reason: event.reason || "",
+      count: Number(event.count || 0),
+      channel: event.channel || "in-app",
+      createdAt: event.createdAt || new Date().toISOString()
+    }))
+    .slice(0, 50);
 }
 
 function normalizeChatMessages(messages = []) {
@@ -2880,6 +2959,9 @@ function createBlankWorkspaceState(options = {}) {
     switcherImportPreview: null,
     inboxRead: [],
     inboxArchived: [],
+    inboxSnoozed: {},
+    notificationHistory: [],
+    notificationSettings: normalizeNotificationSettings(),
     taskWatchers: {},
     presence: [],
     chatMessages: [],
@@ -5659,6 +5741,51 @@ function archiveInboxItem(id) {
   if (!state.inboxArchived.includes(id)) state.inboxArchived = [...state.inboxArchived, id];
 }
 
+function notificationSettings() {
+  return normalizeNotificationSettings(state.notificationSettings);
+}
+
+function inboxEventKey(type) {
+  if (type === "due soon") return "due";
+  if (type === "watched") return "watched";
+  return String(type || "").replace(/[^a-z0-9]+/g, "");
+}
+
+function isNotificationTypeEnabled(type) {
+  const key = inboxEventKey(type);
+  return notificationSettings().events[key] !== false;
+}
+
+function inboxSnoozedUntil(id) {
+  const until = state.inboxSnoozed?.[id] || "";
+  if (!until) return "";
+  const timestamp = new Date(until).getTime();
+  return Number.isFinite(timestamp) && timestamp > Date.now() ? until : "";
+}
+
+function snoozeInboxItem(id, until = shiftDate(todayKey(), 1)) {
+  markInboxRead(id);
+  state.inboxSnoozed = {
+    ...(state.inboxSnoozed || {}),
+    [id]: `${until}T09:00:00.000Z`
+  };
+}
+
+function logNotificationHistory({ kind = "digest", title, message, reason = "", count = 0, channel = "in-app" }) {
+  const event = {
+    id: uid("notification-history"),
+    kind,
+    title,
+    message,
+    reason,
+    count,
+    channel,
+    createdAt: new Date().toISOString()
+  };
+  state.notificationHistory = [event, ...(state.notificationHistory || [])].slice(0, 50);
+  return event;
+}
+
 function unreadInboxCount() {
   return getInboxItems().filter((item) => !isInboxRead(item.id)).length;
 }
@@ -5828,6 +5955,8 @@ function getInboxItems({ includeArchived = false } = {}) {
 
   return items
     .filter((item) => includeArchived || !isInboxArchived(item.id))
+    .filter((item) => isNotificationTypeEnabled(item.type))
+    .filter((item) => !inboxSnoozedUntil(item.id))
     .sort((a, b) => {
       const unreadSort = Number(isInboxRead(a.id)) - Number(isInboxRead(b.id));
       if (unreadSort !== 0) return unreadSort;
@@ -8432,10 +8561,153 @@ function renderDailySmartTask(task) {
   `;
 }
 
+function notificationDigestRows() {
+  const settings = notificationSettings();
+  const openTasks = activeTasks().filter((task) => task.status !== "done");
+  const myTasks = openTasks.filter((task) => task.assignee === activeMemberId());
+  const pendingApprovals = getPendingApprovals().filter((approval) => projectMatchesContext(approval.projectId));
+  const blockedTasks = openTasks.filter(isTaskBlocked);
+  const quietProjects = activeProjects().filter((project) => !getProjectActivity(project.id, 1).length);
+
+  return [
+    {
+      id: "myWork",
+      title: "My work digest",
+      enabled: settings.digests.myWork !== false,
+      count: myTasks.length,
+      message: `${myTasks.filter(isOverdue).length} overdue, ${dueSoonTasks(myTasks).length} due soon, ${myTasks.filter((task) => task.priority === "urgent" || task.priority === "high").length} high priority.`,
+      reason: "Assigned work, overdue tasks, due-soon dates, and priority."
+    },
+    {
+      id: "approvals",
+      title: "Client approvals digest",
+      enabled: settings.digests.approvals !== false,
+      count: pendingApprovals.length,
+      message: `${pendingApprovals.filter((approval) => approval.status === "needs-changes").length} need changes and ${pendingApprovals.filter((approval) => approval.status === "requested").length} are waiting.`,
+      reason: "Open approval requests and client review states."
+    },
+    {
+      id: "blockers",
+      title: "Blocked work digest",
+      enabled: settings.digests.blockers !== false,
+      count: blockedTasks.length,
+      message: `${blockedTasks.length} blocked ${blockedTasks.length === 1 ? "task" : "tasks"} across ${new Set(blockedTasks.map((task) => task.projectId)).size} ${blockedTasks.length === 1 ? "project" : "projects"}.`,
+      reason: "Tasks with unresolved dependencies."
+    },
+    {
+      id: "quietProjects",
+      title: "Quiet projects digest",
+      enabled: settings.digests.quietProjects !== false,
+      count: quietProjects.length,
+      message: `${quietProjects.length} active ${quietProjects.length === 1 ? "project has" : "projects have"} no recent activity.`,
+      reason: "Active projects without recent activity records."
+    }
+  ];
+}
+
+function renderNotificationDigestPanel() {
+  const settings = notificationSettings();
+  const rows = notificationDigestRows();
+  return `
+    <section class="panel notification-digest-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Delivery</p>
+          <h2>Notification digests</h2>
+        </div>
+        <select id="notification-cadence" aria-label="Digest cadence">
+          ${["daily", "weekly", "manual"].map((cadence) => `<option value="${cadence}" ${settings.cadence === cadence ? "selected" : ""}>${cadence}</option>`).join("")}
+        </select>
+      </div>
+      <div class="digest-list">
+        ${rows.map((row) => `
+          <article class="digest-row ${row.enabled ? "" : "is-muted"}">
+            <label class="checkbox-label">
+              <input type="checkbox" data-digest-rule="${row.id}" ${row.enabled ? "checked" : ""}>
+              <span>${escapeHtml(row.title)}</span>
+            </label>
+            <strong>${row.count}</strong>
+            <p>${escapeHtml(row.message)}</p>
+            <small>${escapeHtml(row.reason)}</small>
+            <button class="button button-secondary compact-button" type="button" data-digest-run="${row.id}" ${row.enabled ? "" : "disabled"}>Send Digest</button>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderNotificationPreferencesPanel() {
+  const settings = notificationSettings();
+  const eventOptions = [
+    ["assignment", "Assignments"],
+    ["overdue", "Overdue"],
+    ["due", "Due soon"],
+    ["mention", "Mentions"],
+    ["watched", "Watched tasks"],
+    ["comment", "Comments"],
+    ["approval", "Approvals"],
+    ["activity", "Activity"]
+  ];
+  return `
+    <section class="panel notification-preferences-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Preferences</p>
+          <h2>What reaches you</h2>
+        </div>
+        <span class="status-pill ${settings.channels.browser ? "inbox-green" : "inbox-neutral"}">${settings.channels.browser ? "Browser on" : "In-app only"}</span>
+      </div>
+      <div class="notification-pref-grid">
+        ${eventOptions.map(([id, label]) => `
+          <label class="checkbox-label">
+            <input type="checkbox" data-notification-event="${id}" ${settings.events[id] !== false ? "checked" : ""}>
+            <span>${escapeHtml(label)}</span>
+          </label>
+        `).join("")}
+      </div>
+      <div class="notification-channel-row">
+        <label class="checkbox-label">
+          <input type="checkbox" data-notification-channel="browser" ${settings.channels.browser ? "checked" : ""}>
+          <span>Browser alerts</span>
+        </label>
+        <button class="button button-secondary compact-button" type="button" id="notification-request" ${notificationPermissionState === "unsupported" || notificationPermissionState === "granted" ? "disabled" : ""}>Enable Permission</button>
+        <button class="button button-secondary compact-button" type="button" id="notification-test" ${notificationPermissionState === "granted" ? "" : "disabled"}>Test</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderNotificationHistoryPanel() {
+  const history = normalizeNotificationHistory(state.notificationHistory).slice(0, 6);
+  return `
+    <section class="panel notification-history-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">History</p>
+          <h2>What fired and why</h2>
+        </div>
+        <span class="status-pill inbox-neutral">${history.length}</span>
+      </div>
+      <div class="notification-history-list">
+        ${history.length ? history.map((event) => `
+          <article>
+            <span class="status-pill inbox-blue">${escapeHtml(event.kind)}</span>
+            <strong>${escapeHtml(event.title)}</strong>
+            <p>${escapeHtml(event.message)}</p>
+            <small>${escapeHtml(event.reason || event.channel)} - ${formatTimestamp(event.createdAt)}</small>
+          </article>
+        `).join("") : emptyState("Digest sends and browser alert tests will appear here.")}
+      </div>
+    </section>
+  `;
+}
+
 function renderInbox() {
   const items = getInboxItems();
   const unreadItems = items.filter((item) => !isInboxRead(item.id));
   const urgentItems = items.filter((item) => item.type === "overdue" || item.type === "assignment" || item.type === "approval" || item.type === "mention");
+  const approvalItems = items.filter((item) => item.type === "approval");
   const dueItems = items.filter((item) => item.type === "due soon");
   const activityItems = items.filter((item) => item.type === "comment" || item.type === "activity" || item.type === "mention" || item.type === "watched");
   const mentionItems = items.filter((item) => item.type === "mention" || item.type === "watched");
@@ -8469,6 +8741,10 @@ function renderInbox() {
           ${renderInboxLane("Activity", activityItems)}
         </div>
       </section>
+
+      ${renderNotificationDigestPanel()}
+      ${renderNotificationPreferencesPanel()}
+      ${renderNotificationHistoryPanel()}
 
       <section class="panel operator-panel">
         <div class="panel-header">
@@ -8583,6 +8859,7 @@ function renderInboxItem(item) {
         ${item.approvalId ? `<button class="button button-secondary" type="button" data-approval-action="needs-changes" data-approval-id="${item.approvalId}" data-inbox-id="${item.id}">Needs Changes</button>` : ""}
         ${item.taskId ? `<button class="button button-secondary" type="button" data-inbox-plan="${item.taskId}" data-inbox-id="${item.id}">Plan Today</button>` : ""}
         ${item.taskId ? `<button class="button button-secondary" type="button" data-edit-task="${item.taskId}" data-inbox-id="${item.id}">Open</button>` : ""}
+        <button class="button button-secondary" type="button" data-inbox-snooze="${item.id}">Snooze</button>
         <button class="button button-secondary" type="button" data-inbox-read="${item.id}">${read ? "Mark Unread" : "Mark Read"}</button>
         <button class="button button-secondary" type="button" data-inbox-clear="${item.id}">Clear</button>
       </div>
@@ -16099,7 +16376,100 @@ async function sendTestNotification() {
   } else {
     new Notification(title, options);
   }
+  logNotificationHistory({
+    kind: "browser-test",
+    title,
+    message: options.body,
+    reason: "Manual browser notification test.",
+    channel: "browser"
+  });
+  saveState();
+  render();
   showToast("Test notification sent", "success");
+}
+
+function updateNotificationEventPreference(eventType, enabled) {
+  const settings = notificationSettings();
+  state.notificationSettings = {
+    ...settings,
+    events: {
+      ...settings.events,
+      [eventType]: enabled
+    }
+  };
+  saveState();
+  render();
+  showToast(`${enabled ? "Enabled" : "Muted"} ${eventType} notifications`, "success");
+}
+
+function updateDigestPreference(digestId, enabled) {
+  const settings = notificationSettings();
+  state.notificationSettings = {
+    ...settings,
+    digests: {
+      ...settings.digests,
+      [digestId]: enabled
+    }
+  };
+  saveState();
+  render();
+  showToast(`${enabled ? "Enabled" : "Paused"} digest`, "success");
+}
+
+function updateNotificationChannel(channelId, enabled) {
+  const settings = notificationSettings();
+  state.notificationSettings = {
+    ...settings,
+    channels: {
+      ...settings.channels,
+      [channelId]: enabled
+    }
+  };
+  saveState();
+  render();
+  showToast(`${enabled ? "Enabled" : "Disabled"} ${channelId} alerts`, "success");
+}
+
+function updateNotificationCadence(cadence) {
+  const settings = notificationSettings();
+  state.notificationSettings = {
+    ...settings,
+    cadence: ["daily", "weekly", "manual"].includes(cadence) ? cadence : settings.cadence
+  };
+  saveState();
+  render();
+  showToast("Digest cadence updated", "success");
+}
+
+function runNotificationDigest(digestId) {
+  const row = notificationDigestRows().find((digest) => digest.id === digestId);
+  if (!row || !row.enabled) {
+    showToast("Digest is paused", "info");
+    return;
+  }
+  const settings = notificationSettings();
+  logNotificationHistory({
+    kind: "digest",
+    title: row.title,
+    message: row.message,
+    reason: `${settings.cadence} digest: ${row.reason}`,
+    count: row.count,
+    channel: settings.channels.browser && notificationPermissionState === "granted" ? "browser + in-app" : "in-app"
+  });
+  if (settings.channels.browser && notificationPermissionState === "granted") {
+    const options = {
+      body: row.message,
+      icon: "./assets/agora-mark.svg",
+      badge: "./assets/agora-mark.svg"
+    };
+    navigator.serviceWorker?.getRegistration?.().then((registration) => {
+      if (registration?.showNotification) registration.showNotification(row.title, options);
+      else new Notification(row.title, options);
+    });
+  }
+  saveState();
+  render();
+  showToast("Digest sent to notification history", "success");
 }
 
 document.addEventListener("click", (event) => {
@@ -16469,6 +16839,12 @@ document.addEventListener("click", (event) => {
   const notificationTestButton = event.target.closest("#notification-test");
   if (notificationTestButton) sendTestNotification();
 
+  const digestRunButton = event.target.closest("[data-digest-run]");
+  if (digestRunButton) {
+    runNotificationDigest(digestRunButton.dataset.digestRun);
+    return;
+  }
+
   const importJsonButton = event.target.closest("#import-json");
   if (importJsonButton) importWorkspaceFromTextarea();
 
@@ -16776,6 +17152,15 @@ document.addEventListener("click", (event) => {
     showToast("Notification cleared", "success");
   }
 
+  const inboxSnoozeButton = event.target.closest("[data-inbox-snooze]");
+  if (inboxSnoozeButton) {
+    snoozeInboxItem(inboxSnoozeButton.dataset.inboxSnooze);
+    saveState();
+    render();
+    showToast("Notification snoozed until tomorrow", "success");
+    return;
+  }
+
   const inboxBulkButton = event.target.closest("[data-inbox-bulk]");
   if (inboxBulkButton) {
     const items = getInboxItems();
@@ -16851,6 +17236,30 @@ document.addEventListener("change", (event) => {
 
   const subtaskCheckbox = event.target.closest("[data-toggle-subtask]");
   if (subtaskCheckbox) toggleDraftSubtask(subtaskCheckbox.dataset.toggleSubtask, subtaskCheckbox.checked);
+
+  const notificationEventToggle = event.target.closest("[data-notification-event]");
+  if (notificationEventToggle) {
+    updateNotificationEventPreference(notificationEventToggle.dataset.notificationEvent, notificationEventToggle.checked);
+    return;
+  }
+
+  const notificationChannelToggle = event.target.closest("[data-notification-channel]");
+  if (notificationChannelToggle) {
+    updateNotificationChannel(notificationChannelToggle.dataset.notificationChannel, notificationChannelToggle.checked);
+    return;
+  }
+
+  const digestRuleToggle = event.target.closest("[data-digest-rule]");
+  if (digestRuleToggle) {
+    updateDigestPreference(digestRuleToggle.dataset.digestRule, digestRuleToggle.checked);
+    return;
+  }
+
+  const notificationCadenceSelect = event.target.closest("#notification-cadence");
+  if (notificationCadenceSelect) {
+    updateNotificationCadence(notificationCadenceSelect.value);
+    return;
+  }
 });
 
 document.addEventListener("keydown", (event) => {
