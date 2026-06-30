@@ -1287,6 +1287,31 @@ body[data-tutorial-target="view"] #app-view {
   gap: 16px;
 }
 
+.dashboard-builder-panel {
+  margin-bottom: 16px;
+}
+
+.dashboard-widget-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.dashboard-widget-picker .toggle-row span {
+  display: grid;
+  gap: 3px;
+}
+
+.dashboard-widget-picker small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.dashboard-goal-list .progress-track,
+.dashboard-workload-list .portfolio-report-metrics {
+  margin-top: 4px;
+}
+
 .daily-hero {
   display: grid;
   grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
@@ -3033,6 +3058,10 @@ body[data-tutorial-target="view"] #app-view {
   gap: 10px;
 }
 
+.switcher-import-panel {
+  grid-column: 1 / -1;
+}
+
 .panel-note {
   margin: 0 0 12px;
   color: var(--muted);
@@ -4516,6 +4545,120 @@ th {
   color: #6c5a34;
 }
 
+.collab-hub-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(340px, 1.1fr);
+  gap: 16px;
+}
+
+.workspace-chat-panel,
+.whiteboard-panel {
+  min-height: 540px;
+}
+
+.chat-message-list {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.workspace-chat-message {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.workspace-chat-message p {
+  margin: 6px 0 0;
+  line-height: 1.42;
+}
+
+.chat-message-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.chat-message-meta small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.workspace-chat-composer,
+.whiteboard-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 0.6fr) minmax(0, 0.8fr);
+  gap: 10px;
+}
+
+.workspace-chat-composer .wide-field,
+.whiteboard-composer .wide-field,
+.workspace-chat-composer .button,
+.whiteboard-composer .button {
+  grid-column: 1 / -1;
+}
+
+.whiteboard-canvas {
+  position: relative;
+  min-height: 360px;
+  overflow: hidden;
+  background:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px),
+    var(--surface-strong);
+  background-size: 32px 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.whiteboard-note {
+  position: absolute;
+  display: grid;
+  gap: 6px;
+  width: min(220px, 32%);
+  min-height: 92px;
+  padding: 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.whiteboard-note span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.whiteboard-note strong {
+  line-height: 1.25;
+}
+
+.whiteboard-green {
+  border-color: rgba(62, 109, 66, 0.45);
+  background: rgba(62, 109, 66, 0.1);
+}
+
+.whiteboard-amber {
+  border-color: rgba(171, 111, 45, 0.45);
+  background: rgba(171, 111, 45, 0.12);
+}
+
+.whiteboard-blue {
+  border-color: rgba(53, 93, 150, 0.4);
+  background: rgba(53, 93, 150, 0.1);
+}
+
 .collaboration-panel {
   padding-top: 4px;
   border-top: 1px solid var(--line);
@@ -5054,6 +5197,7 @@ body[data-density="compact"] .main-content {
   }
 
   .dashboard-grid,
+  .dashboard-widget-picker,
   .readiness-grid,
   .daily-hero,
   .daily-layout,
@@ -5063,6 +5207,7 @@ body[data-density="compact"] .main-content {
   .automation-grid,
   .command-center-grid,
   .operator-center-grid,
+  .collab-hub-grid,
   .settings-grid,
   .data-grid,
   .docs-grid,
@@ -5318,6 +5463,7 @@ body[data-density="compact"] .main-content {
 
   .toolbar,
   .dashboard-grid,
+  .dashboard-widget-picker,
   .readiness-grid,
   .shortcuts-grid,
   .daily-hero,
@@ -5340,6 +5486,7 @@ body[data-density="compact"] .main-content {
   .project-hero,
   .form-grid,
   .collaboration-grid,
+  .collab-hub-grid,
   .task-time-grid,
   .time-entry-form,
   .doc-composer,
@@ -5359,6 +5506,8 @@ body[data-density="compact"] .main-content {
   .integration-summary-grid,
   .capacity-summary-grid,
   .integration-control-grid,
+  .workspace-chat-composer,
+  .whiteboard-composer,
   .goals-grid,
   .goal-ladder article,
   .goal-card-header,
@@ -5388,6 +5537,12 @@ body[data-density="compact"] .main-content {
   .payment-audit-event > div:last-child,
   .payment-entitlement > div:last-child {
     justify-items: start;
+  }
+
+  .whiteboard-note {
+    width: min(180px, 46%);
+    min-height: 84px;
+    padding: 10px;
   }
 
   .member-access-controls {

@@ -281,6 +281,15 @@ const templatePayoutModes = [
 
 const templatePayoutChains = ["Not set", "Base", "Ethereum", "Solana", "Polygon", "Bitcoin", "Other"];
 
+const dashboardWidgetCatalog = [
+  { id: "projects", label: "Active Projects", description: "Project health and current delivery lanes." },
+  { id: "goals", label: "Goals", description: "Objective progress and portfolio risk." },
+  { id: "capacity", label: "Capacity", description: "Team load and available capacity." },
+  { id: "operator", label: "Operator Signals", description: "AI/operator risk queue." },
+  { id: "due-soon", label: "Due Soon", description: "Upcoming tasks from the active filters." },
+  { id: "mobile", label: "Mobile App", description: "PWA install and mobile roadmap." }
+];
+
 const integrationCatalog = [
   {
     id: "slack",
@@ -521,6 +530,7 @@ const routes = {
   "my-work": "My Work",
   time: "Time",
   operator: "Operator",
+  collaboration: "Collaboration",
   reports: "Reports",
   goals: "Goals",
   templates: "Templates",
@@ -648,6 +658,14 @@ const seedData = {
     "task-2": { date: "2026-06-27", lane: "next" },
     "task-7": { date: "2026-06-27", lane: "later" }
   },
+  dashboardWidgets: [
+    { id: "projects", visible: true },
+    { id: "goals", visible: true },
+    { id: "capacity", visible: true },
+    { id: "operator", visible: true },
+    { id: "due-soon", visible: true },
+    { id: "mobile", visible: false }
+  ],
   workspace: {
     id: "workspace-acme",
     name: "Acme Studio",
@@ -752,6 +770,35 @@ const seedData = {
   inboxRead: [],
   inboxArchived: [],
   taskWatchers: {},
+  chatMessages: [
+    {
+      id: "chat-seed-1",
+      channel: "general",
+      author: "mara",
+      body: "Use this channel for workspace-level questions, launch notes, and decisions that do not belong on one task.",
+      createdAt: "2026-06-27T14:00:00.000Z"
+    },
+    {
+      id: "chat-seed-2",
+      channel: "delivery",
+      author: "sam",
+      body: "Client approval notes are easier to track if we link the task after the decision is made.",
+      projectId: "client-delivery",
+      createdAt: "2026-06-27T14:15:00.000Z"
+    }
+  ],
+  whiteboards: [
+    {
+      id: "whiteboard-launch-map",
+      title: "Launch Planning Canvas",
+      projectId: "launch",
+      items: [
+        { id: "wb-note-1", type: "note", text: "Importer paths reduce switching friction.", x: 8, y: 14, color: "green" },
+        { id: "wb-note-2", type: "risk", text: "Dashboard widgets need saved layouts.", x: 38, y: 24, color: "amber" },
+        { id: "wb-note-3", type: "decision", text: "Keep chat lightweight until API persistence is ready.", x: 66, y: 12, color: "blue" }
+      ]
+    }
+  ],
   approvals: [
     {
       id: "approval-kickoff-checklist",
@@ -1811,11 +1858,14 @@ function normalizeState(nextState) {
     savedViews: normalizeSavedViews(nextState.savedViews),
     dailyNotes: Object.prototype.hasOwnProperty.call(nextState, "dailyNotes") ? nextState.dailyNotes || {} : seedData.dailyNotes,
     dailyPlans: Object.prototype.hasOwnProperty.call(nextState, "dailyPlans") ? nextState.dailyPlans || {} : seedData.dailyPlans,
+    dashboardWidgets: normalizeDashboardWidgets(nextState.dashboardWidgets),
     inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
     inboxArchived: Array.isArray(nextState.inboxArchived) ? nextState.inboxArchived : [],
     deletedProjectTemplateIds: Array.isArray(nextState.deletedProjectTemplateIds) ? nextState.deletedProjectTemplateIds : [],
     taskWatchers: normalizeTaskWatchers(nextState.taskWatchers),
     presence: Array.isArray(nextState.presence) ? nextState.presence : [],
+    chatMessages: normalizeChatMessages(nextState.chatMessages),
+    whiteboards: normalizeWhiteboards(nextState.whiteboards),
     approvals: Array.isArray(nextState.approvals) ? nextState.approvals : seedData.approvals,
     customFields: Array.isArray(nextState.customFields) ? nextState.customFields : seedData.customFields,
     documents: Array.isArray(nextState.documents) ? nextState.documents : seedData.documents,
@@ -1844,6 +1894,52 @@ function normalizeWorkspaceTheme(theme = {}) {
   const preset = themePresets.some((item) => item.id === theme.preset) ? theme.preset : seedData.workspace.theme.preset;
   const density = densityOptions.some((item) => item.id === theme.density) ? theme.density : seedData.workspace.theme.density;
   return { preset, density };
+}
+
+function normalizeDashboardWidgets(widgets = []) {
+  const source = Array.isArray(widgets) ? widgets : seedData.dashboardWidgets;
+  const byId = new Map(source.map((widget) => [widget?.id, widget]));
+  return dashboardWidgetCatalog.map((widget) => ({
+    id: widget.id,
+    visible: byId.has(widget.id) ? byId.get(widget.id)?.visible !== false : true
+  }));
+}
+
+function normalizeChatMessages(messages = []) {
+  const source = Array.isArray(messages) ? messages : seedData.chatMessages;
+  return source
+    .filter((message) => message && typeof message === "object")
+    .map((message) => ({
+      id: message.id || uid("chat"),
+      channel: ["general", "delivery", "product", "client"].includes(message.channel) ? message.channel : "general",
+      author: members.some((member) => member.id === message.author) ? message.author : currentMemberId,
+      body: String(message.body || "").trim().slice(0, 600),
+      projectId: String(message.projectId || ""),
+      createdAt: message.createdAt || new Date().toISOString()
+    }))
+    .filter((message) => message.body)
+    .slice(0, 200);
+}
+
+function normalizeWhiteboards(whiteboards = []) {
+  const source = Array.isArray(whiteboards) ? whiteboards : seedData.whiteboards;
+  return source
+    .filter((board) => board && typeof board === "object")
+    .map((board) => ({
+      id: board.id || uid("whiteboard"),
+      title: String(board.title || "Untitled board").trim().slice(0, 96),
+      projectId: String(board.projectId || ""),
+      items: Array.isArray(board.items) ? board.items.map((item) => ({
+        id: item.id || uid("wb-note"),
+        type: ["note", "risk", "decision"].includes(item.type) ? item.type : "note",
+        text: String(item.text || "").trim().slice(0, 180),
+        x: clamp(Math.round(Number(item.x) || 8), 0, 86),
+        y: clamp(Math.round(Number(item.y) || 10), 0, 78),
+        color: ["green", "amber", "blue", "neutral"].includes(item.color) ? item.color : "neutral"
+      })).filter((item) => item.text).slice(0, 40) : []
+    }))
+    .filter((board) => board.title)
+    .slice(0, 20);
 }
 
 function normalizeIntegrationConnection(connection = {}) {
@@ -2449,7 +2545,8 @@ function canAccessRoute(route) {
     companies: "projects:write",
     company: "projects:write",
     intake: "projects:write",
-    operator: "workspace:read"
+    operator: "workspace:read",
+    collaboration: "workspace:read"
   };
   const permission = routePermissions[route];
   return permission ? hasApiPermission(permission) : true;
@@ -2551,10 +2648,13 @@ function createBlankWorkspaceState(options = {}) {
     savedViews: [],
     dailyNotes: {},
     dailyPlans: {},
+    dashboardWidgets: normalizeDashboardWidgets(seedData.dashboardWidgets),
     inboxRead: [],
     inboxArchived: [],
     taskWatchers: {},
     presence: [],
+    chatMessages: [],
+    whiteboards: [],
     approvals: [],
     comments: [],
     activities: [],
@@ -6896,6 +6996,7 @@ function render() {
     "my-work": renderMyWork,
     time: renderTimeTracking,
     operator: renderOperatorCenter,
+    collaboration: renderCollaborationHub,
     reports: renderReports,
     goals: renderGoals,
     templates: renderTemplates,
@@ -6930,7 +7031,7 @@ function render() {
 
 function sidebarGroupForRoute(route) {
   if (["landing", "dashboard", "portal", "daily", "inbox"].includes(route)) return "home";
-  if (["board", "list", "calendar", "my-work", "time", "operator"].includes(route)) return "work";
+  if (["board", "list", "calendar", "my-work", "time", "operator", "collaboration"].includes(route)) return "work";
   if (["reports", "goals", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
   if (["audit", "data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
@@ -7218,6 +7319,118 @@ function renderLandingPage() {
   `;
 }
 
+function renderCollaborationHub() {
+  const messages = [...state.chatMessages].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).slice(-30);
+  const activeBoard = state.whiteboards[0] || { id: "", title: "Workspace Canvas", projectId: "", items: [] };
+  const decisions = activeBoard.items.filter((item) => item.type === "decision").length;
+  const risks = activeBoard.items.filter((item) => item.type === "risk").length;
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Messages", state.chatMessages.length)}
+      ${metric("Boards", state.whiteboards.length)}
+      ${metric("Decisions", decisions)}
+      ${metric("Risks", risks)}
+    </div>
+
+    <div class="collab-hub-grid">
+      <section class="panel workspace-chat-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Chat</p>
+            <h2>Workspace channels</h2>
+          </div>
+          <span class="status-pill inbox-blue">Local first</span>
+        </div>
+        <div class="chat-message-list">
+          ${messages.length ? messages.map(renderWorkspaceChatMessage).join("") : emptyState("No workspace messages yet.")}
+        </div>
+        <div class="workspace-chat-composer">
+          <label>
+            <span>Channel</span>
+            <select id="chat-channel">
+              ${["general", "delivery", "product", "client"].map((channel) => `<option value="${channel}">#${channel}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Project</span>
+            <select id="chat-project">
+              <option value="">No project link</option>
+              ${activeProjects().map((project) => `<option value="${project.id}">${escapeHtml(project.name)}</option>`).join("")}
+            </select>
+          </label>
+          <label class="wide-field">
+            <span>Message</span>
+            <textarea id="chat-message-body" rows="3" placeholder="Share a decision, blocker, update, or @mention"></textarea>
+          </label>
+          <button class="button button-primary" type="button" id="chat-send">Send Message</button>
+        </div>
+      </section>
+
+      <section class="panel whiteboard-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Whiteboard</p>
+            <h2>${escapeHtml(activeBoard.title)}</h2>
+          </div>
+          <span class="status-pill inbox-neutral">${activeBoard.items.length} notes</span>
+        </div>
+        <div class="whiteboard-canvas" aria-label="${escapeHtml(activeBoard.title)} board">
+          ${activeBoard.items.length ? activeBoard.items.map(renderWhiteboardItem).join("") : emptyState("Add a note to start the canvas.")}
+        </div>
+        <div class="whiteboard-composer">
+          <label>
+            <span>Type</span>
+            <select id="whiteboard-item-type">
+              <option value="note">Note</option>
+              <option value="decision">Decision</option>
+              <option value="risk">Risk</option>
+            </select>
+          </label>
+          <label>
+            <span>Color</span>
+            <select id="whiteboard-item-color">
+              <option value="green">Green</option>
+              <option value="amber">Amber</option>
+              <option value="blue">Blue</option>
+              <option value="neutral">Neutral</option>
+            </select>
+          </label>
+          <label class="wide-field">
+            <span>Note</span>
+            <input id="whiteboard-item-text" placeholder="Add a note, decision, or risk">
+          </label>
+          <button class="button button-secondary" type="button" id="whiteboard-add-note">Add to Board</button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderWorkspaceChatMessage(message) {
+  return `
+    <article class="workspace-chat-message">
+      <span class="avatar">${memberName(message.author).split(" ").map((part) => part[0]).join("")}</span>
+      <div>
+        <div class="chat-message-meta">
+          <strong>${escapeHtml(memberName(message.author))}</strong>
+          <small>#${escapeHtml(message.channel)} ${message.projectId ? `/ ${escapeHtml(projectName(message.projectId))}` : ""} / ${escapeHtml(formatTimestamp(message.createdAt))}</small>
+        </div>
+        <p>${renderCommentBody(message.body)}</p>
+      </div>
+    </article>
+  `;
+}
+
+function renderWhiteboardItem(item) {
+  return `
+    <article class="whiteboard-note whiteboard-${item.color} whiteboard-${item.type}" style="left: ${item.x}%; top: ${item.y}%;">
+      <span>${escapeHtml(item.type)}</span>
+      <strong>${escapeHtml(item.text)}</strong>
+    </article>
+  `;
+}
+
 function renderDashboard() {
   const tasks = getFilteredTasks();
   const visibleProjects = state.filters.company === "all"
@@ -7243,45 +7456,138 @@ function renderDashboard() {
       ${metric("Progress", `${completionRate}%`)}
     </div>
 
+    ${renderDashboardBuilder()}
+
     <div class="dashboard-grid">
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <p class="eyebrow">Projects</p>
-            <h2>Active work</h2>
-          </div>
-        </div>
-        <div class="project-summary-list">
-          ${visibleProjects.length ? visibleProjects.map(renderProjectSummary).join("") : emptyState("No projects match the selected company.")}
-        </div>
-      </section>
-
-      ${renderMobileAppPanel()}
-
-      <section class="panel operator-panel">
-        <div class="panel-header">
-          <div>
-            <p class="eyebrow">AI operator</p>
-            <h2>What needs attention</h2>
-          </div>
-        </div>
-        <div class="operator-brief-list">
-          ${operatorBriefs(3).map(renderOperatorBrief).join("") || emptyState("No active risks right now.")}
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <p class="eyebrow">Due next</p>
-            <h2>Upcoming tasks</h2>
-          </div>
-        </div>
-        <div class="task-stack">
-          ${dueSoonTasks.length ? dueSoonTasks.map(renderTaskCard).join("") : emptyState("No upcoming tasks match the current filters.")}
-        </div>
-      </section>
+      ${renderDashboardWidgets({ visibleProjects, dueSoonTasks, tasks, timeEntries: getFilteredTimeEntries() })}
     </div>
+  `;
+}
+
+function activeDashboardWidgets() {
+  return normalizeDashboardWidgets(state.dashboardWidgets).filter((widget) => widget.visible);
+}
+
+function renderDashboardBuilder() {
+  const widgets = normalizeDashboardWidgets(state.dashboardWidgets);
+  return `
+    <section class="panel dashboard-builder-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Dashboard builder</p>
+          <h2>Workspace command center</h2>
+        </div>
+        <span class="status-pill inbox-blue">${widgets.filter((widget) => widget.visible).length}/${widgets.length} widgets</span>
+      </div>
+      <div class="dashboard-widget-picker">
+        ${dashboardWidgetCatalog.map((widget) => {
+          const enabled = widgets.find((item) => item.id === widget.id)?.visible !== false;
+          return `
+            <label class="toggle-row">
+              <input type="checkbox" data-dashboard-widget="${widget.id}" ${enabled ? "checked" : ""}>
+              <span><strong>${escapeHtml(widget.label)}</strong><small>${escapeHtml(widget.description)}</small></span>
+            </label>
+          `;
+        }).join("")}
+      </div>
+      <button class="button button-secondary compact-button" type="button" id="dashboard-save-layout">Save Dashboard</button>
+    </section>
+  `;
+}
+
+function renderDashboardWidgets(context) {
+  const renderers = {
+    projects: () => renderDashboardProjectsWidget(context.visibleProjects),
+    goals: renderDashboardGoalsWidget,
+    capacity: () => renderDashboardCapacityWidget(context.tasks, context.timeEntries),
+    operator: renderDashboardOperatorWidget,
+    "due-soon": () => renderDashboardDueSoonWidget(context.dueSoonTasks),
+    mobile: renderMobileAppPanel
+  };
+  return activeDashboardWidgets().map((widget) => renderers[widget.id]?.() || "").join("") || emptyState("Turn on dashboard widgets to build a command center.");
+}
+
+function renderDashboardProjectsWidget(visibleProjects) {
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Projects</p>
+          <h2>Active work</h2>
+        </div>
+      </div>
+      <div class="project-summary-list">
+        ${visibleProjects.length ? visibleProjects.map(renderProjectSummary).join("") : emptyState("No projects match the selected company.")}
+      </div>
+    </section>
+  `;
+}
+
+function renderDashboardGoalsWidget() {
+  const rows = goalRows().slice(0, 3);
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Goals</p>
+          <h2>Objective progress</h2>
+        </div>
+        <button class="button button-secondary compact-button" type="button" data-route="goals">Open Goals</button>
+      </div>
+      <div class="goal-ladder dashboard-goal-list">
+        ${rows.length ? rows.map(renderGoalLadderRow).join("") : emptyState("No active goals yet.")}
+      </div>
+    </section>
+  `;
+}
+
+function renderDashboardCapacityWidget(tasks, timeEntries) {
+  const rows = capacityRows(tasks, timeEntries).sort((a, b) => b.utilization - a.utilization).slice(0, 4);
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Capacity</p>
+          <h2>Team load</h2>
+        </div>
+        <button class="button button-secondary compact-button" type="button" data-route="reports">Reports</button>
+      </div>
+      <div class="workload-report-list dashboard-workload-list">
+        ${rows.map(renderWorkloadReportRow).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderDashboardOperatorWidget() {
+  return `
+    <section class="panel operator-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">AI operator</p>
+          <h2>What needs attention</h2>
+        </div>
+      </div>
+      <div class="operator-brief-list">
+        ${operatorBriefs(3).map(renderOperatorBrief).join("") || emptyState("No active risks right now.")}
+      </div>
+    </section>
+  `;
+}
+
+function renderDashboardDueSoonWidget(dueSoonTasks) {
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Due next</p>
+          <h2>Upcoming tasks</h2>
+        </div>
+      </div>
+      <div class="task-stack">
+        ${dueSoonTasks.length ? dueSoonTasks.map(renderTaskCard).join("") : emptyState("No upcoming tasks match the current filters.")}
+      </div>
+    </section>
   `;
 }
 
@@ -10612,6 +10918,37 @@ function renderDataManagement() {
         </div>
       </section>
 
+      <section class="panel switcher-import-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Switcher</p>
+            <h2>Competitor import assistant</h2>
+          </div>
+          <span class="status-pill inbox-blue">Asana / ClickUp / monday / Trello</span>
+        </div>
+        <div class="settings-form">
+          <label>
+            <span>Source</span>
+            <select id="switcher-source">
+              ${["Asana", "ClickUp", "monday", "Trello", "Jira", "Linear", "Generic CSV"].map((source) => `<option value="${source}">${source}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Format</span>
+            <select id="switcher-format">
+              <option value="csv">CSV</option>
+              <option value="json">JSON</option>
+            </select>
+          </label>
+          <label class="wide-field">
+            <span>Export payload</span>
+            <textarea id="switcher-import-payload" rows="10" placeholder="Paste a task export. Headers like title/name, project/list/board, assignee, status, priority, due date, and description are supported."></textarea>
+          </label>
+          <p class="settings-help">This importer creates missing projects, maps common task fields, and keeps a backup before changing the workspace. It is intentionally conservative so messy exports do not overwrite existing work.</p>
+          <button class="button button-primary" type="button" id="switcher-import-button">Import Tasks</button>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -13090,6 +13427,71 @@ function saveIntegrationSettings() {
   showToast("Integrations saved", "success");
 }
 
+function saveDashboardLayout() {
+  state.dashboardWidgets = dashboardWidgetCatalog.map((widget) => ({
+    id: widget.id,
+    visible: document.querySelector(`[data-dashboard-widget="${widget.id}"]`)?.checked !== false
+  }));
+  addAuditEvent({
+    action: "dashboard_layout_update",
+    detail: `Saved ${state.dashboardWidgets.filter((widget) => widget.visible).length} dashboard widgets`
+  });
+  saveState();
+  render();
+  showToast("Dashboard layout saved", "success");
+}
+
+function sendWorkspaceChatMessage() {
+  const body = document.querySelector("#chat-message-body")?.value.trim() || "";
+  if (!body) {
+    showToast("Write a message first", "info");
+    return;
+  }
+  state.chatMessages = normalizeChatMessages([
+    ...state.chatMessages,
+    {
+      id: uid("chat"),
+      channel: document.querySelector("#chat-channel")?.value || "general",
+      author: activeMemberId(),
+      body,
+      projectId: document.querySelector("#chat-project")?.value || "",
+      createdAt: new Date().toISOString()
+    }
+  ]);
+  addAuditEvent({ action: "chat_message", detail: "Posted a workspace chat message" });
+  saveState();
+  render();
+  showToast("Message sent", "success");
+}
+
+function addWhiteboardNote() {
+  const text = document.querySelector("#whiteboard-item-text")?.value.trim() || "";
+  if (!text) {
+    showToast("Write a board note first", "info");
+    return;
+  }
+  const boards = state.whiteboards.length ? [...state.whiteboards] : normalizeWhiteboards([{ title: "Workspace Canvas", items: [] }]);
+  const board = boards[0];
+  const nextIndex = board.items.length;
+  const item = {
+    id: uid("wb-note"),
+    type: document.querySelector("#whiteboard-item-type")?.value || "note",
+    text,
+    x: 8 + (nextIndex * 19) % 74,
+    y: 12 + (nextIndex * 17) % 62,
+    color: document.querySelector("#whiteboard-item-color")?.value || "green"
+  };
+  boards[0] = {
+    ...board,
+    items: [...board.items, item]
+  };
+  state.whiteboards = normalizeWhiteboards(boards);
+  addAuditEvent({ action: "whiteboard_note", detail: `Added ${item.type} to ${board.title}` });
+  saveState();
+  render();
+  showToast("Board note added", "success");
+}
+
 function recordIntegrationTestEvent() {
   const integrations = integrationSettings();
   const connected = integrations.connections.filter((connection) => connection.status === "connected");
@@ -13298,6 +13700,184 @@ function importWorkspaceAsNewFromTextarea() {
   } catch {
     showToast("Import failed: check the JSON format", "info");
   }
+}
+
+function importSwitcherPayload() {
+  const source = document.querySelector("#switcher-source")?.value || "Generic CSV";
+  const format = document.querySelector("#switcher-format")?.value || "csv";
+  const payload = document.querySelector("#switcher-import-payload")?.value.trim() || "";
+  if (!payload) {
+    showToast("Paste an export payload first", "info");
+    return;
+  }
+  try {
+    const rows = format === "json" ? rowsFromSwitcherJson(payload) : rowsFromSwitcherCsv(payload);
+    const result = applySwitcherRows(rows, source);
+    showToast(`Imported ${result.tasks} tasks and ${result.projects} projects`, "success");
+  } catch (error) {
+    showToast(`Import failed: ${error.message}`, "info");
+  }
+}
+
+function rowsFromSwitcherJson(payload) {
+  const parsed = JSON.parse(payload);
+  if (Array.isArray(parsed)) return parsed;
+  if (Array.isArray(parsed.tasks)) return parsed.tasks;
+  if (Array.isArray(parsed.items)) return parsed.items;
+  if (Array.isArray(parsed.cards)) return parsed.cards;
+  if (Array.isArray(parsed.data)) return parsed.data;
+  throw new Error("JSON did not include a task array");
+}
+
+function rowsFromSwitcherCsv(payload) {
+  const rows = parseCsvRows(payload);
+  if (rows.length < 2) throw new Error("CSV needs a header row and at least one task");
+  const headers = rows[0].map((header) => normalizeImportHeader(header));
+  return rows.slice(1)
+    .filter((row) => row.some((cell) => String(cell || "").trim()))
+    .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] || ""])));
+}
+
+function parseCsvRows(payload) {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  for (let index = 0; index < payload.length; index += 1) {
+    const char = payload[index];
+    const next = payload[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      cell += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      row.push(cell);
+      cell = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+  row.push(cell);
+  rows.push(row);
+  return rows;
+}
+
+function normalizeImportHeader(header) {
+  return String(header || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function importValue(row, keys) {
+  for (const key of keys) {
+    const normalized = normalizeImportHeader(key);
+    if (Object.prototype.hasOwnProperty.call(row, normalized) && String(row[normalized] || "").trim()) return String(row[normalized]).trim();
+    if (Object.prototype.hasOwnProperty.call(row, key) && String(row[key] || "").trim()) return String(row[key]).trim();
+  }
+  return "";
+}
+
+function applySwitcherRows(rows, source) {
+  saveWorkspaceBackups([workspaceBackupRecord(`Before ${source} import`), ...loadWorkspaceBackups()]);
+  const now = new Date().toISOString();
+  const existingProjectNames = new Map(state.projects.map((project) => [project.name.toLowerCase(), project]));
+  const nextProjects = [...state.projects];
+  const nextTasks = [...state.tasks];
+  let projectCount = 0;
+  let taskCount = 0;
+
+  rows.forEach((row, index) => {
+    const title = importValue(row, ["title", "task", "name", "task_name", "card_name", "item_name", "summary"]);
+    if (!title) return;
+    const projectNameValue = importValue(row, ["project", "list", "board", "space", "folder", "group", "section", "workspace"]) || `${source} Import`;
+    const projectKey = projectNameValue.toLowerCase();
+    let project = existingProjectNames.get(projectKey);
+    if (!project) {
+      project = normalizeProjectRecord({
+        id: uniqueImportedId(`project-${slugFromName(projectNameValue)}`, nextProjects),
+        name: projectNameValue,
+        companyId: state.filters.company !== "all" ? state.filters.company : state.companies[0]?.id || "",
+        description: `Imported from ${source}.`,
+        owner: activeMemberId(),
+        startDate: todayKey(),
+        dueDate: ""
+      });
+      nextProjects.push(project);
+      existingProjectNames.set(projectKey, project);
+      projectCount += 1;
+    }
+    const task = normalizeTaskRecord({
+      id: uniqueImportedId(`task-${slugFromName(title)}`, nextTasks),
+      projectId: project.id,
+      title,
+      description: importValue(row, ["description", "notes", "details", "body"]) || `Imported from ${source}.`,
+      assignee: importMemberId(importValue(row, ["assignee", "owner", "person", "assigned_to"])),
+      status: importStatus(importValue(row, ["status", "state", "column"])),
+      priority: importPriority(importValue(row, ["priority", "importance"])),
+      dueDate: importDate(importValue(row, ["due", "due_date", "deadline", "date"])),
+      startDate: importDate(importValue(row, ["start", "start_date"])),
+      blockedBy: [],
+      tags: [source.toLowerCase().replaceAll(" ", "-")],
+      subtasks: [],
+      createdAt: now
+    });
+    task.sortOrder = index;
+    nextTasks.push(task);
+    taskCount += 1;
+  });
+
+  if (!taskCount) throw new Error("No tasks found in import payload");
+  state.projects = nextProjects;
+  state.tasks = nextTasks;
+  addAuditEvent({
+    action: "switcher_import",
+    detail: `Imported ${taskCount} tasks from ${source}`
+  });
+  saveState();
+  render();
+  return { projects: projectCount, tasks: taskCount };
+}
+
+function uniqueImportedId(base, collection) {
+  const existing = new Set(collection.map((item) => item.id));
+  if (!existing.has(base)) return base;
+  let index = 2;
+  while (existing.has(`${base}-${index}`)) index += 1;
+  return `${base}-${index}`;
+}
+
+function importMemberId(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return workspaceMembers().find((member) => member.id === normalized || member.name.toLowerCase() === normalized || member.email?.toLowerCase() === normalized)?.id || activeMemberId();
+}
+
+function importStatus(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["done", "complete", "completed", "closed", "resolved"].includes(normalized)) return "done";
+  if (["doing", "in progress", "in_progress", "active", "working"].includes(normalized)) return "doing";
+  if (["review", "qa", "blocked review"].includes(normalized)) return "review";
+  return "todo";
+}
+
+function importPriority(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["urgent", "critical", "highest", "p0"].includes(normalized)) return "urgent";
+  if (["high", "p1"].includes(normalized)) return "high";
+  if (["low", "minor", "p3"].includes(normalized)) return "low";
+  return "normal";
+}
+
+function importDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const parsed = new Date(raw);
+  if (!Number.isFinite(parsed.getTime())) return "";
+  return parsed.toISOString().slice(0, 10);
 }
 
 async function connectApiSession() {
@@ -14131,6 +14711,24 @@ document.addEventListener("click", (event) => {
   const copyStatusReportButton = event.target.closest("#copy-status-report");
   if (copyStatusReportButton) copyStatusReport();
 
+  const dashboardSaveLayoutButton = event.target.closest("#dashboard-save-layout");
+  if (dashboardSaveLayoutButton) {
+    saveDashboardLayout();
+    return;
+  }
+
+  const chatSendButton = event.target.closest("#chat-send");
+  if (chatSendButton) {
+    sendWorkspaceChatMessage();
+    return;
+  }
+
+  const whiteboardAddButton = event.target.closest("#whiteboard-add-note");
+  if (whiteboardAddButton) {
+    addWhiteboardNote();
+    return;
+  }
+
   const installMarketplaceTemplateButton = event.target.closest("[data-install-marketplace-template]");
   if (installMarketplaceTemplateButton) {
     installMarketplaceTemplate(installMarketplaceTemplateButton.dataset.installMarketplaceTemplate);
@@ -14364,6 +14962,12 @@ document.addEventListener("click", (event) => {
 
   const importJsonNewWorkspaceButton = event.target.closest("#import-json-new-workspace");
   if (importJsonNewWorkspaceButton) importWorkspaceAsNewFromTextarea();
+
+  const switcherImportButton = event.target.closest("#switcher-import-button");
+  if (switcherImportButton) {
+    importSwitcherPayload();
+    return;
+  }
 
   const refreshExportButton = event.target.closest("#refresh-export");
   if (refreshExportButton) renderDataManagement();
