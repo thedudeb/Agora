@@ -2238,6 +2238,13 @@ body[data-tutorial-target="view"] #app-view {
   color: var(--muted);
 }
 
+.marketplace-card-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
 .marketplace-actions,
 .template-preview-actions {
   display: flex;
@@ -2414,6 +2421,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .settings-section-account,
 .settings-section-workspace,
+.settings-section-payments,
 .settings-section-sync,
 .settings-section-security,
 .settings-section-developer {
@@ -2445,11 +2453,58 @@ body[data-tutorial-target="view"] #app-view {
   justify-self: end;
 }
 
+.toggle-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 42px;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.toggle-row input {
+  width: 18px;
+  min-height: 18px;
+  flex: 0 0 auto;
+}
+
 .settings-help {
   grid-column: 1 / -1;
   margin: 0;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.payment-audit-list {
+  display: grid;
+  gap: 10px;
+}
+
+.payment-audit-event {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.payment-audit-event p,
+.payment-audit-event small {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.payment-audit-event > div:last-child {
+  display: grid;
+  gap: 5px;
+  justify-items: end;
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .theme-picker {
@@ -4713,6 +4768,7 @@ body[data-density="compact"] .main-content {
 
   .settings-section-account,
   .settings-section-workspace,
+  .settings-section-payments,
   .settings-section-sync,
   .settings-section-security,
   .settings-section-developer {
@@ -4992,6 +5048,14 @@ body[data-density="compact"] .main-content {
   .nav-list,
   .project-list {
     grid-template-columns: 1fr;
+  }
+
+  .payment-audit-event {
+    grid-template-columns: 1fr;
+  }
+
+  .payment-audit-event > div:last-child {
+    justify-items: start;
   }
 
   .member-access-controls {

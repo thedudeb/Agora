@@ -17,6 +17,8 @@ Use either a single template object or an export wrapper:
     "description": "A reusable project workflow.",
     "owner": "mara",
     "durationDays": 14,
+    "priceCents": 0,
+    "currency": "USD",
     "tasks": [],
     "milestones": [],
     "docs": [],
@@ -30,3 +32,5 @@ Use either a single template object or an export wrapper:
 ```
 
 Task `key` values are used by `blockedBy` and milestone `taskKeys`, so keep them short, stable, and unique.
+
+`priceCents` and `currency` are optional. Current community templates should stay free by default; paid marketplace support is only a local UI foundation until a server-side payment adapter exists.

@@ -251,10 +251,20 @@ const settingsTabs = [
   { id: "workspace", label: "Workspace" },
   { id: "members", label: "Members" },
   { id: "integrations", label: "Integrations" },
+  { id: "payments", label: "Payments" },
   { id: "sync", label: "Sync" },
   { id: "security", label: "Security" },
   { id: "developer", label: "Developer" }
 ];
+
+const paymentProviderOptions = [
+  { id: "none", label: "Disabled" },
+  { id: "stripe", label: "Stripe" },
+  { id: "x402", label: "x402" },
+  { id: "manual", label: "Manual invoice" }
+];
+
+const paymentCurrencyOptions = ["USD", "USDC", "CAD", "EUR", "GBP"];
 
 const themePresets = [
   {
@@ -533,6 +543,27 @@ const seedData = {
       model: "Agora deterministic operator",
       baseUrl: "",
       keySource: "Server environment"
+    },
+    payments: {
+      provider: "none",
+      currency: "USD",
+      spendingCapCents: 0,
+      marketplacePayments: false,
+      clientPortalPayments: false,
+      agentPayments: false,
+      x402Experimental: false,
+      audit: [
+        {
+          id: "payment-audit-seed",
+          action: "payment_foundation_ready",
+          provider: "none",
+          currency: "USD",
+          amountCents: 0,
+          status: "ready",
+          note: "Payments are disabled until a provider is connected.",
+          createdAt: "2026-06-27T12:00:00.000Z"
+        }
+      ]
     }
   },
   memberships: [
@@ -1556,7 +1587,8 @@ function normalizeState(nextState) {
       ai: {
         ...seedData.workspace.ai,
         ...((nextState.workspace || {}).ai || {})
-      }
+      },
+      payments: normalizeWorkspacePayments((nextState.workspace || {}).payments)
     },
     memberships: Array.isArray(nextState.memberships) ? nextState.memberships : seedData.memberships,
     users: Array.isArray(nextState.users) ? nextState.users : [],
@@ -1597,6 +1629,36 @@ function normalizeWorkspaceTheme(theme = {}) {
   const preset = themePresets.some((item) => item.id === theme.preset) ? theme.preset : seedData.workspace.theme.preset;
   const density = densityOptions.some((item) => item.id === theme.density) ? theme.density : seedData.workspace.theme.density;
   return { preset, density };
+}
+
+function normalizeWorkspacePayments(payments = {}) {
+  const fallback = seedData.workspace.payments;
+  const provider = paymentProviderOptions.some((item) => item.id === payments.provider) ? payments.provider : fallback.provider;
+  const currency = paymentCurrencyOptions.includes(payments.currency) ? payments.currency : fallback.currency;
+  const spendingCapCents = Math.max(0, Math.round(Number(payments.spendingCapCents) || 0));
+  const audit = Array.isArray(payments.audit) ? payments.audit : fallback.audit;
+  return {
+    provider,
+    currency,
+    spendingCapCents,
+    marketplacePayments: provider !== "none" && Boolean(payments.marketplacePayments),
+    clientPortalPayments: provider !== "none" && Boolean(payments.clientPortalPayments),
+    agentPayments: provider !== "none" && Boolean(payments.agentPayments),
+    x402Experimental: provider === "x402" && Boolean(payments.x402Experimental),
+    audit: audit
+      .filter((event) => event && typeof event === "object")
+      .map((event) => ({
+        id: event.id || uid("payment-audit"),
+        action: event.action || "payment_event",
+        provider: paymentProviderOptions.some((item) => item.id === event.provider) ? event.provider : provider,
+        currency: paymentCurrencyOptions.includes(event.currency) ? event.currency : currency,
+        amountCents: Math.max(0, Math.round(Number(event.amountCents) || 0)),
+        status: event.status || "recorded",
+        note: event.note || "",
+        createdAt: event.createdAt || new Date().toISOString()
+      }))
+      .slice(0, 50)
+  };
 }
 
 function applyWorkspaceTheme() {
@@ -2113,7 +2175,7 @@ function canUseSettingsTab(tabId) {
   const role = currentWorkspaceRole();
   if (role === "client") return false;
   if (tabId === "members" || tabId === "security") return role === "admin";
-  if (tabId === "workspace" || tabId === "sync" || tabId === "developer" || tabId === "integrations") return role === "admin" || role === "manager";
+  if (tabId === "workspace" || tabId === "sync" || tabId === "developer" || tabId === "integrations" || tabId === "payments") return role === "admin" || role === "manager";
   return true;
 }
 
@@ -2862,6 +2924,130 @@ function renderAiProviderChecklist(ai) {
   `;
 }
 
+function renderPaymentsSettingsPanel(payments) {
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Payments</p>
+          <h2>Provider foundation</h2>
+        </div>
+        <span class="status-pill ${payments.provider === "none" ? "inbox-neutral" : "inbox-blue"}">${escapeHtml(paymentProviderLabel(payments.provider))}</span>
+      </div>
+      <div class="settings-form">
+        <label>
+          <span>Provider</span>
+          <select id="payment-provider">
+            ${paymentProviderOptions.map((option) => `<option value="${option.id}" ${option.id === payments.provider ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Currency</span>
+          <select id="payment-currency">
+            ${paymentCurrencyOptions.map((option) => `<option value="${option}" ${option === payments.currency ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Spend cap</span>
+          <input id="payment-spending-cap" type="number" min="0" step="0.01" value="${escapeHtml(paymentDollarsInputValue(payments.spendingCapCents))}">
+        </label>
+        <label>
+          <span>Mode</span>
+          <input value="${payments.provider === "none" ? "Planning only" : "Provider configured"}" disabled>
+        </label>
+        <label class="toggle-row">
+          <input id="payment-marketplace" type="checkbox" ${payments.marketplacePayments ? "checked" : ""}>
+          <span>Enable paid marketplace templates</span>
+        </label>
+        <label class="toggle-row">
+          <input id="payment-client-portal" type="checkbox" ${payments.clientPortalPayments ? "checked" : ""}>
+          <span>Enable client portal payments</span>
+        </label>
+        <label class="toggle-row">
+          <input id="payment-agent-spend" type="checkbox" ${payments.agentPayments ? "checked" : ""}>
+          <span>Allow capped agent/tool spend</span>
+        </label>
+        <label class="toggle-row">
+          <input id="payment-x402-experimental" type="checkbox" ${payments.x402Experimental ? "checked" : ""}>
+          <span>x402 experimental mode</span>
+        </label>
+        <p class="settings-help">Payment providers are configuration only in this prototype. Keep provider secrets on the API server, require caps for automated spend, and treat x402 as experimental until the server adapter is implemented.</p>
+        ${renderPaymentsChecklist(payments)}
+        <button class="button button-primary" type="button" id="payments-save">Save Payment Settings</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Ledger</p>
+          <h2>Payment audit</h2>
+        </div>
+        <button class="button button-secondary compact-button" type="button" id="payment-test-event" ${payments.provider === "none" ? "disabled" : ""}>Record Test</button>
+      </div>
+      <div class="payment-audit-list">
+        ${payments.audit.length ? payments.audit.map(renderPaymentAuditEvent).join("") : emptyState("No payment events yet.")}
+      </div>
+    </section>
+  `;
+}
+
+function renderPaymentsChecklist(payments) {
+  const providerActive = payments.provider !== "none";
+  const items = [
+    {
+      label: "Provider chosen",
+      done: providerActive,
+      detail: providerActive ? paymentProviderLabel(payments.provider) : "Payments are disabled by default."
+    },
+    {
+      label: "Server-held secrets",
+      done: payments.provider === "none" || payments.provider === "manual",
+      detail: payments.provider === "none" ? "No secret needed yet." : "Wire secrets through the API server before live charges."
+    },
+    {
+      label: "Spend cap",
+      done: !payments.agentPayments || payments.spendingCapCents > 0,
+      detail: payments.spendingCapCents ? `${formatPaymentAmount(payments.spendingCapCents, payments.currency)} cap` : "Set a cap before agent/tool spend."
+    },
+    {
+      label: "x402 lab gate",
+      done: payments.provider !== "x402" || payments.x402Experimental,
+      detail: payments.provider === "x402" ? "Experimental mode must stay explicit." : "Only needed for x402 experiments."
+    }
+  ];
+
+  return `
+    <div class="readiness-list compact-readiness">
+      ${items.map((item) => `
+        <article class="readiness-item ${item.done ? "is-done" : "is-pending"}">
+          <span>${item.done ? "OK" : "Next"}</span>
+          <div>
+            <strong>${escapeHtml(item.label)}</strong>
+            <p>${escapeHtml(item.detail)}</p>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderPaymentAuditEvent(event) {
+  return `
+    <article class="payment-audit-event">
+      <div>
+        <strong>${escapeHtml(event.action.replaceAll("_", " "))}</strong>
+        <p>${escapeHtml(event.note || paymentProviderLabel(event.provider))}</p>
+      </div>
+      <div>
+        <span class="status-pill inbox-neutral">${escapeHtml(event.status)}</span>
+        <span>${escapeHtml(formatPaymentAmount(event.amountCents, event.currency))}</span>
+        <small>${escapeHtml(formatTimestamp(event.createdAt))}</small>
+      </div>
+    </article>
+  `;
+}
+
 function routeFallback(route) {
   if (canAccessRoute(route)) return route;
   return isClientSession() ? "portal" : "dashboard";
@@ -2905,6 +3091,40 @@ function aiConnectionSummary() {
   if (!aiProviderNeedsApi()) return "Local operator";
   if (!apiSession) return "Connect API to use provider";
   return "Server adapter ready";
+}
+
+function paymentSettings() {
+  return normalizeWorkspacePayments(state.workspace?.payments);
+}
+
+function paymentProviderLabel(provider = paymentSettings().provider) {
+  return paymentProviderOptions.find((option) => option.id === provider)?.label || "Disabled";
+}
+
+function formatPaymentAmount(cents = 0, currency = "USD") {
+  if (currency === "USDC") return `${(Number(cents) / 100).toFixed(2)} USDC`;
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format((Number(cents) || 0) / 100);
+  } catch {
+    return `${((Number(cents) || 0) / 100).toFixed(2)} ${currency}`;
+  }
+}
+
+function paymentDollarsInputValue(cents = 0) {
+  const value = (Number(cents) || 0) / 100;
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+function marketplaceTemplatePrice(template) {
+  return {
+    cents: Math.max(0, Math.round(Number(template.priceCents) || 0)),
+    currency: paymentCurrencyOptions.includes(template.currency) ? template.currency : "USD"
+  };
+}
+
+function marketplaceTemplatePriceLabel(template) {
+  const price = marketplaceTemplatePrice(template);
+  return price.cents ? formatPaymentAmount(price.cents, price.currency) : "Free";
 }
 
 async function requestAiOperator(mode, context) {
@@ -3374,6 +3594,8 @@ function validateProjectTemplate(input, options = {}) {
     description: String(template.description || `Community template for ${name}`),
     owner: validMemberIds.has(template.owner) ? template.owner : currentMemberId,
     durationDays: Math.max(1, Number(template.durationDays || 14)),
+    priceCents: Math.max(0, Math.round(Number(template.priceCents) || 0)),
+    currency: paymentCurrencyOptions.includes(template.currency) ? template.currency : "USD",
     tasks: normalizedTasks,
     milestones: Array.isArray(template.milestones) ? template.milestones.slice(0, 20).map((milestone, index) => ({
       title: String(milestone.title || `Milestone ${index + 1}`),
@@ -8777,10 +8999,14 @@ function renderTemplateMarketplacePanel() {
 
 function renderMarketplaceTemplateCard(template) {
   const installed = state.projectTemplates.some((item) => item.id === template.id || item.name.toLowerCase() === template.name.toLowerCase());
+  const priceLabel = marketplaceTemplatePriceLabel(template);
   return `
     <article class="marketplace-template-card ${installed ? "is-installed" : ""}">
       <div>
-        <span class="status-pill ${installed ? "inbox-green" : "inbox-blue"}">${installed ? "Installed" : escapeHtml(template.category)}</span>
+        <div class="marketplace-card-kicker">
+          <span class="status-pill ${installed ? "inbox-green" : "inbox-blue"}">${installed ? "Installed" : escapeHtml(template.category)}</span>
+          <span class="status-pill inbox-neutral">${escapeHtml(priceLabel)}</span>
+        </div>
         <h3>${escapeHtml(template.name)}</h3>
         <p>${escapeHtml(template.description)}</p>
         <div class="template-meta">
@@ -9054,6 +9280,7 @@ function renderSettings() {
   const roleById = Object.fromEntries(workspaceRoles.map((role) => [role.id, role]));
   const teamMembers = workspaceMembers();
   const ai = aiSettings();
+  const payments = paymentSettings();
   const pendingInvitations = state.invitations.filter((invitation) => invitation.status === "pending");
   const memberships = teamMembers.map((member) => ({
     ...member,
@@ -9073,6 +9300,7 @@ function renderSettings() {
       ${metric("Companies", state.companies.length)}
       ${metric("Storage", apiBackendLabel())}
       ${metric("Theme", themePresets.find((theme) => theme.id === state.workspace.theme?.preset)?.label || "Agora")}
+      ${metric("Payments", paymentProviderLabel(payments.provider))}
     </div>
 
     ${renderSettingsTabs(activeSettingsTab)}
@@ -9273,6 +9501,10 @@ function renderSettings() {
       ${activeSettingsTab === "sync" ? `
       ${renderApiStatePanel()}
       ${renderApiSyncPanel()}
+      ` : ""}
+
+      ${activeSettingsTab === "payments" ? `
+      ${renderPaymentsSettingsPanel(payments)}
       ` : ""}
 
       ${activeSettingsTab === "security" ? `
@@ -11752,6 +11984,81 @@ function saveAiSettings() {
   showToast("AI operator settings saved", "success");
 }
 
+function savePaymentSettings() {
+  const provider = document.querySelector("#payment-provider")?.value || "none";
+  const currency = document.querySelector("#payment-currency")?.value || "USD";
+  const capValue = Number(document.querySelector("#payment-spending-cap")?.value || 0);
+  const spendingCapCents = Math.max(0, Math.round(capValue * 100));
+  const nextPayments = normalizeWorkspacePayments({
+    ...paymentSettings(),
+    provider,
+    currency,
+    spendingCapCents,
+    marketplacePayments: document.querySelector("#payment-marketplace")?.checked,
+    clientPortalPayments: document.querySelector("#payment-client-portal")?.checked,
+    agentPayments: document.querySelector("#payment-agent-spend")?.checked,
+    x402Experimental: document.querySelector("#payment-x402-experimental")?.checked
+  });
+  const event = {
+    id: uid("payment-audit"),
+    action: "payment_settings_update",
+    provider: nextPayments.provider,
+    currency: nextPayments.currency,
+    amountCents: nextPayments.spendingCapCents,
+    status: "saved",
+    note: `${paymentProviderLabel(nextPayments.provider)} configured for ${nextPayments.currency}`,
+    createdAt: new Date().toISOString()
+  };
+
+  state.workspace = {
+    ...state.workspace,
+    payments: {
+      ...nextPayments,
+      audit: [event, ...nextPayments.audit].slice(0, 50)
+    }
+  };
+  addAuditEvent({
+    action: "payment_settings_update",
+    detail: `Payments set to ${paymentProviderLabel(nextPayments.provider)} with ${formatPaymentAmount(nextPayments.spendingCapCents, nextPayments.currency)} cap`
+  });
+  saveState();
+  render();
+  showToast("Payment settings saved", "success");
+}
+
+function recordTestPaymentEvent() {
+  const payments = paymentSettings();
+  if (payments.provider === "none") {
+    showToast("Choose a payment provider first", "info");
+    return;
+  }
+  const amountCents = payments.spendingCapCents ? Math.min(payments.spendingCapCents, 500) : 500;
+  const event = {
+    id: uid("payment-audit"),
+    action: "payment_test_event",
+    provider: payments.provider,
+    currency: payments.currency,
+    amountCents,
+    status: "test",
+    note: "Prototype payment event recorded locally. No money moved.",
+    createdAt: new Date().toISOString()
+  };
+  state.workspace = {
+    ...state.workspace,
+    payments: {
+      ...payments,
+      audit: [event, ...payments.audit].slice(0, 50)
+    }
+  };
+  addAuditEvent({
+    action: "payment_test_event",
+    detail: `Recorded ${formatPaymentAmount(amountCents, payments.currency)} ${paymentProviderLabel(payments.provider)} test event`
+  });
+  saveState();
+  render();
+  showToast("Test payment event recorded", "success");
+}
+
 function updateMemberRole(memberId, role) {
   if (!workspaceMembers().some((member) => member.id === memberId) || !workspaceRoles.some((item) => item.id === role)) return;
   if (!canWrite("members:write")) {
@@ -12884,6 +13191,18 @@ document.addEventListener("click", (event) => {
   const aiSaveButton = event.target.closest("#ai-save-settings");
   if (aiSaveButton) {
     saveAiSettings();
+    return;
+  }
+
+  const paymentsSaveButton = event.target.closest("#payments-save");
+  if (paymentsSaveButton) {
+    savePaymentSettings();
+    return;
+  }
+
+  const paymentTestButton = event.target.closest("#payment-test-event");
+  if (paymentTestButton) {
+    recordTestPaymentEvent();
     return;
   }
 
