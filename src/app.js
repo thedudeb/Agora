@@ -6095,6 +6095,95 @@ function companyPortalSnapshot(companyId) {
   };
 }
 
+function portalDecisionItems(companyId) {
+  const portal = companyPortalSnapshot(companyId);
+  return portal.pendingApprovals.slice(0, 5).map((approval) => {
+    const task = byId(state.tasks, approval.taskId);
+    const project = byId(state.projects, approval.projectId);
+    const assets = [...portal.documents, ...portal.files]
+      .filter((asset) => asset.projectId === approval.projectId)
+      .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+      .slice(0, 3);
+    const latestUpdate = portal.updates.find((update) => update.projectId === approval.projectId || byId(state.tasks, update.taskId)?.projectId === approval.projectId);
+    return {
+      approval,
+      task,
+      project,
+      assets,
+      latestUpdate,
+      overdue: approval.dueDate && approval.dueDate < todayKey(),
+      dueSoon: approval.dueDate && approval.dueDate <= shiftDate(todayKey(), 3)
+    };
+  });
+}
+
+function portalDecisionReadiness(companyId) {
+  const decisions = portalDecisionItems(companyId);
+  const overdue = decisions.filter((item) => item.overdue).length;
+  const dueSoon = decisions.filter((item) => item.dueSoon).length;
+  return {
+    decisions,
+    overdue,
+    dueSoon,
+    label: overdue ? "Late decisions" : dueSoon ? "Needs review" : decisions.length ? "Ready for review" : "No decisions",
+    tone: overdue ? "red" : dueSoon ? "amber" : decisions.length ? "blue" : "green"
+  };
+}
+
+function renderPortalDecisionRoom(companyId, { client = false } = {}) {
+  const readiness = portalDecisionReadiness(companyId);
+  const decisions = readiness.decisions;
+  const content = `
+    <div class="portal-list-header">
+      <h3>Decision room</h3>
+      <span>${decisions.length} open</span>
+    </div>
+    <div class="decision-room-summary">
+      <span class="status-pill inbox-${readiness.tone}">${escapeHtml(readiness.label)}</span>
+      <p>${decisions.length ? "Approvals are bundled with source work, latest updates, and shared assets so external stakeholders can decide without hunting through internal workspace noise." : "No client decisions are waiting right now."}</p>
+    </div>
+    <div class="decision-room-list">
+      ${decisions.length ? decisions.map(renderPortalDecisionItem).join("") : emptyState("No decision packet is needed right now.")}
+    </div>
+  `;
+
+  if (client) {
+    return `
+      <section class="panel portal-decision-room">
+        ${content}
+      </section>
+    `;
+  }
+
+  return `
+    <div class="portal-list portal-decision-room">
+      ${content}
+    </div>
+  `;
+}
+
+function renderPortalDecisionItem(item) {
+  const { approval, task, project, assets, latestUpdate } = item;
+  return `
+    <article class="decision-room-item ${item.overdue ? "is-overdue" : ""}">
+      <div>
+        <span class="status-pill inbox-${approvalTone(approval.status)}">${escapeHtml(approvalStatusLabel(approval.status))}</span>
+        <h4>${escapeHtml(approval.title)}</h4>
+        <p>${escapeHtml(approval.summary)}</p>
+        <div class="meta-row">
+          <span>${escapeHtml(project?.name || projectName(approval.projectId))}</span>
+          <span>Due ${formatDate(approval.dueDate)}</span>
+          <span>${task ? `Source: ${escapeHtml(task.title)}` : "No source task"}</span>
+        </div>
+      </div>
+      <div class="decision-room-context">
+        <small>${latestUpdate ? `Latest update: ${escapeHtml(latestUpdate.message || latestUpdate.body || "Workspace update")}` : "No recent update attached."}</small>
+        <small>${assets.length ? `Packet assets: ${escapeHtml(assets.map((asset) => asset.title).join(", "))}` : "No shared assets attached yet."}</small>
+      </div>
+    </article>
+  `;
+}
+
 function operatorBriefForProject(project) {
   const tasks = getProjectTasks(project.id, false);
   const openTasks = tasks.filter((task) => task.status !== "done");
@@ -6329,6 +6418,95 @@ function workspacePulse() {
   };
 }
 
+function liveWorkspacePresence() {
+  const current = currentPresenceRecord({ taskId: currentOpenTaskId() });
+  const remote = livePresenceRecords({}).slice(0, 8);
+  const records = [current, ...remote].filter((presence, index, list) => list.findIndex((item) => item.memberId === presence.memberId) === index);
+  return records.map((presence) => ({
+    presence,
+    member: byId(workspaceMembers(), presence.memberId) || { id: presence.memberId, name: memberName(presence.memberId), role: "Member" }
+  }));
+}
+
+function liveEditingSignals(limit = 5) {
+  return livePresenceRecords({})
+    .filter((presence) => presence.taskId)
+    .map((presence) => ({
+      presence,
+      member: byId(workspaceMembers(), presence.memberId),
+      task: byId(state.tasks, presence.taskId)
+    }))
+    .filter((item) => item.member && item.task)
+    .slice(0, limit);
+}
+
+function recentMentionSignals(limit = 5) {
+  const memberId = activeMemberId();
+  return [...state.comments]
+    .filter((comment) => isMentionedInComment(comment, memberId))
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, limit);
+}
+
+function renderLiveCollaborationPanel() {
+  const presence = liveWorkspacePresence();
+  const editing = liveEditingSignals();
+  const mentions = recentMentionSignals();
+
+  return `
+    <section class="panel live-collaboration-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Live workspace</p>
+          <h2>Presence and handoffs</h2>
+        </div>
+        <span class="status-pill ${apiSession ? "inbox-green" : "inbox-neutral"}">${apiSession ? "Realtime ready" : "Local preview"}</span>
+      </div>
+      <div class="live-collaboration-grid">
+        <div>
+          <h3>Online now</h3>
+          <div class="presence-row">
+            ${presence.length ? presence.map(({ member, presence: record }) => `
+              <span class="presence-pill ${isPresenceActive(record) ? "is-live" : ""}">
+                <span class="avatar">${escapeHtml(member.name.split(" ").map((part) => part[0]).join(""))}</span>
+                ${escapeHtml(member.name)}
+                <small>${escapeHtml(record.viewing || routes[record.route] || "Workspace")}</small>
+              </span>
+            `).join("") : emptyState("No live collaborators yet.")}
+          </div>
+        </div>
+        <div>
+          <h3>Editing signals</h3>
+          <div class="live-signal-list">
+            ${editing.length ? editing.map(({ member, task, presence: record }) => `
+              <article>
+                <strong>${escapeHtml(member.name)}</strong>
+                <span>${escapeHtml(task.title)}</span>
+                <small>${escapeHtml(projectName(task.projectId))} - ${formatTimestamp(record.lastActiveAt || record.updatedAt)}</small>
+              </article>
+            `).join("") : emptyState("No one else is inside a task right now.")}
+          </div>
+        </div>
+        <div>
+          <h3>Mentions for you</h3>
+          <div class="live-signal-list">
+            ${mentions.length ? mentions.map((comment) => {
+              const task = byId(state.tasks, comment.taskId);
+              return `
+                <article>
+                  <strong>${escapeHtml(memberName(comment.author))}</strong>
+                  <span>${renderCommentBody(comment.body)}</span>
+                  <small>${task ? escapeHtml(task.title) : escapeHtml(projectName(comment.projectId))} - ${formatTimestamp(comment.createdAt)}</small>
+                </article>
+              `;
+            }).join("") : emptyState("No recent mentions for the active member.")}
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function automationSuggestions() {
   const pendingApprovals = getPendingApprovals();
   const blockedTasks = activeTasks().filter((task) => task.status !== "done" && isTaskBlocked(task));
@@ -6521,13 +6699,31 @@ function milestoneProgress(milestone) {
   return projectProgress(linkedTasks);
 }
 
-function addAuditEvent({ action, detail, actorId = activeMemberId(), source = apiSession ? "api-ready" : "local" }) {
+function addAuditEvent({
+  action,
+  detail,
+  actorId = activeMemberId(),
+  source = apiSession ? "api-ready" : "local",
+  targetType = "workspace",
+  targetId = state.workspace?.id || "",
+  impact = "low",
+  reversible = true,
+  restoreHint = "Tracked in local workspace history.",
+  metadata = {}
+}) {
   const event = {
     id: uid("audit"),
     actorId,
     action,
     detail,
     source,
+    targetType,
+    targetId,
+    impact,
+    reversible,
+    restoreHint,
+    metadata,
+    session: apiSession ? "authenticated" : "local-demo",
     createdAt: new Date().toISOString()
   };
   state.auditEvents = [event, ...(state.auditEvents || [])].slice(0, 250);
@@ -6575,6 +6771,19 @@ function archiveTask(taskId) {
     type: "task_archive",
     message: `archived ${task.title}`
   });
+  addAuditEvent({
+    action: "task_archive_control",
+    detail: `Archived task ${task.title}`,
+    targetType: "task",
+    targetId: task.id,
+    impact: "medium",
+    reversible: false,
+    restoreHint: "Restore from a workspace backup or API snapshot if this was accidental.",
+    metadata: {
+      projectId: task.projectId,
+      archivedAt
+    }
+  });
   saveState();
   render();
   showToast("Task archived", "success");
@@ -6606,6 +6815,19 @@ function archiveProject(projectId) {
     projectId,
     type: "project_archive",
     message: `archived project ${project.name}`
+  });
+  addAuditEvent({
+    action: "project_archive_control",
+    detail: `Archived project ${project.name} and ${projectTaskIds.size} linked ${projectTaskIds.size === 1 ? "task" : "tasks"}`,
+    targetType: "project",
+    targetId: project.id,
+    impact: "high",
+    reversible: false,
+    restoreHint: "Restore from a workspace backup or API snapshot if this was accidental.",
+    metadata: {
+      archivedAt,
+      affectedTasks: projectTaskIds.size
+    }
   });
   state.selectedProject = "all";
   state.selectedRoute = "dashboard";
@@ -7558,6 +7780,8 @@ function renderCollaborationHub() {
   const activeBoard = state.whiteboards[0] || { id: "", title: "Workspace Canvas", projectId: "", items: [] };
   const decisions = activeBoard.items.filter((item) => item.type === "decision").length;
   const risks = activeBoard.items.filter((item) => item.type === "risk").length;
+  const liveMembers = liveWorkspacePresence();
+  const editingSignals = liveEditingSignals();
 
   els.appView.innerHTML = `
     <div class="metric-grid">
@@ -7565,7 +7789,11 @@ function renderCollaborationHub() {
       ${metric("Boards", state.whiteboards.length)}
       ${metric("Decisions", decisions)}
       ${metric("Risks", risks)}
+      ${metric("Live now", liveMembers.length)}
+      ${metric("Editing", editingSignals.length)}
     </div>
+
+    ${renderLiveCollaborationPanel()}
 
     <div class="collab-hub-grid">
       <section class="panel workspace-chat-panel">
@@ -8410,6 +8638,8 @@ function renderCompanyPortal(company) {
           <small>${portal.updatedAt ? `Updated ${formatTimestamp(portal.updatedAt)}` : "No recent updates"}</small>
         </article>
 
+        ${renderPortalDecisionRoom(company.id)}
+
         <div class="portal-list">
           <div class="portal-list-header">
             <h3>Approvals</h3>
@@ -8499,6 +8729,8 @@ function renderClientPortal() {
     </div>
 
     <div class="client-portal-grid">
+      ${renderPortalDecisionRoom(company.id, { client: true })}
+
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -10074,6 +10306,7 @@ function portalSharePacket(companyId) {
   const portal = companyPortalSnapshot(companyId);
   const openTasks = portal.openTasks.slice(0, 6);
   const approvals = portal.pendingApprovals.slice(0, 6);
+  const decisions = portalDecisionItems(companyId).slice(0, 6);
   const assets = [...portal.documents, ...portal.files]
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
     .slice(0, 6);
@@ -10087,7 +10320,7 @@ function portalSharePacket(companyId) {
     ...(approvals.length ? approvals.map((approval) => `- ${approval.title}: ${approvalStatusLabel(approval.status)} by ${formatDate(approval.dueDate)}. ${approval.summary || ""}`.trim()) : ["- No approvals are pending."]),
     "",
     "## Decision Packet",
-    ...(approvals.length ? approvals.map((approval) => `- Review: ${approval.title}. Requested by ${memberName(approval.requester)} for ${approval.reviewer}.`) : ["- No decision packet is needed right now."]),
+    ...(decisions.length ? decisions.map((item) => `- Review: ${item.approval.title}. Requested by ${memberName(item.approval.requester)} for ${item.approval.reviewer}. Source: ${item.task?.title || "No source task"}. Assets: ${item.assets.length ? item.assets.map((asset) => asset.title).join(", ") : "No shared assets attached"}.`) : ["- No decision packet is needed right now."]),
     "",
     "## Next Work",
     ...(openTasks.length ? openTasks.map((task) => `- ${task.title}: ${statusLabel(task.status)}, due ${formatDate(task.dueDate)}.`) : ["- No open work is visible right now."]),
@@ -11460,12 +11693,16 @@ function renderAuditLog() {
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
     .slice(0, 100);
   const actions = Array.from(new Set(events.map((event) => event.action).filter(Boolean))).slice(0, 12);
+  const highImpact = events.filter((event) => auditImpactLevel(event) === "high");
+  const irreversible = events.filter((event) => event.reversible === false);
 
   els.appView.innerHTML = `
     <div class="metric-grid">
       ${metric("Events", events.length)}
       ${metric("Actors", new Set(events.map((event) => event.actorId).filter(Boolean)).size)}
       ${metric("Actions", actions.length)}
+      ${metric("High impact", highImpact.length)}
+      ${metric("Irreversible", irreversible.length)}
       ${metric("Local", localEvents.length)}
       ${metric("Server", serverEvents.length)}
       ${metric("Status", auditLoading ? "Loading" : apiSession ? "Connected" : "Offline")}
@@ -11482,6 +11719,23 @@ function renderAuditLog() {
       <div class="audit-toolbar">
         ${actions.length ? actions.map((action) => `<span class="status-pill inbox-neutral">${escapeHtml(action)}</span>`).join("") : `<span class="status-pill inbox-neutral">No audit events yet</span>`}
       </div>
+      <div class="audit-risk-grid">
+        <article>
+          <strong>${highImpact.length}</strong>
+          <span>High-impact events</span>
+          <small>Archives, restores, API imports, payment settings, and admin-level changes should leave a visible trail.</small>
+        </article>
+        <article>
+          <strong>${irreversible.length}</strong>
+          <span>Needs backup restore</span>
+          <small>Events marked permanent explain the restore path instead of pretending undo exists everywhere.</small>
+        </article>
+        <article>
+          <strong>${new Set(events.map((event) => event.targetType || "workspace")).size}</strong>
+          <span>Target types</span>
+          <small>Events are grouped by workspace, project, task, approval, automation, integration, and payment surfaces.</small>
+        </article>
+      </div>
       <div class="audit-list">
         ${events.length ? events.map(renderAuditEvent).join("") : emptyState(apiSession ? "Refresh to load API audit events." : "Make a local change to start the audit trail.")}
       </div>
@@ -11489,13 +11743,35 @@ function renderAuditLog() {
   `;
 }
 
+function auditImpactLevel(event) {
+  if (["low", "medium", "high"].includes(event?.impact)) return event.impact;
+  const action = String(event?.action || "").toLowerCase();
+  if (action.includes("archive") || action.includes("restore") || action.includes("payment") || action.includes("api")) return "high";
+  if (action.includes("approval") || action.includes("automation") || action.includes("workspace")) return "medium";
+  return "low";
+}
+
+function auditImpactTone(event) {
+  const impact = auditImpactLevel(event);
+  if (impact === "high") return "red";
+  if (impact === "medium") return "amber";
+  return "green";
+}
+
 function renderAuditEvent(event) {
+  const target = [event.targetType, event.targetId].filter(Boolean).join(":") || "workspace";
+  const restoreHint = event.restoreHint || (event.reversible === false ? "Restore from backup if needed." : "Tracked as a reversible workspace change.");
   return `
-    <article class="audit-event">
+    <article class="audit-event audit-impact-${auditImpactLevel(event)}">
       <div>
-        <span class="status-pill inbox-blue">${escapeHtml(event.action || "event")}</span>
+        <div class="audit-event-kicker">
+          <span class="status-pill inbox-blue">${escapeHtml(event.action || "event")}</span>
+          <span class="status-pill inbox-${auditImpactTone(event)}">${escapeHtml(auditImpactLevel(event))} impact</span>
+          <span class="status-pill ${event.reversible === false ? "inbox-amber" : "inbox-green"}">${event.reversible === false ? "backup restore" : "reversible"}</span>
+        </div>
         <h3>${escapeHtml(event.detail || "Workspace event")}</h3>
         <p>${escapeHtml(memberName(event.actorId) || event.actorId || "System")} - ${escapeHtml(formatTimestamp(event.createdAt))} - ${escapeHtml(event.source || "server")}</p>
+        <small>${escapeHtml(target)} - ${escapeHtml(restoreHint)}</small>
       </div>
       <code>${escapeHtml(event.id || "")}</code>
     </article>
