@@ -266,6 +266,13 @@ const paymentProviderOptions = [
 
 const paymentCurrencyOptions = ["USD", "USDC", "CAD", "EUR", "GBP"];
 
+const entitlementSourceOptions = [
+  { id: "test", label: "Test grant" },
+  { id: "manual", label: "Manual grant" },
+  { id: "payment", label: "Payment" },
+  { id: "promo", label: "Promo" }
+];
+
 const themePresets = [
   {
     id: "agora",
@@ -384,6 +391,36 @@ const marketplaceProjectTemplates = [
       title: "Hiring Request",
       assignee: "sam",
       description: "Capture a new role request, urgency, budget, and hiring manager notes."
+    }
+  },
+  {
+    id: "marketplace-agency-retainer-os",
+    name: "Agency Retainer OS",
+    category: "Premium",
+    description: "A paid-style operating system for retainers: client health, monthly planning, approvals, scope control, billing notes, and renewal prep.",
+    owner: "mara",
+    durationDays: 30,
+    priceCents: 1900,
+    currency: "USD",
+    tasks: [
+      { key: "health", title: "Score client health", description: "Review delivery confidence, open risks, relationship strength, and renewal signals.", assignee: "mara", priority: "high", startOffset: 0, dueOffset: 3, tags: ["retainer", "health"], blockedBy: [], subtasks: ["Delivery score", "Relationship score", "Renewal signal"] },
+      { key: "plan", title: "Plan monthly outcomes", description: "Turn client goals into a scoped monthly plan with owners and acceptance criteria.", assignee: "sam", priority: "urgent", startOffset: 2, dueOffset: 7, tags: ["planning"], blockedBy: ["health"], subtasks: ["Outcome list", "Owner map", "Acceptance criteria"] },
+      { key: "scope", title: "Review scope and change requests", description: "Compare requested work to retainer scope and prepare change-order recommendations.", assignee: "eli", priority: "high", startOffset: 7, dueOffset: 14, tags: ["scope"], blockedBy: ["plan"], subtasks: ["Scope check", "Change requests", "Recommendation"] },
+      { key: "approval", title: "Collect client approvals", description: "Package deliverables, decision notes, and approval requests for the client portal.", assignee: "nina", priority: "normal", startOffset: 14, dueOffset: 22, tags: ["approval"], blockedBy: ["scope"], subtasks: ["Deliverables", "Decision log", "Approval request"] },
+      { key: "billing", title: "Prepare billing and renewal notes", description: "Capture billable context, expansion ideas, renewal risks, and next-month commitments.", assignee: "mara", priority: "normal", startOffset: 22, dueOffset: 30, tags: ["billing", "renewal"], blockedBy: ["approval"], subtasks: ["Billing notes", "Expansion ideas", "Next-month plan"] }
+    ],
+    milestones: [
+      { title: "Monthly plan approved", description: "Client-facing monthly outcomes are approved.", owner: "sam", dueOffset: 8, status: "planned", taskKeys: ["plan"] },
+      { title: "Retainer review complete", description: "Billing, renewal, and next-month notes are ready.", owner: "mara", dueOffset: 30, status: "planned", taskKeys: ["billing"] }
+    ],
+    docs: [
+      { title: "Client Health Scorecard", type: "Template", body: "Delivery health, relationship health, risks, opportunities, renewal signal, and owner notes." },
+      { title: "Retainer Scope Log", type: "Brief", body: "Included work, out-of-scope requests, change-order notes, approvals, and billing context." }
+    ],
+    intakeForm: {
+      title: "Retainer Request Intake",
+      assignee: "mara",
+      description: "Capture client requests, urgency, scope fit, and approval needs."
     }
   }
 ];
@@ -552,6 +589,7 @@ const seedData = {
       clientPortalPayments: false,
       agentPayments: false,
       x402Experimental: false,
+      entitlements: [],
       audit: [
         {
           id: "payment-audit-seed",
@@ -1631,6 +1669,26 @@ function normalizeWorkspaceTheme(theme = {}) {
   return { preset, density };
 }
 
+function normalizePaymentEntitlements(entitlements = []) {
+  if (!Array.isArray(entitlements)) return [];
+  return entitlements
+    .filter((entitlement) => entitlement && typeof entitlement === "object")
+    .map((entitlement) => ({
+      id: entitlement.id || uid("entitlement"),
+      itemType: entitlement.itemType === "feature" ? "feature" : "project-template",
+      itemId: String(entitlement.itemId || ""),
+      source: entitlementSourceOptions.some((option) => option.id === entitlement.source) ? entitlement.source : "manual",
+      status: entitlement.status === "revoked" || entitlement.status === "expired" ? entitlement.status : "active",
+      amountCents: Math.max(0, Math.round(Number(entitlement.amountCents) || 0)),
+      currency: paymentCurrencyOptions.includes(entitlement.currency) ? entitlement.currency : "USD",
+      note: String(entitlement.note || ""),
+      grantedAt: entitlement.grantedAt || new Date().toISOString(),
+      expiresAt: entitlement.expiresAt || ""
+    }))
+    .filter((entitlement) => entitlement.itemId)
+    .slice(0, 100);
+}
+
 function normalizeWorkspacePayments(payments = {}) {
   const fallback = seedData.workspace.payments;
   const provider = paymentProviderOptions.some((item) => item.id === payments.provider) ? payments.provider : fallback.provider;
@@ -1645,6 +1703,7 @@ function normalizeWorkspacePayments(payments = {}) {
     clientPortalPayments: provider !== "none" && Boolean(payments.clientPortalPayments),
     agentPayments: provider !== "none" && Boolean(payments.agentPayments),
     x402Experimental: provider === "x402" && Boolean(payments.x402Experimental),
+    entitlements: normalizePaymentEntitlements(payments.entitlements),
     audit: audit
       .filter((event) => event && typeof event === "object")
       .map((event) => ({
@@ -2989,6 +3048,20 @@ function renderPaymentsSettingsPanel(payments) {
         ${payments.audit.length ? payments.audit.map(renderPaymentAuditEvent).join("") : emptyState("No payment events yet.")}
       </div>
     </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Access</p>
+          <h2>Entitlements</h2>
+        </div>
+        <span class="status-pill inbox-neutral">${payments.entitlements.filter((entitlement) => entitlementIsActive(entitlement)).length} active</span>
+      </div>
+      ${renderEntitlementGrantForm(payments)}
+      <div class="payment-entitlement-list">
+        ${payments.entitlements.length ? payments.entitlements.map(renderPaymentEntitlement).join("") : emptyState("No paid feature or template access has been granted yet.")}
+      </div>
+    </section>
   `;
 }
 
@@ -3048,6 +3121,52 @@ function renderPaymentAuditEvent(event) {
   `;
 }
 
+function renderEntitlementGrantForm(payments) {
+  const templates = paidMarketplaceTemplates();
+  const hasLockedTemplates = templates.some((template) => !hasEntitlementForItem("project-template", template.id));
+  if (!templates.length) {
+    return `<p class="settings-help">Paid marketplace templates will appear here once the marketplace includes premium packs.</p>`;
+  }
+  return `
+    <div class="entitlement-grant-form">
+      <label>
+        <span>Grant access to</span>
+        <select id="entitlement-template">
+          ${templates.map((template) => {
+            const unlocked = hasEntitlementForItem("project-template", template.id);
+            return `<option value="${template.id}" ${unlocked ? "disabled" : ""}>${escapeHtml(template.name)} - ${escapeHtml(marketplaceTemplatePriceLabel(template))}${unlocked ? " - unlocked" : ""}</option>`;
+          }).join("")}
+        </select>
+      </label>
+      <label>
+        <span>Grant source</span>
+        <select id="entitlement-source">
+          ${entitlementSourceOptions.map((option) => `<option value="${option.id}" ${option.id === "test" ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+        </select>
+      </label>
+      <button class="button button-secondary" type="button" id="payment-grant-entitlement" ${hasLockedTemplates ? "" : "disabled"}>Grant Access</button>
+    </div>
+    <p class="settings-help">Test grants unlock gated marketplace items locally and record an audit event. Real payment adapters can replace this with server-issued entitlements later.</p>
+  `;
+}
+
+function renderPaymentEntitlement(entitlement) {
+  const active = entitlementIsActive(entitlement);
+  return `
+    <article class="payment-entitlement">
+      <div>
+        <strong>${escapeHtml(entitlementItemLabel(entitlement))}</strong>
+        <p>${escapeHtml(entitlement.note || `${entitlementSourceLabel(entitlement.source)} access`)}</p>
+      </div>
+      <div>
+        <span class="status-pill ${active ? "inbox-green" : "inbox-neutral"}">${active ? "Active" : escapeHtml(entitlement.status)}</span>
+        <span>${escapeHtml(formatPaymentAmount(entitlement.amountCents, entitlement.currency))}</span>
+        <small>${escapeHtml(formatTimestamp(entitlement.grantedAt))}</small>
+      </div>
+    </article>
+  `;
+}
+
 function routeFallback(route) {
   if (canAccessRoute(route)) return route;
   return isClientSession() ? "portal" : "dashboard";
@@ -3097,6 +3216,37 @@ function paymentSettings() {
   return normalizeWorkspacePayments(state.workspace?.payments);
 }
 
+function paymentEntitlements() {
+  return paymentSettings().entitlements;
+}
+
+function entitlementSourceLabel(source) {
+  return entitlementSourceOptions.find((option) => option.id === source)?.label || "Manual grant";
+}
+
+function entitlementItemLabel(entitlement) {
+  if (entitlement.itemType === "project-template") {
+    return byId(state.projectTemplates, entitlement.itemId)?.name
+      || marketplaceProjectTemplates.find((template) => template.id === entitlement.itemId)?.name
+      || entitlement.itemId;
+  }
+  return entitlement.itemId.replaceAll("-", " ");
+}
+
+function entitlementIsActive(entitlement, now = new Date()) {
+  if (!entitlement || entitlement.status !== "active") return false;
+  if (!entitlement.expiresAt) return true;
+  return new Date(entitlement.expiresAt).getTime() > now.getTime();
+}
+
+function entitlementForItem(itemType, itemId) {
+  return paymentEntitlements().find((entitlement) => entitlement.itemType === itemType && entitlement.itemId === itemId && entitlementIsActive(entitlement));
+}
+
+function hasEntitlementForItem(itemType, itemId) {
+  return Boolean(entitlementForItem(itemType, itemId));
+}
+
 function paymentProviderLabel(provider = paymentSettings().provider) {
   return paymentProviderOptions.find((option) => option.id === provider)?.label || "Disabled";
 }
@@ -3125,6 +3275,18 @@ function marketplaceTemplatePrice(template) {
 function marketplaceTemplatePriceLabel(template) {
   const price = marketplaceTemplatePrice(template);
   return price.cents ? formatPaymentAmount(price.cents, price.currency) : "Free";
+}
+
+function marketplaceTemplateRequiresEntitlement(template) {
+  return marketplaceTemplatePrice(template).cents > 0;
+}
+
+function marketplaceTemplateIsUnlocked(template) {
+  return !marketplaceTemplateRequiresEntitlement(template) || hasEntitlementForItem("project-template", template.id);
+}
+
+function paidMarketplaceTemplates() {
+  return marketplaceProjectTemplates.filter(marketplaceTemplateRequiresEntitlement);
 }
 
 async function requestAiOperator(mode, context) {
@@ -3639,6 +3801,10 @@ function exportProjectTemplateJson(template) {
 function downloadProjectTemplate(templateId) {
   const template = byId(state.projectTemplates, templateId) || marketplaceProjectTemplates.find((item) => item.id === templateId);
   if (!template) return;
+  if (marketplaceProjectTemplates.some((item) => item.id === template.id) && !marketplaceTemplateIsUnlocked(template)) {
+    showToast("Grant access before exporting this premium template", "info");
+    return;
+  }
   downloadJsonFile(`${slugFromName(template.name)}-agora-template.json`, exportProjectTemplateJson(template));
   showToast("Template JSON downloaded", "success");
 }
@@ -9000,12 +9166,16 @@ function renderTemplateMarketplacePanel() {
 function renderMarketplaceTemplateCard(template) {
   const installed = state.projectTemplates.some((item) => item.id === template.id || item.name.toLowerCase() === template.name.toLowerCase());
   const priceLabel = marketplaceTemplatePriceLabel(template);
+  const requiresEntitlement = marketplaceTemplateRequiresEntitlement(template);
+  const unlocked = marketplaceTemplateIsUnlocked(template);
+  const locked = requiresEntitlement && !unlocked;
   return `
-    <article class="marketplace-template-card ${installed ? "is-installed" : ""}">
+    <article class="marketplace-template-card ${installed ? "is-installed" : ""} ${locked ? "is-locked" : ""}">
       <div>
         <div class="marketplace-card-kicker">
           <span class="status-pill ${installed ? "inbox-green" : "inbox-blue"}">${installed ? "Installed" : escapeHtml(template.category)}</span>
           <span class="status-pill inbox-neutral">${escapeHtml(priceLabel)}</span>
+          ${requiresEntitlement ? `<span class="status-pill ${unlocked ? "inbox-green" : "inbox-amber"}">${unlocked ? "Unlocked" : "Gated"}</span>` : ""}
         </div>
         <h3>${escapeHtml(template.name)}</h3>
         <p>${escapeHtml(template.description)}</p>
@@ -9017,8 +9187,9 @@ function renderMarketplaceTemplateCard(template) {
         </div>
       </div>
       <div class="marketplace-actions">
-        <button class="button button-secondary compact-button" type="button" data-export-marketplace-template="${template.id}">Export JSON</button>
-        <button class="button button-primary compact-button" type="button" data-install-marketplace-template="${template.id}" ${installed ? "disabled" : ""}>${installed ? "Installed" : "Install"}</button>
+        <button class="button button-secondary compact-button" type="button" data-export-marketplace-template="${template.id}" ${locked ? "disabled" : ""}>Export JSON</button>
+        ${locked ? `<button class="button button-secondary compact-button" type="button" data-grant-template-entitlement="${template.id}">Grant Test Access</button>` : ""}
+        <button class="button button-primary compact-button" type="button" data-install-marketplace-template="${template.id}" ${installed || locked ? "disabled" : ""}>${installed ? "Installed" : locked ? "Locked" : "Install"}</button>
       </div>
     </article>
   `;
@@ -10919,6 +11090,10 @@ function installMarketplaceTemplate(templateId) {
     showToast("Template is already installed", "info");
     return;
   }
+  if (!marketplaceTemplateIsUnlocked(template)) {
+    showToast("Grant access before installing this premium template", "info");
+    return;
+  }
   const installedTemplate = validateProjectTemplate(template, { preserveId: true });
   state.projectTemplates = [installedTemplate, ...state.projectTemplates];
   state.templateLibrary = {
@@ -10930,6 +11105,63 @@ function installMarketplaceTemplate(templateId) {
   saveState();
   render();
   showToast(`${installedTemplate.name} installed`, "success");
+}
+
+function grantMarketplaceTemplateEntitlement(templateId, source = "test") {
+  const template = marketplaceProjectTemplates.find((item) => item.id === templateId);
+  if (!template || !marketplaceTemplateRequiresEntitlement(template)) {
+    showToast("Choose a premium marketplace template", "info");
+    return;
+  }
+  if (hasEntitlementForItem("project-template", template.id)) {
+    showToast("Template access is already active", "info");
+    return;
+  }
+  const price = marketplaceTemplatePrice(template);
+  const payments = paymentSettings();
+  const entitlement = {
+    id: uid("entitlement"),
+    itemType: "project-template",
+    itemId: template.id,
+    source: entitlementSourceOptions.some((option) => option.id === source) ? source : "test",
+    status: "active",
+    amountCents: price.cents,
+    currency: price.currency,
+    note: `${entitlementSourceLabel(source)} for ${template.name}`,
+    grantedAt: new Date().toISOString(),
+    expiresAt: ""
+  };
+  const event = {
+    id: uid("payment-audit"),
+    action: "entitlement_granted",
+    provider: payments.provider,
+    currency: price.currency,
+    amountCents: price.cents,
+    status: "granted",
+    note: `${template.name} unlocked by ${entitlementSourceLabel(entitlement.source).toLowerCase()}`,
+    createdAt: new Date().toISOString()
+  };
+  state.workspace = {
+    ...state.workspace,
+    payments: {
+      ...payments,
+      entitlements: [entitlement, ...payments.entitlements].slice(0, 100),
+      audit: [event, ...payments.audit].slice(0, 50)
+    }
+  };
+  addAuditEvent({
+    action: "entitlement_granted",
+    detail: `Granted access to ${template.name}`
+  });
+  saveState();
+  render();
+  showToast(`${template.name} unlocked`, "success");
+}
+
+function grantSelectedPaymentEntitlement() {
+  const templateId = document.querySelector("#entitlement-template")?.value || "";
+  const source = document.querySelector("#entitlement-source")?.value || "test";
+  grantMarketplaceTemplateEntitlement(templateId, source);
 }
 
 function importProjectTemplateFromTextarea() {
@@ -13017,6 +13249,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const grantTemplateEntitlementButton = event.target.closest("[data-grant-template-entitlement]");
+  if (grantTemplateEntitlementButton) {
+    grantMarketplaceTemplateEntitlement(grantTemplateEntitlementButton.dataset.grantTemplateEntitlement, "test");
+    return;
+  }
+
   const exportMarketplaceTemplateButton = event.target.closest("[data-export-marketplace-template]");
   if (exportMarketplaceTemplateButton) {
     downloadProjectTemplate(exportMarketplaceTemplateButton.dataset.exportMarketplaceTemplate);
@@ -13197,6 +13435,12 @@ document.addEventListener("click", (event) => {
   const paymentsSaveButton = event.target.closest("#payments-save");
   if (paymentsSaveButton) {
     savePaymentSettings();
+    return;
+  }
+
+  const paymentGrantEntitlementButton = event.target.closest("#payment-grant-entitlement");
+  if (paymentGrantEntitlementButton) {
+    grantSelectedPaymentEntitlement();
     return;
   }
 

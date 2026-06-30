@@ -2229,6 +2229,11 @@ body[data-tutorial-target="view"] #app-view {
   opacity: 0.82;
 }
 
+.marketplace-template-card.is-locked {
+  background: linear-gradient(135deg, var(--surface-strong), var(--surface));
+  border-color: rgba(166, 121, 43, 0.42);
+}
+
 .marketplace-template-card h3 {
   margin: 8px 0 4px;
 }
@@ -2482,7 +2487,22 @@ body[data-tutorial-target="view"] #app-view {
   gap: 10px;
 }
 
-.payment-audit-event {
+.entitlement-grant-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 0.5fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 10px;
+}
+
+.payment-entitlement-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.payment-audit-event,
+.payment-entitlement {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
@@ -2494,12 +2514,15 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .payment-audit-event p,
-.payment-audit-event small {
+.payment-audit-event small,
+.payment-entitlement p,
+.payment-entitlement small {
   margin: 4px 0 0;
   color: var(--muted);
 }
 
-.payment-audit-event > div:last-child {
+.payment-audit-event > div:last-child,
+.payment-entitlement > div:last-child {
   display: grid;
   gap: 5px;
   justify-items: end;
@@ -5033,6 +5056,7 @@ body[data-density="compact"] .main-content {
   .automation-composer,
   .settings-form,
   .settings-section-account .api-sync-form,
+  .entitlement-grant-form,
   .access-summary-grid,
   .theme-option-grid,
   .onboarding-grid,
@@ -5050,11 +5074,13 @@ body[data-density="compact"] .main-content {
     grid-template-columns: 1fr;
   }
 
-  .payment-audit-event {
+  .payment-audit-event,
+  .payment-entitlement {
     grid-template-columns: 1fr;
   }
 
-  .payment-audit-event > div:last-child {
+  .payment-audit-event > div:last-child,
+  .payment-entitlement > div:last-child {
     justify-items: start;
   }
 

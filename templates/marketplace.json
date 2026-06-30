@@ -94,6 +94,113 @@
         "assignee": "mara",
         "description": "Capture grant opportunities, eligibility notes, and submission deadlines."
       }
+    },
+    {
+      "id": "marketplace-agency-retainer-os",
+      "name": "Agency Retainer OS",
+      "category": "Premium",
+      "description": "A paid-style operating system for retainers: client health, monthly planning, approvals, scope control, billing notes, and renewal prep.",
+      "owner": "mara",
+      "durationDays": 30,
+      "priceCents": 1900,
+      "currency": "USD",
+      "tasks": [
+        {
+          "key": "health",
+          "title": "Score client health",
+          "description": "Review delivery confidence, open risks, relationship strength, and renewal signals.",
+          "assignee": "mara",
+          "priority": "high",
+          "startOffset": 0,
+          "dueOffset": 3,
+          "tags": ["retainer", "health"],
+          "blockedBy": [],
+          "subtasks": ["Delivery score", "Relationship score", "Renewal signal"]
+        },
+        {
+          "key": "plan",
+          "title": "Plan monthly outcomes",
+          "description": "Turn client goals into a scoped monthly plan with owners and acceptance criteria.",
+          "assignee": "sam",
+          "priority": "urgent",
+          "startOffset": 2,
+          "dueOffset": 7,
+          "tags": ["planning"],
+          "blockedBy": ["health"],
+          "subtasks": ["Outcome list", "Owner map", "Acceptance criteria"]
+        },
+        {
+          "key": "scope",
+          "title": "Review scope and change requests",
+          "description": "Compare requested work to retainer scope and prepare change-order recommendations.",
+          "assignee": "eli",
+          "priority": "high",
+          "startOffset": 7,
+          "dueOffset": 14,
+          "tags": ["scope"],
+          "blockedBy": ["plan"],
+          "subtasks": ["Scope check", "Change requests", "Recommendation"]
+        },
+        {
+          "key": "approval",
+          "title": "Collect client approvals",
+          "description": "Package deliverables, decision notes, and approval requests for the client portal.",
+          "assignee": "nina",
+          "priority": "normal",
+          "startOffset": 14,
+          "dueOffset": 22,
+          "tags": ["approval"],
+          "blockedBy": ["scope"],
+          "subtasks": ["Deliverables", "Decision log", "Approval request"]
+        },
+        {
+          "key": "billing",
+          "title": "Prepare billing and renewal notes",
+          "description": "Capture billable context, expansion ideas, renewal risks, and next-month commitments.",
+          "assignee": "mara",
+          "priority": "normal",
+          "startOffset": 22,
+          "dueOffset": 30,
+          "tags": ["billing", "renewal"],
+          "blockedBy": ["approval"],
+          "subtasks": ["Billing notes", "Expansion ideas", "Next-month plan"]
+        }
+      ],
+      "milestones": [
+        {
+          "title": "Monthly plan approved",
+          "description": "Client-facing monthly outcomes are approved.",
+          "owner": "sam",
+          "dueOffset": 8,
+          "status": "planned",
+          "taskKeys": ["plan"]
+        },
+        {
+          "title": "Retainer review complete",
+          "description": "Billing, renewal, and next-month notes are ready.",
+          "owner": "mara",
+          "dueOffset": 30,
+          "status": "planned",
+          "taskKeys": ["billing"]
+        }
+      ],
+      "docs": [
+        {
+          "title": "Client Health Scorecard",
+          "type": "Template",
+          "body": "Delivery health, relationship health, risks, opportunities, renewal signal, and owner notes."
+        },
+        {
+          "title": "Retainer Scope Log",
+          "type": "Brief",
+          "body": "Included work, out-of-scope requests, change-order notes, approvals, and billing context."
+        }
+      ],
+      "intakeForm": {
+        "title": "Retainer Request Intake",
+        "assignee": "mara",
+        "description": "Capture client requests, urgency, scope fit, and approval needs."
+      }
     }
   ]
 }
