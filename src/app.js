@@ -3298,6 +3298,37 @@ async function resolveApiSyncConflict(itemId, resolution) {
     showToast("Server version kept", "success");
     return;
   }
+  if (resolution === "merge") {
+    if (!queued) {
+      showToast("This queued item cannot be merged", "info");
+      return;
+    }
+    const merged = mergedConflictRecord(item);
+    if (!merged) {
+      showToast("No server version is available to merge", "info");
+      return;
+    }
+    try {
+      const result = await apiRequest(item.path, {
+        method: item.method,
+        body: {
+          ...item.body,
+          [queued.key]: merged
+        }
+      });
+      if (result.project) mergeCoreRecordsFromApi({ projects: [result.project] });
+      if (result.task) mergeCoreRecordsFromApi({ tasks: [result.task] });
+      clearApiSyncQueueItem(item.id);
+      saveState();
+      render();
+      showToast("Merged conflict synced", "success");
+    } catch (error) {
+      queueApiSyncFailure({ ...item, status: "conflict", conflict: item.conflict, error: error.message });
+      render();
+      showToast(`Merge sync still blocked: ${error.message}`, "info");
+    }
+    return;
+  }
   if (resolution === "local") {
     try {
       const result = await apiRequest(item.path, {
@@ -3316,6 +3347,27 @@ async function resolveApiSyncConflict(itemId, resolution) {
       showToast(`Local sync still blocked: ${error.message}`, "info");
     }
   }
+}
+
+function mergedConflictRecord(item) {
+  const queued = queuedSyncRecord(item);
+  const local = item.conflict?.local || queued?.record;
+  const remote = item.conflict?.remote;
+  if (!local || !remote) return null;
+  return {
+    ...remote,
+    ...local,
+    customFields: {
+      ...(remote.customFields || {}),
+      ...(local.customFields || {})
+    },
+    tags: Array.isArray(local.tags) || Array.isArray(remote.tags)
+      ? uniqueList([...(remote.tags || []), ...(local.tags || [])])
+      : local.tags,
+    subtasks: Array.isArray(local.subtasks) ? local.subtasks : remote.subtasks,
+    dependencies: Array.isArray(local.dependencies) ? local.dependencies : remote.dependencies,
+    updatedAt: new Date().toISOString()
+  };
 }
 
 function notificationSettingsRecord() {
@@ -5373,6 +5425,7 @@ function renderApiSyncQueueItem(item) {
         ${item.nextRetryAt && !conflict ? `<small>Next automatic retry after ${escapeHtml(formatTimestamp(item.nextRetryAt))}</small>` : ""}
         ${conflict ? `
           <small>Local ${escapeHtml(formatTimestamp(conflict.localRevision || recordRevisionValue(conflict.local)))} / Server ${escapeHtml(formatTimestamp(conflict.remoteRevision || recordRevisionValue(conflict.remote)))}</small>
+          ${renderSyncConflictComparison(conflict)}
         ` : ""}
       </div>
       <span class="status-pill ${blockerTone}">${escapeHtml(blockerLabel)}</span>
@@ -5380,10 +5433,36 @@ function renderApiSyncQueueItem(item) {
         <div class="sync-conflict-actions">
           <button class="button button-secondary compact-button" type="button" data-sync-conflict="local" data-sync-id="${escapeHtml(item.id)}">Keep Local</button>
           <button class="button button-secondary compact-button" type="button" data-sync-conflict="server" data-sync-id="${escapeHtml(item.id)}">Use Server</button>
+          <button class="button button-secondary compact-button" type="button" data-sync-conflict="merge" data-sync-id="${escapeHtml(item.id)}">Merge</button>
           <button class="button button-secondary compact-button" type="button" data-sync-conflict="drop" data-sync-id="${escapeHtml(item.id)}">Drop</button>
         </div>
       ` : ""}
     </article>
+  `;
+}
+
+function renderSyncConflictComparison(conflict) {
+  const local = conflict.local || {};
+  const remote = conflict.remote || {};
+  const fields = [
+    ["Title", local.title || local.name, remote.title || remote.name],
+    ["Status", local.status, remote.status],
+    ["Priority", local.priority, remote.priority],
+    ["Assignee", memberName(local.assignee) || local.assignee, memberName(remote.assignee) || remote.assignee],
+    ["Due", local.dueDate, remote.dueDate],
+    ["Updated", local.updatedAt, remote.updatedAt]
+  ].filter(([, localValue, remoteValue]) => localValue || remoteValue);
+  if (!fields.length) return "";
+  return `
+    <div class="sync-conflict-compare">
+      ${fields.map(([label, localValue, remoteValue]) => `
+        <div>
+          <span>${escapeHtml(label)}</span>
+          <small>Local: ${escapeHtml(localValue || "blank")}</small>
+          <small>Server: ${escapeHtml(remoteValue || "blank")}</small>
+        </div>
+      `).join("")}
+    </div>
   `;
 }
 
