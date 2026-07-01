@@ -178,13 +178,13 @@ const apiSyncQueueStore = {
 
     try {
       const queue = JSON.parse(stored);
-      return Array.isArray(queue) ? queue : [];
+      return normalizeApiSyncQueue(queue);
     } catch {
       return [];
     }
   },
   save(queue) {
-    storageSet(API_SYNC_QUEUE_KEY, JSON.stringify(queue));
+    storageSet(API_SYNC_QUEUE_KEY, JSON.stringify(normalizeApiSyncQueue(queue)));
   },
   clear() {
     storageRemove(API_SYNC_QUEUE_KEY);
@@ -2893,12 +2893,77 @@ function clearApiSession() {
 }
 
 function saveApiSyncQueue() {
+  apiSyncQueue = normalizeApiSyncQueue(apiSyncQueue);
   apiSyncQueueStore.save(apiSyncQueue);
 }
 
+function apiSyncQueueItemId({ path = "", method = "POST", body = {} }) {
+  return `${method}:${path}:${body?.project?.id || body?.task?.id || body?.record?.id || JSON.stringify(body).slice(0, 80)}`;
+}
+
+function apiSyncQueueBlocker(item = {}) {
+  if (item.status === "conflict") return "conflict";
+  if (!apiSession) return "api";
+  if (!canAttemptApiRequest() || item.offline) return "network";
+  return "api";
+}
+
+function normalizeApiSyncQueue(queue = []) {
+  if (!Array.isArray(queue)) return [];
+  return queue
+    .filter((item) => item && typeof item === "object" && item.path && item.method)
+    .map((item) => {
+      const now = new Date().toISOString();
+      const attempts = Number(item.attempts || 0);
+      const createdAt = item.createdAt || item.updatedAt || now;
+      const status = item.status === "conflict" ? "conflict" : "pending";
+      return {
+        id: item.id || apiSyncQueueItemId(item),
+        label: String(item.label || item.path || "Queued API sync").slice(0, 80),
+        path: item.path,
+        method: item.method || "POST",
+        body: item.body && typeof item.body === "object" ? item.body : {},
+        error: String(item.error || "API sync failed"),
+        baseRevision: item.baseRevision || "",
+        status,
+        conflict: status === "conflict" ? item.conflict || null : null,
+        offline: Boolean(item.offline),
+        attempts,
+        createdAt,
+        updatedAt: item.updatedAt || createdAt,
+        lastAttemptAt: item.lastAttemptAt || item.updatedAt || "",
+        nextRetryAt: item.nextRetryAt || "",
+        blockedBy: item.blockedBy || apiSyncQueueBlocker(item)
+      };
+    })
+    .slice(0, 50);
+}
+
+function apiSyncQueueSummary() {
+  const queue = normalizeApiSyncQueue(apiSyncQueue);
+  const conflicts = queue.filter((item) => item.status === "conflict").length;
+  const offline = queue.filter((item) => item.blockedBy === "network" || item.offline).length;
+  const pending = queue.filter((item) => item.status !== "conflict").length;
+  const oldest = queue.reduce((oldestItem, item) => {
+    if (!oldestItem) return item;
+    return new Date(item.createdAt || 0) < new Date(oldestItem.createdAt || 0) ? item : oldestItem;
+  }, null);
+  return {
+    total: queue.length,
+    pending,
+    conflicts,
+    offline,
+    oldestAt: oldest?.createdAt || "",
+    attempts: queue.reduce((total, item) => total + Number(item.attempts || 0), 0)
+  };
+}
+
 function queueApiSyncFailure({ label, path, method = "POST", body = {}, error = "", baseRevision = "", status = "", conflict = null }) {
-  const id = `${method}:${path}:${body?.project?.id || body?.task?.id || body?.record?.id || JSON.stringify(body).slice(0, 80)}`;
+  const id = apiSyncQueueItemId({ path, method, body });
   const existing = apiSyncQueue.find((entry) => entry.id === id);
+  const now = new Date().toISOString();
+  const attempts = (existing?.attempts || 0) + 1;
+  const nextRetryDelayMs = Math.min(5 * 60 * 1000, Math.max(15 * 1000, attempts * 30 * 1000));
   const item = {
     id,
     label,
@@ -2910,8 +2975,12 @@ function queueApiSyncFailure({ label, path, method = "POST", body = {}, error = 
     status: status || existing?.status || "pending",
     conflict: conflict || existing?.conflict || null,
     offline: !canAttemptApiRequest(),
-    attempts: (existing?.attempts || 0) + 1,
-    updatedAt: new Date().toISOString()
+    attempts,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+    lastAttemptAt: now,
+    nextRetryAt: new Date(Date.now() + nextRetryDelayMs).toISOString(),
+    blockedBy: conflict || status === "conflict" ? "conflict" : !canAttemptApiRequest() ? "network" : "api"
   };
   apiSyncQueue = [item, ...apiSyncQueue.filter((entry) => entry.id !== id)].slice(0, 50);
   saveApiSyncQueue();
@@ -2975,6 +3044,7 @@ function markApiSyncQueueConflict(item, conflict) {
         ...entry,
         status: "conflict",
         conflict,
+        blockedBy: "conflict",
         error: "Server record changed while this local update was queued.",
         updatedAt: new Date().toISOString()
       }
@@ -3172,7 +3242,7 @@ async function retryApiSyncQueue() {
     return;
   }
 
-  const queue = [...apiSyncQueue].reverse();
+  const queue = [...apiSyncQueue].reverse().filter((item) => item.status !== "conflict");
   let synced = 0;
   for (const item of queue) {
     try {
@@ -5221,6 +5291,7 @@ function renderApiAccountPanel() {
 
 function renderApiStatePanel() {
   const recordSourceLabel = apiSession ? "API records" : "Browser snapshot";
+  const queueSummary = apiSyncQueueSummary();
   const syncSources = [
     { label: "Companies", count: state.companies.length, source: "/api/records", detail: "Company records and scopes." },
     { label: "Projects", count: state.projects.length, source: "/api/projects", detail: "Project metadata and company ownership." },
@@ -5257,8 +5328,8 @@ function renderApiStatePanel() {
         </article>
         <article>
           <span>Queue</span>
-          <strong>${apiSyncQueue.length ? `${apiSyncQueue.length} pending` : "Clear"}</strong>
-          <p>${apiSyncQueue.length ? "Retry after the API is healthy or the network returns." : "No failed syncs are waiting."}</p>
+          <strong>${queueSummary.total ? `${queueSummary.total} waiting` : "Clear"}</strong>
+          <p>${queueSummary.total ? `${queueSummary.pending} pending, ${queueSummary.conflicts} conflict${queueSummary.conflicts === 1 ? "" : "s"}, oldest ${escapeHtml(formatTimestamp(queueSummary.oldestAt))}.` : "No failed syncs are waiting."}</p>
         </article>
         <article>
           <span>Health check</span>
@@ -5290,16 +5361,21 @@ function renderApiStatePanel() {
 function renderApiSyncQueueItem(item) {
   const queued = queuedSyncRecord(item);
   const conflict = item.status === "conflict" && item.conflict;
+  const blockerLabel = item.status === "conflict" ? "Conflict" : item.blockedBy === "network" ? "Offline" : item.blockedBy === "api" ? "API blocked" : "Pending";
+  const blockerTone = item.status === "conflict" ? "inbox-red" : item.blockedBy === "network" ? "inbox-amber" : "inbox-neutral";
   return `
     <article class="${conflict ? "is-conflict" : ""}">
       <div>
         <strong>${escapeHtml(item.label || item.path)}</strong>
-        <p>${escapeHtml(item.error)} - ${escapeHtml(formatTimestamp(item.updatedAt))}</p>
+        <p>${escapeHtml(item.error)} - last tried ${escapeHtml(formatTimestamp(item.lastAttemptAt || item.updatedAt))}</p>
         ${queued?.record ? `<small>${escapeHtml(queued.collection)} / ${escapeHtml(queued.record.title || queued.record.name || queued.record.id)}</small>` : ""}
+        <small>${escapeHtml(item.method)} ${escapeHtml(item.path)} / queued ${escapeHtml(formatTimestamp(item.createdAt))} / ${Number(item.attempts || 0)} attempt${Number(item.attempts || 0) === 1 ? "" : "s"}</small>
+        ${item.nextRetryAt && !conflict ? `<small>Next automatic retry after ${escapeHtml(formatTimestamp(item.nextRetryAt))}</small>` : ""}
         ${conflict ? `
           <small>Local ${escapeHtml(formatTimestamp(conflict.localRevision || recordRevisionValue(conflict.local)))} / Server ${escapeHtml(formatTimestamp(conflict.remoteRevision || recordRevisionValue(conflict.remote)))}</small>
         ` : ""}
       </div>
+      <span class="status-pill ${blockerTone}">${escapeHtml(blockerLabel)}</span>
       ${conflict ? `
         <div class="sync-conflict-actions">
           <button class="button button-secondary compact-button" type="button" data-sync-conflict="local" data-sync-id="${escapeHtml(item.id)}">Keep Local</button>
@@ -5312,6 +5388,7 @@ function renderApiSyncQueueItem(item) {
 }
 
 function renderApiSyncPanel() {
+  const queueSummary = apiSyncQueueSummary();
   return `
     <section class="panel">
       <div class="panel-header">
@@ -5334,6 +5411,30 @@ function renderApiSyncPanel() {
           <button class="button button-secondary" type="button" id="backend-health-refresh" ${apiSession ? "" : "disabled"}>Refresh Health</button>
         </div>
       </div>
+      ${queueSummary.total ? `
+        <div class="switcher-report-grid">
+          <article>
+            <span>Queued</span>
+            <strong>${queueSummary.total}</strong>
+            <small>${queueSummary.pending} pending write${queueSummary.pending === 1 ? "" : "s"}</small>
+          </article>
+          <article>
+            <span>Conflicts</span>
+            <strong>${queueSummary.conflicts}</strong>
+            <small>${queueSummary.conflicts ? "Review before retrying." : "No conflict review needed."}</small>
+          </article>
+          <article>
+            <span>Attempts</span>
+            <strong>${queueSummary.attempts}</strong>
+            <small>${queueSummary.offline ? `${queueSummary.offline} blocked by network.` : "Waiting on API retry."}</small>
+          </article>
+          <article>
+            <span>Oldest</span>
+            <strong>${queueSummary.oldestAt ? escapeHtml(formatTimestamp(queueSummary.oldestAt)) : "None"}</strong>
+            <small>Local data remains available while this waits.</small>
+          </article>
+        </div>
+      ` : ""}
       ${apiSyncQueue.length ? `
         <div class="sync-queue-list">
           ${apiSyncQueue.slice(0, 5).map(renderApiSyncQueueItem).join("")}
