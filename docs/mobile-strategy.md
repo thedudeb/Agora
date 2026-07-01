@@ -8,10 +8,14 @@ The PWA path keeps Agora on one codebase while adding mobile-app behavior:
 
 - Install from supported browsers.
 - Launch in standalone mode.
-- Cache the app shell for offline reloads.
-- Keep local workspace data available through browser storage.
+- Cache the app shell for offline reloads, including iOS home-screen launches.
+- Keep local workspace data available through browser storage without requiring sign-in.
+- Queue failed API writes locally and retry them when the network returns.
+- Avoid runtime CDN dependencies so the installed app can open with no internet connection.
 - Prepare notification permission and service worker hooks.
 - Preserve fast iteration while the product model is still changing.
+
+Current iOS coverage is the installable PWA. There is no native iOS wrapper in this repo yet, so any future App Store build should preserve the same offline contract: bundled app assets, local workspace persistence, queued API sync, import/export while offline, and no required hosted service to launch.
 
 ## 2. Mobile task workflows
 
@@ -47,7 +51,7 @@ Mobile usability should stay tied to the workspace theme system rather than a se
 Move beyond the PWA when at least two of these are true:
 
 - Teams need reliable push notifications across iOS and Android.
-- Offline editing and background sync become core workflows.
+- Native background sync, file provider, or share-sheet capture becomes core.
 - File upload/share-sheet capture becomes a primary use case.
 - Mobile usage is high enough to justify app-store release work.
 - Native integrations become important, such as calendar, contacts, widgets, or biometric unlock.
@@ -57,3 +61,13 @@ Recommended paths:
 - **Capacitor**: best first dedicated-app wrapper if the web app remains the primary product.
 - **Expo / React Native**: best if mobile becomes a peer product with deeper native interaction.
 - **Swift/Kotlin**: only if Agora needs platform-specific performance or native-only capabilities.
+
+## 6. Offline acceptance checks
+
+Before calling the mobile experience shippable:
+
+- Install Agora to the iOS home screen.
+- Load a workspace once, then disable Wi-Fi and cellular data.
+- Confirm Dashboard, Today, Board, List, Calendar, Inbox, Settings, Data import, and JSON export open without a network.
+- Create or edit a project/task while offline and confirm it persists after closing and reopening.
+- Re-enable the network and confirm any queued API sync retries from Settings.

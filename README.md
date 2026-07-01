@@ -22,7 +22,7 @@ Agora currently covers the core loop: plan work, move tasks, triage inbox signal
 
 ## What You Can Run Today
 
-- Dependency-free browser app with seeded demo data, local persistence, backups, portable exports, and PWA shell.
+- Dependency-free browser app with seeded demo data, local persistence, backups, portable exports, an offline PWA shell, and an optional offline-capable desktop shell.
 - Project views for dashboard, Today, inbox, board, list, calendar, timelines, reports, companies, client portal, docs/files, intake, templates, automations, marketplace, data, audit, permissions, Operator, and settings.
 - Dependency-free API scaffold with local JSON storage, optional Supabase storage/auth, structured records, marketplace catalog, payment-adapter skeleton, scheduler endpoints, and smoke tests.
 - Trust posture for self-hosters: no ads, no trackers, server-only secrets, role permissions, company-scoped access, portable bundles, and auditable AI actions.
@@ -235,7 +235,8 @@ Restart `npm run dev:api`, connect to the API from Settings, then open Operator 
 - `index.html` contains the first browser prototype shell.
 - `src/` contains prototype application logic and styles.
 - `server/` contains the dependency-free app server, API scaffold, JSON development storage, Supabase migration, and PostgreSQL schema draft.
-- `docs/mobile-strategy.md` outlines the PWA-first path toward a dedicated mobile app.
+- `docs/mobile-strategy.md` outlines the offline-first PWA path toward a dedicated mobile app.
+- `docs/desktop-app.md` covers the optional offline-capable Electron shell for Windows and macOS.
 - `templates/` contains marketplace template examples and contribution format notes.
 - `assets/` contains brand and interface assets.
 - `ROADMAP.md` outlines the release direction.

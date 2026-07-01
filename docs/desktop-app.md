@@ -10,6 +10,8 @@ Agora now has an optional Electron desktop shell for Windows and macOS. The root
 - Uses context isolation and a minimal preload bridge.
 - Opens external links in the system browser.
 - Supports local-only work by default, with the same optional API/Supabase connection flow as the web app.
+- Bundles the app shell for offline launch; no CDN asset is required to open the Mac or Windows app.
+- Keeps workspace data on the device and queues failed API writes until the network or API is reachable again.
 
 ## Local Desktop Development
 
@@ -67,6 +69,17 @@ The desktop shell does not bundle the Agora API. Users can:
 
 Keep `SUPABASE_SERVICE_ROLE_KEY`, AI provider keys, SMTP secrets, Stripe keys, and x402 credentials on the API server. Never package them into the desktop app.
 
+## Offline Contract
+
+The desktop app must remain useful with no internet connection:
+
+- Launch the packaged app with Wi-Fi disabled.
+- Open the existing local workspace and navigate core project views.
+- Create or edit projects, tasks, comments, time entries, and settings that use local storage.
+- Export and import workspace JSON without an API connection.
+- Show queued sync status when a signed-in hosted API is unreachable.
+- Retry queued API writes when the network returns or when a local API is available.
+
 ## Release Checklist
 
 Before shipping a desktop build:
@@ -75,7 +88,9 @@ Before shipping a desktop build:
 - Run `npm run test:api` if API behavior changed.
 - Run `npm run test:fixtures` if import/export behavior changed.
 - Verify app launch on a clean OS user profile.
+- Verify app launch with Wi-Fi disabled.
 - Verify local storage persists after restart.
+- Verify the packaged app contains no runtime CDN dependency.
 - Verify Settings can connect to a local or hosted API.
 - Verify external links open in the system browser.
 - Verify no secrets are visible in packaged resources.

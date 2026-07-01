@@ -29,9 +29,9 @@ function desktopSecurityHeaders() {
   return {
     "Content-Security-Policy": [
       "default-src 'self'",
-      "script-src 'self' https://unpkg.com",
-      "style-src 'self' 'unsafe-inline' https://unpkg.com",
-      "img-src 'self' data: https://raw.githubusercontent.com",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data:",
       "connect-src 'self' http://127.0.0.1:* http://localhost:* https://*.supabase.co https:",
       "font-src 'self'",
       "manifest-src 'self'",
@@ -76,7 +76,8 @@ function startStaticServer() {
       response.writeHead(200, {
         ...desktopSecurityHeaders(),
         "Content-Type": mimeTypes[path.extname(filePath)] || "application/octet-stream",
-        "Cache-Control": "no-store"
+        "Cache-Control": "no-store",
+        "X-Agora-Offline-Capable": "true"
       });
       response.end(body);
     });

@@ -2005,6 +2005,7 @@ let activeWorkspaceId = loadActiveWorkspaceId(workspaceRegistry);
 let state = loadState();
 let apiSession = apiSessionStore.load();
 let apiSyncQueue = apiSyncQueueStore.load();
+let networkOnline = typeof navigator === "undefined" ? true : navigator.onLine !== false;
 let backendHealth = apiSession?.backendHealth || null;
 let auditEvents = [];
 let auditLoading = false;
@@ -2756,7 +2757,28 @@ function applyWorkspaceTheme() {
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", activePreset.swatches[1]);
 }
 
+function isNetworkOnline() {
+  return networkOnline;
+}
+
+function isLocalApiBaseUrl() {
+  try {
+    const hostname = new URL(API_BASE_URL, window.location.href).hostname.toLowerCase();
+    return ["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(hostname);
+  } catch {
+    return false;
+  }
+}
+
+function canAttemptApiRequest() {
+  return isNetworkOnline() || isLocalApiBaseUrl();
+}
+
 async function apiRequest(path, options = {}) {
+  if (!canAttemptApiRequest()) {
+    throw new Error("Device is offline. Local changes are saved on this device and will retry when the network returns.");
+  }
+
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: options.method || "GET",
     headers: {
@@ -2800,6 +2822,7 @@ function queueApiSyncFailure({ label, path, method = "POST", body = {}, error = 
     method,
     body,
     error: String(error || "API sync failed"),
+    offline: !canAttemptApiRequest(),
     attempts: (apiSyncQueue.find((entry) => entry.id === id)?.attempts || 0) + 1,
     updatedAt: new Date().toISOString()
   };
@@ -2918,6 +2941,11 @@ async function retryApiSyncQueue() {
   }
   if (!apiSyncQueue.length) {
     showToast("No failed API syncs to retry", "info");
+    return;
+  }
+  if (!canAttemptApiRequest()) {
+    render();
+    showToast("Agora is offline. Keep working locally; sync will retry when the network returns.", "info");
     return;
   }
 
@@ -3218,6 +3246,7 @@ function markRealtimeChanged() {
 }
 
 function realtimeStatusLabel() {
+  if (!canAttemptApiRequest()) return "Offline";
   if (!apiSession) return "Browser only";
   if (realtimeLastError) return "Sync needs attention";
   if (realtimeLastChangedAt) return `Live ${formatTimestamp(realtimeLastChangedAt)}`;
@@ -3261,7 +3290,7 @@ function stopRealtimePolling() {
 }
 
 async function pollApiForWorkspaceChanges() {
-  if (!apiSession || document.hidden || apiSyncQueue.length) return;
+  if (!apiSession || document.hidden || apiSyncQueue.length || !canAttemptApiRequest()) return;
 
   try {
     let changed = await loadCoreRecordsFromApi();
@@ -3325,12 +3354,39 @@ function apiBackendLabel() {
   return "API connected";
 }
 
+function offlineCapabilityLabel() {
+  if (!isNetworkOnline() && apiSession && !isLocalApiBaseUrl()) return "Offline, sync queued";
+  if (!isNetworkOnline()) return "Offline local mode";
+  if (apiSession) return "Online sync ready";
+  return "Offline-first local";
+}
+
+function offlineCapabilityDetail() {
+  if (!isNetworkOnline() && apiSession && !isLocalApiBaseUrl()) {
+    return apiSyncQueue.length
+      ? `${apiSyncQueue.length} local change${apiSyncQueue.length === 1 ? "" : "s"} waiting to retry.`
+      : "Keep working locally; new API changes will queue until the network returns.";
+  }
+  if (!isNetworkOnline()) return "Workspace data, exports, imports, and core task workflows stay available on this device.";
+  if (apiSession) return apiSyncQueue.length ? "Queued changes can retry now." : "API sync is available, with local storage still protecting the current device.";
+  return "No account or API is required for local planning, editing, import, export, and review.";
+}
+
+function offlineCapabilityTone() {
+  if (!isNetworkOnline() && apiSession && !isLocalApiBaseUrl()) return "inbox-amber";
+  return "inbox-green";
+}
+
 function apiStatusLabel(offlineLabel = "browser only") {
+  if (!isNetworkOnline() && apiSession && !isLocalApiBaseUrl()) return "offline queued";
+  if (!isNetworkOnline()) return "offline local";
   if (!apiSession) return offlineLabel;
   return apiBackendLabel().replace(" connected", "");
 }
 
 function apiConnectionTone() {
+  if (!isNetworkOnline() && apiSession && !isLocalApiBaseUrl()) return "inbox-amber";
+  if (!isNetworkOnline()) return "inbox-green";
   return apiSession ? "inbox-green" : "inbox-neutral";
 }
 
@@ -3767,14 +3823,14 @@ function renderConnectionBanner() {
 
   const score = onboardingScore();
   const setupComplete = score.done === score.total;
-  const syncLabel = apiSession ? apiBackendLabel() : "Browser local";
+  const syncLabel = offlineCapabilityLabel();
   const queueLabel = apiSyncQueue.length ? `${apiSyncQueue.length} queued` : "Queue clear";
   els.connectionBanner.hidden = false;
   els.connectionBanner.innerHTML = `
     <div>
-      <span class="status-pill ${apiConnectionTone()}">${escapeHtml(syncLabel)}</span>
+      <span class="status-pill ${offlineCapabilityTone()}">${escapeHtml(syncLabel)}</span>
       <strong>${escapeHtml(state.workspace.name)}</strong>
-      <small>${escapeHtml(realtimeStatusLabel())} / ${escapeHtml(queueLabel)}</small>
+      <small>${escapeHtml(offlineCapabilityDetail())} / ${escapeHtml(queueLabel)}</small>
     </div>
     <div class="connection-actions">
       ${setupComplete ? `<span class="status-pill inbox-green">Setup complete</span>` : `<span class="status-pill inbox-amber">${score.done}/${score.total} setup</span>`}
@@ -4653,23 +4709,28 @@ function renderApiStatePanel() {
       <div class="api-state-grid">
         <article>
           <span>Connection</span>
-          <strong>${escapeHtml(apiConnectionLabel())}</strong>
-          <p>${escapeHtml(realtimeStatusLabel())}</p>
+          <strong>${escapeHtml(offlineCapabilityLabel())}</strong>
+          <p>${escapeHtml(offlineCapabilityDetail())}</p>
         </article>
         <article>
           <span>Writes</span>
           <strong>${canSaveWholeWorkspace() ? "Whole workspace" : apiSession ? "Scoped session" : "Local only"}</strong>
-          <p>${canSaveWholeWorkspace() ? "Save to API is enabled." : apiSession ? "Create and update individual records from allowed views." : "Connect before saving to the backend."}</p>
+          <p>${canSaveWholeWorkspace() ? "Save to API is enabled, with local changes retained on this device." : apiSession ? "Create and update individual records; failed API writes enter the local retry queue." : "Create, edit, export, and import without a backend connection."}</p>
         </article>
         <article>
           <span>Queue</span>
           <strong>${apiSyncQueue.length ? `${apiSyncQueue.length} pending` : "Clear"}</strong>
-          <p>${apiSyncQueue.length ? "Retry failed syncs after the API is healthy." : "No failed syncs are waiting."}</p>
+          <p>${apiSyncQueue.length ? "Retry after the API is healthy or the network returns." : "No failed syncs are waiting."}</p>
         </article>
         <article>
           <span>Health check</span>
           <strong>${checkedAt ? escapeHtml(formatTimestamp(checkedAt)) : "Not checked"}</strong>
           <p>${backendHealth?.productionMode ? "Production mode is ready." : "Refresh backend health for the latest server report."}</p>
+        </article>
+        <article>
+          <span>App shell</span>
+          <strong>${window.AGORA_DESKTOP?.offlineCapable ? "Bundled Mac app" : "Installable PWA"}</strong>
+          <p>${window.AGORA_DESKTOP?.offlineCapable ? "Packaged assets launch without internet. API sync remains optional." : "Service worker caches the app shell for home-screen and offline reloads."}</p>
         </article>
       </div>
       <div class="source-list">
@@ -21678,6 +21739,27 @@ function registerServiceWorker() {
     .catch(() => showToast("Offline shell could not be registered", "info"));
 }
 
+function handleNetworkOnline() {
+  const wasOffline = !networkOnline;
+  networkOnline = true;
+  if (!wasOffline) return;
+
+  render();
+  showToast(apiSyncQueue.length && apiSession ? "Back online. Retrying queued changes." : "Back online", "success");
+  if (apiSession && apiSyncQueue.length) {
+    retryApiSyncQueue();
+  } else if (apiSession) {
+    refreshBackendHealth({ silent: true }).then(() => render()).catch(() => {});
+  }
+}
+
+function handleNetworkOffline() {
+  if (!networkOnline) return;
+  networkOnline = false;
+  render();
+  showToast("Agora is offline. Keep working; local changes stay on this device.", "info");
+}
+
 async function installPwa() {
   if (!pwaInstallPrompt) {
     showToast("Use your browser's Add to Home Screen action to install Agora", "info");
@@ -23313,6 +23395,9 @@ document.addEventListener("visibilitychange", () => {
   heartbeatPresence({ force: true });
   if (!document.hidden) pollApiForWorkspaceChanges();
 });
+
+window.addEventListener("online", handleNetworkOnline);
+window.addEventListener("offline", handleNetworkOffline);
 
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
