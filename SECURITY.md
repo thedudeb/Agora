@@ -52,6 +52,16 @@ Before inviting a real team:
 - For MCP clients, follow `docs/mcp-server.md`, keep `AGORA_MCP_ALLOW_WRITES=false` by default, and rotate any token that appears in prompts, logs, screenshots, or shared config files. Use `GET /api/auth/sessions` and `DELETE /api/auth/sessions/:id` to revoke active in-memory sessions when needed.
 - Export a recovery bundle before major imports, migrations, or auth changes.
 
+## Offline And Local Data
+
+Agora is local-first. Browser, desktop, and future mobile installs can keep workspace data on the device so the app remains useful without internet.
+
+- Portable bundles and workspace exports must not include raw API bearer tokens, Supabase service-role keys, AI provider keys, SMTP secrets, Stripe keys, x402 credentials, or webhook signing secrets.
+- Browser/API sessions may still be stored locally for the current install. Use `Settings > Security > Offline security posture` to clear the local API session on shared or lost devices, and revoke server sessions when the API is reachable.
+- Local backups, queued writes, and workspace snapshots should be treated as workspace data. Do not share a device profile or exported bundle unless the recipient is allowed to see that workspace.
+- Native desktop and mobile wrappers should store API session secrets in the OS keychain or keystore, while workspace snapshots can remain in the app sandbox.
+- The portable bundle includes `offline-storage-contract.json`; release candidates should confirm the contract matches the platform storage implementation.
+
 ## AI And Data Handling
 
 Agora's AI Operator should stay governed by explicit permissions, previews, rationale, audit logs, and undo paths where possible.

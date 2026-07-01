@@ -5303,6 +5303,72 @@ function renderSessionManagementPanel() {
   `;
 }
 
+function localDataSecurityItems() {
+  const contract = offlineStorageContract();
+  const backups = loadWorkspaceBackups();
+  const queueSummary = apiSyncQueueSummary();
+  return [
+    {
+      label: "Export redaction",
+      done: contract.security.rawTokensExported === false && contract.security.providerSecretsExported === false,
+      detail: "Workspace exports and portable bundles omit raw API tokens and provider secrets."
+    },
+    {
+      label: "Device session",
+      done: !apiSession,
+      detail: apiSession ? "This browser/device has an API session saved locally. Disconnect or revoke it on shared devices." : "No API session token is stored for this install."
+    },
+    {
+      label: "Backups",
+      done: backups.length > 0,
+      detail: backups.length ? `${backups.length} local backup${backups.length === 1 ? "" : "s"} stored on this device.` : "Create a backup before imports, restores, or auth changes."
+    },
+    {
+      label: "Queued writes",
+      done: queueSummary.conflicts === 0,
+      detail: queueSummary.total ? `${queueSummary.total} queued write${queueSummary.total === 1 ? "" : "s"}; ${queueSummary.conflicts} conflict${queueSummary.conflicts === 1 ? "" : "s"} need review.` : "No local writes are waiting to sync."
+    },
+    {
+      label: "Native secret storage",
+      done: Boolean(window.AGORA_DESKTOP?.offlineCapable) || !apiSession,
+      detail: window.AGORA_DESKTOP?.offlineCapable ? "Desktop wrappers can move session secrets into OS-protected storage." : "Native mobile/desktop builds should use keychain or keystore storage for API sessions."
+    }
+  ];
+}
+
+function renderOfflineDataSecurityPanel() {
+  const items = localDataSecurityItems();
+  const doneCount = items.filter((item) => item.done).length;
+  return `
+    <section class="panel offline-security-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Local data</p>
+          <h2>Offline security posture</h2>
+        </div>
+        <span class="status-pill ${doneCount === items.length ? "inbox-green" : "inbox-amber"}">${doneCount}/${items.length}</span>
+      </div>
+      <p class="panel-note">Local-first means the device matters. Exports are redacted, but workspace snapshots, backups, queued writes, and signed-in API sessions still belong to this browser or app profile.</p>
+      <div class="readiness-list compact-readiness">
+        ${items.map((item) => `
+          <article class="readiness-item ${item.done ? "is-done" : "is-pending"}">
+            <span>${item.done ? "OK" : "Review"}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail)}</p>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+      <div class="data-actions">
+        <button class="button button-secondary" type="button" id="local-session-clear" ${apiSession ? "" : "disabled"}>Clear Local Session</button>
+        <button class="button button-secondary" type="button" data-recovery-action="create-backup">Create Backup</button>
+        <button class="button button-primary" type="button" data-recovery-action="download-bundle">Download Redacted Bundle</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderApiSessionRow(session) {
   const role = workspaceRoles.find((item) => item.id === session.membership?.role);
   const revokeLabel = session.current ? "Revoke & Sign Out" : "Revoke";
@@ -16700,6 +16766,7 @@ function renderSettings() {
       ${activeSettingsTab === "security" ? `
       ${renderCurrentAccessPanel()}
       ${renderSessionManagementPanel()}
+      ${renderOfflineDataSecurityPanel()}
       ${renderPermissionMatrix()}
       ` : ""}
 
@@ -24039,6 +24106,12 @@ document.addEventListener("click", (event) => {
 
   const apiDisconnectButton = event.target.closest("#api-disconnect");
   if (apiDisconnectButton) disconnectApiSession();
+
+  const localSessionClearButton = event.target.closest("#local-session-clear");
+  if (localSessionClearButton) {
+    disconnectApiSession();
+    return;
+  }
 
   const backendHealthRefreshButton = event.target.closest("#backend-health-refresh");
   if (backendHealthRefreshButton) {
