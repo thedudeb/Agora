@@ -2012,6 +2012,10 @@ let auditLoading = false;
 let marketplaceApiCatalog = null;
 let marketplaceApiLoading = false;
 let realtimePollTimer = null;
+let realtimeEventSource = null;
+let realtimeEventRefreshTimer = null;
+let realtimeEventReconnectTimer = null;
+let realtimeTransportStatus = "polling";
 let realtimeLastRefreshAt = "";
 let realtimeLastChangedAt = "";
 let realtimeLastError = "";
@@ -2506,6 +2510,8 @@ function normalizeChatMessages(messages = []) {
       author: members.some((member) => member.id === message.author) ? message.author : currentMemberId,
       body: String(message.body || "").trim().slice(0, 600),
       projectId: String(message.projectId || ""),
+      linkType: ["task", "document", "approval"].includes(message.linkType) ? message.linkType : "",
+      linkId: String(message.linkId || ""),
       createdAt: message.createdAt || new Date().toISOString()
     }))
     .filter((message) => message.body)
@@ -3284,6 +3290,7 @@ function realtimeStatusLabel() {
   if (!canAttemptApiRequest()) return "Offline";
   if (!apiSession) return "Browser only";
   if (realtimeLastError) return "Sync needs attention";
+  if (realtimeTransportStatus === "events") return "Realtime events";
   if (realtimeLastChangedAt) return `Live ${formatTimestamp(realtimeLastChangedAt)}`;
   if (apiSession.lastSyncedAt) return `Synced ${formatTimestamp(apiSession.lastSyncedAt)}`;
   return "Live polling";
@@ -3316,12 +3323,98 @@ function startRealtimePolling() {
   stopRealtimePolling();
   if (!apiSession) return;
   realtimePollTimer = window.setInterval(pollApiForWorkspaceChanges, REALTIME_POLL_MS);
+  startRealtimeEvents();
 }
 
 function stopRealtimePolling() {
-  if (!realtimePollTimer) return;
-  window.clearInterval(realtimePollTimer);
-  realtimePollTimer = null;
+  if (realtimePollTimer) {
+    window.clearInterval(realtimePollTimer);
+    realtimePollTimer = null;
+  }
+  stopRealtimeEvents();
+}
+
+function realtimeEventsUrl() {
+  const url = new URL(`${API_BASE_URL}/api/realtime/events`, window.location.href);
+  url.searchParams.set("token", apiSession.token);
+  return url.toString();
+}
+
+function stopRealtimeEvents() {
+  if (realtimeEventRefreshTimer) {
+    window.clearTimeout(realtimeEventRefreshTimer);
+    realtimeEventRefreshTimer = null;
+  }
+  if (realtimeEventReconnectTimer) {
+    window.clearTimeout(realtimeEventReconnectTimer);
+    realtimeEventReconnectTimer = null;
+  }
+  if (realtimeEventSource) {
+    realtimeEventSource.close();
+    realtimeEventSource = null;
+  }
+  realtimeTransportStatus = apiSession ? "polling" : "offline";
+}
+
+function startRealtimeEvents() {
+  if (!apiSession || !apiSession.token || !canAttemptApiRequest() || typeof EventSource === "undefined") {
+    realtimeTransportStatus = apiSession ? "polling" : "offline";
+    return;
+  }
+  if (realtimeEventSource) return;
+  if (realtimeEventReconnectTimer) {
+    window.clearTimeout(realtimeEventReconnectTimer);
+    realtimeEventReconnectTimer = null;
+  }
+
+  realtimeTransportStatus = "connecting";
+  realtimeEventSource = new EventSource(realtimeEventsUrl());
+  realtimeEventSource.addEventListener("connected", () => {
+    realtimeTransportStatus = "events";
+    realtimeLastError = "";
+    if (["collaboration", "dashboard", "inbox", "settings"].includes(state.selectedRoute)) render();
+  });
+  realtimeEventSource.addEventListener("heartbeat", () => {
+    realtimeTransportStatus = "events";
+  });
+  realtimeEventSource.onmessage = handleRealtimeEventMessage;
+  ["workspace", "project", "task", "record"].forEach((eventName) => {
+    realtimeEventSource.addEventListener(eventName, handleRealtimeEventMessage);
+  });
+  realtimeEventSource.onerror = () => {
+    realtimeTransportStatus = "polling";
+    realtimeEventSource?.close();
+    realtimeEventSource = null;
+    if (!realtimeEventReconnectTimer && apiSession && canAttemptApiRequest()) {
+      realtimeEventReconnectTimer = window.setTimeout(() => {
+        realtimeEventReconnectTimer = null;
+        startRealtimeEvents();
+      }, 5000);
+    }
+  };
+}
+
+function handleRealtimeEventMessage(event) {
+  let payload = {};
+  try {
+    payload = JSON.parse(event.data || "{}");
+  } catch {
+    return;
+  }
+  if (payload.actorId && payload.actorId === activeMemberId()) return;
+  scheduleRealtimeEventRefresh(payload);
+}
+
+function scheduleRealtimeEventRefresh(payload = {}) {
+  if (!apiSession || !canAttemptApiRequest()) return;
+  if (realtimeEventRefreshTimer) window.clearTimeout(realtimeEventRefreshTimer);
+  realtimeEventRefreshTimer = window.setTimeout(async () => {
+    realtimeEventRefreshTimer = null;
+    if (payload.type === "workspace" || payload.type === "project" || payload.type === "task") {
+      await pollApiForWorkspaceChanges();
+    }
+    await refreshLiveCollaborationFromApi({ rerender: ["collaboration", "dashboard", "inbox"].includes(state.selectedRoute) });
+  }, 250);
 }
 
 async function pollApiForWorkspaceChanges() {
@@ -5885,7 +5978,7 @@ async function refreshLiveCollaborationFromApi({ rerender = false } = {}) {
 
   try {
     let changed = false;
-    for (const collection of ["presence", "comments", "activities", "approvals", "documents", "files", "timeEntries"]) {
+    for (const collection of ["presence", "comments", "activities", "approvals", "documents", "files", "timeEntries", "chatMessages", "whiteboards"]) {
       const incoming = await fetchApiCollectionPages(`/api/records/${encodeURIComponent(collection)}`, "records");
       if (!incoming.length) continue;
       changed = mergeCollectionFromApi(collection, incoming) || changed;
@@ -10321,6 +10414,57 @@ function renderLandingPage() {
   `;
 }
 
+function discussionLinkTargets(projectId = "") {
+  const projectTasks = activeTasks()
+    .filter((task) => !projectId || task.projectId === projectId)
+    .slice(0, 20)
+    .map((task) => ({ type: "task", id: task.id, label: `Task: ${task.title}` }));
+  const projectDocs = state.documents
+    .filter((document) => !projectId || document.projectId === projectId)
+    .slice(0, 12)
+    .map((document) => ({ type: "document", id: document.id, label: `Doc: ${document.title}` }));
+  const projectApprovals = state.approvals
+    .filter((approval) => approval.status !== "approved")
+    .filter((approval) => !projectId || approval.projectId === projectId)
+    .slice(0, 12)
+    .map((approval) => ({ type: "approval", id: approval.id, label: `Approval: ${approval.title}` }));
+  return [...projectTasks, ...projectDocs, ...projectApprovals];
+}
+
+function parseDiscussionLink(value = "") {
+  const [linkType, ...rest] = String(value || "").split(":");
+  const linkId = rest.join(":");
+  if (!["task", "document", "approval"].includes(linkType) || !linkId) return { linkType: "", linkId: "" };
+  return { linkType, linkId };
+}
+
+function discussionLinkLabel(message) {
+  if (message.linkType === "task") return byId(state.tasks, message.linkId)?.title || "Linked task";
+  if (message.linkType === "document") return byId(state.documents, message.linkId)?.title || "Linked doc";
+  if (message.linkType === "approval") return byId(state.approvals, message.linkId)?.title || "Linked approval";
+  return "";
+}
+
+function discussionLinkProjectId(link) {
+  if (link.linkType === "task") return byId(state.tasks, link.linkId)?.projectId || "";
+  if (link.linkType === "document") return byId(state.documents, link.linkId)?.projectId || "";
+  if (link.linkType === "approval") return byId(state.approvals, link.linkId)?.projectId || "";
+  return "";
+}
+
+function projectDiscussionRows() {
+  return activeProjects().map((project) => {
+    const messages = state.chatMessages.filter((message) => message.projectId === project.id);
+    const linked = messages.filter((message) => message.linkType);
+    return {
+      project,
+      messages,
+      linked,
+      lastMessage: [...messages].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0]
+    };
+  }).filter((row) => row.messages.length || getProjectTasks(row.project.id, false).length).slice(0, 6);
+}
+
 function renderCollaborationHub() {
   const messages = [...state.chatMessages].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).slice(-30);
   const activeBoard = state.whiteboards[0] || { id: "", title: "Workspace Canvas", projectId: "", items: [] };
@@ -10328,6 +10472,8 @@ function renderCollaborationHub() {
   const risks = activeBoard.items.filter((item) => item.type === "risk").length;
   const liveMembers = liveWorkspacePresence();
   const editingSignals = liveEditingSignals();
+  const discussionRows = projectDiscussionRows();
+  const linkTargets = discussionLinkTargets();
 
   els.appView.innerHTML = `
     <div class="metric-grid">
@@ -10339,9 +10485,22 @@ function renderCollaborationHub() {
       ${metric("Editing", editingSignals.length)}
     </div>
 
-    ${renderLiveCollaborationPanel()}
+      ${renderLiveCollaborationPanel()}
 
-    <div class="collab-hub-grid">
+      <div class="collab-hub-grid">
+      <section class="panel project-discussion-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Discussions</p>
+            <h2>Project rooms</h2>
+          </div>
+          <span class="status-pill ${realtimeTransportStatus === "events" ? "inbox-green" : "inbox-neutral"}">${realtimeTransportStatus === "events" ? "Event stream" : "Polling fallback"}</span>
+        </div>
+        <div class="project-discussion-list">
+          ${discussionRows.length ? discussionRows.map(renderProjectDiscussionRow).join("") : emptyState("Project-linked discussions will appear after the first message.")}
+        </div>
+      </section>
+
       <section class="panel workspace-chat-panel">
         <div class="panel-header">
           <div>
@@ -10365,6 +10524,13 @@ function renderCollaborationHub() {
             <select id="chat-project">
               <option value="">No project link</option>
               ${activeProjects().map((project) => `<option value="${project.id}">${escapeHtml(project.name)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Link</span>
+            <select id="chat-link">
+              <option value="">No linked object</option>
+              ${linkTargets.map((target) => `<option value="${target.type}:${target.id}">${escapeHtml(target.label)}</option>`).join("")}
             </select>
           </label>
           <label class="wide-field">
@@ -10416,6 +10582,7 @@ function renderCollaborationHub() {
 }
 
 function renderWorkspaceChatMessage(message) {
+  const linkLabel = discussionLinkLabel(message);
   return `
     <article class="workspace-chat-message">
       <span class="avatar">${memberName(message.author).split(" ").map((part) => part[0]).join("")}</span>
@@ -10425,6 +10592,23 @@ function renderWorkspaceChatMessage(message) {
           <small>#${escapeHtml(message.channel)} ${message.projectId ? `/ ${escapeHtml(projectName(message.projectId))}` : ""} / ${escapeHtml(formatTimestamp(message.createdAt))}</small>
         </div>
         <p>${renderCommentBody(message.body)}</p>
+        ${linkLabel ? `<span class="discussion-link-pill">${escapeHtml(message.linkType)}: ${escapeHtml(linkLabel)}</span>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function renderProjectDiscussionRow(row) {
+  return `
+    <article class="project-discussion-row">
+      <div>
+        <strong>${escapeHtml(row.project.name)}</strong>
+        <span>${row.lastMessage ? escapeHtml(row.lastMessage.body.slice(0, 90)) : "No messages yet"}</span>
+        <small>${row.lastMessage ? `${escapeHtml(memberName(row.lastMessage.author))} / ${escapeHtml(formatTimestamp(row.lastMessage.createdAt))}` : `${getProjectTasks(row.project.id, false).length} tasks ready for discussion`}</small>
+      </div>
+      <div class="project-discussion-stats">
+        <span>${row.messages.length} messages</span>
+        <span>${row.linked.length} linked</span>
       </div>
     </article>
   `;
@@ -20260,12 +20444,16 @@ function sendWorkspaceChatMessage() {
     showToast("Write a message first", "info");
     return;
   }
+  const link = parseDiscussionLink(document.querySelector("#chat-link")?.value || "");
+  const selectedProjectId = document.querySelector("#chat-project")?.value || discussionLinkProjectId(link);
   const message = {
     id: uid("chat"),
     channel: document.querySelector("#chat-channel")?.value || "general",
     author: activeMemberId(),
     body,
-    projectId: document.querySelector("#chat-project")?.value || "",
+    projectId: selectedProjectId,
+    linkType: link.linkType,
+    linkId: link.linkId,
     createdAt: new Date().toISOString()
   };
   state.chatMessages = normalizeChatMessages([
@@ -21934,6 +22122,7 @@ function handleNetworkOnline() {
 
   render();
   showToast(apiSyncQueue.length && apiSession ? "Back online. Retrying queued changes." : "Back online", "success");
+  if (apiSession) startRealtimeEvents();
   if (apiSession && apiSyncQueue.length) {
     retryApiSyncQueue();
   } else if (apiSession) {
@@ -21944,6 +22133,7 @@ function handleNetworkOnline() {
 function handleNetworkOffline() {
   if (!networkOnline) return;
   networkOnline = false;
+  stopRealtimeEvents();
   render();
   showToast("Agora is offline. Keep working; local changes stay on this device.", "info");
 }

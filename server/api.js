@@ -89,6 +89,7 @@ const requestMetrics = {
   byRoute: new Map(),
   recentErrors: []
 };
+const realtimeClients = new Set();
 const BACKGROUND_JOB_MAX_QUEUE = positiveNumber(process.env.AGORA_BACKGROUND_JOB_MAX_QUEUE, 100);
 const BACKGROUND_JOB_BASE_RETRY_MS = positiveNumber(process.env.AGORA_BACKGROUND_JOB_BASE_RETRY_MS, 5000);
 const BACKGROUND_JOB_MAX_RETRY_MS = positiveNumber(process.env.AGORA_BACKGROUND_JOB_MAX_RETRY_MS, 60000);
@@ -651,6 +652,15 @@ function createServer(options = {}) {
 
       const session = await requireSession(request, response, storage);
       if (!session) return;
+
+      if (request.method === "GET" && url.pathname === "/api/realtime/events") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        openRealtimeStream(request, response, session);
+        return;
+      }
 
       if (request.method === "POST" && url.pathname === "/api/auth/logout") {
         sessions.delete(session.token);
@@ -2284,7 +2294,8 @@ function buildSession(user, membership, token) {
 
 async function requireSession(request, response, storage) {
   const header = request.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
+  const requestUrl = new URL(request.url, "http://127.0.0.1");
+  const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : cleanString(requestUrl.searchParams.get("token"));
   const session = sessions.get(token);
   if (session) {
     if (isSessionExpired(session)) {
@@ -3641,6 +3652,11 @@ async function saveWorkspaceSnapshot(storage, snapshot, session, action) {
     workspaceId: workspace.id,
     detail: `${session.user.name} saved a workspace snapshot`
   });
+  broadcastRealtimeEvent({
+    type: "workspace",
+    action,
+    actorId: session.user.id
+  });
   return document;
 }
 
@@ -3669,6 +3685,14 @@ async function upsertProject(storage, project, session, action) {
     action,
     workspaceId: workspace.id,
     detail: `${session.user.name} ${exists ? "updated" : "created"} project ${nextProject.name}`
+  });
+  broadcastRealtimeEvent({
+    type: "project",
+    collection: "projects",
+    action,
+    id: nextProject.id,
+    companyId: nextProject.companyId || "",
+    actorId: session.user.id
   });
   return nextProjects.find((item) => item.id === nextProject.id);
 }
@@ -3701,6 +3725,15 @@ async function upsertTask(storage, task, session, action) {
     action,
     workspaceId: workspace.id,
     detail: `${session.user.name} ${exists ? "updated" : "created"} task ${nextTask.title}`
+  });
+  broadcastRealtimeEvent({
+    type: "task",
+    collection: "tasks",
+    action,
+    id: nextTask.id,
+    projectId: nextTask.projectId,
+    companyId: project.companyId || "",
+    actorId: session.user.id
   });
   return nextTasks.find((item) => item.id === nextTask.id);
 }
@@ -3743,6 +3776,14 @@ async function archiveProject(storage, projectId, session, archived) {
     workspaceId: workspace.id,
     detail: `${session.user.name} ${archived ? "archived" : "restored"} project ${nextProject.name}`
   });
+  broadcastRealtimeEvent({
+    type: "project",
+    collection: "projects",
+    action: archived ? "project_archive" : "project_restore",
+    id: nextProject.id,
+    companyId: nextProject.companyId || "",
+    actorId: session.user.id
+  });
   return nextProject;
 }
 
@@ -3779,6 +3820,15 @@ async function archiveTask(storage, taskId, session, archived) {
     workspaceId: workspace.id,
     detail: `${session.user.name} ${archived ? "archived" : "restored"} task ${nextTask.title}`
   });
+  broadcastRealtimeEvent({
+    type: "task",
+    collection: "tasks",
+    action: archived ? "task_archive" : "task_restore",
+    id: nextTask.id,
+    projectId: nextTask.projectId,
+    companyId: project.companyId || "",
+    actorId: session.user.id
+  });
   return nextTask;
 }
 
@@ -3808,6 +3858,16 @@ async function upsertCollectionItem(storage, key, item, normalizer, session, act
     action,
     workspaceId: workspace.id,
     detail: `${session.user.name} saved ${detailLabel(savedItem)}`
+  });
+  broadcastRealtimeEvent({
+    type: "record",
+    collection: key,
+    action,
+    id: savedItem.id,
+    projectId: savedItem.projectId || "",
+    taskId: savedItem.taskId || "",
+    companyId: savedItem.companyId || "",
+    actorId: session.user.id
   });
   return savedItem;
 }
@@ -4151,12 +4211,15 @@ function normalizeChatMessage(message) {
     publicError(400, "Chat message requires id and body");
   }
   const channel = cleanString(message.channel);
+  const linkType = cleanString(message.linkType);
   return {
     id: String(message.id),
     channel: ["general", "delivery", "product", "client"].includes(channel) ? channel : "general",
     author: message.author ? String(message.author) : "",
     body: cleanString(message.body).slice(0, 600),
     projectId: message.projectId ? String(message.projectId) : "",
+    linkType: ["task", "document", "approval"].includes(linkType) ? linkType : "",
+    linkId: message.linkId ? String(message.linkId) : "",
     createdAt: message.createdAt ? String(message.createdAt) : new Date().toISOString()
   };
 }
@@ -4552,6 +4615,56 @@ function sendJson(response, statusCode, value) {
 
 function sendError(response, statusCode, message) {
   sendJson(response, statusCode, { error: message });
+}
+
+function writeRealtimeEvent(response, event) {
+  response.write(`event: ${event.type || "workspace"}\n`);
+  response.write(`data: ${JSON.stringify(event)}\n\n`);
+}
+
+function openRealtimeStream(request, response, session) {
+  setSecurityHeaders(response);
+  response.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-store",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no"
+  });
+  const client = {
+    id: crypto.randomUUID(),
+    memberId: session.user.id,
+    companyId: sessionCompanyId(session),
+    response
+  };
+  realtimeClients.add(client);
+  writeRealtimeEvent(response, {
+    type: "connected",
+    clientId: client.id,
+    memberId: client.memberId,
+    generatedAt: new Date().toISOString()
+  });
+  const heartbeat = setInterval(() => {
+    writeRealtimeEvent(response, { type: "heartbeat", generatedAt: new Date().toISOString() });
+  }, 25000);
+  request.on("close", () => {
+    clearInterval(heartbeat);
+    realtimeClients.delete(client);
+  });
+}
+
+function broadcastRealtimeEvent(event = {}) {
+  const payload = {
+    ...event,
+    generatedAt: event.generatedAt || new Date().toISOString()
+  };
+  for (const client of realtimeClients) {
+    if (payload.companyId && client.companyId && payload.companyId !== client.companyId) continue;
+    try {
+      writeRealtimeEvent(client.response, payload);
+    } catch {
+      realtimeClients.delete(client);
+    }
+  }
 }
 
 if (require.main === module) {

@@ -6564,9 +6564,59 @@ th {
   gap: 16px;
 }
 
+.project-discussion-panel,
 .workspace-chat-panel,
 .whiteboard-panel {
   min-height: 540px;
+}
+
+.project-discussion-list {
+  display: grid;
+  gap: 10px;
+}
+
+.project-discussion-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.project-discussion-row > div:first-child {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.project-discussion-row span,
+.project-discussion-row small {
+  color: var(--muted);
+}
+
+.project-discussion-stats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 110px;
+}
+
+.project-discussion-stats span,
+.discussion-link-pill {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 24px;
+  align-items: center;
+  padding: 3px 7px;
+  color: var(--accent-strong);
+  font-size: 0.74rem;
+  font-weight: 900;
+  background: var(--accent-soft);
+  border-radius: 999px;
 }
 
 .chat-message-list {
