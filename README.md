@@ -102,6 +102,7 @@ npm run check     # syntax-check app and server files
 npm run test:api  # run the dependency-free API smoke test
 npm run test:fixtures # validate portable workspace and automation pack fixtures
 npm run test:supabase # verify a real Supabase project end to end
+npm run screenshots # refresh launch screenshots with local Chrome/Chromium
 ```
 
 To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`. Add browser origins to `AGORA_ALLOWED_ORIGINS` when hosting the app somewhere other than localhost.

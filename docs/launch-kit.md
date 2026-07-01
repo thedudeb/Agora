@@ -179,6 +179,12 @@ npm run dev:api
 
 ## Screenshot Checklist
 
+Refresh the checked-in launch set with:
+
+```sh
+npm run screenshots
+```
+
 - Landing hero with no ads/no lock-in proof row.
 - Dashboard setup and launch readiness.
 - Board view with project tasks.

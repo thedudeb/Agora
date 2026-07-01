@@ -31,6 +31,7 @@ Agora currently includes:
 These are the highest-priority areas before a broader public launch.
 
 - Record and publish the demo video using the captured screenshot set, launch kit, and time-coded script.
+- Keep screenshot automation current as launch routes and responsive captures change.
 - Keep tightening landing-page proof around no ads, self-hosting, portable exports, client work, and auditable AI.
 - Keep README scanning sharp with refreshed screenshots, quick feature blocks, and a clear "who this is for" section.
 - Keep local setup boring: `cp .env.example .env`, `npm run dev`, `npm run dev:api`, `npm run check`, `npm run test:api`.
@@ -46,7 +47,7 @@ These make Agora more credible for real teams and contributors.
 - Add richer onboarding for first owner setup, Supabase connection, and first project creation.
 - Build contributor-friendly starter issues for templates, automations, integrations, docs, accessibility, and mobile polish.
 - Add a public comparison page or doc for Asana, Nifty, ClickUp, monday, Notion, Linear, and open source alternatives.
-- Add screenshot automation or a repeatable capture script once the local browser flow is stable.
+- Expand screenshot automation to cover portal, data export, permissions, Operator, and tablet views.
 - Strengthen API persistence around conflict handling, record-level sync, and migration safety.
 - Expand accessibility verification across keyboard-only use, focus states, color contrast, reduced motion, and screen reader landmarks.
 - Improve mobile and tablet flows for Today, Board, Inbox, Marketplace, and Settings.

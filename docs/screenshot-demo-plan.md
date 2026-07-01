@@ -11,14 +11,32 @@ Use this plan to create consistent launch assets for GitHub, Product Hunt, socia
 
 ## Capture Setup
 
-- Start the app with `npm run dev`.
+- Run `npm run screenshots` to refresh the checked-in launch set.
+- The script starts the app automatically on an open port near `5199`, unless `AGORA_SCREENSHOT_BASE_URL` points at an already-running app.
 - Start the API with `npm run dev:api` when capturing sync, marketplace, permissions, or backend health.
 - Use the seeded Acme Studio workspace unless a specific clean workspace is needed.
 - Use stable route query URLs such as `http://127.0.0.1:5174/?route=dashboard` instead of hash links.
 - Use a desktop viewport around `1440 x 1000`.
-- Also capture mobile widths around `390 x 844` and tablet widths around `834 x 1194`.
+- The automated Today capture uses a `500 x 844` Chrome headless viewport so controls are not cropped by Chrome CLI's minimum layout width.
+- For exact device QA, also inspect mobile widths around `390 x 844` and tablet widths around `834 x 1194` in the browser.
 - Hide browser chrome if creating marketing screenshots.
 - Keep the sidebar visible for desktop captures unless the screen is about mobile navigation.
+
+The automation uses a local Chrome/Chromium binary. If Chrome is not in a standard location, set:
+
+```sh
+CHROME_BIN=/path/to/chrome npm run screenshots
+```
+
+Useful overrides:
+
+```sh
+AGORA_SCREENSHOT_BASE_URL=http://127.0.0.1:5174 npm run screenshots
+AGORA_SCREENSHOT_PORT=5199 npm run screenshots
+AGORA_SCREENSHOT_WAIT_MS=7000 npm run screenshots
+```
+
+The script fails if a route does not boot, renders "could not render", or writes an unexpectedly small screenshot.
 
 ## Current Launch Set
 
