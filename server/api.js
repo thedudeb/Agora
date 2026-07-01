@@ -75,6 +75,8 @@ const paymentIntents = new Map();
 const backgroundJobs = [];
 const backgroundJobHistory = [];
 let backgroundJobRunning = false;
+let backgroundJobDrainTimer = null;
+let backgroundJobDrainAt = 0;
 const requestMetrics = {
   startedAt: new Date().toISOString(),
   total: 0,
@@ -84,6 +86,9 @@ const requestMetrics = {
   byRoute: new Map(),
   recentErrors: []
 };
+const BACKGROUND_JOB_MAX_QUEUE = positiveNumber(process.env.AGORA_BACKGROUND_JOB_MAX_QUEUE, 100);
+const BACKGROUND_JOB_BASE_RETRY_MS = positiveNumber(process.env.AGORA_BACKGROUND_JOB_BASE_RETRY_MS, 5000);
+const BACKGROUND_JOB_MAX_RETRY_MS = positiveNumber(process.env.AGORA_BACKGROUND_JOB_MAX_RETRY_MS, 60000);
 
 function envFlag(name, fallback = false) {
   const value = cleanString(process.env[name]).toLowerCase();
@@ -130,23 +135,52 @@ function enqueueBackgroundJob(type, handler, metadata = {}) {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
-  backgroundJobs.push({ job, handler });
   backgroundJobHistory.unshift(job);
   backgroundJobHistory.splice(100);
-  drainBackgroundJobs();
+  if (backgroundJobs.length >= BACKGROUND_JOB_MAX_QUEUE) {
+    job.status = "rejected";
+    job.error = "Background job queue is full";
+    job.finishedAt = job.updatedAt;
+    return job;
+  }
+
+  backgroundJobs.push({ job, handler, runAt: Date.now() });
+  scheduleBackgroundDrain();
   return job;
+}
+
+function scheduleBackgroundDrain(delayMs = 0) {
+  if (backgroundJobRunning) return;
+  const targetAt = Date.now() + Math.max(0, delayMs);
+  if (backgroundJobDrainTimer && backgroundJobDrainAt <= targetAt) return;
+  if (backgroundJobDrainTimer) clearTimeout(backgroundJobDrainTimer);
+  backgroundJobDrainAt = targetAt;
+  backgroundJobDrainTimer = setTimeout(() => {
+    backgroundJobDrainTimer = null;
+    backgroundJobDrainAt = 0;
+    drainBackgroundJobs();
+  }, Math.max(0, delayMs));
+  if (typeof backgroundJobDrainTimer.unref === "function") backgroundJobDrainTimer.unref();
 }
 
 function drainBackgroundJobs() {
   if (backgroundJobRunning) return;
+  const dueIndex = nextDueBackgroundJobIndex();
+  if (dueIndex === -1) {
+    scheduleNextBackgroundJobDrain();
+    return;
+  }
   backgroundJobRunning = true;
   queueMicrotask(async () => {
     try {
-      while (backgroundJobs.length) {
-        const queued = backgroundJobs.shift();
+      while (true) {
+        const nextIndex = nextDueBackgroundJobIndex();
+        if (nextIndex === -1) break;
+        const [queued] = backgroundJobs.splice(nextIndex, 1);
         const { job, handler } = queued;
         job.status = "running";
         job.attempts += 1;
+        job.nextRunAt = "";
         job.updatedAt = new Date().toISOString();
         try {
           await handler();
@@ -157,14 +191,36 @@ function drainBackgroundJobs() {
           job.status = job.attempts < job.maxAttempts ? "queued" : "failed";
           job.error = error.message;
           job.updatedAt = new Date().toISOString();
-          if (job.status === "queued") backgroundJobs.push(queued);
+          if (job.status === "queued") {
+            queued.runAt = Date.now() + backgroundJobRetryDelay(job.attempts);
+            job.nextRunAt = new Date(queued.runAt).toISOString();
+            backgroundJobs.push(queued);
+          } else {
+            job.finishedAt = job.updatedAt;
+            job.nextRunAt = "";
+          }
         }
       }
     } finally {
       backgroundJobRunning = false;
-      if (backgroundJobs.length) drainBackgroundJobs();
+      scheduleNextBackgroundJobDrain();
     }
   });
+}
+
+function nextDueBackgroundJobIndex() {
+  const now = Date.now();
+  return backgroundJobs.findIndex((queued) => (queued.runAt || 0) <= now);
+}
+
+function scheduleNextBackgroundJobDrain() {
+  if (!backgroundJobs.length) return;
+  const nextRunAt = Math.min(...backgroundJobs.map((queued) => queued.runAt || Date.now()));
+  scheduleBackgroundDrain(Math.max(0, nextRunAt - Date.now()));
+}
+
+function backgroundJobRetryDelay(attempts) {
+  return Math.min(BACKGROUND_JOB_MAX_RETRY_MS, BACKGROUND_JOB_BASE_RETRY_MS * (2 ** Math.max(0, attempts - 1)));
 }
 
 function recordRequestMetric({ method, pathname, statusCode, durationMs }) {
@@ -226,6 +282,7 @@ function requestMetricsSnapshot() {
 function backgroundJobSnapshot() {
   return {
     queued: backgroundJobs.length,
+    maxQueue: BACKGROUND_JOB_MAX_QUEUE,
     running: backgroundJobRunning,
     recent: backgroundJobHistory.slice(0, 20).map((job) => ({
       id: job.id,
@@ -236,6 +293,7 @@ function backgroundJobSnapshot() {
       error: job.error || "",
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
+      nextRunAt: job.nextRunAt || "",
       finishedAt: job.finishedAt || ""
     }))
   };
@@ -653,7 +711,8 @@ function createServer(options = {}) {
           return;
         }
         const records = await storage.loadRecords(collectionKey, scopedRecordFilters(session, recordFiltersFromUrl(url)));
-        sendJson(response, 200, { collection: collectionKey, records });
+        const page = paginateItems(records, url.searchParams);
+        sendJson(response, 200, { collection: collectionKey, records: page.items, page: page.page });
         return;
       }
 
@@ -1155,8 +1214,8 @@ async function buildBackendHealth(storage, session) {
     {
       id: "background-jobs",
       label: "Background jobs",
-      done: backgroundJobs.length < 100,
-      detail: `${backgroundJobs.length} queued, ${backgroundJobHistory.filter((job) => job.status === "failed").length} recent failed`,
+      done: backgroundJobs.length < BACKGROUND_JOB_MAX_QUEUE,
+      detail: `${backgroundJobs.length}/${BACKGROUND_JOB_MAX_QUEUE} queued, ${backgroundJobHistory.filter((job) => job.status === "failed").length} recent failed`,
       fix: "If queued jobs keep growing, move the in-process queue to a durable worker."
     },
     ...productionGates,
@@ -2211,6 +2270,7 @@ async function deliverFeatureRequest({ task, request, session }) {
     to,
     taskId: task.id
   });
+  if (job.status === "rejected") return { mode: "smtp", delivered: false, queued: false, jobId: job.id, reason: job.error, to };
   return { mode: "smtp", delivered: false, queued: true, jobId: job.id, to };
 }
 
@@ -2232,6 +2292,7 @@ async function deliverFeatureRequestUpdate({ task, note, session }) {
     to,
     taskId: task.id
   });
+  if (job.status === "rejected") return { mode: "smtp", delivered: false, queued: false, jobId: job.id, reason: job.error, to };
   return { mode: "smtp", delivered: false, queued: true, jobId: job.id, to };
 }
 
@@ -4027,6 +4088,7 @@ function normalizePresence(presence) {
 }
 
 function clampInteger(value, min, max, fallback) {
+  if (value === null || value === undefined || value === "") return fallback;
   const parsed = Math.round(Number(value));
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(max, Math.max(min, parsed));

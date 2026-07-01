@@ -551,6 +551,16 @@ async function run() {
     });
     assert(collaborationRecords.records.chatMessages.some((message) => message.id === "chat-member-smoke"), "chat message list failed");
     assert(collaborationRecords.records.whiteboards.some((board) => board.id === "whiteboard-smoke"), "whiteboard list failed");
+    const pagedCommentRecords = await request(`${baseUrl}/api/records/comments?limit=1`, {
+      token: login.token
+    });
+    assert(pagedCommentRecords.records.length === 1, "record collection pagination did not limit comments");
+    assert(pagedCommentRecords.page.total >= 2, "record collection pagination did not expose total comments");
+    assert(pagedCommentRecords.page.hasMore === true, "record collection pagination did not expose more comments");
+    const nextPagedCommentRecords = await request(`${baseUrl}/api/records/comments?limit=1&offset=1`, {
+      token: login.token
+    });
+    assert(nextPagedCommentRecords.records.length === 1, "record collection pagination did not load the next comment page");
 
     const comments = await request(`${baseUrl}/api/comments?taskId=task-smoke`, {
       token: login.token
@@ -656,6 +666,22 @@ async function run() {
       token: login.token
     });
     assert(archivedProject.project.archivedAt, "project archive failed");
+    const activeProjectRecords = await request(`${baseUrl}/api/projects`, {
+      token: login.token
+    });
+    assert(!activeProjectRecords.projects.some((project) => project.id === "project-smoke"), "active project query included archived project");
+    const archivedProjectRecords = await request(`${baseUrl}/api/projects?includeArchived=true`, {
+      token: login.token
+    });
+    assert(archivedProjectRecords.projects.some((project) => project.id === "project-smoke" && project.archivedAt), "archived project query did not include archived project");
+    const activeTaskRecords = await request(`${baseUrl}/api/tasks?projectId=project-smoke`, {
+      token: login.token
+    });
+    assert(!activeTaskRecords.tasks.some((task) => task.id === "task-smoke"), "active task query included archived task");
+    const archivedTaskRecords = await request(`${baseUrl}/api/tasks?includeArchived=true&projectId=project-smoke`, {
+      token: login.token
+    });
+    assert(archivedTaskRecords.tasks.some((task) => task.id === "task-smoke" && task.archivedAt), "archived task query did not include archived task");
 
     const workspace = await request(`${baseUrl}/api/workspace`, {
       token: login.token

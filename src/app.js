@@ -3043,8 +3043,8 @@ async function loadCoreRecordsFromApi(options = {}) {
   if (!apiSession) return false;
 
   const [projectsResult, tasksResult] = await Promise.all([
-    fetchApiCollectionPages("/api/projects", "projects"),
-    fetchApiCollectionPages("/api/tasks", "tasks")
+    fetchApiCollectionPages("/api/projects", "projects", { includeArchived: "true" }),
+    fetchApiCollectionPages("/api/tasks", "tasks", { includeArchived: "true" })
   ]);
   const changed = mergeCoreRecordsFromApi({
     projects: projectsResult,
@@ -3097,12 +3097,14 @@ async function loadStructuredRecordsFromApi(options = {}) {
   if (!apiSession) return false;
 
   const collections = options.collections || structuredRecordCollections;
-  const result = await apiRequest("/api/records");
-  const records = result.records || {};
+  const recordsByCollection = await Promise.all(collections.map(async (collection) => ({
+    collection,
+    records: await fetchApiCollectionPages(`/api/records/${encodeURIComponent(collection)}`, "records")
+  })));
   let changed = false;
 
-  collections.forEach((collection) => {
-    const incoming = Array.isArray(records[collection]) ? records[collection] : [];
+  recordsByCollection.forEach(({ collection, records }) => {
+    const incoming = Array.isArray(records) ? records : [];
     if (!incoming.length) return;
     changed = mergeCollectionFromApi(collection, incoming, { authoritative: collection === "companies" }) || changed;
   });
@@ -5429,8 +5431,7 @@ async function refreshLiveCollaborationFromApi({ rerender = false } = {}) {
   try {
     let changed = false;
     for (const collection of ["presence", "comments", "activities", "approvals", "documents", "files", "timeEntries"]) {
-      const result = await apiRequest(`/api/records/${collection}`);
-      const incoming = Array.isArray(result.records) ? result.records : [];
+      const incoming = await fetchApiCollectionPages(`/api/records/${encodeURIComponent(collection)}`, "records");
       if (!incoming.length) continue;
       changed = mergeCollectionFromApi(collection, incoming) || changed;
     }
@@ -16063,7 +16064,7 @@ function renderBackendObservabilityPanel() {
         <strong>${Number(metrics.total || 0)}</strong>
       </article>
       <article>
-        <span>API errors</span>
+        <span>Server errors</span>
         <strong>${Number(metrics.errors || 0)}</strong>
       </article>
       <article>
