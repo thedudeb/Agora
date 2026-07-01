@@ -14,6 +14,7 @@ const checkFiles = [
   "server/smoke-test.js",
   "server/supabase-verify.js",
   "server/portable-fixtures-test.js",
+  "scripts/recovery-stress-test.js",
   "scripts/capture-screenshots.js",
   "scripts/golden-path-qa.js",
   "scripts/agora-cli.js",
@@ -37,6 +38,10 @@ const commands = {
   fixtures: {
     summary: "Validate portable workspace and automation pack fixtures",
     run: async () => runStep("fixture validation", [process.execPath, [path.join(ROOT, "server", "portable-fixtures-test.js")]])
+  },
+  recovery: {
+    summary: "Stress-test backup, portable import, and restore semantics",
+    run: async () => runStep("recovery stress test", [process.execPath, [path.join(ROOT, "scripts", "recovery-stress-test.js")]])
   },
   api: {
     summary: "Run the dependency-free API smoke test",
@@ -94,6 +99,7 @@ const commands = {
       const includeSupabase = args.includes("--supabase");
       await commands.check.run([]);
       await commands.fixtures.run([]);
+      await commands.recovery.run([]);
       if (includeApi) await commands.api.run([]);
       else console.log("Skipping API smoke test because --quick was passed.");
       if (includeSupabase) await commands.supabase.run([]);
@@ -163,9 +169,10 @@ Usage:
   npm run agora -- <command> [options]
 
 Commands:
-  verify [--quick] [--supabase]  Run check + fixtures + API smoke test
+  verify [--quick] [--supabase]  Run check + fixtures + recovery + API smoke
   check                         Syntax-check project files
   fixtures                      Validate portable fixtures
+  recovery                      Stress-test backup/import/restore semantics
   api                           Run API smoke test
   supabase                      Verify real Supabase setup from .env
   screenshots                   Refresh launch screenshots
@@ -185,6 +192,7 @@ Examples:
   npm run agora -- verify
   npm run agora -- verify --quick
   npm run agora -- verify --supabase
+  npm run agora -- recovery
   npm run agora -- screenshots
   npm run agora -- golden
   npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
