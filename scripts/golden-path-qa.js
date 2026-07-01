@@ -34,6 +34,9 @@ const checks = [
     height: 712,
     required: [
       "Project template library",
+      "Recommended first template",
+      "Client Onboarding",
+      "Create Client Project",
       "Template marketplace",
       "Create Customized Project",
       "Import shared template JSON"
@@ -46,6 +49,9 @@ const checks = [
     height: 712,
     required: [
       "Template marketplace",
+      "Recommended first automation pack",
+      "Agency Client Handoff",
+      "Install Recommended Pack",
       "Install workflow packs",
       "Validation",
       "Creator",
@@ -60,8 +66,12 @@ const checks = [
     width: 1265,
     height: 712,
     required: [
+      "Recovery confidence",
+      "Know you can leave and restore",
+      "CLI inspect",
       "Portable workspace OS",
       "Download Bundle",
+      "Create Backup",
       "Import bundle",
       "Preview Bundle"
     ]
