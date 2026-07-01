@@ -50,12 +50,14 @@ These make Agora more credible for real teams and contributors.
 - Strengthen API persistence around conflict handling, record-level sync, and migration safety.
 - Expand accessibility verification across keyboard-only use, focus states, color contrast, reduced motion, and screen reader landmarks.
 - Improve mobile and tablet flows for Today, Board, Inbox, Marketplace, and Settings.
+- Validate the optional Electron desktop shell on macOS and Windows with signed release requirements documented.
 
 ## Later
 
 These are larger bets after the core self-hosted path is stable.
 
 - Native mobile apps or a deeper mobile wrapper around the PWA.
+- Signed Windows and macOS desktop release pipeline with auto-update strategy.
 - Integration adapters for Slack, GitHub, Google Drive, Google Calendar, Zapier, and custom webhooks.
 - Plugin or extension strategy for self-hosters.
 - Theme marketplace/export support.

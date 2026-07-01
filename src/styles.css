@@ -911,7 +911,8 @@ textarea:focus {
 }
 
 .landing-problem-grid,
-.landing-signal-stack {
+.landing-signal-stack,
+.landing-choice-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
@@ -919,6 +920,7 @@ textarea:focus {
 
 .landing-problem-grid article,
 .landing-signal-stack article,
+.landing-choice-grid article,
 .landing-no-ads {
   padding: 20px;
   background: rgba(247, 245, 239, 0.08);
@@ -962,6 +964,30 @@ textarea:focus {
 
 .landing-signal-stack span {
   color: rgba(247, 245, 239, 0.72);
+}
+
+.landing-choice {
+  padding-top: 34px;
+}
+
+.landing-choice-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.landing-choice-grid article {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.landing-choice-grid span {
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.landing-choice-grid p {
+  margin: 0;
+  font-size: 0.94rem;
 }
 
 .landing-no-ads {
@@ -6124,6 +6150,10 @@ body[data-density="compact"] .main-content {
     grid-template-columns: 1fr;
   }
 
+  .landing-choice-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .landing-hero {
     min-height: 720px;
     background-position: 58% center;
@@ -6472,12 +6502,14 @@ body[data-density="compact"] .main-content {
   }
 
   .landing-problem-grid,
-  .landing-signal-stack {
+  .landing-signal-stack,
+  .landing-choice-grid {
     grid-template-columns: 1fr;
   }
 
   .landing-problem-grid article,
   .landing-signal-stack article,
+  .landing-choice-grid article,
   .landing-no-ads {
     padding: 18px;
   }

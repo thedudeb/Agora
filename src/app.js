@@ -9405,6 +9405,35 @@ function renderLandingPage() {
         </div>
       </section>
 
+      <section class="landing-section landing-choice">
+        <div>
+          <p class="eyebrow">Why teams choose Agora</p>
+          <h2>Project clarity with ownership built in.</h2>
+        </div>
+        <div class="landing-choice-grid">
+          <article>
+            <span>Own your data</span>
+            <p>Export portable bundles, keep local backups, connect the API when ready, and use Supabase without surrendering the workspace.</p>
+          </article>
+          <article>
+            <span>No ads</span>
+            <p>Agora is built as team infrastructure, not an attention surface, behavioral feed, or upsell maze.</p>
+          </article>
+          <article>
+            <span>Client-ready</span>
+            <p>Company views, portals, approvals, reports, and time tracking support agencies and multi-client teams.</p>
+          </article>
+          <article>
+            <span>AI with receipts</span>
+            <p>Operator actions are permissioned, previewable, logged with rationale, and designed with undo paths where possible.</p>
+          </article>
+          <article>
+            <span>Open marketplace</span>
+            <p>Project templates and automation packs move as JSON, with creator, pricing, and charity payout metadata.</p>
+          </article>
+        </div>
+      </section>
+
       <section class="landing-section landing-no-ads">
         <div>
           <p class="eyebrow">The promise</p>

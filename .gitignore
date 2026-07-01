@@ -8,6 +8,7 @@ build/
 .next/
 out/
 server/data/
+desktop/release/
 
 # Environment
 .env
