@@ -13,6 +13,8 @@ const checkFiles = [
   "server/env.js",
   "server/smoke-test.js",
   "server/mcp-integration-test.js",
+  "server/migration-importer.js",
+  "server/migration-importer-test.js",
   "server/supabase-verify.js",
   "server/portable-fixtures-test.js",
   "scripts/recovery-stress-test.js",
@@ -52,6 +54,10 @@ const commands = {
   mcp: {
     summary: "Run the MCP server integration test",
     run: async () => runStep("MCP integration test", [process.execPath, [path.join(ROOT, "server", "mcp-integration-test.js")]])
+  },
+  importers: {
+    summary: "Validate migration importer planning and apply behavior",
+    run: async () => runStep("migration importer test", [process.execPath, [path.join(ROOT, "server", "migration-importer-test.js")]])
   },
   supabase: {
     summary: "Verify a real Supabase project from .env",
@@ -106,6 +112,7 @@ const commands = {
       await commands.check.run([]);
       await commands.fixtures.run([]);
       await commands.recovery.run([]);
+      await commands.importers.run([]);
       if (includeApi) await commands.api.run([]);
       else console.log("Skipping API smoke test because --quick was passed.");
       if (includeApi) await commands.mcp.run([]);
@@ -183,6 +190,7 @@ Commands:
   recovery                      Stress-test backup/import/restore semantics
   api                           Run API smoke test
   mcp                           Run MCP integration test
+  importers                     Validate migration importer behavior
   supabase                      Verify real Supabase setup from .env
   screenshots                   Refresh launch screenshots
   golden                        Run onboarding/golden-path browser QA
