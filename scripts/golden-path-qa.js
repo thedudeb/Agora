@@ -11,6 +11,7 @@ const HOST = process.env.AGORA_GOLDEN_HOST || "127.0.0.1";
 const BASE_URL = process.env.AGORA_GOLDEN_BASE_URL || "";
 const CHROME_TIMEOUT_MS = Number(process.env.AGORA_GOLDEN_TIMEOUT_MS || 60000);
 const ROUTE_WAIT_MS = Number(process.env.AGORA_GOLDEN_WAIT_MS || 5000);
+const ARTIFACT_DIR = process.env.AGORA_GOLDEN_ARTIFACT_DIR || "";
 
 const staticChecks = [
   {
@@ -264,30 +265,42 @@ async function main() {
 
   try {
     for (const check of staticChecks) {
-      const response = await requestUrlWithBody(`${server.baseUrl}${check.path}`);
-      assertStaticSurface(check, response);
-      console.log(`Passed ${check.name}`);
+      let response = null;
+      try {
+        response = await requestUrlWithBody(`${server.baseUrl}${check.path}`);
+        assertStaticSurface(check, response);
+        console.log(`Passed ${check.name}`);
+      } catch (error) {
+        writeStaticFailureArtifact(check, response, error);
+        throw error;
+      }
     }
 
     for (const check of routeChecks) {
       const url = buildRouteUrl(server.baseUrl, check);
-      const dom = await runChrome(chromePath, [
-        "--headless=new",
-        "--disable-gpu",
-        "--force-device-scale-factor=1",
-        "--high-dpi-support=1",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--disable-extensions",
-        "--disable-background-networking",
-        "--run-all-compositor-stages-before-draw",
-        `--window-size=${check.width},${check.height}`,
-        `--virtual-time-budget=${ROUTE_WAIT_MS}`,
-        "--dump-dom",
-        url
-      ]);
-      assertGoldenPath(check, dom);
-      console.log(`Passed ${check.name} [${check.suite}]`);
+      let dom = "";
+      try {
+        dom = await runChrome(chromePath, [
+          "--headless=new",
+          "--disable-gpu",
+          "--force-device-scale-factor=1",
+          "--high-dpi-support=1",
+          "--no-first-run",
+          "--no-default-browser-check",
+          "--disable-extensions",
+          "--disable-background-networking",
+          "--run-all-compositor-stages-before-draw",
+          `--window-size=${check.width},${check.height}`,
+          `--virtual-time-budget=${ROUTE_WAIT_MS}`,
+          "--dump-dom",
+          url
+        ]);
+        assertGoldenPath(check, dom);
+        console.log(`Passed ${check.name} [${check.suite}]`);
+      } catch (error) {
+        await writeRouteFailureArtifacts(chromePath, check, url, dom, error);
+        throw error;
+      }
     }
   } finally {
     await server.stop();
@@ -367,6 +380,82 @@ function errorSnippet(dom) {
   const markerIndex = text.toLowerCase().indexOf("could not render");
   const start = markerIndex === -1 ? 0 : Math.max(0, markerIndex - 80);
   return text.slice(start, start + 240);
+}
+
+function writeStaticFailureArtifact(check, response, error) {
+  if (!ARTIFACT_DIR) return;
+  const baseName = safeArtifactName(check.name);
+  const headers = response?.headers ? JSON.stringify(response.headers, null, 2) : "{}";
+  const body = response?.body || "";
+  writeArtifact(`${baseName}.txt`, [
+    `Check: ${check.name}`,
+    `Path: ${check.path}`,
+    `Error: ${error.message || error}`,
+    "",
+    "Headers:",
+    headers,
+    "",
+    "Body:",
+    body
+  ].join("\n"));
+}
+
+async function writeRouteFailureArtifacts(chromePath, check, url, dom, error) {
+  if (!ARTIFACT_DIR) return;
+  const baseName = safeArtifactName(check.name);
+  writeArtifact(`${baseName}.html`, dom || `<!-- No DOM captured: ${escapeComment(error.message || error)} -->`);
+  writeArtifact(`${baseName}.txt`, [
+    `Check: ${check.name}`,
+    `Suite: ${check.suite || ""}`,
+    `URL: ${url}`,
+    `Viewport: ${check.width}x${check.height}`,
+    `Error: ${error.message || error}`
+  ].join("\n"));
+
+  if (!dom) return;
+  const screenshotPath = path.join(artifactDirectory(), `${baseName}.png`);
+  try {
+    await runChrome(chromePath, [
+      "--headless=new",
+      "--disable-gpu",
+      "--force-device-scale-factor=1",
+      "--high-dpi-support=1",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--disable-extensions",
+      "--disable-background-networking",
+      "--hide-scrollbars",
+      "--run-all-compositor-stages-before-draw",
+      `--window-size=${check.width},${check.height}`,
+      `--virtual-time-budget=${ROUTE_WAIT_MS}`,
+      `--screenshot=${screenshotPath}`,
+      url
+    ]);
+  } catch (screenshotError) {
+    writeArtifact(`${baseName}-screenshot-error.txt`, screenshotError.message || String(screenshotError));
+  }
+}
+
+function artifactDirectory() {
+  const directory = path.resolve(ROOT, ARTIFACT_DIR);
+  fs.mkdirSync(directory, { recursive: true });
+  return directory;
+}
+
+function writeArtifact(fileName, content) {
+  fs.writeFileSync(path.join(artifactDirectory(), fileName), content);
+}
+
+function safeArtifactName(value) {
+  return String(value || "golden-path")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 80) || "golden-path";
+}
+
+function escapeComment(value) {
+  return String(value).replace(/--/g, "- -");
 }
 
 async function startStaticServer() {

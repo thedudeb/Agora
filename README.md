@@ -1,5 +1,7 @@
 # Agora
 
+[![QA](https://github.com/thedudeb/Agora/actions/workflows/qa.yml/badge.svg)](https://github.com/thedudeb/Agora/actions/workflows/qa.yml)
+
 Open source project management without ads, trackers, or lock-in.
 
 Agora is a self-hostable project management workspace inspired by tools like Asana and Nifty. It is designed for teams that need projects, tasks, clients, daily planning, approvals, automations, time tracking, and visibility while keeping control of their data and workflow.
@@ -100,6 +102,7 @@ npm start         # serve the browser app for a host/runtime
 npm run start:api # start the API for a host/runtime
 npm run mcp       # start the local stdio MCP server for power-user clients
 npm run check     # syntax-check app and server files
+npm run qa        # release QA: quick verification + browser golden-path QA
 npm run verify:quick # syntax + portable fixture validation + recovery stress test
 npm run verify    # syntax + fixtures + recovery + API smoke test
 npm run launch:check # quick verification + browser golden-path QA
@@ -111,6 +114,7 @@ npm run test:supabase # verify a real Supabase project end to end
 npm run verify:supabase # verify + real Supabase project checks
 npm run screenshots # refresh launch screenshots with local Chrome/Chromium
 npm run agora -- verify # power-user CLI: check + fixtures + API smoke
+npm run agora -- qa # power-user CLI: release QA gate
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json --json
 npm run agora -- launch check tests/fixtures/portable-workspace-bundle.json
@@ -151,6 +155,7 @@ npm run agora -- migrate preview jira-export.csv --source jira-csv
 Use this before pushing a release candidate:
 
 ```sh
+npm run qa
 npm run verify
 npm run launch:check
 ```

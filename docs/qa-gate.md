@@ -22,6 +22,14 @@ The same gate is available to power users through:
 npm run agora -- qa
 ```
 
+## CI Gate
+
+GitHub Actions runs the same release QA gate on pushes to `main`, pull requests into `main`, and manual workflow dispatches.
+
+Workflow: `.github/workflows/qa.yml`
+
+The CI job uses Node.js 20 and the runner's installed Chrome/Chromium. If browser QA fails, the workflow uploads `qa-artifacts` with the failing route DOM, metadata, and a screenshot when Chrome can capture one.
+
 ## Browser Coverage
 
 `npm run test:golden` starts the local static app and checks:

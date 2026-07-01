@@ -38,6 +38,8 @@ For the automated product gate, use [`qa-gate.md`](./qa-gate.md).
 
 ## 4. Verification Commands
 
+Confirm the GitHub Actions `QA` workflow is green for the commit being released.
+
 ```sh
 npm run qa
 npm run verify
