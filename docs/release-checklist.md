@@ -20,11 +20,13 @@ Use this checklist before tagging, deploying, or telling a team to run Agora in 
 
 ## 3. Supabase
 
+- Follow [`supabase-setup.md`](./supabase-setup.md) for the full setup and troubleshooting path.
 - Run `server/migrations/001_supabase_storage.sql`.
 - Run `server/migrations/002_supabase_auth_rls.sql`.
 - Create the private `agora-files` bucket.
 - Set `AGORA_STORAGE_DRIVER=supabase`, `AGORA_AUTH_DRIVER=supabase`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `AGORA_SUPABASE_STORAGE_BUCKET`.
 - Restart the API and verify Backend Health shows Supabase storage and Supabase Auth.
+- Confirm Backend Health shows Supabase environment credentials set, structured records reachable, file uploads configured, and production mode ready.
 - Run `npm run test:supabase` against a test workspace before pointing a real team at the project.
 
 ## 4. Verification Commands

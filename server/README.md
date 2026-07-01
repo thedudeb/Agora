@@ -56,6 +56,8 @@ Use `npm start` for hosted static app runtimes and `npm run start:api` for hoste
 
 Agora can use Supabase Postgres for API persistence without adding a Node dependency. The storage adapter talks to Supabase through PostgREST using server-only credentials.
 
+For the full setup and verification runbook, see [`../docs/supabase-setup.md`](../docs/supabase-setup.md).
+
 1. Create a Supabase project.
 2. Run [`migrations/001_supabase_storage.sql`](./migrations/001_supabase_storage.sql) and [`migrations/002_supabase_auth_rls.sql`](./migrations/002_supabase_auth_rls.sql) in the Supabase SQL editor.
 3. Set these values in `.env`:
@@ -87,7 +89,7 @@ To verify a real Supabase project end to end, run:
 npm run test:supabase
 ```
 
-The verifier starts a temporary Agora API server with Supabase storage, uses a unique `workspace_id` by default, and checks workspace snapshots, structured records, notification scheduler permissions, payment entitlements, audit events, and Supabase Storage upload/download. Set `AGORA_VERIFY_WORKSPACE_ID=agora-verify-your-name` if you want a stable verification workspace. The script is intentionally non-destructive and does not delete existing workspace rows.
+The verifier starts a temporary Agora API server with Supabase storage, uses a unique `workspace_id` by default, and checks workspace snapshots, Supabase Auth, structured records, notification scheduler permissions, payment entitlements, audit events, Supabase Storage upload/download, and Backend Health readiness. Set `AGORA_VERIFY_WORKSPACE_ID=agora-verify-your-name` if you want a stable verification workspace. The script is intentionally non-destructive and does not delete existing workspace rows.
 
 ## Endpoints
 

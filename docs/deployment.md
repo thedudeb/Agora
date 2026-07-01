@@ -31,6 +31,8 @@ Use HTTPS in front of both app and API in production. Keep `AGORA_ALLOWED_ORIGIN
 
 ## Supabase Persistence
 
+For the dedicated setup guide, troubleshooting table, and pre-launch gate, see [`supabase-setup.md`](./supabase-setup.md).
+
 1. Create a Supabase project.
 2. Run `server/migrations/001_supabase_storage.sql`.
 3. Run `server/migrations/002_supabase_auth_rls.sql`.
@@ -51,7 +53,16 @@ Never expose `SUPABASE_SERVICE_ROLE_KEY` in browser code or client settings. Ago
 
 With `AGORA_AUTH_DRIVER=supabase`, the Settings account form can sign users up or in with Supabase email/password auth through the Agora API server. The browser never needs Supabase service-role credentials; it only talks to Agora.
 
-After the migrations and bucket are ready, verify the real Supabase project through the Agora API:
+After the migrations and bucket are ready, restart the API, sign in again, then refresh Backend Health from Settings or Data. For Supabase-backed deployments, the health panel should show:
+
+- Storage: `supabase`
+- Auth: `supabase`
+- Supabase environment: URL set / anon key set / service role set
+- Structured records reachable
+- File uploads configured for the Supabase bucket
+- Production mode ready
+
+Then verify the real Supabase project through the Agora API:
 
 ```sh
 npm run test:supabase

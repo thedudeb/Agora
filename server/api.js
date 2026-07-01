@@ -786,6 +786,12 @@ function createServer(options = {}) {
 async function buildBackendHealth(storage, session) {
   const storageDriver = storage.driver || "json-file";
   const authDriver = authDriverLabel();
+  const supabaseUrl = cleanString(process.env.SUPABASE_URL || process.env.AGORA_SUPABASE_URL);
+  const supabaseAnonKey = cleanString(process.env.SUPABASE_ANON_KEY || process.env.AGORA_SUPABASE_ANON_KEY);
+  const supabaseServiceKey = cleanString(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.AGORA_SUPABASE_SERVICE_ROLE_KEY);
+  const bucket = supabaseStorageBucket();
+  const wantsSupabaseStorage = storageDriver === "supabase";
+  const wantsSupabaseAuth = authDriver === "supabase";
   const snapshotDocument = await storage.loadWorkspace();
   const snapshot = snapshotDocument?.snapshot || {};
   const collectionReports = await Promise.all(Object.entries(recordCollections).map(async ([key, config]) => {
@@ -820,19 +826,26 @@ async function buildBackendHealth(storage, session) {
       id: "storage-driver",
       label: "Storage driver",
       done: Boolean(storageDriver),
-      detail: storageDriver === "supabase" ? "Supabase adapter is active" : "Local JSON storage is active"
+      detail: wantsSupabaseStorage ? "Supabase adapter is active" : "Local JSON storage is active",
+      fix: wantsSupabaseStorage
+        ? "If records fail, confirm SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, and migration 001."
+        : "Set AGORA_STORAGE_DRIVER=supabase when you are ready to verify hosted persistence."
     },
     {
       id: "auth-driver",
       label: "Authentication driver",
       done: Boolean(authDriver),
-      detail: authDriver === "supabase" ? "Supabase Auth bearer tokens are accepted" : "Local/demo auth is active"
+      detail: wantsSupabaseAuth ? "Supabase Auth bearer tokens are accepted" : "Local/demo auth is active",
+      fix: wantsSupabaseAuth
+        ? "If sign-in fails, confirm SUPABASE_ANON_KEY and migration 002."
+        : "Set AGORA_AUTH_DRIVER=supabase for hosted email/password auth and bearer-token exchange."
     },
     {
       id: "workspace-snapshot",
       label: "Workspace snapshot",
       done: Boolean(snapshotDocument?.snapshot),
-      detail: snapshotDocument?.metadata?.updatedAt ? `Last saved ${snapshotDocument.metadata.updatedAt}` : "No saved API snapshot yet"
+      detail: snapshotDocument?.metadata?.updatedAt ? `Last saved ${snapshotDocument.metadata.updatedAt}` : "No saved API snapshot yet",
+      fix: "Save the workspace from Settings or Data after connecting to the API."
     },
     {
       id: "structured-records",
@@ -840,7 +853,10 @@ async function buildBackendHealth(storage, session) {
       done: failedCollections.length === 0,
       detail: failedCollections.length
         ? `${failedCollections.length} collection${failedCollections.length === 1 ? "" : "s"} need attention`
-        : `${collectionReports.length} collections are reachable`
+        : `${collectionReports.length} collections are reachable`,
+      fix: failedCollections.length
+        ? `Check migration 001 and service-role table access. First failing collection: ${failedCollections[0]?.label || failedCollections[0]?.key}.`
+        : "Structured collection reads are passing."
     },
     {
       id: "client-scope",
@@ -852,15 +868,19 @@ async function buildBackendHealth(storage, session) {
       id: "auth-hardening",
       label: "Auth hardening",
       done: !envFlag("AGORA_DEMO_AUTH", false) && !envFlag("AGORA_PASSWORDLESS_AUTH", false),
-      detail: "Demo and passwordless auth are opt-in, sessions expire, and public auth endpoints are rate limited"
+      detail: "Demo and passwordless auth are opt-in, sessions expire, and public auth endpoints are rate limited",
+      fix: "Keep AGORA_DEMO_AUTH=false and AGORA_PASSWORDLESS_AUTH=false outside trusted demos."
     },
     {
       id: "file-uploads",
       label: "File uploads",
       done: true,
-      detail: storageDriver === "supabase"
-        ? `Supabase Storage bucket ${supabaseStorageBucket()} is configured for uploads`
-        : "Local API uploads are stored outside browser local storage"
+      detail: wantsSupabaseStorage
+        ? `Supabase Storage bucket ${bucket} is configured for uploads`
+        : "Local API uploads are stored outside browser local storage",
+      fix: wantsSupabaseStorage
+        ? `Create a private Supabase Storage bucket named ${bucket}, then run npm run test:supabase.`
+        : "Set AGORA_SUPABASE_STORAGE_BUCKET when switching uploads to Supabase."
     },
     {
       id: "audit-log",
@@ -874,15 +894,26 @@ async function buildBackendHealth(storage, session) {
       done: true,
       detail: envFlag("AGORA_SCHEDULER_ENABLED", false)
         ? "API scheduler worker is enabled"
-        : "Scheduler endpoints are available for cron or manual runs"
+        : "Scheduler endpoints are available for cron or manual runs",
+      fix: "Use AGORA_SCHEDULER_ENABLED=true for the API worker, or call the scheduler endpoint from trusted cron."
     },
     {
       id: "production-mode",
       label: "Production mode",
-      done: storageDriver === "supabase" && authDriver === "supabase",
-      detail: storageDriver === "supabase" && authDriver === "supabase"
+      done: wantsSupabaseStorage && wantsSupabaseAuth,
+      detail: wantsSupabaseStorage && wantsSupabaseAuth
         ? "Supabase storage and Supabase Auth are both active"
-        : "Set AGORA_STORAGE_DRIVER=supabase and AGORA_AUTH_DRIVER=supabase for production mode"
+        : "Set AGORA_STORAGE_DRIVER=supabase and AGORA_AUTH_DRIVER=supabase for production mode",
+      fix: "After changing drivers, restart npm run dev:api, sign in again, refresh Backend Health, then run npm run test:supabase."
+    },
+    {
+      id: "supabase-environment",
+      label: "Supabase environment",
+      done: !wantsSupabaseStorage && !wantsSupabaseAuth ? true : Boolean(supabaseUrl && supabaseAnonKey && supabaseServiceKey),
+      detail: !wantsSupabaseStorage && !wantsSupabaseAuth
+        ? "Supabase credentials are not required for local JSON mode"
+        : `${supabaseUrl ? "URL set" : "URL missing"} / ${supabaseAnonKey ? "anon key set" : "anon key missing"} / ${supabaseServiceKey ? "service role set" : "service role missing"}`,
+      fix: "Set SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY in .env. Keep the service role key server-only."
     }
   ];
 

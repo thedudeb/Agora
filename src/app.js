@@ -14589,6 +14589,7 @@ function renderBackendChecklist() {
           <div>
             <strong>${escapeHtml(item.label)}</strong>
             <p>${escapeHtml(item.detail || "")}</p>
+            ${item.fix && !item.done ? `<small>${escapeHtml(item.fix)}</small>` : ""}
           </div>
         </article>
       `).join("")}

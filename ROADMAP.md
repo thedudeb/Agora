@@ -34,7 +34,7 @@ These are the highest-priority areas before a broader public launch.
 - Keep tightening landing-page proof around no ads, self-hosting, portable exports, client work, and auditable AI.
 - Keep README scanning sharp with refreshed screenshots, quick feature blocks, and a clear "who this is for" section.
 - Keep local setup boring: `cp .env.example .env`, `npm run dev`, `npm run dev:api`, `npm run check`, `npm run test:api`.
-- Make Supabase setup easier to validate from docs and Backend Health.
+- Keep Supabase setup validation current as migrations, Backend Health, and the verifier evolve.
 - Add issue templates for bug reports, feature proposals, templates, automations, and docs improvements.
 - Expand fixture tests for portable bundles, marketplace packs, and import/export behavior.
 

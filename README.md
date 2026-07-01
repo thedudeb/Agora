@@ -108,11 +108,13 @@ To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`
 
 Demo auth and passwordless email login are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true` or `AGORA_PASSWORDLESS_AUTH=true` and restart `npm run dev:api`.
 
-For the public product direction, see [`ROADMAP.md`](./ROADMAP.md) and [`CONTRIBUTING.md`](./CONTRIBUTING.md). For security reporting and deployment hardening, see [`SECURITY.md`](./SECURITY.md). For deployment details, Vercel static hosting, Supabase Storage setup, SMTP/webhook password reset delivery, desktop app packaging, and release checks, see [`docs/deployment.md`](./docs/deployment.md) and [`docs/desktop-app.md`](./docs/desktop-app.md). For marketing positioning, launch copy, and screenshot planning, see [`docs/marketing-strategy.md`](./docs/marketing-strategy.md), [`docs/launch-kit.md`](./docs/launch-kit.md), and [`docs/screenshot-demo-plan.md`](./docs/screenshot-demo-plan.md). For a repeatable pre-release gate, see [`docs/release-checklist.md`](./docs/release-checklist.md). For portable bundle structure and restore details, see [`docs/portable-workspace.md`](./docs/portable-workspace.md).
+For the public product direction, see [`ROADMAP.md`](./ROADMAP.md) and [`CONTRIBUTING.md`](./CONTRIBUTING.md). For security reporting and deployment hardening, see [`SECURITY.md`](./SECURITY.md). For deployment details, Vercel static hosting, Supabase setup, SMTP/webhook password reset delivery, desktop app packaging, and release checks, see [`docs/deployment.md`](./docs/deployment.md), [`docs/supabase-setup.md`](./docs/supabase-setup.md), and [`docs/desktop-app.md`](./docs/desktop-app.md). For marketing positioning, launch copy, and screenshot planning, see [`docs/marketing-strategy.md`](./docs/marketing-strategy.md), [`docs/launch-kit.md`](./docs/launch-kit.md), and [`docs/screenshot-demo-plan.md`](./docs/screenshot-demo-plan.md). For a repeatable pre-release gate, see [`docs/release-checklist.md`](./docs/release-checklist.md). For portable bundle structure and restore details, see [`docs/portable-workspace.md`](./docs/portable-workspace.md).
 
 ## Supabase Storage
 
 Agora works out of the box with local JSON API storage. To use Supabase for API persistence:
+
+For the full step-by-step path, troubleshooting table, and pre-launch gate, see [`docs/supabase-setup.md`](./docs/supabase-setup.md).
 
 1. Create a Supabase project.
 2. Run `server/migrations/001_supabase_storage.sql` and `server/migrations/002_supabase_auth_rls.sql` in the Supabase SQL editor.
