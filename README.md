@@ -101,6 +101,7 @@ npm run start:api # start the API for a host/runtime
 npm run check     # syntax-check app and server files
 npm run test:api  # run the dependency-free API smoke test
 npm run test:fixtures # validate portable workspace and automation pack fixtures
+npm run test:golden # browser-check onboarding, marketplace, templates, and portable recovery
 npm run test:supabase # verify a real Supabase project end to end
 npm run screenshots # refresh launch screenshots with local Chrome/Chromium
 npm run agora -- verify # power-user CLI: check + fixtures + API smoke
@@ -118,6 +119,7 @@ npm run agora -- verify
 npm run agora -- verify --quick
 npm run agora -- verify --supabase
 npm run agora -- screenshots
+npm run agora -- golden
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
 npm run agora -- marketplace validate templates/marketplace.json
 ```

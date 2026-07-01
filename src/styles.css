@@ -1490,6 +1490,63 @@ body[data-tutorial-target="view"] #app-view {
   border-radius: 6px;
 }
 
+.golden-path-panel {
+  margin-bottom: 16px;
+}
+
+.golden-path-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.golden-path-card {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.golden-path-card.is-done {
+  border-color: rgba(62, 109, 66, 0.35);
+}
+
+.golden-path-card > span {
+  width: fit-content;
+  min-height: 24px;
+  padding: 3px 8px;
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  background: var(--accent-soft);
+  border-radius: 999px;
+}
+
+.golden-path-card.is-done > span {
+  color: #ffffff;
+  background: var(--green);
+}
+
+.golden-path-card strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.golden-path-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.golden-path-card .button {
+  justify-self: start;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -6404,6 +6461,7 @@ body[data-density="compact"] .main-content {
   .dashboard-grid,
   .dashboard-widget-picker,
   .dashboard-layout-controls,
+  .golden-path-grid,
   .readiness-grid,
   .daily-hero,
   .daily-layout,
@@ -6715,6 +6773,7 @@ body[data-density="compact"] .main-content {
   .dashboard-grid,
   .dashboard-widget-picker,
   .dashboard-layout-controls,
+  .golden-path-grid,
   .readiness-grid,
   .shortcuts-grid,
   .daily-hero,

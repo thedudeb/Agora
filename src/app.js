@@ -2105,6 +2105,9 @@ function updateActiveWorkspaceRegistryFromState() {
 }
 
 function normalizeState(nextState) {
+  const companies = Array.isArray(nextState.companies) ? nextState.companies : seedData.companies;
+  const projects = Array.isArray(nextState.projects) ? nextState.projects : seedData.projects;
+  const tasks = Array.isArray(nextState.tasks) ? nextState.tasks : seedData.tasks;
   return {
     ...nextState,
     selectedInviteToken: nextState.selectedInviteToken || "",
@@ -2177,10 +2180,10 @@ function normalizeState(nextState) {
     automations: normalizeAutomations(nextState.automations),
     automationHistory: Array.isArray(nextState.automationHistory) ? nextState.automationHistory : [],
     operatorActions: Array.isArray(nextState.operatorActions) ? nextState.operatorActions : [],
-    companies: nextState.companies.map(normalizeCompanyRecord),
-    projects: nextState.projects.map(normalizeProjectRecord),
-    goals: normalizeGoals(nextState.goals, nextState.projects, nextState.companies),
-    tasks: nextState.tasks.map(normalizeTaskRecord)
+    companies: companies.map(normalizeCompanyRecord),
+    projects: projects.map(normalizeProjectRecord),
+    goals: normalizeGoals(nextState.goals, projects, companies),
+    tasks: tasks.map(normalizeTaskRecord)
   };
 }
 
@@ -3863,6 +3866,76 @@ function renderTeamLaunchChecklistPanel() {
   `;
 }
 
+function goldenPathItems() {
+  const installedMarketplaceTemplates = marketplaceProjectTemplates.filter((template) => state.projectTemplates.some((item) => item.id === template.id || item.name.toLowerCase() === template.name.toLowerCase()));
+  const installedAutomationPacks = automationMarketplacePacks.filter(automationMarketplaceInstalled);
+  const backups = loadWorkspaceBackups();
+  const hasPortableEvidence = Boolean(state.portableImportPreview)
+    || backups.length > 0
+    || state.auditEvents.some((event) => event.action === "workspace_export");
+  return [
+    {
+      id: "template-project",
+      eyebrow: "Golden path 1",
+      title: "Create a client project from a template",
+      detail: installedMarketplaceTemplates.length
+        ? `${installedMarketplaceTemplates.length} marketplace template${installedMarketplaceTemplates.length === 1 ? "" : "s"} installed`
+        : `${state.projectTemplates.length} starter template${state.projectTemplates.length === 1 ? "" : "s"} ready`,
+      done: activeProjects().length > 0 && state.projectTemplates.length > 0,
+      commandId: "route:templates",
+      actionLabel: "Open Templates"
+    },
+    {
+      id: "automation-pack",
+      eyebrow: "Golden path 2",
+      title: "Install marketplace workflows",
+      detail: installedAutomationPacks.length
+        ? `${installedAutomationPacks.length} automation pack${installedAutomationPacks.length === 1 ? "" : "s"} installed`
+        : `${automationMarketplacePacks.length} workflow pack${automationMarketplacePacks.length === 1 ? "" : "s"} available`,
+      done: installedAutomationPacks.length > 0 || state.automations.some((automation) => automation.source === "marketplace" || automation.source === "imported"),
+      commandId: "route:marketplace",
+      actionLabel: "Open Marketplace"
+    },
+    {
+      id: "portable-recovery",
+      eyebrow: "Golden path 3",
+      title: "Export a recovery bundle",
+      detail: hasPortableEvidence
+        ? "Portable recovery has local evidence"
+        : "Download a portable bundle before serious imports or team rollout",
+      done: hasPortableEvidence,
+      commandId: "route:data",
+      actionLabel: "Open Data"
+    }
+  ];
+}
+
+function renderGoldenPathPanel() {
+  const items = goldenPathItems();
+  const doneCount = items.filter((item) => item.done).length;
+  return `
+    <section class="panel golden-path-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">First 5 minutes</p>
+          <h2>Prove the core loop</h2>
+        </div>
+        <span class="status-pill ${doneCount === items.length ? "inbox-green" : "inbox-amber"}">${doneCount}/${items.length}</span>
+      </div>
+      <div class="golden-path-grid">
+        ${items.map((item) => `
+          <article class="golden-path-card ${item.done ? "is-done" : "is-open"}">
+            <span>${escapeHtml(item.eyebrow)}</span>
+            <strong>${escapeHtml(item.title)}</strong>
+            <p>${escapeHtml(item.detail)}</p>
+            <button class="button button-secondary compact-button" type="button" data-command-id="${escapeHtml(item.commandId)}">${escapeHtml(item.actionLabel)}</button>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function activeTutorialStep() {
   const index = clamp(Number(state.tutorial?.step || 0), 0, tutorialSteps.length - 1);
   return {
@@ -5054,19 +5127,23 @@ function isProjectArchived(project) {
 }
 
 function isTaskArchived(task) {
-  return Boolean(task?.archivedAt || isProjectArchived(byId(state.projects, task?.projectId)));
+  const projects = Array.isArray(state.projects) ? state.projects : [];
+  return Boolean(task?.archivedAt || isProjectArchived(byId(projects, task?.projectId)));
 }
 
 function activeProjects() {
-  return state.projects.filter((project) => !isProjectArchived(project) && canAccessProject(project));
+  const projects = Array.isArray(state.projects) ? state.projects : [];
+  return projects.filter((project) => !isProjectArchived(project) && canAccessProject(project));
 }
 
 function activeTasks() {
-  return state.tasks.filter((task) => !isTaskArchived(task) && canAccessTask(task));
+  const tasks = Array.isArray(state.tasks) ? state.tasks : [];
+  return tasks.filter((task) => !isTaskArchived(task) && canAccessTask(task));
 }
 
 function visibleCompanies() {
-  return state.companies.filter((company) => canAccessCompany(company.id));
+  const companies = Array.isArray(state.companies) ? state.companies : [];
+  return companies.filter((company) => canAccessCompany(company.id));
 }
 
 function workspaceMembers() {
@@ -5589,7 +5666,8 @@ function csvValue(value) {
 
 function exportTasksCsv() {
   const headers = ["id", "title", "project", "company", "assignee", "status", "priority", "startDate", "dueDate", "blockedBy", "tags"];
-  const rows = state.tasks.map((task) => [
+  const tasks = Array.isArray(state.tasks) ? state.tasks : [];
+  const rows = tasks.map((task) => [
     task.id,
     task.title,
     projectName(task.projectId),
@@ -5608,8 +5686,10 @@ function exportTasksCsv() {
 
 function exportTimeCsv() {
   const headers = ["id", "date", "employee", "task", "project", "minutes", "billable", "note"];
-  const rows = state.timeEntries.map((entry) => {
-    const task = byId(state.tasks, entry.taskId);
+  const tasks = Array.isArray(state.tasks) ? state.tasks : [];
+  const timeEntries = Array.isArray(state.timeEntries) ? state.timeEntries : [];
+  const rows = timeEntries.map((entry) => {
+    const task = byId(tasks, entry.taskId);
     return [
       entry.id,
       entry.date,
@@ -5653,7 +5733,7 @@ function portableProjectMarkdown(project) {
     `Company: ${company?.name || "No company"}`,
     `Status: ${project.status}`,
     `Owner: ${memberName(project.owner)}`,
-    `Progress: ${projectProgress(project)}%`,
+    `Progress: ${projectProgress(projectTasks)}%`,
     "",
     "## Open Tasks",
     projectTasks.length ? projectTasks.map((task) => `- [${task.status === "done" ? "x" : " "}] ${task.title} / ${memberName(task.assignee)} / ${task.dueDate || "No due date"}`).join("\n") : "No tasks yet.",
@@ -5666,6 +5746,14 @@ function portableProjectMarkdown(project) {
 function portableWorkspaceManifest() {
   const snapshot = workspaceSnapshot();
   const ai = aiSettings();
+  const companies = Array.isArray(state.companies) ? state.companies : [];
+  const projects = Array.isArray(state.projects) ? state.projects : [];
+  const tasks = Array.isArray(state.tasks) ? state.tasks : [];
+  const automations = Array.isArray(state.automations) ? state.automations : [];
+  const projectTemplates = Array.isArray(state.projectTemplates) ? state.projectTemplates : [];
+  const documents = Array.isArray(state.documents) ? state.documents : [];
+  const files = Array.isArray(state.files) ? state.files : [];
+  const timeEntries = Array.isArray(state.timeEntries) ? state.timeEntries : [];
   return {
     type: "agora.portable-workspace",
     exportVersion: 1,
@@ -5679,15 +5767,15 @@ function portableWorkspaceManifest() {
       backendTarget: state.workspace.backendTarget
     },
     counts: {
-      companies: state.companies.length,
-      projects: state.projects.length,
-      tasks: state.tasks.length,
+      companies: companies.length,
+      projects: projects.length,
+      tasks: tasks.length,
       members: workspaceMembers().length,
-      automations: state.automations.length,
-      templates: state.projectTemplates.length,
-      documents: state.documents.length,
-      files: state.files.length,
-      timeEntries: state.timeEntries.length,
+      automations: automations.length,
+      templates: projectTemplates.length,
+      documents: documents.length,
+      files: files.length,
+      timeEntries: timeEntries.length,
       operatorActions: recentOperatorActions(50).length
     },
     portability: {
@@ -9189,6 +9277,7 @@ function render() {
   try {
     routeRenderers[state.selectedRoute]?.();
   } catch (error) {
+    console.error("Agora route render error", error);
     els.appView.innerHTML = `
       <section class="panel">
         <p class="eyebrow">View error</p>
@@ -9673,6 +9762,7 @@ function renderDashboard() {
 
   els.appView.innerHTML = `
     ${renderOnboardingPanel()}
+    ${renderGoldenPathPanel()}
     ${renderLaunchReadinessPanel()}
     ${renderTeamLaunchChecklistPanel()}
 

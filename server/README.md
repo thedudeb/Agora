@@ -63,11 +63,12 @@ npm run agora -- verify --quick
 npm run agora -- verify --supabase
 npm run agora -- api
 npm run agora -- screenshots
+npm run agora -- golden
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
 npm run agora -- marketplace validate templates/marketplace.json
 ```
 
-`verify` runs syntax checks, fixture validation, and the API smoke test. `--quick` skips the API smoke test, and `--supabase` includes the real Supabase verifier from `.env`. `bundle inspect` summarizes portable workspace exports, and `marketplace validate` checks project-template and automation-pack JSON before sharing it.
+`verify` runs syntax checks, fixture validation, and the API smoke test. `--quick` skips the API smoke test, and `--supabase` includes the real Supabase verifier from `.env`. `golden` browser-checks onboarding and core product paths. `bundle inspect` summarizes portable workspace exports, and `marketplace validate` checks project-template and automation-pack JSON before sharing it.
 
 ## Supabase Storage
 

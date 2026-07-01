@@ -15,6 +15,7 @@ const checkFiles = [
   "server/supabase-verify.js",
   "server/portable-fixtures-test.js",
   "scripts/capture-screenshots.js",
+  "scripts/golden-path-qa.js",
   "scripts/agora-cli.js",
   "desktop/electron/main.cjs",
   "desktop/electron/preload.cjs"
@@ -48,6 +49,10 @@ const commands = {
   screenshots: {
     summary: "Refresh launch screenshots with local Chrome/Chromium",
     run: async () => runStep("screenshot capture", [process.execPath, [path.join(ROOT, "scripts", "capture-screenshots.js")]])
+  },
+  golden: {
+    summary: "Run browser QA for onboarding and golden paths",
+    run: async () => runStep("golden path QA", [process.execPath, [path.join(ROOT, "scripts", "golden-path-qa.js")]])
   },
   bundle: {
     summary: "Inspect portable workspace bundles",
@@ -151,6 +156,7 @@ Commands:
   api                           Run API smoke test
   supabase                      Verify real Supabase setup from .env
   screenshots                   Refresh launch screenshots
+  golden                        Run onboarding/golden-path browser QA
   bundle inspect <file>         Inspect a portable workspace bundle
   marketplace validate <file>   Validate marketplace/template/automation JSON
   help                          Show this help
@@ -164,6 +170,7 @@ Examples:
   npm run agora -- verify --quick
   npm run agora -- verify --supabase
   npm run agora -- screenshots
+  npm run agora -- golden
   npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
   npm run agora -- marketplace validate templates/marketplace.json
 `);
