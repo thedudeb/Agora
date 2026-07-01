@@ -276,6 +276,33 @@ const paymentProviderOptions = [
 
 const paymentCurrencyOptions = ["USD", "USDC", "CAD", "EUR", "GBP"];
 
+const paymentPlanOptions = [
+  {
+    id: "free",
+    label: "Free",
+    priceLabel: "$0/mo",
+    description: "For solo setup and small internal trials.",
+    limits: { members: 3, projects: 3, entitlements: 1 },
+    features: ["Workspace basics", "Public requests", "Manual exports"]
+  },
+  {
+    id: "team",
+    label: "Team",
+    priceLabel: "$29/mo",
+    description: "For active teams running client work in Agora.",
+    limits: { members: 15, projects: 25, entitlements: 10 },
+    features: ["Client portal", "Automation runs", "Priority imports"]
+  },
+  {
+    id: "agency",
+    label: "Agency",
+    priceLabel: "$99/mo",
+    description: "For multi-client operations and heavier governance.",
+    limits: { members: null, projects: null, entitlements: null },
+    features: ["Unlimited scale", "Advanced audit", "Dedicated launch support"]
+  }
+];
+
 const entitlementSourceOptions = [
   { id: "test", label: "Test grant" },
   { id: "manual", label: "Manual grant" },
@@ -979,6 +1006,7 @@ const seedData = {
     },
     payments: {
       provider: "none",
+      planId: "free",
       currency: "USD",
       spendingCapCents: 0,
       marketplacePayments: false,
@@ -2615,11 +2643,13 @@ function normalizeTemplatePayout(template = {}) {
 function normalizeWorkspacePayments(payments = {}) {
   const fallback = seedData.workspace.payments;
   const provider = paymentProviderOptions.some((item) => item.id === payments.provider) ? payments.provider : fallback.provider;
+  const planId = paymentPlanOptions.some((item) => item.id === payments.planId) ? payments.planId : fallback.planId || "free";
   const currency = paymentCurrencyOptions.includes(payments.currency) ? payments.currency : fallback.currency;
   const spendingCapCents = Math.max(0, Math.round(Number(payments.spendingCapCents) || 0));
   const audit = Array.isArray(payments.audit) ? payments.audit : fallback.audit;
   return {
     provider,
+    planId,
     currency,
     spendingCapCents,
     marketplacePayments: provider !== "none" && Boolean(payments.marketplacePayments),
@@ -4542,7 +4572,19 @@ function renderAiProviderChecklist(ai) {
 
 function renderPaymentsSettingsPanel(payments) {
   const canManagePayments = canWrite("payments:write");
+  const currentPlan = paymentPlan(payments.planId);
   return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Plans</p>
+          <h2>Billing catalog</h2>
+        </div>
+        <span class="status-pill inbox-blue">${escapeHtml(currentPlan.label)}</span>
+      </div>
+      ${renderPaymentPlanCatalog(payments)}
+    </section>
+
     <section class="panel">
       <div class="panel-header">
         <div>
@@ -4552,6 +4594,12 @@ function renderPaymentsSettingsPanel(payments) {
         <span class="status-pill ${payments.provider === "none" ? "inbox-neutral" : "inbox-blue"}">${escapeHtml(paymentProviderLabel(payments.provider))}</span>
       </div>
       <div class="settings-form">
+        <label>
+          <span>Plan</span>
+          <select id="payment-plan" ${canManagePayments ? "" : "disabled"}>
+            ${paymentPlanOptions.map((option) => `<option value="${option.id}" ${option.id === payments.planId ? "selected" : ""}>${escapeHtml(option.label)} - ${escapeHtml(option.priceLabel)}</option>`).join("")}
+          </select>
+        </label>
         <label>
           <span>Provider</span>
           <select id="payment-provider" ${canManagePayments ? "" : "disabled"}>
@@ -4623,9 +4671,58 @@ function renderPaymentsSettingsPanel(payments) {
   `;
 }
 
+function renderPaymentPlanCatalog(payments) {
+  const usage = paymentUsageSnapshot(payments);
+  return `
+    <div class="payment-plan-grid">
+      ${paymentPlanOptions.map((plan) => {
+        const selected = plan.id === payments.planId;
+        return `
+          <article class="payment-plan-card ${selected ? "is-selected" : ""}">
+            <div class="payment-plan-card-header">
+              <div>
+                <strong>${escapeHtml(plan.label)}</strong>
+                <span>${escapeHtml(plan.description)}</span>
+              </div>
+              <b>${escapeHtml(plan.priceLabel)}</b>
+            </div>
+            <div class="payment-limit-list">
+              ${renderPaymentLimit("Members", usage.members, plan.limits.members)}
+              ${renderPaymentLimit("Active projects", usage.projects, plan.limits.projects)}
+              ${renderPaymentLimit("Paid grants", usage.entitlements, plan.limits.entitlements)}
+            </div>
+            <div class="payment-plan-features">
+              ${plan.features.map((feature) => `<span>${escapeHtml(feature)}</span>`).join("")}
+            </div>
+          </article>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderPaymentLimit(label, used, limit) {
+  const percent = paymentLimitPercent(used, limit);
+  return `
+    <div class="payment-limit-row">
+      <div>
+        <span>${escapeHtml(label)}</span>
+        <strong>${escapeHtml(paymentLimitStatus(used, limit))}</strong>
+      </div>
+      <i style="--limit-percent: ${percent}%"></i>
+    </div>
+  `;
+}
+
 function renderPaymentsChecklist(payments) {
   const providerActive = payments.provider !== "none";
+  const plan = paymentPlan(payments.planId);
   const items = [
+    {
+      label: "Plan selected",
+      done: Boolean(plan),
+      detail: `${plan.label} catalog limits are visible before provider wiring.`
+    },
     {
       label: "Provider chosen",
       done: providerActive,
@@ -5099,6 +5196,28 @@ function applyOperatorPermissionPreset(presetId) {
 
 function paymentSettings() {
   return normalizeWorkspacePayments(state.workspace?.payments);
+}
+
+function paymentPlan(planId = paymentSettings().planId) {
+  return paymentPlanOptions.find((plan) => plan.id === planId) || paymentPlanOptions[0];
+}
+
+function paymentUsageSnapshot(payments = paymentSettings()) {
+  return {
+    members: Array.isArray(members) ? members.length : 0,
+    projects: activeProjects().length,
+    entitlements: payments.entitlements.filter((entitlement) => entitlementIsActive(entitlement)).length
+  };
+}
+
+function paymentLimitStatus(used, limit) {
+  if (limit === null || limit === undefined) return "Unlimited";
+  return `${used.toLocaleString()} / ${limit.toLocaleString()}`;
+}
+
+function paymentLimitPercent(used, limit) {
+  if (!limit) return 100;
+  return clamp(Math.round((used / limit) * 100), 0, 100);
 }
 
 function paymentEntitlements() {
@@ -15658,7 +15777,10 @@ function renderDataManagement() {
             </article>
           </div>
           <p class="settings-help">This importer creates missing projects, maps common task fields, and keeps a backup before changing the workspace. It is intentionally conservative so messy exports do not overwrite existing work.</p>
-          <button class="button button-primary" type="button" id="switcher-import-button">Preview Import</button>
+          <div class="data-actions import-actions">
+            <button class="button button-secondary" type="button" id="switcher-sample-csv">Copy Sample CSV</button>
+            <button class="button button-primary" type="button" id="switcher-import-button">Preview Import</button>
+          </div>
         </div>
         ${renderSwitcherImportPreview()}
         ${renderSwitcherImportRollback()}
@@ -15747,6 +15869,7 @@ function renderSwitcherImportPreview() {
         ${metric("Skipped", preview.stats.skipped)}
         ${metric("Confidence", `${preview.stats.confidence}%`)}
       </div>
+      ${renderSwitcherImportReport(preview)}
       <div class="switcher-mapping-panel">
         <div>
           <span class="status-pill inbox-${confidenceTone}">${preview.stats.confidence >= 80 ? "Strong mapping" : preview.stats.confidence >= 55 ? "Review mapping" : "Low confidence"}</span>
@@ -15771,6 +15894,32 @@ function renderSwitcherImportPreview() {
         <button class="button button-primary" type="button" id="switcher-apply-preview">Apply Import</button>
         <button class="button button-secondary" type="button" id="switcher-clear-preview">Clear Preview</button>
       </div>
+    </div>
+  `;
+}
+
+function renderSwitcherImportReport(preview) {
+  const expectedChange = preview.mode === "new-workspace"
+    ? "Creates a separate workspace from the import preview."
+    : `Adds ${preview.stats.tasks} tasks and ${preview.stats.projects} new projects to this workspace.`;
+  const warningLabel = preview.warnings.length ? `${preview.warnings.length} warnings` : "No warnings";
+  return `
+    <div class="switcher-report-grid">
+      <article>
+        <span>Apply mode</span>
+        <strong>${preview.mode === "new-workspace" ? "New workspace" : "Merge"}</strong>
+        <small>${escapeHtml(expectedChange)}</small>
+      </article>
+      <article>
+        <span>Field coverage</span>
+        <strong>${preview.stats.mappedFields} mapped</strong>
+        <small>${escapeHtml(preview.mappedFields.join(", ") || "No known fields detected.")}</small>
+      </article>
+      <article>
+        <span>Review load</span>
+        <strong>${escapeHtml(warningLabel)}</strong>
+        <small>${preview.stats.skipped ? `${preview.stats.skipped} skipped rows need source cleanup.` : "No skipped rows in this preview."}</small>
+      </article>
     </div>
   `;
 }
@@ -19619,12 +19768,14 @@ function savePaymentSettings() {
     return;
   }
   const provider = document.querySelector("#payment-provider")?.value || "none";
+  const planId = document.querySelector("#payment-plan")?.value || "free";
   const currency = document.querySelector("#payment-currency")?.value || "USD";
   const capValue = Number(document.querySelector("#payment-spending-cap")?.value || 0);
   const spendingCapCents = Math.max(0, Math.round(capValue * 100));
   const nextPayments = normalizeWorkspacePayments({
     ...paymentSettings(),
     provider,
+    planId,
     currency,
     spendingCapCents,
     marketplacePayments: document.querySelector("#payment-marketplace")?.checked,
@@ -19639,7 +19790,7 @@ function savePaymentSettings() {
     currency: nextPayments.currency,
     amountCents: nextPayments.spendingCapCents,
     status: "saved",
-    note: `${paymentProviderLabel(nextPayments.provider)} configured for ${nextPayments.currency}`,
+    note: `${paymentPlan(nextPayments.planId).label} plan with ${paymentProviderLabel(nextPayments.provider)} configured for ${nextPayments.currency}`,
     createdAt: new Date().toISOString()
   };
 
@@ -19652,7 +19803,7 @@ function savePaymentSettings() {
   };
   addAuditEvent({
     action: "payment_settings_update",
-    detail: `Payments set to ${paymentProviderLabel(nextPayments.provider)} with ${formatPaymentAmount(nextPayments.spendingCapCents, nextPayments.currency)} cap`
+    detail: `Payments set to ${paymentPlan(nextPayments.planId).label} / ${paymentProviderLabel(nextPayments.provider)} with ${formatPaymentAmount(nextPayments.spendingCapCents, nextPayments.currency)} cap`
   });
   saveState();
   render();
@@ -19897,6 +20048,29 @@ function importSwitcherPayload() {
     showToast(`Preview ready: ${preview.stats.tasks} tasks`, "success");
   } catch (error) {
     showToast(`Import failed: ${error.message}`, "info");
+  }
+}
+
+function switcherSampleCsvPayload() {
+  return [
+    "title,project,status,priority,due_date,assignee,description",
+    "\"Launch checklist\",\"Client Portal\",\"In Progress\",\"High\",\"2026-07-15\",\"Mara Ortiz\",\"Confirm portal copy and handoff tasks.\"",
+    "\"Import legacy backlog\",\"Migration\",\"Todo\",\"Normal\",\"2026-07-18\",\"Sam Patel\",\"Move approved backlog items into Agora.\""
+  ].join("\n");
+}
+
+function copySwitcherSampleCsv() {
+  const payload = switcherSampleCsvPayload();
+  const textarea = document.querySelector("#switcher-import-payload");
+  if (textarea && !textarea.value.trim()) {
+    textarea.value = payload;
+  }
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(payload)
+      .then(() => showToast("Sample CSV copied", "success"))
+      .catch(() => showToast("Sample CSV added to the import box", "info"));
+  } else {
+    showToast("Sample CSV added to the import box", "info");
   }
 }
 
@@ -21942,6 +22116,12 @@ document.addEventListener("click", (event) => {
   const switcherImportButton = event.target.closest("#switcher-import-button");
   if (switcherImportButton) {
     importSwitcherPayload();
+    return;
+  }
+
+  const switcherSampleButton = event.target.closest("#switcher-sample-csv");
+  if (switcherSampleButton) {
+    copySwitcherSampleCsv();
     return;
   }
 

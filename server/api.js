@@ -12,6 +12,7 @@ loadEnvFile();
 
 const PORT = Number(process.env.AGORA_API_PORT || 8787);
 const BODY_LIMIT_BYTES = 15 * 1024 * 1024;
+const PUBLIC_FEATURE_BODY_LIMIT_BYTES = positiveNumber(process.env.AGORA_PUBLIC_FEATURE_BODY_LIMIT_BYTES, 24 * 1024);
 const UPLOAD_LIMIT_BYTES = 10 * 1024 * 1024;
 const PASSWORD_KEY_LENGTH = 64;
 const PASSWORD_SCRYPT_COST = 16384;
@@ -636,7 +637,7 @@ function createServer(options = {}) {
           return;
         }
         assertRateLimit(request, "public-feature-request", PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS, PUBLIC_FEATURE_RATE_LIMIT_WINDOW_MS);
-        const body = await readJsonBody(request);
+        const body = await readJsonBody(request, PUBLIC_FEATURE_BODY_LIMIT_BYTES);
         if (cleanString(body.website || body.url || body.companyWebsite)) {
           sendJson(response, 202, { ok: true, accepted: false });
           return;
@@ -1541,6 +1542,7 @@ function paymentConfig() {
   return {
     mode: "test",
     testMode: true,
+    plans: paymentPlanCatalog(),
     providers: [
       {
         id: "test",
@@ -1572,6 +1574,35 @@ function paymentConfig() {
       }
     ]
   };
+}
+
+function paymentPlanCatalog() {
+  return [
+    {
+      id: "free",
+      label: "Free",
+      priceCents: 0,
+      interval: "month",
+      limits: { members: 3, projects: 3, entitlements: 1 },
+      features: ["Workspace basics", "Public requests", "Manual exports"]
+    },
+    {
+      id: "team",
+      label: "Team",
+      priceCents: 2900,
+      interval: "month",
+      limits: { members: 15, projects: 25, entitlements: 10 },
+      features: ["Client portal", "Automation runs", "Priority imports"]
+    },
+    {
+      id: "agency",
+      label: "Agency",
+      priceCents: 9900,
+      interval: "month",
+      limits: { members: null, projects: null, entitlements: null },
+      features: ["Unlimited scale", "Advanced audit", "Dedicated launch support"]
+    }
+  ];
 }
 
 function queryProjects(projects, searchParams) {
@@ -4412,20 +4443,23 @@ function publicError(statusCode, message) {
   throw error;
 }
 
-function readJsonBody(request) {
+function readJsonBody(request, limitBytes = BODY_LIMIT_BYTES) {
   return new Promise((resolve, reject) => {
     let raw = "";
+    let tooLarge = false;
     request.on("data", (chunk) => {
+      if (tooLarge) return;
       raw += chunk;
-      if (Buffer.byteLength(raw) > BODY_LIMIT_BYTES) {
+      if (Buffer.byteLength(raw) > limitBytes) {
+        tooLarge = true;
         const error = new Error("Request body is too large");
         error.statusCode = 413;
         error.publicMessage = "Request body is too large";
         reject(error);
-        request.destroy();
       }
     });
     request.on("end", () => {
+      if (tooLarge) return;
       if (!raw) {
         resolve({});
         return;

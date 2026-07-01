@@ -172,6 +172,7 @@ async function run() {
     });
     assert(paymentConfig.providers.some((provider) => provider.id === "test" && provider.live === true), "payment config did not expose test adapter");
     assert(paymentConfig.providers.some((provider) => provider.id === "x402"), "payment config did not expose x402 adapter stub");
+    assert(paymentConfig.plans.some((plan) => plan.id === "team" && plan.limits.projects === 25), "payment config did not expose plan catalog");
 
     const blockedMemberPayment = await requestError(`${baseUrl}/api/payments/checkout-intent`, {
       method: "POST",
@@ -472,6 +473,19 @@ async function run() {
     });
     assert(publicFeatureRequest.task.tags.includes("public"), "public feature request task failed");
     assert(publicFeatureRequest.email.delivered === false, "public feature request email should be skipped without SMTP");
+
+    const oversizedPublicFeatureRequest = await requestError(`${baseUrl}/api/public/feature-requests`, {
+      method: "POST",
+      body: {
+        projectId: "project-smoke",
+        title: "Oversized public feedback",
+        details: "x".repeat(30000),
+        requester: "Public Tester",
+        email: "oversized-public@example.test",
+        impact: "nice-to-have"
+      }
+    });
+    assert(oversizedPublicFeatureRequest.status === 413, "oversized public feature request should be rejected");
 
     const pagedTasks = await request(`${baseUrl}/api/tasks?projectId=project-smoke&limit=1&offset=0`, {
       token: login.token

@@ -3942,6 +3942,10 @@ body[data-tutorial-target="view"] #app-view {
   justify-self: end;
 }
 
+.settings-form .data-actions {
+  grid-column: 1 / -1;
+}
+
 .toggle-row {
   display: flex;
   gap: 10px;
@@ -3964,6 +3968,92 @@ body[data-tutorial-target="view"] #app-view {
   margin: 0;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.payment-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.payment-plan-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.payment-plan-card.is-selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.payment-plan-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.payment-plan-card-header div,
+.payment-limit-list,
+.payment-plan-features {
+  display: grid;
+  gap: 6px;
+}
+
+.payment-plan-card-header span,
+.payment-limit-row span,
+.payment-plan-card small {
+  color: var(--muted);
+}
+
+.payment-plan-card-header b {
+  color: var(--accent-strong);
+}
+
+.payment-limit-row {
+  display: grid;
+  gap: 5px;
+}
+
+.payment-limit-row div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.payment-limit-row i {
+  display: block;
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  background: var(--surface);
+  border-radius: 999px;
+}
+
+.payment-limit-row i::before {
+  display: block;
+  width: var(--limit-percent);
+  height: 100%;
+  content: "";
+  background: var(--accent);
+}
+
+.payment-plan-features {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.payment-plan-features span {
+  padding: 6px 8px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .integrations-hub-panel {
@@ -4485,6 +4575,33 @@ body[data-tutorial-target="view"] #app-view {
   margin: 0;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.switcher-report-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.switcher-report-grid article {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.switcher-report-grid span {
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.switcher-report-grid small {
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .switcher-warning-list {
@@ -7110,6 +7227,8 @@ body[data-density="compact"] .main-content {
   .collab-hub-grid,
   .live-collaboration-grid,
   .audit-risk-grid,
+  .payment-plan-grid,
+  .switcher-report-grid,
   .switcher-safety-grid,
   .settings-grid,
   .data-grid,
@@ -7556,6 +7675,9 @@ body[data-density="compact"] .main-content {
   .settings-form,
   .settings-section-account .api-sync-form,
   .entitlement-grant-form,
+  .payment-plan-grid,
+  .payment-plan-features,
+  .switcher-report-grid,
   .access-summary-grid,
   .integration-grid,
   .integration-summary-grid,

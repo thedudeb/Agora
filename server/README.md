@@ -151,7 +151,7 @@ The verifier starts a temporary Agora API server with Supabase storage, uses a u
 - `GET /api/invitations/:token`: returns public invitation details for an invite acceptance screen.
 - `POST /api/invitations/:token/accept`: accepts an invitation and creates a session. Body: `{ "name": "Jordan Lee", "password": "optional 8+ characters" }`.
 - `GET /api/public/feature-requests`: returns the public feature request form configuration.
-- `POST /api/public/feature-requests`: creates a public feature-request task and sends an owner email when feature-request SMTP is configured.
+- `POST /api/public/feature-requests`: creates a public feature-request task and sends an owner email when feature-request SMTP is configured. Public submissions are capped by `AGORA_PUBLIC_FEATURE_BODY_LIMIT_BYTES`.
 - `GET /api/records`: returns structured collections from the active storage adapter. When no structured rows exist yet, the response includes `snapshotFallback` for bootstrap compatibility.
 - `GET /api/records/:collection`: returns a structured collection such as `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, `presence`, `chatMessages`, `whiteboards`, `notificationSettings`, `notificationReminders`, `notificationHistory`, `inboxState`, or `integrationSettings`. Supports `?limit=...`, `?offset=...`, and filters like `?projectId=...`, `?taskId=...`, `?companyId=...`, and `?memberId=...`.
 - `POST /api/records/:collection`: creates or updates one structured record for supported collections. Writes are checked server-side against the authenticated session scope, project, task, company relationships, and member-owned fields. Clients can respond to existing approvals but cannot create new approval records.

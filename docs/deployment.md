@@ -21,6 +21,7 @@ AGORA_ALLOWED_ORIGINS=https://your-agora-app.example.com
 AGORA_PUBLIC_APP_URL=https://your-agora-app.example.com
 AGORA_EMAIL_FROM=Agora <no-reply@your-domain.example>
 AGORA_FEATURE_REQUEST_EMAIL=owner@your-domain.example
+AGORA_PUBLIC_FEATURE_BODY_LIMIT_BYTES=24576
 AGORA_SESSION_TTL_SECONDS=28800
 AGORA_INVITATION_TTL_DAYS=14
 AGORA_PASSWORD_RESET_TTL_MINUTES=30
@@ -104,7 +105,7 @@ Only sessions with `scheduler:run` can process due reminders. Keep cron credenti
 
 Agora supports reset-token creation and confirmation through the API. Production deployments should deliver reset tokens through SMTP or a webhook-backed email workflow.
 
-Feature requests use the same SMTP settings. Set `AGORA_FEATURE_REQUEST_EMAIL` to receive an email whenever the in-app or public feature request form saves a task. The shareable public form lives at `#feedback` on your deployed app URL. Set `AGORA_PUBLIC_FEATURE_REQUESTS=false` to turn the public form API off, and tune public abuse limits with `AGORA_PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS` and `AGORA_PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS`.
+Feature requests use the same SMTP settings. Set `AGORA_FEATURE_REQUEST_EMAIL` to receive an email whenever the in-app or public feature request form saves a task. The shareable public form lives at `#feedback` on your deployed app URL. Set `AGORA_PUBLIC_FEATURE_REQUESTS=false` to turn the public form API off, and tune public abuse limits with `AGORA_PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS`, `AGORA_PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS`, and `AGORA_PUBLIC_FEATURE_BODY_LIMIT_BYTES`.
 
 Feature request emails are queued through persisted background job state. JSON deployments store this in `background-jobs.json`; Supabase deployments store it in `agora_background_jobs` after migration `003_background_jobs.sql`. Tune queue pressure and retry timing with:
 
