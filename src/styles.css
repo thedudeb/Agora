@@ -3018,12 +3018,74 @@ body[data-tutorial-target="view"] #app-view {
   gap: 10px;
 }
 
+.real-project-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .project-command-grid article,
+.real-project-grid article,
+.project-raid-panel,
+.raid-item,
 .mobile-roadmap-list article {
   padding: 10px;
   background: var(--surface-strong);
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.real-project-grid article {
+  display: grid;
+  gap: 5px;
+}
+
+.real-project-grid article > span {
+  justify-self: start;
+  padding: 4px 7px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  background: var(--surface);
+  border-radius: 999px;
+}
+
+.real-project-grid article.is-done > span {
+  color: #ffffff;
+  background: var(--green);
+}
+
+.real-project-grid small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.project-raid-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  background: var(--surface);
+}
+
+.project-raid-list {
+  display: grid;
+  gap: 8px;
+}
+
+.raid-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.raid-item p,
+.raid-item small {
+  display: block;
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .workload-report-row {
@@ -7297,6 +7359,7 @@ body[data-density="compact"] .main-content {
   .portal-grid,
   .client-portal-grid,
   .project-command-grid,
+  .real-project-grid,
   .integration-grid,
   .integration-summary-grid,
   .capacity-summary-grid,
@@ -7761,6 +7824,7 @@ body[data-density="compact"] .main-content {
   .operator-preset-list,
   .onboarding-grid,
   .project-command-grid,
+  .real-project-grid,
   .mobile-roadmap-list,
   .invite-form,
   .invite-accept-form,

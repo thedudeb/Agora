@@ -1152,6 +1152,50 @@ const seedData = {
       createdAt: "2026-06-28T12:30:00.000Z"
     }
   ],
+  raidItems: [
+    {
+      id: "raid-client-scope",
+      type: "risk",
+      projectId: "client-delivery",
+      companyId: "northstar-labs",
+      title: "Client kickoff scope may expand after discovery",
+      detail: "Stakeholders are still adding asks after the initial onboarding plan.",
+      owner: "sam",
+      severity: "high",
+      status: "open",
+      mitigation: "Confirm acceptance criteria and route additions through the approval packet.",
+      dueDate: "2026-07-10",
+      createdAt: "2026-07-05T09:00:00.000Z"
+    },
+    {
+      id: "raid-launch-email",
+      type: "assumption",
+      projectId: "launch",
+      companyId: "acme-studio",
+      title: "SMTP will be configured before public feedback launch",
+      detail: "Owner/requester updates depend on hosted email delivery being ready.",
+      owner: "mara",
+      severity: "medium",
+      status: "watching",
+      mitigation: "Keep feature request status visible in-app until email verification passes.",
+      dueDate: "2026-07-12",
+      createdAt: "2026-07-05T09:20:00.000Z"
+    },
+    {
+      id: "raid-design-density-decision",
+      type: "decision",
+      projectId: "design-system",
+      companyId: "brightline-health",
+      title: "Use compact cards for dense delivery boards",
+      detail: "Client prefers more tasks visible per board column for weekly review.",
+      owner: "nina",
+      severity: "medium",
+      status: "decided",
+      mitigation: "Apply compact density preset and document the client-facing board layout.",
+      dueDate: "2026-07-09",
+      createdAt: "2026-07-06T11:30:00.000Z"
+    }
+  ],
   companies: [
     {
       id: "acme-studio",
@@ -2222,6 +2266,7 @@ function normalizeState(nextState) {
     chatMessages: normalizeChatMessages(nextState.chatMessages),
     whiteboards: normalizeWhiteboards(nextState.whiteboards),
     approvals: Array.isArray(nextState.approvals) ? nextState.approvals : seedData.approvals,
+    raidItems: normalizeRaidItems(nextState.raidItems),
     customFields: Array.isArray(nextState.customFields) ? nextState.customFields : seedData.customFields,
     documents: Array.isArray(nextState.documents) ? nextState.documents : seedData.documents,
     files: Array.isArray(nextState.files) ? nextState.files : seedData.files,
@@ -2451,6 +2496,34 @@ function normalizeWhiteboards(whiteboards = []) {
     }))
     .filter((board) => board.title)
     .slice(0, 20);
+}
+
+function normalizeRaidItems(items = []) {
+  const source = Array.isArray(items) ? items : seedData.raidItems || [];
+  return source
+    .filter((item) => item && typeof item === "object")
+    .map((item) => {
+      const type = ["risk", "assumption", "issue", "decision", "change"].includes(item.type) ? item.type : "risk";
+      const severity = ["low", "medium", "high", "critical"].includes(item.severity) ? item.severity : "medium";
+      const status = ["open", "watching", "mitigating", "decided", "closed"].includes(item.status) ? item.status : "open";
+      return {
+        id: item.id || uid("raid"),
+        type,
+        projectId: String(item.projectId || ""),
+        companyId: String(item.companyId || ""),
+        title: String(item.title || "Untitled RAID item").trim().slice(0, 140),
+        detail: String(item.detail || "").trim().slice(0, 280),
+        owner: members.some((member) => member.id === item.owner) ? item.owner : currentMemberId,
+        severity,
+        status,
+        mitigation: String(item.mitigation || "").trim().slice(0, 280),
+        dueDate: item.dueDate || "",
+        createdAt: item.createdAt || new Date().toISOString(),
+        updatedAt: item.updatedAt || item.createdAt || new Date().toISOString()
+      };
+    })
+    .filter((item) => item.title)
+    .slice(0, 200);
 }
 
 function normalizeIntegrationConnection(connection = {}) {
@@ -3881,10 +3954,17 @@ function launchReadinessItems() {
   const backups = loadWorkspaceBackups();
   const enabledAutomations = state.automations.filter((automation) => automation.enabled);
   const docsAndFiles = state.documents.length + state.files.length;
+  const realProject = realProjectReadinessItems();
   const hasTeamAccess = state.memberships.filter((membership) => membership.status !== "revoked").length > 1
     || state.invitations.some((invitation) => invitation.status === "pending");
   const backendReady = apiSession && backendReadinessItems().every((item) => item.done);
   return [
+    {
+      label: "Real project mode",
+      detail: `${realProject.filter((item) => item.done).length}/${realProject.length} PM gates ready`,
+      done: realProject.every((item) => item.done),
+      commandId: "route:dashboard"
+    },
     {
       label: "Workspace setup",
       detail: `${setup.done}/${setup.total} setup steps complete`,
@@ -3926,6 +4006,54 @@ function launchReadinessItems() {
       detail: docsAndFiles ? `${docsAndFiles} docs/files in the workspace` : "Add docs or files for project context",
       done: docsAndFiles > 0,
       commandId: "route:docs"
+    }
+  ];
+}
+
+function realProjectTarget() {
+  const selected = byId(state.projects, state.selectedProject);
+  if (selected && !isProjectArchived(selected)) return selected;
+  return activeProjects()[0] || null;
+}
+
+function realProjectReadinessItems(project = realProjectTarget()) {
+  const backups = loadWorkspaceBackups();
+  const hasRecoveryEvidence = backups.length > 0 || state.auditEvents.some((event) => event.action === "workspace_export");
+  const projectTasks = project ? getProjectTasks(project.id, false) : [];
+  const projectRaid = project ? projectRaidItems(project.id) : [];
+  const projectApprovals = project ? state.approvals.filter((approval) => approval.projectId === project.id && approval.status !== "approved") : [];
+  const hasScopedClient = project ? state.memberships.some((membership) => membership.role === "client" && membership.companyId === project.companyId && membership.status !== "revoked") : false;
+  const hasClientPreview = project ? projectApprovals.length > 0 || state.documents.some((document) => document.projectId === project.id) || state.files.some((file) => file.projectId === project.id) : false;
+  return [
+    {
+      label: "API source of truth",
+      done: Boolean(apiSession),
+      detail: apiSession ? apiConnectionLabel() : "Connect API before making Agora the project record."
+    },
+    {
+      label: "Recovery exported",
+      done: hasRecoveryEvidence,
+      detail: hasRecoveryEvidence ? "Backup or portable export evidence exists." : "Create a backup or portable bundle before kickoff."
+    },
+    {
+      label: "Project has work",
+      done: Boolean(project && projectTasks.length),
+      detail: project ? `${projectTasks.length} task${projectTasks.length === 1 ? "" : "s"} in ${project.name}.` : "Create or select a project."
+    },
+    {
+      label: "RAID tracked",
+      done: projectRaid.some((item) => item.status !== "closed"),
+      detail: projectRaid.length ? `${projectRaid.length} risks, assumptions, issues, decisions, or changes tracked.` : "Capture at least one RAID/decision item."
+    },
+    {
+      label: "Client preview safe",
+      done: hasScopedClient || hasClientPreview,
+      detail: hasScopedClient ? "A client role is company-scoped." : hasClientPreview ? "Client-facing approvals or assets exist for preview." : "Scope a client or stage client-facing assets."
+    },
+    {
+      label: "Status report ready",
+      done: Boolean(project && projectTasks.some((task) => task.status !== "done")),
+      detail: project ? "Reports can generate a project status packet." : "Select a project before the first shareout."
     }
   ];
 }
@@ -12413,25 +12541,35 @@ function renderProjectCommandCenter(project, details) {
   const projectApprovals = state.approvals.filter((approval) => approval.projectId === project.id && approval.status !== "approved");
   const projectDocs = state.documents.filter((document) => document.projectId === project.id);
   const projectFiles = state.files.filter((file) => file.projectId === project.id);
+  const raidItems = projectRaidItems(project.id);
+  const openRaidItems = raidItems.filter((item) => item.status !== "closed");
+  const readinessItems = realProjectReadinessItems(project);
+  const readinessDone = readinessItems.filter((item) => item.done).length;
   const blockedTasks = openTasks.filter(isTaskBlocked);
   const risks = [
     overdueTasks.length ? `${overdueTasks.length} overdue ${overdueTasks.length === 1 ? "task" : "tasks"}` : "",
     blockedTasks.length ? `${blockedTasks.length} blocked ${blockedTasks.length === 1 ? "task" : "tasks"}` : "",
     projectApprovals.length ? `${projectApprovals.length} approval ${projectApprovals.length === 1 ? "needs" : "items need"} attention` : "",
+    openRaidItems.filter((item) => ["risk", "issue", "change"].includes(item.type)).length ? `${openRaidItems.filter((item) => ["risk", "issue", "change"].includes(item.type)).length} RAID item${openRaidItems.length === 1 ? "" : "s"} open` : "",
     !nextMilestone ? "No upcoming milestone" : ""
   ].filter(Boolean);
   const nextTask = filteredProjectTasks
     .filter((task) => task.status !== "done")
     .sort((a, b) => operatorTaskScore(b) - operatorTaskScore(a))[0];
+  const nextRaid = openRaidItems
+    .sort((a, b) => raidSeverityScore(b) - raidSeverityScore(a) || cleanString(a.dueDate).localeCompare(cleanString(b.dueDate)))[0];
 
   return `
     <section class="panel project-command-panel">
       <div class="panel-header">
         <div>
           <p class="eyebrow">Command center</p>
-          <h2>PM snapshot</h2>
+          <h2>Project command center</h2>
         </div>
-        <button class="button button-secondary compact-button" type="button" data-project-tab="timeline">Open timeline</button>
+        <div class="inline-actions">
+          <button class="button button-secondary compact-button" type="button" data-route="reports">Open reports</button>
+          <button class="button button-secondary compact-button" type="button" data-project-tab="timeline">Open timeline</button>
+        </div>
       </div>
       <div class="project-command-grid">
         <article>
@@ -12440,22 +12578,130 @@ function renderProjectCommandCenter(project, details) {
           <p>${escapeHtml(nextTask ? operatorReasonForTask(nextTask) : "No active task is currently scoring as urgent.")}</p>
         </article>
         <article>
-          <span>Risks</span>
+          <span>Risk posture</span>
           <strong>${risks.length || "Clear"}</strong>
           <p>${escapeHtml(risks.join(" - ") || "No immediate overdue, blocked, or approval risk detected.")}</p>
         </article>
         <article>
-          <span>Client assets</span>
+          <span>RAID focus</span>
+          <strong>${escapeHtml(nextRaid?.title || "No open RAID item")}</strong>
+          <p>${escapeHtml(nextRaid ? `${raidTypeLabel(nextRaid.type)} / ${raidSeverityLabel(nextRaid.severity)} / ${nextRaid.mitigation || nextRaid.detail}` : "Capture risks, assumptions, issues, decisions, and changes before kickoff.")}</p>
+        </article>
+        <article>
+          <span>Approvals</span>
+          <strong>${projectApprovals.length}</strong>
+          <p>${escapeHtml(projectApprovals[0] ? `${projectApprovals[0].title} due ${formatDate(projectApprovals[0].dueDate)}` : "No open approval is blocking the project.")}</p>
+        </article>
+        <article>
+          <span>Milestone</span>
+          <strong>${escapeHtml(nextMilestone?.title || "No milestone")}</strong>
+          <p>${escapeHtml(nextMilestone ? `${milestoneStatusLabel(nextMilestone.status)} / due ${formatDate(nextMilestone.dueDate)}` : "Add a milestone to anchor delivery.")}</p>
+        </article>
+        <article>
+          <span>Client packet</span>
           <strong>${projectDocs.length + projectFiles.length}</strong>
           <p>${projectDocs.length} docs, ${projectFiles.length} files, ${projectApprovals.length} open approvals.</p>
         </article>
         <article>
           <span>Time</span>
           <strong>${formatDuration(trackedMinutes)}</strong>
-          <p>${escapeHtml(nextMilestone ? `Next milestone: ${nextMilestone.title}` : "Add a milestone to anchor delivery.")}</p>
+          <p>${openTasks.length} open tasks remain in this project.</p>
+        </article>
+        <article>
+          <span>Real project mode</span>
+          <strong>${readinessDone}/${readinessItems.length}</strong>
+          <p>${escapeHtml(readinessItems.find((item) => !item.done)?.detail || "Ready for a real project kickoff.")}</p>
         </article>
       </div>
+      ${renderRealProjectReadinessPanel(readinessItems)}
+      ${renderProjectRaidLog(project, raidItems)}
     </section>
+  `;
+}
+
+function projectRaidItems(projectId) {
+  return normalizeRaidItems(state.raidItems)
+    .filter((item) => item.projectId === projectId)
+    .sort((a, b) => raidSeverityScore(b) - raidSeverityScore(a) || cleanString(a.dueDate).localeCompare(cleanString(b.dueDate)));
+}
+
+function raidSeverityScore(item) {
+  return { critical: 4, high: 3, medium: 2, low: 1 }[item?.severity] || 0;
+}
+
+function raidSeverityLabel(severity) {
+  return { critical: "Critical", high: "High", medium: "Medium", low: "Low" }[severity] || "Medium";
+}
+
+function raidTypeLabel(type) {
+  return {
+    risk: "Risk",
+    assumption: "Assumption",
+    issue: "Issue",
+    decision: "Decision",
+    change: "Change"
+  }[type] || "Risk";
+}
+
+function milestoneStatusLabel(status) {
+  return {
+    planned: "Planned",
+    active: "Active",
+    completed: "Completed",
+    "at-risk": "At risk"
+  }[status] || statusLabel(status);
+}
+
+function raidTone(item) {
+  if (item.severity === "critical" || item.severity === "high" || item.type === "issue") return "red";
+  if (item.severity === "medium" || item.type === "change") return "amber";
+  if (item.type === "decision") return "blue";
+  return "green";
+}
+
+function renderRealProjectReadinessPanel(items) {
+  return `
+    <div class="real-project-panel">
+      <div class="real-project-grid">
+        ${items.map((item) => `
+          <article class="${item.done ? "is-done" : "is-open"}">
+            <span>${item.done ? "OK" : "Next"}</span>
+            <strong>${escapeHtml(item.label)}</strong>
+            <small>${escapeHtml(item.detail)}</small>
+          </article>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderProjectRaidLog(project, items) {
+  return `
+    <div class="project-raid-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">RAID and decisions</p>
+          <h3>${items.length} tracked ${items.length === 1 ? "item" : "items"}</h3>
+        </div>
+        <span class="status-pill ${items.some((item) => item.severity === "critical" || item.severity === "high") ? "inbox-red" : items.length ? "inbox-amber" : "inbox-green"}">${items.filter((item) => item.status !== "closed").length} open</span>
+      </div>
+      <div class="project-raid-list">
+        ${items.length ? items.map(renderRaidItem).join("") : emptyState(`${project.name} has no RAID items yet.`)}
+      </div>
+    </div>
+  `;
+}
+
+function renderRaidItem(item) {
+  return `
+    <article class="raid-item raid-${item.type}">
+      <span class="status-pill inbox-${raidTone(item)}">${escapeHtml(raidTypeLabel(item.type))}</span>
+      <div>
+        <strong>${escapeHtml(item.title)}</strong>
+        <p>${escapeHtml(item.detail || item.mitigation || "No detail captured yet.")}</p>
+        <small>${escapeHtml(raidSeverityLabel(item.severity))} / ${escapeHtml(item.status)} / Owner ${memberName(item.owner)}${item.dueDate ? ` / Due ${formatDate(item.dueDate)}` : ""}</small>
+      </div>
+    </article>
   `;
 }
 
@@ -13449,6 +13695,8 @@ function renderReports() {
   const blockedTasks = tasks.filter(isTaskBlocked);
   const overdueTasks = tasks.filter(isOverdue);
   const openIntake = submissions.filter((submission) => !submission.taskId);
+  const scopedProjectIds = new Set(projects.map((project) => project.id));
+  const openRaidItems = normalizeRaidItems(state.raidItems).filter((item) => scopedProjectIds.has(item.projectId) && item.status !== "closed");
   const averageHealth = projectRows.length
     ? Math.round(projectRows.reduce((total, row) => total + row.health, 0) / projectRows.length)
     : 100;
@@ -13460,6 +13708,7 @@ function renderReports() {
       ${metric("Health", `${averageHealth}%`)}
       ${metric("Open work", openTasks.length)}
       ${metric("Blocked", blockedTasks.length)}
+      ${metric("RAID", openRaidItems.length)}
       ${metric("Tracked", formatDuration(sumMinutes(timeEntries)))}
     </div>
 
@@ -13570,6 +13819,12 @@ function workspaceStatusReport({ projectRows, companyRows, openTasks, blockedTas
   const overloaded = workloadRows.filter((row) => row.status === "overloaded");
   const atRisk = workloadRows.filter((row) => row.status === "at-risk");
   const available = workloadRows.filter((row) => row.status === "available" || row.remainingMinutes > 240);
+  const scopedProjectIds = new Set(projectRows.map((row) => row.project.id));
+  const raidItems = normalizeRaidItems(state.raidItems)
+    .filter((item) => !scopedProjectIds.size || scopedProjectIds.has(item.projectId))
+    .filter((item) => item.status !== "closed")
+    .sort((a, b) => raidSeverityScore(b) - raidSeverityScore(a))
+    .slice(0, 6);
 
   return [
     `# ${state.workspace.name} Status Report`,
@@ -13591,6 +13846,9 @@ function workspaceStatusReport({ projectRows, companyRows, openTasks, blockedTas
     "",
     "## Company Snapshot",
     ...(topCompanies.length ? topCompanies.map((row) => `- ${row.company.name}: ${row.health}% health across ${row.projectCount} ${row.projectCount === 1 ? "project" : "projects"}.`) : ["- No matching companies."]),
+    "",
+    "## Risks, Assumptions, Issues, Decisions",
+    ...(raidItems.length ? raidItems.map((item) => `- ${raidTypeLabel(item.type)}: ${item.title} (${raidSeverityLabel(item.severity)}, ${item.status}, owner ${memberName(item.owner)}${item.dueDate ? `, due ${formatDate(item.dueDate)}` : ""}). ${item.mitigation || item.detail}`.trim()) : ["- No open RAID items match the current filters."]),
     "",
     "## Next Actions",
     ...(nextTasks.length ? nextTasks.map((task) => `- ${task.title}: ${operatorReasonForTask(task)} (${projectName(task.projectId)}).`) : ["- No open next actions match the current filters."])
