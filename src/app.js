@@ -4,6 +4,8 @@ const ACTIVE_WORKSPACE_ID_KEY = "agora.activeWorkspaceId.v1";
 const API_SESSION_KEY = "agora.api.session.v1";
 const SIDEBAR_STATE_KEY = "agora.sidebar.v1";
 const API_SYNC_QUEUE_KEY = "agora.api.syncQueue.v1";
+const CURRENT_WORKSPACE_SCHEMA_VERSION = 2;
+const WORKSPACE_EXPORT_VERSION = 1;
 const MAX_WORKSPACE_BACKUPS = 12;
 const REALTIME_POLL_MS = 30000;
 const API_BASE_URL = configuredApiBaseUrl();
@@ -836,6 +838,8 @@ const tutorialSteps = [
 ];
 
 const seedData = {
+  schemaVersion: CURRENT_WORKSPACE_SCHEMA_VERSION,
+  migrationHistory: [],
   selectedRoute: "landing",
   selectedProject: "all",
   selectedCompany: "all",
@@ -2131,20 +2135,176 @@ function refreshSmoothScroll() {
   window.requestAnimationFrame(() => lenis?.resize?.());
 }
 
+function workspaceSnapshotVersion(snapshot = {}) {
+  const version = Number(snapshot.schemaVersion || snapshot.workspace?.schemaVersion || 0);
+  return Number.isFinite(version) && version > 0 ? version : 0;
+}
+
+function normalizeMigrationHistory(history = []) {
+  if (!Array.isArray(history)) return [];
+  return history
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry) => ({
+      id: String(entry.id || `migration-${Date.now().toString(36)}`),
+      fromVersion: Number(entry.fromVersion || 0),
+      toVersion: Number(entry.toVersion || CURRENT_WORKSPACE_SCHEMA_VERSION),
+      source: String(entry.source || "workspace").slice(0, 80),
+      applied: Array.isArray(entry.applied) ? entry.applied.map(String).filter(Boolean).slice(0, 12) : [],
+      createdAt: entry.createdAt || new Date().toISOString()
+    }))
+    .slice(0, 20);
+}
+
+function migrateWorkspaceSnapshot(snapshot = {}, options = {}) {
+  const source = snapshot && typeof snapshot === "object" ? structuredClone(snapshot) : {};
+  const fromVersion = workspaceSnapshotVersion(source);
+  let next = source;
+  const applied = [];
+
+  if (fromVersion < 1) {
+    next = migrateWorkspaceSnapshotToV1(next);
+    applied.push("v1-core-normalization");
+  }
+  if (fromVersion < 2) {
+    next = migrateWorkspaceSnapshotToV2(next);
+    applied.push("v2-offline-import-metadata");
+  }
+
+  const now = new Date().toISOString();
+  const history = normalizeMigrationHistory(next.migrationHistory);
+  return {
+    ...next,
+    schemaVersion: CURRENT_WORKSPACE_SCHEMA_VERSION,
+    exportVersion: next.exportVersion || WORKSPACE_EXPORT_VERSION,
+    migrationHistory: applied.length
+      ? [{
+          id: `migration-${now.replace(/[^0-9]/g, "")}`,
+          fromVersion,
+          toVersion: CURRENT_WORKSPACE_SCHEMA_VERSION,
+          source: options.source || "workspace",
+          applied,
+          createdAt: now
+        }, ...history].slice(0, 20)
+      : history
+  };
+}
+
+function migrateWorkspaceSnapshotToV1(snapshot = {}) {
+  const base = structuredClone(seedData);
+  const selectedCompany = snapshot.selectedCompany && snapshot.selectedCompany !== "all" ? snapshot.selectedCompany : "";
+  const comments = Array.isArray(snapshot.comments) ? [...snapshot.comments] : [];
+  const commentIds = new Set(comments.map((comment) => comment?.id).filter(Boolean));
+  const tasks = (Array.isArray(snapshot.tasks) ? snapshot.tasks : []).map((task, taskIndex) => {
+    const taskComments = Array.isArray(task.comments) ? task.comments : [];
+    taskComments.forEach((comment, commentIndex) => {
+      const normalizedComment = legacyTaskCommentRecord(task, comment, taskIndex, commentIndex);
+      if (normalizedComment && !commentIds.has(normalizedComment.id)) {
+        comments.push(normalizedComment);
+        commentIds.add(normalizedComment.id);
+      }
+    });
+    return migrateLegacyTaskRecord(task, taskIndex);
+  });
+  const projects = (Array.isArray(snapshot.projects) ? snapshot.projects : []).map(migrateLegacyProjectRecord);
+  return {
+    ...snapshot,
+    selectedRoute: snapshot.selectedRoute || base.selectedRoute,
+    selectedProject: snapshot.selectedProject || base.selectedProject,
+    selectedCompany: snapshot.selectedCompany || base.selectedCompany,
+    filters: {
+      ...base.filters,
+      ...(snapshot.filters || {}),
+      ...(selectedCompany && !snapshot.filters?.company ? { company: selectedCompany } : {})
+    },
+    workspace: {
+      ...base.workspace,
+      ...(snapshot.workspace || {}),
+      theme: {
+        ...base.workspace.theme,
+        ...((snapshot.workspace || {}).theme || {})
+      }
+    },
+    comments,
+    projects,
+    tasks
+  };
+}
+
+function migrateWorkspaceSnapshotToV2(snapshot = {}) {
+  return {
+    ...snapshot,
+    importHistory: Array.isArray(snapshot.importHistory) ? snapshot.importHistory : [],
+    migrationHistory: normalizeMigrationHistory(snapshot.migrationHistory),
+    offlineStorageContract: snapshot.offlineStorageContract && typeof snapshot.offlineStorageContract === "object"
+      ? snapshot.offlineStorageContract
+      : {
+          type: "agora.offline-storage-contract",
+          version: 1,
+          migratedAt: new Date().toISOString(),
+          note: "Generated during workspace schema migration. Export a fresh portable bundle for the full contract."
+        }
+  };
+}
+
+function migrateLegacyTaskRecord(task = {}, index = 0) {
+  const status = task.status || (task.done || task.completed ? "done" : task.inProgress ? "doing" : "todo");
+  const archivedAt = task.archivedAt || (task.archived ? task.updatedAt || task.createdAt || new Date().toISOString() : "");
+  return {
+    ...task,
+    id: task.id || `task-migrated-${index + 1}`,
+    title: task.title || task.name || `Migrated task ${index + 1}`,
+    status,
+    priority: task.priority || "normal",
+    tags: Array.isArray(task.tags) ? task.tags : String(task.tags || "").split(/[;,|]/).map((tag) => tag.trim()).filter(Boolean),
+    subtasks: Array.isArray(task.subtasks) ? task.subtasks : [],
+    dependencies: Array.isArray(task.dependencies) ? task.dependencies : [],
+    blockedBy: Array.isArray(task.blockedBy) ? task.blockedBy : [],
+    comments: [],
+    customFields: task.customFields && typeof task.customFields === "object" ? task.customFields : {},
+    archivedAt
+  };
+}
+
+function migrateLegacyProjectRecord(project = {}) {
+  return {
+    ...project,
+    id: project.id || `project-${slugFromName(project.name || "migrated")}`,
+    name: project.name || project.title || "Migrated project",
+    status: project.archived ? "archived" : project.status || "active",
+    archivedAt: project.archivedAt || (project.archived ? project.updatedAt || project.createdAt || new Date().toISOString() : "")
+  };
+}
+
+function legacyTaskCommentRecord(task = {}, comment = {}, taskIndex = 0, commentIndex = 0) {
+  const body = typeof comment === "string" ? comment : comment.body || comment.text || comment.message || "";
+  if (!String(body || "").trim()) return null;
+  const taskId = task.id || `task-migrated-${taskIndex + 1}`;
+  return {
+    id: comment.id || `comment-${taskId}-${commentIndex + 1}`,
+    projectId: comment.projectId || task.projectId || "",
+    taskId,
+    body,
+    author: comment.author || comment.memberId || task.assignee || currentMemberId,
+    kind: comment.kind || "note",
+    status: comment.status || "open",
+    createdAt: comment.createdAt || task.updatedAt || task.createdAt || new Date().toISOString()
+  };
+}
+
 function loadState() {
   const stored = workspaceStore.load();
-  if (!stored) return normalizeState(workspaceSnapshotForRegistry(registryWorkspace(activeWorkspaceId)));
+  if (!stored) return normalizeState(migrateWorkspaceSnapshot(workspaceSnapshotForRegistry(registryWorkspace(activeWorkspaceId)), { source: "workspace-registry" }));
 
   try {
     const parsed = JSON.parse(stored);
     const base = structuredClone(seedData);
-    return normalizeState({
+    return normalizeState(migrateWorkspaceSnapshot({
       ...base,
       ...parsed,
       filters: { ...base.filters, ...parsed.filters }
-    });
+    }, { source: "local-storage" }));
   } catch {
-    return normalizeState(structuredClone(seedData));
+    return normalizeState(migrateWorkspaceSnapshot(structuredClone(seedData), { source: "seed-fallback" }));
   }
 }
 
@@ -2183,11 +2343,11 @@ function workspaceSnapshotForRegistry(workspaceMeta) {
 
 function applyWorkspaceSnapshot(snapshot) {
   const base = structuredClone(seedData);
-  state = normalizeState({
+  state = normalizeState(migrateWorkspaceSnapshot({
     ...base,
     ...snapshot,
     filters: { ...base.filters, ...(snapshot.filters || {}) }
-  });
+  }, { source: "workspace-restore" }));
   saveState();
 }
 
@@ -2217,6 +2377,8 @@ function normalizeState(nextState) {
   const tasks = Array.isArray(nextState.tasks) ? nextState.tasks : seedData.tasks;
   return {
     ...nextState,
+    schemaVersion: CURRENT_WORKSPACE_SCHEMA_VERSION,
+    migrationHistory: normalizeMigrationHistory(nextState.migrationHistory),
     selectedInviteToken: nextState.selectedInviteToken || "",
     selectedSettingsTab: nextState.selectedSettingsTab || seedData.selectedSettingsTab,
     selectedCalendarMonth: nextState.selectedCalendarMonth || seedData.selectedCalendarMonth,
@@ -6860,9 +7022,10 @@ function visibleTaskCustomFields(task) {
 function workspaceSnapshot() {
   return {
     ...state,
+    schemaVersion: CURRENT_WORKSPACE_SCHEMA_VERSION,
     offlineStorageContract: offlineStorageContract(),
     exportedAt: new Date().toISOString(),
-    exportVersion: 1
+    exportVersion: WORKSPACE_EXPORT_VERSION
   };
 }
 
@@ -7224,7 +7387,8 @@ function portableWorkspaceManifest() {
   const timeEntries = Array.isArray(state.timeEntries) ? state.timeEntries : [];
   return {
     type: "agora.portable-workspace",
-    exportVersion: 1,
+    exportVersion: WORKSPACE_EXPORT_VERSION,
+    schemaVersion: CURRENT_WORKSPACE_SCHEMA_VERSION,
     exportedAt: snapshot.exportedAt,
     workspace: {
       id: state.workspace.id,
@@ -7279,6 +7443,7 @@ function portableWorkspaceReadme() {
     `# ${manifest.workspace.name} Portable Workspace`,
     "",
     `Exported: ${formatTimestamp(manifest.exportedAt)}`,
+    `Schema: v${manifest.schemaVersion}`,
     "",
     "## What Is Included",
     "",
@@ -7348,7 +7513,7 @@ function parsePortableWorkspaceInput(rawJson) {
   if (parsed?.type === "agora.portable-workspace" && Array.isArray(parsed.files)) {
     const workspaceFile = parsed.files.find((file) => file.path === "workspace.json" && file.kind === "json");
     if (!workspaceFile?.content) throw new Error("Portable bundle is missing workspace.json");
-    const snapshot = JSON.parse(workspaceFile.content);
+    const snapshot = migrateWorkspaceSnapshot(JSON.parse(workspaceFile.content), { source: "portable-bundle" });
     return {
       snapshot,
       sourceType: "portable-bundle",
@@ -7359,7 +7524,7 @@ function parsePortableWorkspaceInput(rawJson) {
   }
 
   return {
-    snapshot: parsed.snapshot && parsed.snapshot.workspace ? parsed.snapshot : parsed,
+    snapshot: migrateWorkspaceSnapshot(parsed.snapshot && parsed.snapshot.workspace ? parsed.snapshot : parsed, { source: "workspace-json" }),
     sourceType: "workspace-json",
     manifest: parsed.manifest || null,
     fileCount: 1,
@@ -17107,6 +17272,44 @@ function renderPortableRecoveryConfidencePanel() {
   `;
 }
 
+function renderWorkspaceSchemaPanel() {
+  const history = normalizeMigrationHistory(state.migrationHistory);
+  const latest = history[0];
+  return `
+    <section class="panel workspace-schema-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Compatibility</p>
+          <h2>Workspace schema</h2>
+        </div>
+        <span class="status-pill inbox-green">v${CURRENT_WORKSPACE_SCHEMA_VERSION}</span>
+      </div>
+      <div class="switcher-report-grid">
+        <article>
+          <span>Current schema</span>
+          <strong>v${Number(state.schemaVersion || CURRENT_WORKSPACE_SCHEMA_VERSION)}</strong>
+          <small>Used for local storage, imports, API snapshots, and portable bundles.</small>
+        </article>
+        <article>
+          <span>Export version</span>
+          <strong>${WORKSPACE_EXPORT_VERSION}</strong>
+          <small>Portable bundle format remains stable while schema migrations upgrade workspace data.</small>
+        </article>
+        <article>
+          <span>Last migration</span>
+          <strong>${latest ? `v${latest.fromVersion} -> v${latest.toVersion}` : "None"}</strong>
+          <small>${latest ? `${escapeHtml(latest.source)} / ${escapeHtml(formatTimestamp(latest.createdAt))}` : "This workspace already matches the current schema."}</small>
+        </article>
+        <article>
+          <span>History</span>
+          <strong>${history.length}</strong>
+          <small>${history.length ? history.slice(0, 2).flatMap((entry) => entry.applied).join(", ") : "No compatibility upgrades recorded."}</small>
+        </article>
+      </div>
+    </section>
+  `;
+}
+
 function renderDataManagement() {
   const taskCsv = exportTasksCsv();
   const timeCsv = exportTimeCsv();
@@ -17132,6 +17335,7 @@ function renderDataManagement() {
 
     ${renderPortableRecoveryConfidencePanel()}
     ${renderOfflineAppReadinessPanel()}
+    ${renderWorkspaceSchemaPanel()}
 
     <div class="data-grid">
       <section class="panel">
@@ -21610,7 +21814,7 @@ function importWorkspaceAsNewFromTextarea() {
 
 function importWorkspaceAsNewFromPayload(rawJson) {
   try {
-    const parsed = parsePortableWorkspaceInput(rawJson).snapshot;
+    const parsed = migrateWorkspaceSnapshot(parsePortableWorkspaceInput(rawJson).snapshot, { source: "new-workspace-import" });
     const sourceWorkspace = parsed.workspace || {};
     const workspaceName = `${sourceWorkspace.name || "Imported Workspace"} Import`;
     const workspaceId = uniqueWorkspaceId(workspaceName);
@@ -21632,7 +21836,7 @@ function importWorkspaceAsNewFromPayload(rawJson) {
     saveWorkspaceRegistry();
     activeWorkspaceId = workspaceId;
     saveActiveWorkspaceId(activeWorkspaceId);
-    state = normalizeState({
+    state = normalizeState(migrateWorkspaceSnapshot({
       ...base,
       ...parsed,
       selectedRoute: "dashboard",
@@ -21652,7 +21856,7 @@ function importWorkspaceAsNewFromPayload(rawJson) {
         dismissed: false,
         sampleMode: "import"
       }
-    });
+    }, { source: "new-workspace-import" }));
     resetWorkspaceViewState();
     saveState();
     render();

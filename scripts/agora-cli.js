@@ -627,6 +627,7 @@ function validateWorkspaceSnapshot(snapshot, report) {
   }
   if (!snapshot.workspace?.id) report.errors.push("workspace.json missing workspace.id.");
   if (!snapshot.workspace?.name) report.errors.push("workspace.json missing workspace.name.");
+  if (!snapshot.schemaVersion) report.warnings.push("workspace.json missing schemaVersion; Agora will migrate it on import.");
   ["companies", "projects", "tasks", "automations"].forEach((key) => {
     if (!Array.isArray(snapshot[key])) report.errors.push(`workspace.json missing ${key} array.`);
   });
