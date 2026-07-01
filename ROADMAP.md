@@ -35,6 +35,7 @@ These are the highest-priority areas before a broader public launch.
 - Keep tightening landing-page proof around no ads, self-hosting, portable exports, client work, and auditable AI.
 - Keep README scanning sharp with refreshed screenshots, quick feature blocks, and a clear "who this is for" section.
 - Keep local setup boring: `cp .env.example .env`, `npm run dev`, `npm run dev:api`, `npm run check`, `npm run test:api`.
+- Keep the power-user CLI focused on verification, screenshots, fixtures, and self-hosting checks before adding workspace mutation commands.
 - Keep Supabase setup validation current as migrations, Backend Health, and the verifier evolve.
 - Add issue templates for bug reports, feature proposals, templates, automations, and docs improvements.
 - Expand fixture tests for portable bundles, marketplace packs, and import/export behavior.
@@ -49,6 +50,7 @@ These make Agora more credible for real teams and contributors.
 - Add a public comparison page or doc for Asana, Nifty, ClickUp, monday, Notion, Linear, and open source alternatives.
 - Expand screenshot automation to cover portal, data export, permissions, Operator, and tablet views.
 - Strengthen API persistence around conflict handling, record-level sync, and migration safety.
+- Explore CLI import/export and marketplace/template validation commands for self-hosters.
 - Expand accessibility verification across keyboard-only use, focus states, color contrast, reduced motion, and screen reader landmarks.
 - Improve mobile and tablet flows for Today, Board, Inbox, Marketplace, and Settings.
 - Validate the optional Electron desktop shell on macOS and Windows with signed release requirements documented.

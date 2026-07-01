@@ -52,6 +52,21 @@ AGORA_APP_PORT=5175 npm run dev
 
 Use `npm start` for hosted static app runtimes and `npm run start:api` for hosted API runtimes.
 
+## Power-User CLI
+
+Agora includes a small dependency-free CLI for self-hosters and contributors:
+
+```sh
+npm run agora -- help
+npm run agora -- verify
+npm run agora -- verify --quick
+npm run agora -- verify --supabase
+npm run agora -- api
+npm run agora -- screenshots
+```
+
+`verify` runs syntax checks, fixture validation, and the API smoke test. `--quick` skips the API smoke test, and `--supabase` includes the real Supabase verifier from `.env`.
+
 ## Supabase Storage
 
 Agora can use Supabase Postgres for API persistence without adding a Node dependency. The storage adapter talks to Supabase through PostgREST using server-only credentials.

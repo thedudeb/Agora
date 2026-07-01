@@ -9,8 +9,9 @@
     "dev:api": "node server/api.js",
     "start": "node server/static.js",
     "start:api": "node server/api.js",
+    "agora": "node scripts/agora-cli.js",
     "screenshots": "node scripts/capture-screenshots.js",
-    "check": "node --check src/app.js && node --check server/api.js && node --check server/storage.js && node --check server/static.js && node --check server/env.js && node --check server/smoke-test.js && node --check server/supabase-verify.js && node --check server/portable-fixtures-test.js && node --check scripts/capture-screenshots.js && node --check desktop/electron/main.cjs && node --check desktop/electron/preload.cjs",
+    "check": "node --check src/app.js && node --check server/api.js && node --check server/storage.js && node --check server/static.js && node --check server/env.js && node --check server/smoke-test.js && node --check server/supabase-verify.js && node --check server/portable-fixtures-test.js && node --check scripts/capture-screenshots.js && node --check scripts/agora-cli.js && node --check desktop/electron/main.cjs && node --check desktop/electron/preload.cjs",
     "test:api": "node server/smoke-test.js",
     "test:fixtures": "node server/portable-fixtures-test.js",
     "test:supabase": "node server/supabase-verify.js"
