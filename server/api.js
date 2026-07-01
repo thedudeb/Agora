@@ -18,6 +18,9 @@ const PASSWORD_SCRYPT_COST = 16384;
 const SESSION_TTL_MS = positiveNumber(process.env.AGORA_SESSION_TTL_SECONDS, 8 * 60 * 60) * 1000;
 const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_RATE_LIMIT_ATTEMPTS = 8;
+const PUBLIC_FEATURE_RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
+const PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS = positiveNumber(process.env.AGORA_PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS, 6);
+const PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS = positiveNumber(process.env.AGORA_PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS, 3);
 const PASSWORD_RESET_TTL_MS = positiveNumber(process.env.AGORA_PASSWORD_RESET_TTL_MINUTES, 30) * 60 * 1000;
 const INVITATION_TTL_MS = positiveNumber(process.env.AGORA_INVITATION_TTL_DAYS, 14) * 24 * 60 * 60 * 1000;
 
@@ -69,6 +72,9 @@ const recordCollections = {
 const sessions = new Map();
 const rateLimits = new Map();
 const paymentIntents = new Map();
+const backgroundJobs = [];
+const backgroundJobHistory = [];
+let backgroundJobRunning = false;
 
 function envFlag(name, fallback = false) {
   const value = cleanString(process.env[name]).toLowerCase();
@@ -102,6 +108,54 @@ function assertRateLimit(request, scope, limit = AUTH_RATE_LIMIT_ATTEMPTS, windo
   if (current.count > limit) {
     publicError(429, "Too many attempts. Please wait before trying again.");
   }
+}
+
+function enqueueBackgroundJob(type, handler, metadata = {}) {
+  const job = {
+    id: `job-${crypto.randomUUID()}`,
+    type,
+    status: "queued",
+    attempts: 0,
+    maxAttempts: 3,
+    metadata,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  backgroundJobs.push({ job, handler });
+  backgroundJobHistory.unshift(job);
+  backgroundJobHistory.splice(100);
+  drainBackgroundJobs();
+  return job;
+}
+
+function drainBackgroundJobs() {
+  if (backgroundJobRunning) return;
+  backgroundJobRunning = true;
+  queueMicrotask(async () => {
+    try {
+      while (backgroundJobs.length) {
+        const queued = backgroundJobs.shift();
+        const { job, handler } = queued;
+        job.status = "running";
+        job.attempts += 1;
+        job.updatedAt = new Date().toISOString();
+        try {
+          await handler();
+          job.status = "succeeded";
+          job.finishedAt = new Date().toISOString();
+          job.updatedAt = job.finishedAt;
+        } catch (error) {
+          job.status = job.attempts < job.maxAttempts ? "queued" : "failed";
+          job.error = error.message;
+          job.updatedAt = new Date().toISOString();
+          if (job.status === "queued") backgroundJobs.push(queued);
+        }
+      }
+    } finally {
+      backgroundJobRunning = false;
+      if (backgroundJobs.length) drainBackgroundJobs();
+    }
+  });
 }
 
 function createServer(options = {}) {
@@ -240,14 +294,28 @@ function createServer(options = {}) {
       }
 
       if (request.method === "GET" && url.pathname === "/api/public/feature-requests") {
+        if (!publicFeatureRequestsEnabled()) {
+          sendError(response, 404, "Public feature requests are disabled");
+          return;
+        }
         const config = await publicFeatureRequestConfig(storage);
         sendJson(response, 200, config);
         return;
       }
 
       if (request.method === "POST" && url.pathname === "/api/public/feature-requests") {
-        assertRateLimit(request, "public-feature-request", 12);
+        if (!publicFeatureRequestsEnabled()) {
+          sendError(response, 404, "Public feature requests are disabled");
+          return;
+        }
+        assertRateLimit(request, "public-feature-request", PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS, PUBLIC_FEATURE_RATE_LIMIT_WINDOW_MS);
         const body = await readJsonBody(request);
+        if (cleanString(body.website || body.url || body.companyWebsite)) {
+          sendJson(response, 202, { ok: true, accepted: false });
+          return;
+        }
+        const email = optionalEmail(body.email);
+        if (email) assertRateLimit(request, `public-feature-email:${email}`, PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS, 60 * 60 * 1000);
         const result = await createPublicFeatureRequest(storage, body);
         sendJson(response, 201, result);
         return;
@@ -527,7 +595,8 @@ function createServer(options = {}) {
           return;
         }
         const snapshot = scopedSnapshot(await storage.loadWorkspaceSnapshot(), session);
-        sendJson(response, 200, { projects: Array.isArray(snapshot.projects) ? snapshot.projects : [] });
+        const result = queryProjects(Array.isArray(snapshot.projects) ? snapshot.projects : [], url.searchParams);
+        sendJson(response, 200, { projects: result.items, page: result.page });
         return;
       }
 
@@ -581,9 +650,9 @@ function createServer(options = {}) {
           return;
         }
         const snapshot = scopedSnapshot(await storage.loadWorkspaceSnapshot(), session);
-        const projectId = url.searchParams.get("projectId");
-        const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
-        sendJson(response, 200, { tasks: projectId ? tasks.filter((task) => task.projectId === projectId) : tasks });
+        const projects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
+        const result = queryTasks(Array.isArray(snapshot.tasks) ? snapshot.tasks : [], projects, url.searchParams);
+        sendJson(response, 200, { tasks: result.items, page: result.page });
         return;
       }
 
@@ -1137,6 +1206,85 @@ function paymentConfig() {
       }
     ]
   };
+}
+
+function queryProjects(projects, searchParams) {
+  const query = cleanString(searchParams.get("query") || searchParams.get("q")).toLowerCase();
+  const companyId = cleanString(searchParams.get("companyId"));
+  const includeArchived = envBooleanParam(searchParams.get("includeArchived"), false);
+  const filtered = projects
+    .filter((project) => includeArchived || !project.archivedAt)
+    .filter((project) => !companyId || project.companyId === companyId)
+    .filter((project) => {
+      if (!query) return true;
+      return [project.name, project.description, project.owner, project.companyId]
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    })
+    .sort((a, b) => cleanString(b.updatedAt || b.createdAt || b.name).localeCompare(cleanString(a.updatedAt || a.createdAt || a.name)));
+  return paginateItems(filtered, searchParams);
+}
+
+function queryTasks(tasks, projects, searchParams) {
+  const query = cleanString(searchParams.get("query") || searchParams.get("q")).toLowerCase();
+  const projectId = cleanString(searchParams.get("projectId"));
+  const companyId = cleanString(searchParams.get("companyId"));
+  const assignee = cleanString(searchParams.get("assignee"));
+  const status = cleanString(searchParams.get("status"));
+  const priority = cleanString(searchParams.get("priority"));
+  const tag = cleanString(searchParams.get("tag"));
+  const includeArchived = envBooleanParam(searchParams.get("includeArchived"), false);
+  const projectById = new Map(projects.map((project) => [project.id, project]));
+  const filtered = tasks
+    .filter((task) => includeArchived || !task.archivedAt)
+    .filter((task) => !projectId || task.projectId === projectId)
+    .filter((task) => !companyId || projectById.get(task.projectId)?.companyId === companyId)
+    .filter((task) => !assignee || task.assignee === assignee)
+    .filter((task) => !status || task.status === status)
+    .filter((task) => !priority || task.priority === priority)
+    .filter((task) => !tag || (Array.isArray(task.tags) && task.tags.includes(tag)))
+    .filter((task) => {
+      if (!query) return true;
+      const project = projectById.get(task.projectId);
+      return [
+        task.title,
+        task.description,
+        task.assignee,
+        task.status,
+        task.priority,
+        Array.isArray(task.tags) ? task.tags.join(" ") : "",
+        project?.name,
+        project?.companyId
+      ].join(" ").toLowerCase().includes(query);
+    })
+    .sort((a, b) => cleanString(b.updatedAt || b.createdAt || b.title).localeCompare(cleanString(a.updatedAt || a.createdAt || a.title)));
+  return paginateItems(filtered, searchParams);
+}
+
+function paginateItems(items, searchParams) {
+  const total = items.length;
+  const limit = clampInteger(searchParams.get("limit"), 1, 500, 100);
+  const offset = clampInteger(searchParams.get("offset"), 0, Math.max(total, 0), 0);
+  const pageItems = items.slice(offset, offset + limit);
+  const nextOffset = offset + pageItems.length;
+  return {
+    items: pageItems,
+    page: {
+      limit,
+      offset,
+      total,
+      count: pageItems.length,
+      hasMore: nextOffset < total,
+      nextOffset: nextOffset < total ? nextOffset : null
+    }
+  };
+}
+
+function envBooleanParam(value, fallback = false) {
+  const normalized = cleanString(value).toLowerCase();
+  if (!normalized) return fallback;
+  return ["1", "true", "yes", "on"].includes(normalized);
 }
 
 function marketplaceCatalogFromSnapshot(snapshot = {}) {
@@ -1950,12 +2098,11 @@ async function deliverFeatureRequest({ task, request, session }) {
     return { mode: "not-configured", delivered: false, reason: "Set AGORA_SMTP_HOST to send feature request emails." };
   }
 
-  try {
-    await sendSmtpMail(featureRequestPayload({ task, request, session, to }));
-    return { mode: "smtp", delivered: true, to };
-  } catch (error) {
-    return { mode: "smtp", delivered: false, to, error: error.message };
-  }
+  const job = enqueueBackgroundJob("feature-request-email", () => sendSmtpMail(featureRequestPayload({ task, request, session, to })), {
+    to,
+    taskId: task.id
+  });
+  return { mode: "smtp", delivered: false, queued: true, jobId: job.id, to };
 }
 
 async function deliverFeatureRequestUpdate({ task, note, session }) {
@@ -1972,12 +2119,11 @@ async function deliverFeatureRequestUpdate({ task, note, session }) {
     return { mode: "not-configured", delivered: false, reason: "Set AGORA_SMTP_HOST to send requester update emails." };
   }
 
-  try {
-    await sendSmtpMail(featureRequestUpdatePayload({ task, note, session, to }));
-    return { mode: "smtp", delivered: true, to };
-  } catch (error) {
-    return { mode: "smtp", delivered: false, to, error: error.message };
-  }
+  const job = enqueueBackgroundJob("feature-request-update-email", () => sendSmtpMail(featureRequestUpdatePayload({ task, note, session, to })), {
+    to,
+    taskId: task.id
+  });
+  return { mode: "smtp", delivered: false, queued: true, jobId: job.id, to };
 }
 
 function featureRequestPayload({ task, request, session, to }) {
@@ -2050,7 +2196,9 @@ async function createPublicFeatureRequest(storage, body) {
   const snapshot = await storage.loadWorkspaceSnapshot();
   const projects = (Array.isArray(snapshot.projects) ? snapshot.projects : []).filter((project) => !project.archivedAt);
   if (!projects.length) publicError(503, "No active projects are available for feature requests.");
-  const project = projects.find((item) => item.id === cleanString(body.projectId)) || projects[0];
+  const projectId = cleanString(body.projectId);
+  const project = projects.find((item) => item.id === projectId);
+  if (!project) publicError(400, "Choose a valid feature request project");
   const title = cleanString(body.title).slice(0, 120);
   if (!title) publicError(400, "Feature request title is required");
   const requesterEmail = optionalEmail(body.email);
@@ -2090,6 +2238,10 @@ async function createPublicFeatureRequest(storage, body) {
   }, featureRequestSystemSession(), "public_feature_request");
   const email = await deliverFeatureRequest({ task, request, session: featureRequestSystemSession() });
   return { task, email };
+}
+
+function publicFeatureRequestsEnabled() {
+  return envFlag("AGORA_PUBLIC_FEATURE_REQUESTS", true);
 }
 
 async function updateFeatureRequestStatus(storage, taskId, body, session) {

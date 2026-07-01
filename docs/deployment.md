@@ -103,7 +103,7 @@ Only sessions with `scheduler:run` can process due reminders. Keep cron credenti
 
 Agora supports reset-token creation and confirmation through the API. Production deployments should deliver reset tokens through SMTP or a webhook-backed email workflow.
 
-Feature requests use the same SMTP settings. Set `AGORA_FEATURE_REQUEST_EMAIL` to receive an email whenever the in-app or public feature request form saves a task. The shareable public form lives at `#feedback` on your deployed app URL.
+Feature requests use the same SMTP settings. Set `AGORA_FEATURE_REQUEST_EMAIL` to receive an email whenever the in-app or public feature request form saves a task. The shareable public form lives at `#feedback` on your deployed app URL. Set `AGORA_PUBLIC_FEATURE_REQUESTS=false` to turn the public form API off, and tune public abuse limits with `AGORA_PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS` and `AGORA_PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS`.
 
 SMTP:
 

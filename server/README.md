@@ -155,12 +155,12 @@ The verifier starts a temporary Agora API server with Supabase storage, uses a u
 - `GET /api/workspace`: returns the latest saved workspace snapshot.
 - `PUT /api/workspace`: saves a workspace snapshot for workspace-wide admin/project-manager roles. Company-scoped sessions must use project, task, and structured record endpoints.
 - `POST /api/workspace/import`: imports a workspace snapshot for admins.
-- `GET /api/projects`: lists the current session's canonical projects for API-connected clients.
+- `GET /api/projects`: lists the current session's canonical projects for API-connected clients. Supports `?limit=...`, `?offset=...`, `?query=...`, `?companyId=...`, and returns `page` metadata.
 - `POST /api/projects`: creates a project for admin/project-manager roles.
 - `PUT /api/projects/:id`: updates a project for admin/project-manager roles.
 - `DELETE /api/projects/:id`: archives a project and its tasks for admin/project-manager roles.
 - `POST /api/projects/:id/restore`: restores an archived project for admin/project-manager roles.
-- `GET /api/tasks`: lists the current session's canonical tasks for API-connected clients. Supports `?projectId=...`.
+- `GET /api/tasks`: lists the current session's canonical tasks for API-connected clients. Supports `?limit=...`, `?offset=...`, `?query=...`, `?projectId=...`, `?companyId=...`, `?assignee=...`, `?status=...`, `?priority=...`, `?tag=...`, and returns `page` metadata.
 - `POST /api/tasks`: creates a task for admin/project-manager roles.
 - `POST /api/feature-requests`: creates a feature-request task and sends an owner email when `AGORA_FEATURE_REQUEST_EMAIL` and SMTP are configured.
 - `POST /api/feature-requests/:id/updates`: updates the feature-request pipeline state and emails the requester when SMTP and requester email are available.

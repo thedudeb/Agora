@@ -407,6 +407,21 @@ async function run() {
     assert(publicFeatureRequest.task.tags.includes("public"), "public feature request task failed");
     assert(publicFeatureRequest.email.delivered === false, "public feature request email should be skipped without SMTP");
 
+    const pagedTasks = await request(`${baseUrl}/api/tasks?projectId=project-smoke&limit=1&offset=0`, {
+      token: login.token
+    });
+    assert(pagedTasks.tasks.length === 1 && pagedTasks.page.hasMore, "task pagination metadata failed");
+
+    const searchedTasks = await request(`${baseUrl}/api/tasks?query=public%20smoke&tag=public`, {
+      token: login.token
+    });
+    assert(searchedTasks.tasks.length === 1 && searchedTasks.tasks[0].id === publicFeatureRequest.task.id, "task server search/filter failed");
+
+    const pagedProjects = await request(`${baseUrl}/api/projects?limit=1&query=updated`, {
+      token: login.token
+    });
+    assert(pagedProjects.projects.length === 1 && pagedProjects.page.total === 1, "project pagination metadata failed");
+
     const scopedInvitation = await request(`${baseUrl}/api/invitations`, {
       method: "POST",
       token: login.token,

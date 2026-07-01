@@ -3043,12 +3043,12 @@ async function loadCoreRecordsFromApi(options = {}) {
   if (!apiSession) return false;
 
   const [projectsResult, tasksResult] = await Promise.all([
-    apiRequest("/api/projects"),
-    apiRequest("/api/tasks")
+    fetchApiCollectionPages("/api/projects", "projects"),
+    fetchApiCollectionPages("/api/tasks", "tasks")
   ]);
   const changed = mergeCoreRecordsFromApi({
-    projects: projectsResult.projects,
-    tasks: tasksResult.tasks
+    projects: projectsResult,
+    tasks: tasksResult
   }, { authoritative: true, ...options });
 
   if (changed) {
@@ -3056,6 +3056,27 @@ async function loadCoreRecordsFromApi(options = {}) {
     saveState();
   }
   return changed;
+}
+
+async function fetchApiCollectionPages(path, key, params = {}) {
+  const limit = params.limit || 500;
+  let offset = params.offset || 0;
+  const records = [];
+
+  while (true) {
+    const query = new URLSearchParams({
+      ...Object.fromEntries(Object.entries(params).filter(([name]) => !["limit", "offset"].includes(name))),
+      limit: String(limit),
+      offset: String(offset)
+    });
+    const result = await apiRequest(`${path}?${query}`);
+    records.push(...(Array.isArray(result[key]) ? result[key] : []));
+    if (!result.page?.hasMore) break;
+    offset = Number(result.page.nextOffset);
+    if (!Number.isFinite(offset)) break;
+  }
+
+  return records;
 }
 
 function markRealtimeChanged() {
@@ -15099,6 +15120,10 @@ function renderPublicFeedbackForm() {
         <span class="status-pill ${hasProjects ? "inbox-green" : "inbox-amber"}">${publicFeatureConfigLoading ? "Loading" : hasProjects ? "Open" : "API needed"}</span>
       </div>
       <form class="settings-form" id="public-feature-request-form">
+        <label class="sr-only" aria-hidden="true">
+          <span>Website</span>
+          <input id="public-feature-website" tabindex="-1" autocomplete="off">
+        </label>
         <label>
           <span>Feature title</span>
           <input id="public-feature-title" required maxlength="120" placeholder="Add client approval reminders" ${disabled ? "disabled" : ""}>
@@ -20630,6 +20655,8 @@ async function syncFeatureRequestToApi(task, request) {
     }
     if (result.email?.delivered) {
       showToast("Feature request emailed", "success");
+    } else if (result.email?.queued) {
+      showToast("Feature request email queued", "success");
     } else {
       showToast("Feature request saved. Email delivery is not configured.", "info");
     }
@@ -20682,7 +20709,7 @@ async function sendFeatureRequestUpdate(taskId) {
       saveState();
       render();
     }
-    showToast(result.email?.delivered ? "Requester update emailed" : "Requester update saved. Email delivery is not configured.", result.email?.delivered ? "success" : "info");
+    showToast(result.email?.delivered || result.email?.queued ? "Requester update email queued" : "Requester update saved. Email delivery is not configured.", result.email?.delivered || result.email?.queued ? "success" : "info");
   } catch (error) {
     showToast(`Requester update failed: ${error.message}`, "info");
   }
@@ -20714,11 +20741,12 @@ async function submitPublicFeatureRequest() {
         details: document.querySelector("#public-feature-details")?.value.trim() || "",
         requester: document.querySelector("#public-feature-requester")?.value.trim() || "",
         email: document.querySelector("#public-feature-email")?.value.trim() || "",
-        impact: document.querySelector("#public-feature-impact")?.value || "nice-to-have"
+        impact: document.querySelector("#public-feature-impact")?.value || "nice-to-have",
+        website: document.querySelector("#public-feature-website")?.value || ""
       }
     });
     document.querySelector("#public-feature-request-form")?.reset();
-    showToast(result.email?.delivered ? "Feature request sent" : "Feature request sent to the board", "success");
+    showToast(result.email?.delivered || result.email?.queued ? "Feature request sent and email queued" : "Feature request sent to the board", "success");
   } catch (error) {
     showToast(`Feature request failed: ${error.message}`, "info");
   }
