@@ -5832,6 +5832,7 @@ th {
 .empty-state {
   min-height: 92px;
   display: grid;
+  gap: 12px;
   place-items: center;
   padding: 16px;
   color: var(--muted);
@@ -5839,6 +5840,18 @@ th {
   background: #f8f6ef;
   border: 1px dashed var(--line-strong);
   border-radius: 8px;
+}
+
+.empty-state > span {
+  max-width: 44rem;
+  line-height: 1.45;
+}
+
+.empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
 }
 
 .modal {
@@ -6973,8 +6986,18 @@ body[data-density="compact"] .main-content {
     padding: 8px 10px;
   }
 
+  .golden-path-panel {
+    margin-bottom: 14px;
+  }
+
+  .golden-path-card {
+    min-height: auto;
+    padding: 10px;
+  }
+
   .toolbar,
   .dashboard-grid,
+  .dashboard-support-grid,
   .dashboard-widget-picker,
   .dashboard-layout-controls,
   .golden-path-grid,
@@ -7156,6 +7179,19 @@ body[data-density="compact"] .main-content {
 
   .panel {
     padding: 14px;
+  }
+
+  .empty-state {
+    min-height: 84px;
+    padding: 14px;
+  }
+
+  .empty-state-actions {
+    width: 100%;
+  }
+
+  .empty-state-actions .button {
+    width: 100%;
   }
 
   .panel-header {

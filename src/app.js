@@ -9944,7 +9944,10 @@ function renderDashboardWidgets(context) {
     "due-soon": () => renderDashboardDueSoonWidget(context.dueSoonTasks),
     mobile: renderMobileAppPanel
   };
-  return activeDashboardWidgets().map((widget) => renderers[widget.id]?.() || "").join("") || emptyState("Turn on dashboard widgets to build a command center.");
+  return activeDashboardWidgets().map((widget) => renderers[widget.id]?.() || "").join("") || emptyState(
+    "Turn on dashboard widgets to build a command center.",
+    { label: "Open Settings", route: "settings" }
+  );
 }
 
 function renderDashboardProjectsWidget(visibleProjects) {
@@ -9957,7 +9960,10 @@ function renderDashboardProjectsWidget(visibleProjects) {
         </div>
       </div>
       <div class="project-summary-list">
-        ${visibleProjects.length ? visibleProjects.map(renderProjectSummary).join("") : emptyState("No projects match the selected company.")}
+        ${visibleProjects.length ? visibleProjects.map(renderProjectSummary).join("") : emptyState(
+          "No projects match the selected company.",
+          { label: "Start Client Workspace", commandId: "template:recommended" }
+        )}
       </div>
     </section>
   `;
@@ -9975,7 +9981,10 @@ function renderDashboardGoalsWidget() {
         <button class="button button-secondary compact-button" type="button" data-route="goals">Open Goals</button>
       </div>
       <div class="goal-ladder dashboard-goal-list">
-        ${rows.length ? rows.map(renderGoalLadderRow).join("") : emptyState("No active goals yet.")}
+        ${rows.length ? rows.map(renderGoalLadderRow).join("") : emptyState(
+          "No active goals yet.",
+          { label: "Open Goals", route: "goals" }
+        )}
       </div>
     </section>
   `;
@@ -10009,7 +10018,10 @@ function renderDashboardOperatorWidget() {
         </div>
       </div>
       <div class="operator-brief-list">
-        ${operatorBriefs(3).map(renderOperatorBrief).join("") || emptyState("No active risks right now.")}
+        ${operatorBriefs(3).map(renderOperatorBrief).join("") || emptyState(
+          "No active risks right now.",
+          { label: "Draft Brief", commandId: "operator:brief" }
+        )}
       </div>
     </section>
   `;
@@ -10025,7 +10037,10 @@ function renderDashboardDueSoonWidget(dueSoonTasks) {
         </div>
       </div>
       <div class="task-stack">
-        ${dueSoonTasks.length ? dueSoonTasks.map(renderTaskCard).join("") : emptyState("No upcoming tasks match the current filters.")}
+        ${dueSoonTasks.length ? dueSoonTasks.map(renderTaskCard).join("") : emptyState(
+          "No upcoming tasks match the current filters.",
+          { label: "Generate Today Plan", commandId: "today:generate" }
+        )}
       </div>
     </section>
   `;
@@ -11483,7 +11498,7 @@ function renderProjectOverview(project, details) {
           </div>
           <button class="button button-secondary" type="button" data-project-tab="milestones">View milestones</button>
         </div>
-        ${nextMilestone ? renderMilestoneCard(nextMilestone) : emptyState(`${escapeHtml(project.name)} does not have an active milestone yet.`)}
+        ${nextMilestone ? renderMilestoneCard(nextMilestone) : emptyState(`${project.name} does not have an active milestone yet.`)}
       </section>
 
       <section class="panel">
@@ -13263,7 +13278,10 @@ function renderTemplates() {
           <button class="button button-secondary" type="button" id="project-template-create">Save Project Template</button>
         </div>
         <div class="template-list">
-          ${templates.length ? templates.map((template) => renderProjectTemplateCard(template, selectedTemplate?.id === template.id)).join("") : emptyState("No project templates match that search.")}
+          ${templates.length ? templates.map((template) => renderProjectTemplateCard(template, selectedTemplate?.id === template.id)).join("") : emptyState(
+            "No project templates match that search.",
+            { label: "Open Marketplace", route: "marketplace" }
+          )}
         </div>
       </section>
 
@@ -13486,7 +13504,10 @@ function renderProjectTemplatePreview(template) {
             <h2>Template details</h2>
           </div>
         </div>
-        ${emptyState("Choose a template to preview its tasks, milestones, docs, and setup options.")}
+        ${emptyState(
+          "Choose a template to preview its tasks, milestones, docs, and setup options.",
+          { label: "Start Client Onboarding", commandId: "template:recommended" }
+        )}
       </section>
     `;
   }
@@ -13879,7 +13900,10 @@ function renderAutomationPackAuthorPanel() {
               <small>${escapeHtml(automation.trigger)} -> ${escapeHtml(automation.action)}</small>
             </span>
           </label>
-        `).join("") : emptyState("Create an automation rule before exporting a pack.")}
+        `).join("") : emptyState(
+          "Create an automation rule before exporting a pack.",
+          { label: "Review Agency Handoff Pack", commandId: "automation:recommended" }
+        )}
       </div>
       <div class="marketplace-actions">
         <button class="button button-secondary" type="button" id="automation-pack-select-all" ${state.automations.length ? "" : "disabled"}>Select All</button>
@@ -13975,7 +13999,10 @@ function renderAutomations() {
           </div>
         </div>
         <div class="automation-history-list">
-          ${recentHistory.length ? recentHistory.map(renderAutomationHistory).join("") : emptyState("Automations have not run yet.")}
+          ${recentHistory.length ? recentHistory.map(renderAutomationHistory).join("") : emptyState(
+            "Automations have not run yet.",
+            { label: "Run Enabled", commandId: "automations:run" }
+          )}
         </div>
       </section>
 
@@ -14527,7 +14554,12 @@ function renderInviteAcceptance() {
 }
 
 function renderWorkspaceBackupList(backups) {
-  if (!backups.length) return emptyState("No backups yet. Create one before a risky import or big workspace change.");
+  if (!backups.length) {
+    return emptyState(
+      "No backups yet. Create one before a risky import or big workspace change.",
+      { label: "Create Backup", commandId: "backup:create" }
+    );
+  }
 
   return `
     <div class="backup-list">
@@ -15939,8 +15971,24 @@ function selectControl(field, taskId, value, options) {
   `;
 }
 
-function emptyState(message) {
-  return `<div class="empty-state">${message}</div>`;
+function emptyState(message, action = null) {
+  return `
+    <div class="empty-state">
+      <span>${escapeHtml(message)}</span>
+      ${action ? `
+        <div class="empty-state-actions">
+          <button
+            class="button button-secondary compact-button"
+            type="button"
+            ${action.commandId ? `data-command-id="${escapeHtml(action.commandId)}"` : ""}
+            ${action.route ? `data-route="${escapeHtml(action.route)}"` : ""}
+            ${action.id ? `id="${escapeHtml(action.id)}"` : ""}
+            ${action.disabled ? "disabled" : ""}
+          >${escapeHtml(action.label)}</button>
+        </div>
+      ` : ""}
+    </div>
+  `;
 }
 
 function populateTaskForm(task = null) {
