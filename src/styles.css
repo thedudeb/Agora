@@ -4319,6 +4319,62 @@ body[data-tutorial-target="view"] #app-view {
   margin-top: 12px;
 }
 
+.hosted-launch-panel {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.hosted-launch-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.hosted-launch-grid article {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.hosted-launch-grid article > span {
+  justify-self: start;
+  padding: 4px 7px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 900;
+  background: var(--surface);
+  border-radius: 999px;
+}
+
+.hosted-launch-grid article.is-done > span {
+  color: #ffffff;
+  background: var(--green);
+}
+
+.hosted-launch-grid small,
+.hosted-launch-command span {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.hosted-launch-command {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
 .permission-panel {
   grid-column: 1 / -1;
   overflow-x: auto;
@@ -7229,6 +7285,7 @@ body[data-density="compact"] .main-content {
   .audit-risk-grid,
   .payment-plan-grid,
   .switcher-report-grid,
+  .hosted-launch-grid,
   .switcher-safety-grid,
   .settings-grid,
   .data-grid,
@@ -7678,6 +7735,8 @@ body[data-density="compact"] .main-content {
   .payment-plan-grid,
   .payment-plan-features,
   .switcher-report-grid,
+  .hosted-launch-grid,
+  .hosted-launch-command,
   .access-summary-grid,
   .integration-grid,
   .integration-summary-grid,

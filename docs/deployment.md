@@ -165,7 +165,7 @@ curl https://your-api.example.com/api/health
 
 Then sign in and open Settings or Data. Backend Health should show storage, auth, structured records, auth hardening, file uploads, audit log, and production mode readiness.
 
-Settings also includes a Deploy Confidence checklist. Use it before inviting a real team: connect the API, refresh backend health, confirm auth mode, review the role matrix, verify export paths, and choose a workspace theme/density.
+Settings also includes a Deploy Confidence checklist and hosted launch runbook. Use them before inviting a real team: connect the API, refresh backend health, confirm auth mode, review the role matrix, verify export paths, choose a workspace theme/density, and run the hosted cutover steps in [`hosted-launch-runbook.md`](./hosted-launch-runbook.md).
 
 For Supabase-backed deployments, run the deeper verifier after every migration or environment change:
 

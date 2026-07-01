@@ -75,6 +75,8 @@ async function run() {
     assert(backendHealth.readiness.some((item) => item.id === "structured-records"), "backend health did not include readiness items");
     assert(backendHealth.readiness.some((item) => item.id === "record-query-api"), "backend health did not include query API readiness");
     assert(backendHealth.productionGates.some((item) => item.id === "allowed-origins"), "backend health did not include production gates");
+    assert(backendHealth.productionGates.some((item) => item.id === "public-app-url"), "backend health did not include public app URL gate");
+    assert(backendHealth.productionGates.some((item) => item.id === "public-feature-abuse"), "backend health did not include public feature abuse gate");
     assert(backendHealth.readiness.some((item) => item.id === "password-reset-delivery"), "backend readiness did not include reset delivery gate");
     assert(backendHealth.observability && Number.isFinite(backendHealth.observability.total), "backend health did not include observability metrics");
     assert(backendHealth.jobs && Array.isArray(backendHealth.jobs.recent), "backend health did not include job metrics");

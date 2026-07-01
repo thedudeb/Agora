@@ -1260,6 +1260,9 @@ async function buildBackendHealth(storage, session) {
   const demoAuthEnabled = envFlag("AGORA_DEMO_AUTH", false);
   const passwordlessAuthEnabled = envFlag("AGORA_PASSWORDLESS_AUTH", false);
   const trustProxy = envFlag("AGORA_TRUST_PROXY", false);
+  const publicAppUrl = cleanString(process.env.AGORA_PUBLIC_APP_URL || process.env.AGORA_APP_URL);
+  const publicAppUrlHosted = /^https:\/\//i.test(publicAppUrl) && !/localhost|127\.0\.0\.1|\[::1\]/i.test(publicAppUrl);
+  const publicFeatureBodyLimitKb = Math.round(PUBLIC_FEATURE_BODY_LIMIT_BYTES / 1024);
   const snapshotDocument = await storage.loadWorkspace();
   const snapshot = snapshotDocument?.snapshot || {};
   const collectionReports = await Promise.all(Object.entries(recordCollections).map(async ([key, config]) => {
@@ -1300,6 +1303,15 @@ async function buildBackendHealth(storage, session) {
       fix: "Set AGORA_ALLOWED_ORIGINS to the exact hosted app origin before exposing the API."
     },
     {
+      id: "public-app-url",
+      label: "Public app URL",
+      done: !productionTarget || publicAppUrlHosted,
+      detail: publicAppUrl
+        ? publicAppUrlHosted ? publicAppUrl : `${publicAppUrl} is not a hosted HTTPS URL`
+        : productionTarget ? "No public app URL configured" : "Local app URL is acceptable for development",
+      fix: "Set AGORA_PUBLIC_APP_URL to the HTTPS app URL used by invite, reset, and feature-request emails."
+    },
+    {
       id: "auth-entrypoints",
       label: "Auth entrypoints",
       done: !demoAuthEnabled && !passwordlessAuthEnabled,
@@ -1316,6 +1328,15 @@ async function buildBackendHealth(storage, session) {
         ? `${passwordResetDelivery} delivery${exposesResetToken ? " with browser token return" : ""}`
         : productionTarget ? "No reset delivery configured" : "Manual reset delivery is acceptable for local development",
       fix: "Use AGORA_PASSWORD_RESET_DELIVERY=smtp or webhook and keep AGORA_PASSWORD_RESET_RETURN_TOKEN=false for hosted production."
+    },
+    {
+      id: "public-feature-abuse",
+      label: "Public feature abuse limits",
+      done: !publicFeatureRequestsEnabled() || (PUBLIC_FEATURE_BODY_LIMIT_BYTES <= 64 * 1024 && PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS <= 20 && PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS <= 10),
+      detail: publicFeatureRequestsEnabled()
+        ? `${PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS} IP attempts, ${PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS} email attempts, ${publicFeatureBodyLimitKb}KB body cap`
+        : "Public feature requests are disabled",
+      fix: "Keep public request body, IP, and email rate limits low before sharing the public feedback URL."
     },
     {
       id: "proxy-rate-limit-source",

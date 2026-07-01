@@ -4232,6 +4232,43 @@ function productionReadinessScore() {
   };
 }
 
+function hostedLaunchRunbookItems() {
+  const health = backendHealth || apiSession?.backendHealth || {};
+  const productionGates = Array.isArray(health.productionGates) ? health.productionGates : [];
+  const failedProductionGates = productionGates.filter((gate) => !gate.done);
+  const publicUrlGate = productionGates.find((gate) => gate.id === "public-app-url");
+  const publicFeatureGate = productionGates.find((gate) => gate.id === "public-feature-abuse");
+  const recovery = portableRecoveryStatus();
+  const payments = paymentSettings();
+  return [
+    {
+      label: "Hosted environment",
+      done: productionGates.length > 0 && failedProductionGates.length === 0,
+      detail: productionGates.length ? `${productionGates.length - failedProductionGates.length}/${productionGates.length} backend gates passing.` : "Refresh Backend Health after sign-in."
+    },
+    {
+      label: "Supabase persistence",
+      done: Boolean(health.productionMode),
+      detail: health.productionMode ? "Storage and Auth are both running in Supabase mode." : `${health.storage || "local"} storage / ${health.auth || "local"} auth.`
+    },
+    {
+      label: "Public surface guarded",
+      done: Boolean(publicUrlGate?.done && publicFeatureGate?.done),
+      detail: publicFeatureGate?.detail || "Backend Health checks public URL and feedback limits."
+    },
+    {
+      label: "Recovery bundle",
+      done: recovery.score >= 3,
+      detail: `${recovery.score}/4 recovery checks ready before cutover.`
+    },
+    {
+      label: "Billing posture",
+      done: Boolean(payments.planId),
+      detail: `${paymentPlan(payments.planId).label} plan selected; provider is ${paymentProviderLabel(payments.provider)}.`
+    }
+  ];
+}
+
 function renderProductionReadinessPanel() {
   return `
     <div class="readiness-list">
@@ -4244,6 +4281,35 @@ function renderProductionReadinessPanel() {
           </div>
         </article>
       `).join("")}
+    </div>
+  `;
+}
+
+function renderHostedLaunchRunbookPanel() {
+  const items = hostedLaunchRunbookItems();
+  const doneCount = items.filter((item) => item.done).length;
+  return `
+    <div class="hosted-launch-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Hosted launch</p>
+          <h3>Cutover runbook</h3>
+        </div>
+        <span class="status-pill ${doneCount === items.length ? "inbox-green" : "inbox-amber"}">${doneCount}/${items.length}</span>
+      </div>
+      <div class="hosted-launch-grid">
+        ${items.map((item) => `
+          <article class="${item.done ? "is-done" : "is-pending"}">
+            <span>${item.done ? "OK" : "Next"}</span>
+            <strong>${escapeHtml(item.label)}</strong>
+            <small>${escapeHtml(item.detail)}</small>
+          </article>
+        `).join("")}
+      </div>
+      <div class="hosted-launch-command">
+        <code>npm run launch:check</code>
+        <span>Run this after deployment, then verify desktop, phone, and tablet widths before inviting the first real team.</span>
+      </div>
     </div>
   `;
 }
@@ -16259,6 +16325,7 @@ function renderBackendChecklist() {
         <span class="status-pill ${productionReadinessScore().done === productionReadinessScore().total ? "inbox-green" : "inbox-amber"}">${productionReadinessScore().done}/${productionReadinessScore().total}</span>
       </div>
       ${renderProductionReadinessPanel()}
+      ${renderHostedLaunchRunbookPanel()}
     </div>
     ${records.length ? `
       <div class="backend-record-list">

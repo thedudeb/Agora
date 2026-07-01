@@ -2,6 +2,8 @@
 
 Use this checklist before tagging, deploying, or telling a team to run Agora in production.
 
+For the hosted cutover sequence, use the [`hosted-launch-runbook.md`](./hosted-launch-runbook.md) alongside this checklist.
+
 ## 1. Local App
 
 - Run `npm run dev` and open `http://127.0.0.1:5174`.
@@ -62,6 +64,7 @@ Fix any failure before releasing. `launch:check` runs quick verification plus br
 - Deploy the API with `npm run start:api`.
 - Set production environment variables in the host dashboard, not in client code.
 - Confirm `/api/health`, `/api/backend/health`, `/api/payments/config`, and `/api/marketplace/catalog` respond after sign-in.
+- Open Backend Health and confirm the hosted launch runbook shows environment, persistence, public surface, recovery, and billing posture.
 - Run a real browser pass on desktop, iPhone width, and iPad width.
 
 ## 7. Rollback
