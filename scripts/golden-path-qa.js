@@ -75,7 +75,7 @@ const checks = [
       "First 5 minutes",
       "Prove the core loop",
       "Start With Client Onboarding",
-      "Open Marketplace",
+      "Review Agency Handoff Pack",
       "Open Data"
     ]
   }

@@ -3893,8 +3893,8 @@ function goldenPathItems() {
         ? `${installedAutomationPacks.length} automation pack${installedAutomationPacks.length === 1 ? "" : "s"} installed`
         : `${automationMarketplacePacks.length} workflow pack${automationMarketplacePacks.length === 1 ? "" : "s"} available`,
       done: installedAutomationPacks.length > 0 || state.automations.some((automation) => automation.source === "marketplace" || automation.source === "imported"),
-      commandId: "route:marketplace",
-      actionLabel: "Open Marketplace"
+      commandId: "automation:recommended",
+      actionLabel: "Review Agency Handoff Pack"
     },
     {
       id: "portable-recovery",
@@ -6465,6 +6465,13 @@ function commandPaletteBaseItems() {
       keywords: "template client onboarding first project recommended"
     },
     {
+      id: "automation:recommended",
+      title: "Review Agency Handoff Pack",
+      detail: "Open the recommended workflow pack for client approvals and updates",
+      group: "Golden path",
+      keywords: "automation marketplace workflow pack agency handoff client approvals"
+    },
+    {
       id: "shortcuts:open",
       title: "Open keyboard shortcuts",
       detail: "View command, create, backup, search, and navigation keys",
@@ -6846,6 +6853,11 @@ function executeCommand(commandId) {
 
   if (commandId === "template:recommended") {
     openRecommendedTemplateFlow();
+    return;
+  }
+
+  if (commandId === "automation:recommended") {
+    openRecommendedAutomationFlow();
     return;
   }
 
@@ -13494,6 +13506,19 @@ function automationMarketplaceInstalled(pack) {
   return pack.rules.every((rule) => state.automations.some((automation) => automation.marketplacePackId === pack.id && automation.name === rule.name));
 }
 
+function recommendedAutomationPack() {
+  return byId(automationMarketplacePacks, "automation-pack-agency-handoff") || automationMarketplacePacks[0] || null;
+}
+
+function openRecommendedAutomationFlow() {
+  const pack = recommendedAutomationPack();
+  state.selectedRoute = "marketplace";
+  openSidebarGroupForRoute("marketplace");
+  saveState();
+  render();
+  if (pack) showToast(`${pack.name} is ready to review`, "success");
+}
+
 function automationMarketplacePackPayload(pack) {
   return {
     type: "agora.automation-pack",
@@ -13589,6 +13614,7 @@ function renderAutomationPackTrustFacts(pack, { installed = false, duplicateCoun
 }
 
 function renderAutomationMarketplacePanel() {
+  const recommendedPack = recommendedAutomationPack();
   return `
     <section class="panel automation-marketplace-panel">
       <div class="panel-header">
@@ -13599,6 +13625,7 @@ function renderAutomationMarketplacePanel() {
         <span class="status-pill inbox-blue">${automationMarketplacePacks.length} packs</span>
       </div>
       <p class="panel-note">Community packs are plain JSON rules. Install them locally, export them, remix them, and share them with another Agora workspace.</p>
+      ${renderRecommendedAutomationPackPanel(recommendedPack)}
       <div class="automation-pack-list">
         ${automationMarketplacePacks.map((pack) => {
           const installed = automationMarketplaceInstalled(pack);
@@ -13638,6 +13665,36 @@ function renderAutomationMarketplacePanel() {
           <button class="button button-secondary" type="button" id="automation-pack-import-preview">Preview Pack</button>
           <button class="button button-primary" type="button" id="automation-pack-import-install">Install Imported Pack</button>
         </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderRecommendedAutomationPackPanel(pack) {
+  if (!pack) return "";
+  const installed = automationMarketplaceInstalled(pack);
+  return `
+    <section class="recommended-automation-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Recommended first automation pack</p>
+          <h3>${escapeHtml(pack.name)}</h3>
+        </div>
+        <span class="status-pill ${installed ? "inbox-green" : "inbox-blue"}">${installed ? "Installed" : `${pack.rules.length} rules`}</span>
+      </div>
+      <p>${escapeHtml(pack.description)}</p>
+      <div class="recommended-automation-grid">
+        <span><strong>${pack.rules.length}</strong><small>Rules</small></span>
+        <span><strong>${escapeHtml(pack.category)}</strong><small>Category</small></span>
+        <span><strong>${escapeHtml(pack.creatorName)}</strong><small>Creator</small></span>
+        <span><strong>${escapeHtml(pack.license)}</strong><small>License</small></span>
+      </div>
+      <div class="automation-pack-rules">
+        ${pack.rules.map((rule) => `<span>${escapeHtml(rule.name)}</span>`).join("")}
+      </div>
+      <div class="marketplace-actions">
+        <button class="button button-primary" type="button" data-install-automation-pack="${escapeHtml(pack.id)}" ${installed ? "disabled" : ""}>${installed ? "Pack Installed" : "Install Recommended Pack"}</button>
+        <button class="button button-secondary" type="button" data-export-automation-pack="${escapeHtml(pack.id)}">Export JSON</button>
       </div>
     </section>
   `;

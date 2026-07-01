@@ -2945,6 +2945,14 @@ body[data-tutorial-target="view"] #app-view {
   margin-bottom: 16px;
 }
 
+.recommended-automation-panel {
+  margin: 14px 0;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
 .recommended-template-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2952,7 +2960,15 @@ body[data-tutorial-target="view"] #app-view {
   margin: 12px 0;
 }
 
-.recommended-template-grid span {
+.recommended-automation-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.recommended-template-grid span,
+.recommended-automation-grid span {
   min-width: 0;
   padding: 10px;
   background: var(--surface-strong);
@@ -2961,16 +2977,21 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .recommended-template-grid strong,
-.recommended-template-grid small {
+.recommended-template-grid small,
+.recommended-automation-grid strong,
+.recommended-automation-grid small {
   display: block;
 }
 
-.recommended-template-grid strong {
+.recommended-template-grid strong,
+.recommended-automation-grid strong {
   color: var(--text);
   font-size: 1rem;
+  overflow-wrap: anywhere;
 }
 
-.recommended-template-grid small {
+.recommended-template-grid small,
+.recommended-automation-grid small {
   margin-top: 2px;
   color: var(--muted);
   font-size: 0.74rem;
@@ -6507,6 +6528,7 @@ body[data-density="compact"] .main-content {
   .automation-grid,
   .marketplace-hub-grid,
   .marketplace-command-grid,
+  .recommended-automation-grid,
   .recommended-template-grid,
   .team-launch-list,
   .command-center-grid,
@@ -6847,6 +6869,7 @@ body[data-density="compact"] .main-content {
   .template-controls,
   .template-preview-form,
   .template-preview-grid,
+  .recommended-automation-grid,
   .recommended-template-grid,
   .automation-composer,
   .settings-form,
