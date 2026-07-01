@@ -2348,6 +2348,8 @@ function normalizeSwitcherImportPreview(preview = null) {
   return {
     id: preview.id || uid("switcher-preview"),
     source: String(preview.source || "Generic CSV").slice(0, 48),
+    sourceSystem: String(preview.sourceSystem || switcherSourceId(preview.source || "Generic CSV")).slice(0, 48),
+    importBatchId: String(preview.importBatchId || "").slice(0, 120),
     mode: ["merge", "new-workspace"].includes(preview.mode) ? preview.mode : "merge",
     createdAt: preview.createdAt || new Date().toISOString(),
     stats: {
@@ -2367,7 +2369,8 @@ function normalizeSwitcherImportPreview(preview = null) {
       projectName: projects.find((project) => project.id === task.projectId)?.name || task.projectId || "Imported project",
       assignee: memberName(task.assignee),
       status: task.status,
-      priority: task.priority
+      priority: task.priority,
+      sourceId: task.customFields?.sourceId || ""
     }))
   };
 }
@@ -16555,10 +16558,10 @@ function renderDataManagement() {
       <section class="panel switcher-import-panel">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Switcher</p>
-            <h2>Competitor import assistant</h2>
+            <p class="eyebrow">Migration Studio</p>
+            <h2>Bring work into Agora</h2>
           </div>
-          <span class="status-pill inbox-blue">Asana / ClickUp / monday / Trello</span>
+          <span class="status-pill inbox-blue">Preview first</span>
         </div>
         <div class="settings-form">
           <label>
@@ -16583,8 +16586,9 @@ function renderDataManagement() {
           </label>
           <label class="wide-field">
             <span>Export payload</span>
-            <textarea id="switcher-import-payload" rows="10" placeholder="Paste a task export. Headers like title/name, project/list/board, assignee, status, priority, due date, and description are supported."></textarea>
+            <textarea id="switcher-import-payload" rows="10" placeholder="Paste a CSV task export or Trello board JSON. Agora will preview mapped projects, tasks, skipped rows, warnings, and source trace metadata before applying anything."></textarea>
           </label>
+          ${renderSwitcherSourceGuide()}
           <div class="switcher-safety-grid">
             <article>
               <strong>1. Preview</strong>
@@ -16599,9 +16603,10 @@ function renderDataManagement() {
               <span>The last applied import can restore the previous workspace state.</span>
             </article>
           </div>
-          <p class="settings-help">This importer creates missing projects, maps common task fields, and keeps a backup before changing the workspace. It is intentionally conservative so messy exports do not overwrite existing work.</p>
+          <p class="settings-help">This importer creates missing projects, maps common task fields, keeps source ids on imported records, and creates a backup before changing the workspace. It is intentionally conservative so messy exports do not overwrite existing work.</p>
           <div class="data-actions import-actions">
             <button class="button button-secondary" type="button" id="switcher-sample-csv">Copy Sample CSV</button>
+            <button class="button button-secondary" type="button" id="switcher-sample-trello">Copy Trello JSON</button>
             <button class="button button-primary" type="button" id="switcher-import-button">Preview Import</button>
           </div>
         </div>
@@ -16618,6 +16623,28 @@ function renderDataManagement() {
         </div>
         ${renderBackendChecklist()}
       </section>
+    </div>
+  `;
+}
+
+function renderSwitcherSourceGuide() {
+  const guides = [
+    ["Generic CSV", "Maps common task columns like title, project, status, assignee, priority, due date, description, and tags."],
+    ["Trello", "Paste a Trello board JSON export. Open cards become tasks, lists become status, labels become tags, card URLs stay as source links."],
+    ["Asana", "Use CSV export today. Project/section/name/assignee/completed/due fields map into Agora tasks."],
+    ["Jira", "Use CSV export today. Summary/project/status/assignee/priority/due fields map into Agora tasks."],
+    ["Linear", "Use CSV or JSON list exports today. Title/team/status/assignee/priority/due fields map into Agora tasks."],
+    ["ClickUp", "Use CSV export today. Task name/list/status/assignee/priority/due fields map into Agora tasks."]
+  ];
+  return `
+    <div class="switcher-report-grid">
+      ${guides.slice(0, 3).map(([label, detail]) => `
+        <article>
+          <span>${escapeHtml(label)}</span>
+          <strong>${label === "Trello" ? "JSON ready" : "CSV ready"}</strong>
+          <small>${escapeHtml(detail)}</small>
+        </article>
+      `).join("")}
     </div>
   `;
 }
@@ -16691,6 +16718,7 @@ function renderSwitcherImportPreview() {
         ${metric("Projects", preview.stats.projects)}
         ${metric("Skipped", preview.stats.skipped)}
         ${metric("Confidence", `${preview.stats.confidence}%`)}
+        ${metric("Traceable", preview.tasks.filter((task) => task.customFields?.sourceId).length)}
       </div>
       ${renderSwitcherImportReport(preview)}
       <div class="switcher-mapping-panel">
@@ -16709,7 +16737,7 @@ function renderSwitcherImportPreview() {
         ${preview.samples.map((sample) => `
           <article>
             <strong>${escapeHtml(sample.title || "Untitled task")}</strong>
-            <span>${escapeHtml(sample.projectName || "Imported project")} / ${escapeHtml(sample.assignee || "Unassigned")} / ${escapeHtml(sample.status || "todo")} / ${escapeHtml(sample.priority || "normal")}</span>
+            <span>${escapeHtml(sample.projectName || "Imported project")} / ${escapeHtml(sample.assignee || "Unassigned")} / ${escapeHtml(sample.status || "todo")} / ${escapeHtml(sample.priority || "normal")}${sample.sourceId ? ` / ${escapeHtml(sample.sourceId)}` : ""}</span>
           </article>
         `).join("")}
       </div>
@@ -16742,6 +16770,11 @@ function renderSwitcherImportReport(preview) {
         <span>Review load</span>
         <strong>${escapeHtml(warningLabel)}</strong>
         <small>${preview.stats.skipped ? `${preview.stats.skipped} skipped rows need source cleanup.` : "No skipped rows in this preview."}</small>
+      </article>
+      <article>
+        <span>Source trace</span>
+        <strong>${preview.tasks.filter((task) => task.customFields?.sourceId).length} tasks</strong>
+        <small>${escapeHtml(preview.importBatchId || "Import batch will be created on apply.")}</small>
       </article>
     </div>
   `;
@@ -20953,6 +20986,37 @@ function switcherSampleCsvPayload() {
   ].join("\n");
 }
 
+function switcherSampleTrelloPayload() {
+  return JSON.stringify({
+    id: "board-sample",
+    name: "Trello Sample Board",
+    lists: [
+      { id: "list-todo", name: "To Do" },
+      { id: "list-doing", name: "Doing" }
+    ],
+    labels: [
+      { id: "label-client", name: "client" },
+      { id: "label-launch", name: "launch" }
+    ],
+    members: [
+      { id: "member-mara", username: "mara", fullName: "Mara Ortiz" }
+    ],
+    cards: [
+      {
+        id: "card-launch-brief",
+        name: "Approve launch brief",
+        desc: "Confirm final launch brief with client.",
+        idList: "list-doing",
+        idLabels: ["label-client", "label-launch"],
+        idMembers: ["member-mara"],
+        due: "2026-07-21T12:00:00.000Z",
+        closed: false,
+        url: "https://trello.example/cards/card-launch-brief"
+      }
+    ]
+  }, null, 2);
+}
+
 function copySwitcherSampleCsv() {
   const payload = switcherSampleCsvPayload();
   const textarea = document.querySelector("#switcher-import-payload");
@@ -20968,14 +21032,58 @@ function copySwitcherSampleCsv() {
   }
 }
 
+function copySwitcherSampleTrello() {
+  const payload = switcherSampleTrelloPayload();
+  const textarea = document.querySelector("#switcher-import-payload");
+  const format = document.querySelector("#switcher-format");
+  const source = document.querySelector("#switcher-source");
+  if (textarea && !textarea.value.trim()) textarea.value = payload;
+  if (format) format.value = "json";
+  if (source) source.value = "Trello";
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(payload)
+      .then(() => showToast("Sample Trello JSON copied", "success"))
+      .catch(() => showToast("Sample Trello JSON added to the import box", "info"));
+  } else {
+    showToast("Sample Trello JSON added to the import box", "info");
+  }
+}
+
 function rowsFromSwitcherJson(payload) {
   const parsed = JSON.parse(payload);
+  if (parsed && typeof parsed === "object" && Array.isArray(parsed.cards) && Array.isArray(parsed.lists)) return rowsFromTrelloJson(parsed);
   if (Array.isArray(parsed)) return parsed;
   if (Array.isArray(parsed.tasks)) return parsed.tasks;
   if (Array.isArray(parsed.items)) return parsed.items;
   if (Array.isArray(parsed.cards)) return parsed.cards;
   if (Array.isArray(parsed.data)) return parsed.data;
   throw new Error("JSON did not include a task array");
+}
+
+function rowsFromTrelloJson(board) {
+  const lists = new Map((board.lists || []).map((list) => [list.id, list]));
+  const labels = new Map((board.labels || []).map((label) => [label.id, label]));
+  const membersById = new Map((board.members || []).map((member) => [member.id, member.fullName || member.username || member.id]));
+  return (board.cards || [])
+    .filter((card) => !card.closed)
+    .map((card) => {
+      const list = lists.get(card.idList) || {};
+      return {
+        id: card.id || card.shortLink || "",
+        title: card.name || "",
+        project: board.name || "Trello Import",
+        board: board.name || "Trello Import",
+        status: list.name || "",
+        column: list.name || "",
+        description: card.desc || "",
+        assignee: (card.idMembers || []).map((id) => membersById.get(id)).filter(Boolean).join(", "),
+        due_date: card.due || "",
+        tags: (card.idLabels || []).map((id) => labels.get(id)?.name).filter(Boolean).join(", "),
+        source_url: card.url || card.shortUrl || "",
+        source_id: card.id || card.shortLink || "",
+        raw_trello_list: list.name || ""
+      };
+    });
 }
 
 function rowsFromSwitcherCsv(payload) {
@@ -21064,6 +21172,7 @@ function switcherPreviewWarnings({ mappedFields, skipped, rows, source }) {
   if (!mappedFields.includes("title")) warnings.push("No title/name column was detected. Rows without titles are skipped.");
   if (!mappedFields.includes("project")) warnings.push("No project/list column was detected. Tasks will use a default import project.");
   if (!mappedFields.includes("assignee")) warnings.push("No assignee column was detected. Tasks will be assigned to the active user.");
+  if (!mappedFields.includes("due date")) warnings.push("No due-date column was detected. Imported tasks will not appear on deadline views until dates are added.");
   if (skipped) warnings.push(`${skipped} ${skipped === 1 ? "row was" : "rows were"} skipped because required task data was missing.`);
   if (rows > 100) warnings.push(`${source} export has ${rows} rows. Preview samples are limited, so review the imported project after apply.`);
   return warnings;
@@ -21071,6 +21180,8 @@ function switcherPreviewWarnings({ mappedFields, skipped, rows, source }) {
 
 function prepareSwitcherImport(rows, source) {
   const now = new Date().toISOString();
+  const sourceSystem = switcherSourceId(source);
+  const importBatchId = uid(`import-${sourceSystem}`);
   const headers = importRowHeaders(rows);
   const mappedFields = importMappedFields(headers);
   const existingProjectNames = new Map(state.projects.map((project) => [project.name.toLowerCase(), project]));
@@ -21098,7 +21209,14 @@ function prepareSwitcherImport(rows, source) {
         description: `Imported from ${source}.`,
         owner: activeMemberId(),
         startDate: todayKey(),
-        dueDate: ""
+        dueDate: "",
+        customFields: {
+          sourceSystem,
+          sourceId: projectNameValue,
+          sourceUrl: "",
+          importBatchId,
+          importedAt: now
+        }
       });
       nextProjects.push(project);
       preparedProjects.push(project);
@@ -21114,6 +21232,14 @@ function prepareSwitcherImport(rows, source) {
       priority: importPriority(importValue(row, ["priority", "importance"])),
       dueDate: importDate(importValue(row, ["due", "due_date", "deadline", "date"])),
       startDate: importDate(importValue(row, ["start", "start_date"])),
+      customFields: {
+        sourceSystem,
+        sourceId: importValue(row, ["source_id", "id", "task_id", "card_id", "item_id"]) || `${sourceSystem}-${index + 1}`,
+        sourceUrl: importValue(row, ["source_url", "url", "link", "permalink"]),
+        importBatchId,
+        importedAt: now,
+        rawFields: { ...row }
+      },
       blockedBy: [],
       tags: [source.toLowerCase().replaceAll(" ", "-")],
       subtasks: [],
@@ -21127,7 +21253,8 @@ function prepareSwitcherImport(rows, source) {
       projectName: project.name,
       assignee: memberName(task.assignee),
       status: task.status,
-      priority: task.priority
+      priority: task.priority,
+      sourceId: task.customFields.sourceId
     });
   });
 
@@ -21137,6 +21264,8 @@ function prepareSwitcherImport(rows, source) {
   return {
     id: uid("switcher-preview"),
     source,
+    sourceSystem,
+    importBatchId,
     mode: "merge",
     createdAt: now,
     stats: {
@@ -21153,6 +21282,10 @@ function prepareSwitcherImport(rows, source) {
     tasks: preparedTasks,
     samples: samples.slice(0, 6)
   };
+}
+
+function switcherSourceId(source) {
+  return String(source || "generic-csv").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "generic-csv";
 }
 
 function applySwitcherRows(rows, source) {
@@ -23041,6 +23174,12 @@ document.addEventListener("click", (event) => {
   const switcherSampleButton = event.target.closest("#switcher-sample-csv");
   if (switcherSampleButton) {
     copySwitcherSampleCsv();
+    return;
+  }
+
+  const switcherSampleTrelloButton = event.target.closest("#switcher-sample-trello");
+  if (switcherSampleTrelloButton) {
+    copySwitcherSampleTrello();
     return;
   }
 
