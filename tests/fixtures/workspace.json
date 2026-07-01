@@ -1,0 +1,66 @@
+{
+  "workspace": {
+    "id": "workspace-fixture",
+    "name": "Fixture Workspace",
+    "slug": "fixture-workspace"
+  },
+  "companies": [
+    {
+      "id": "company-fixture",
+      "name": "Fixture Company",
+      "type": "Internal",
+      "owner": "mara",
+      "status": "Active"
+    }
+  ],
+  "projects": [
+    {
+      "id": "project-fixture",
+      "companyId": "company-fixture",
+      "name": "Fixture Launch",
+      "status": "active",
+      "owner": "mara",
+      "startDate": "2026-07-01",
+      "dueDate": "2026-07-15",
+      "description": "Portable workspace fixture project."
+    }
+  ],
+  "tasks": [
+    {
+      "id": "task-fixture",
+      "projectId": "project-fixture",
+      "title": "Validate portable import",
+      "description": "Fixture task for import/export tests.",
+      "assignee": "mara",
+      "status": "todo",
+      "priority": "high",
+      "startDate": "2026-07-01",
+      "dueDate": "2026-07-08",
+      "tags": ["fixture"],
+      "subtasks": [],
+      "dependencies": [],
+      "comments": [],
+      "customFields": {}
+    }
+  ],
+  "automations": [
+    {
+      "id": "automation-fixture",
+      "name": "Fixture due-soon follow-up",
+      "trigger": "Task due soon",
+      "action": "Create follow-up task",
+      "triggerKind": "task_due_soon",
+      "conditionKind": "any",
+      "conditionValue": "",
+      "actionKind": "create_task",
+      "actionTarget": "fixture follow-up",
+      "enabled": true,
+      "lastRun": "",
+      "runCount": 0
+    }
+  ],
+  "projectTemplates": [],
+  "operatorActions": [],
+  "exportVersion": 1,
+  "exportedAt": "2026-07-01T00:00:00.000Z"
+}

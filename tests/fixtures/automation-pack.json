@@ -1,0 +1,33 @@
+{
+  "type": "agora.automation-pack",
+  "exportVersion": 1,
+  "exportedAt": "2026-07-01T00:00:00.000Z",
+  "pack": {
+    "id": "automation-pack-fixture",
+    "name": "Fixture Automation Pack",
+    "category": "Testing",
+    "creatorName": "Agora Fixtures",
+    "license": "MIT-style workflow pack",
+    "description": "Fixture pack used to validate automation pack import/export shape.",
+    "rules": [
+      {
+        "name": "Fixture blocked work log",
+        "triggerKind": "task_blocked",
+        "conditionKind": "any",
+        "conditionValue": "",
+        "actionKind": "add_activity",
+        "actionTarget": "fixture activity",
+        "enabled": true
+      },
+      {
+        "name": "Fixture approval chase",
+        "triggerKind": "approval_pending",
+        "conditionKind": "company",
+        "conditionValue": "Client",
+        "actionKind": "create_task",
+        "actionTarget": "approval follow-up",
+        "enabled": true
+      }
+    ]
+  }
+}

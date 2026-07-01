@@ -713,6 +713,7 @@ const routes = {
   collaboration: "Collaboration",
   reports: "Reports",
   goals: "Goals",
+  marketplace: "Marketplace",
   templates: "Templates",
   automations: "Automations",
   docs: "Docs & Files",
@@ -3160,6 +3161,7 @@ function canAccessRoute(route) {
     settings: "workspace:read",
     reports: "workspace:read",
     goals: "workspace:read",
+    marketplace: "projects:write",
     templates: "projects:write",
     automations: "projects:write",
     fields: "projects:write",
@@ -3768,6 +3770,89 @@ function renderLaunchReadinessPanel() {
       <div class="readiness-actions">
         <button class="button button-primary" type="button" id="open-command-palette">Open Command Palette</button>
         <span>Press <kbd>Cmd K</kbd> or <kbd>Ctrl K</kbd> anywhere in Agora.</span>
+      </div>
+    </section>
+  `;
+}
+
+function teamLaunchChecklistItems() {
+  const backups = loadWorkspaceBackups();
+  const hasOwner = state.memberships.some((membership) => membership.role === "admin" && membership.status !== "revoked");
+  const hasInvites = state.invitations.some((invitation) => invitation.status === "pending")
+    || state.memberships.filter((membership) => membership.status !== "revoked").length > 1;
+  const hasSupabasePlan = state.workspace.backendTarget.toLowerCase().includes("supabase") || apiSession?.apiHealth?.storage === "supabase";
+  const hasOperatorPreset = operatorPermissionSummary() !== `${aiPermissionOptions.length}/${aiPermissionOptions.length} allowed`
+    || state.auditEvents.some((event) => event.action === "ai_operator_permission_preset");
+  const hasPortableRecovery = state.portableImportPreview || backups.length || state.auditEvents.some((event) => event.action === "workspace_export");
+  return [
+    {
+      label: "Connect API",
+      detail: apiSession ? apiConnectionLabel() : "Connect the API before team use",
+      done: Boolean(apiSession),
+      commandId: "settings:sync"
+    },
+    {
+      label: "Create owner",
+      detail: hasOwner ? "Workspace admin is configured" : "Create or confirm the first admin",
+      done: hasOwner,
+      commandId: "settings:members"
+    },
+    {
+      label: "Invite team",
+      detail: hasInvites ? "Team access exists" : "Invite teammates and review roles",
+      done: hasInvites,
+      commandId: "settings:members"
+    },
+    {
+      label: "Configure Supabase",
+      detail: hasSupabasePlan ? "Supabase path is selected or connected" : "Review Supabase storage/auth setup",
+      done: Boolean(hasSupabasePlan),
+      commandId: "route:data"
+    },
+    {
+      label: "Test backups",
+      detail: backups.length ? `${backups.length} local backup${backups.length === 1 ? "" : "s"}` : "Create a local backup",
+      done: backups.length > 0,
+      commandId: "backup:create"
+    },
+    {
+      label: "Choose Operator preset",
+      detail: hasOperatorPreset ? `Preset scope: ${operatorPermissionSummary()}` : "Pick Safe, Project PM, Client PM, or Ops Admin",
+      done: hasOperatorPreset,
+      commandId: "route:operator"
+    },
+    {
+      label: "Export recovery bundle",
+      detail: hasPortableRecovery ? "Recovery path has local evidence" : "Download a portable bundle from Data",
+      done: Boolean(hasPortableRecovery),
+      commandId: "route:data"
+    }
+  ];
+}
+
+function renderTeamLaunchChecklistPanel() {
+  const items = teamLaunchChecklistItems();
+  const doneCount = items.filter((item) => item.done).length;
+  return `
+    <section class="panel team-launch-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Production onboarding</p>
+          <h2>Launch Agora for your team</h2>
+        </div>
+        <span class="status-pill ${doneCount === items.length ? "inbox-green" : "inbox-amber"}">${doneCount}/${items.length}</span>
+      </div>
+      <div class="team-launch-list">
+        ${items.map((item, index) => `
+          <article class="team-launch-item ${item.done ? "is-done" : "is-open"}">
+            <span>${index + 1}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail)}</p>
+            </div>
+            <button class="button button-secondary compact-button" type="button" data-command-id="${escapeHtml(item.commandId)}">${item.done ? "Review" : "Start"}</button>
+          </article>
+        `).join("")}
       </div>
     </section>
   `;
@@ -9005,6 +9090,7 @@ function render() {
     collaboration: renderCollaborationHub,
     reports: renderReports,
     goals: renderGoals,
+    marketplace: renderMarketplaceHub,
     templates: renderTemplates,
     automations: renderAutomations,
     docs: renderDocsAndFiles,
@@ -9038,7 +9124,7 @@ function render() {
 function sidebarGroupForRoute(route) {
   if (["landing", "dashboard", "portal", "daily", "inbox"].includes(route)) return "home";
   if (["board", "list", "calendar", "my-work", "time", "operator", "collaboration"].includes(route)) return "work";
-  if (["reports", "goals", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
+  if (["reports", "goals", "marketplace", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
   if (["audit", "data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
   if (route === "invite") return "";
@@ -9460,6 +9546,7 @@ function renderDashboard() {
   els.appView.innerHTML = `
     ${renderOnboardingPanel()}
     ${renderLaunchReadinessPanel()}
+    ${renderTeamLaunchChecklistPanel()}
 
     <div class="metric-grid">
       ${metric("Open tasks", openTasks.length)}
@@ -12570,6 +12657,69 @@ function filteredProjectTemplates() {
 function selectedProjectTemplate(templates = filteredProjectTemplates()) {
   const selectedId = state.templateLibrary?.selectedProjectTemplateId;
   return templates.find((template) => template.id === selectedId) || templates[0] || state.projectTemplates[0] || null;
+}
+
+function marketplaceHubStats() {
+  const installedMarketplaceTemplates = marketplaceProjectTemplates.filter((template) => state.projectTemplates.some((item) => item.id === template.id || item.name.toLowerCase() === template.name.toLowerCase()));
+  const installedAutomationPacks = automationMarketplacePacks.filter(automationMarketplaceInstalled);
+  const premiumTemplates = marketplaceProjectTemplates.filter(marketplaceTemplateRequiresEntitlement);
+  const authoredRules = state.automations.filter((automation) => automation.source !== "marketplace" && automation.source !== "imported");
+  return {
+    projectTemplates: marketplaceProjectTemplates.length,
+    installedTemplates: installedMarketplaceTemplates.length,
+    automationPacks: automationMarketplacePacks.length,
+    installedAutomationPacks: installedAutomationPacks.length,
+    premiumTemplates: premiumTemplates.length,
+    authoredRules: authoredRules.length
+  };
+}
+
+function renderMarketplaceHub() {
+  const stats = marketplaceHubStats();
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Templates", `${stats.installedTemplates}/${stats.projectTemplates}`)}
+      ${metric("Automation packs", `${stats.installedAutomationPacks}/${stats.automationPacks}`)}
+      ${metric("Premium packs", stats.premiumTemplates)}
+      ${metric("Rules to share", stats.authoredRules)}
+    </div>
+
+    <div class="marketplace-hub-grid">
+      <section class="panel marketplace-command-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Community hub</p>
+            <h2>Install, import, export</h2>
+          </div>
+          <span class="status-pill inbox-blue">Open JSON</span>
+        </div>
+        <p class="panel-note">Marketplace items are portable by design: install starter workflows, export unlocked project templates, import automation packs, and publish your own rule packs as plain JSON.</p>
+        <div class="marketplace-command-grid">
+          <article>
+            <strong>1. Start faster</strong>
+            <span>Install project templates for agency, finance, creative, software, research, nonprofit, and media workflows.</span>
+          </article>
+          <article>
+            <strong>2. Share operations</strong>
+            <span>Export automation packs with creator, category, and license metadata.</span>
+          </article>
+          <article>
+            <strong>3. Keep it portable</strong>
+            <span>Every marketplace item can move by JSON before a hosted registry exists.</span>
+          </article>
+        </div>
+        <div class="marketplace-actions">
+          <button class="button button-secondary" type="button" data-route="templates">Open Templates</button>
+          <button class="button button-secondary" type="button" data-route="automations">Open Automations</button>
+          <button class="button button-primary" type="button" data-route="data">Export Workspace</button>
+        </div>
+      </section>
+
+      ${renderTemplateMarketplacePanel()}
+      ${renderAutomationMarketplacePanel()}
+      ${renderAutomationPackAuthorPanel()}
+    </div>
+  `;
 }
 
 function renderTemplates() {

@@ -1453,6 +1453,60 @@ body[data-tutorial-target="view"] #app-view {
   margin-bottom: 16px;
 }
 
+.team-launch-panel {
+  margin-bottom: 16px;
+}
+
+.team-launch-list,
+.marketplace-command-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.team-launch-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.team-launch-item,
+.marketplace-command-grid article {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.team-launch-item {
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.team-launch-item > span {
+  display: inline-grid;
+  width: 34px;
+  height: 30px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  background: #ede9df;
+  border-radius: 999px;
+}
+
+.team-launch-item.is-done > span {
+  color: #ffffff;
+  background: var(--green);
+}
+
+.team-launch-item p,
+.marketplace-command-grid span {
+  margin: 2px 0 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .dashboard-widget-picker {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2555,11 +2609,27 @@ body[data-tutorial-target="view"] #app-view {
 
 .templates-grid,
 .automation-grid,
+.marketplace-hub-grid,
 .settings-grid,
 .data-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.05fr) minmax(320px, 0.95fr);
   gap: 16px;
+}
+
+.marketplace-hub-grid {
+  align-items: start;
+}
+
+.marketplace-command-panel,
+.marketplace-hub-grid .automation-marketplace-panel,
+.marketplace-hub-grid .automation-author-panel {
+  grid-column: 1 / -1;
+}
+
+.marketplace-command-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 12px;
 }
 
 .template-list,
@@ -6109,6 +6179,9 @@ body[data-density="compact"] .main-content {
   .reports-grid,
   .templates-grid,
   .automation-grid,
+  .marketplace-hub-grid,
+  .marketplace-command-grid,
+  .team-launch-list,
   .command-center-grid,
   .operator-center-grid,
   .collab-hub-grid,
@@ -6411,6 +6484,9 @@ body[data-density="compact"] .main-content {
   .reports-grid,
   .templates-grid,
   .automation-grid,
+  .marketplace-hub-grid,
+  .marketplace-command-grid,
+  .team-launch-list,
   .command-center-grid,
   .operator-center-grid,
   .settings-grid,
@@ -6495,6 +6571,15 @@ body[data-density="compact"] .main-content {
 
   .member-access-controls {
     grid-template-columns: 1fr;
+  }
+
+  .team-launch-item {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .team-launch-item .button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .operator-signal-grid,
