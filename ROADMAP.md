@@ -30,7 +30,7 @@ Agora currently includes:
 
 These are the highest-priority areas before a broader public launch.
 
-- Use the captured screenshot set across Product Hunt, social posts, and the next demo video pass.
+- Record and publish the demo video using the captured screenshot set, launch kit, and time-coded script.
 - Keep tightening landing-page proof around no ads, self-hosting, portable exports, client work, and auditable AI.
 - Keep README scanning sharp with refreshed screenshots, quick feature blocks, and a clear "who this is for" section.
 - Keep local setup boring: `cp .env.example .env`, `npm run dev`, `npm run dev:api`, `npm run check`, `npm run test:api`.

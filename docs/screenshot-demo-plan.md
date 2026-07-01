@@ -210,6 +210,8 @@ Use for:
 
 Target length: 75 to 120 seconds.
 
+Use [`docs/demo-video-script.md`](./demo-video-script.md) for the full time-coded script, route list, voiceover, and editing notes.
+
 1. Landing: "Agora is open source project management without ads or lock-in."
 2. Dashboard: show command center and launch readiness.
 3. Today: plan the day.

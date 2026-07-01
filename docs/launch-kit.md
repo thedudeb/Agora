@@ -30,11 +30,27 @@ Description:
 
 > Agora is a self-hostable project management workspace for teams that want Asana-style clarity while owning their data. Manage projects, clients, daily work, approvals, docs, automations, templates, time tracking, and reports from a portable, auditable workspace with no ads or trackers.
 
+Gallery Captions:
+
+1. `assets/screenshots/agora-landing.png` - Open source project management without ads, trackers, or lock-in.
+2. `assets/screenshots/agora-dashboard.png` - A browser-local command center with setup, readiness, and project signals.
+3. `assets/screenshots/agora-board.png` - Familiar board workflows for real project delivery.
+4. `assets/screenshots/agora-mobile-today.png` - Daily planning that works at mobile width.
+5. `assets/screenshots/agora-marketplace.png` - Portable project templates and automation packs built around open JSON.
+
 Maker Comment:
 
 > We built Agora because project management should feel like team infrastructure, not another closed attention marketplace. The current prototype includes boards, lists, calendar, daily planning, client portals, company views, templates, automations, time tracking, reports, API sync, Supabase-ready persistence, and an AI Operator with permissions, previews, audit logs, and undo.
 >
 > The big promise: no ads, no trackers, no lock-in. You can run it locally, connect the API, export portable bundles, and shape the product in the open.
+
+Launch Checklist:
+
+- Use `assets/screenshots/agora-landing.png` as the cover image.
+- Add dashboard, board, mobile Today, and marketplace screenshots to the gallery.
+- Link to the GitHub repository and README quick start.
+- Mention that Agora is an early prototype, but already runs locally with Node.js and no app dependencies.
+- Invite feedback on self-hosting, mobile polish, template packs, and what would make Agora credible for real teams.
 
 ## Show HN Draft
 
@@ -62,6 +78,8 @@ Body:
 
 ## X / Threads Launch Thread
 
+Suggested attachment order: landing screenshot, dashboard screenshot, board screenshot, mobile Today screenshot, marketplace screenshot.
+
 1. We are building Agora: open source project management without ads, trackers, or lock-in.
 
 2. Most project tools are polished but closed. Your tasks, docs, automations, and client workflows become something you rent.
@@ -81,6 +99,48 @@ Body:
 9. The project is early, but already usable as a prototype. Clone it, run it, break it, and tell us what would make it real for your team.
 
 10. GitHub: https://github.com/thedudeb/Agora
+
+## Screenshot-First Social Posts
+
+### Landing
+
+Image: `assets/screenshots/agora-landing.png`
+
+> Agora is open source project management without ads, trackers, or lock-in.
+>
+> The promise is simple: your workspace should organize work, not monetize attention.
+
+### Dashboard
+
+Image: `assets/screenshots/agora-dashboard.png`
+
+> Agora starts as a browser-local project command center: setup, readiness, projects, inbox signals, and daily work in one place.
+>
+> Connect the API when you need persistence. Export your workspace when you need ownership.
+
+### Board
+
+Image: `assets/screenshots/agora-board.png`
+
+> The basics still matter.
+>
+> Agora includes familiar project views like boards, lists, calendars, task details, dependencies, comments, and milestones, wrapped in an open source workspace teams can inspect and export.
+
+### Mobile Today
+
+Image: `assets/screenshots/agora-mobile-today.png`
+
+> Daily planning should survive real life.
+>
+> Agora's Today view gives teams a practical place to plan the next action, even at phone width.
+
+### Marketplace
+
+Image: `assets/screenshots/agora-marketplace.png`
+
+> Project templates and automations should be portable.
+>
+> Agora's marketplace primitives use open JSON for template packs, automation packs, creator metadata, pricing, and contribution workflows.
 
 ## LinkedIn Post
 
@@ -131,14 +191,18 @@ npm run dev:api
 
 ## Demo Video Script
 
-1. Start on the landing page: "Agora is open source project management without ads or lock-in."
-2. Open Dashboard: show projects, setup, and launch readiness.
-3. Open Today: show daily planning and focus work.
-4. Open Board/List: show normal project execution.
-5. Open Company/Portal: show scoped client visibility.
-6. Open Marketplace: install a template or automation pack.
-7. Open Data: show portable export.
-8. Open Permissions: show role and Operator guardrails.
+Use [`docs/demo-video-script.md`](./demo-video-script.md) for the full time-coded recording plan.
+
+Short flow:
+
+1. Landing: "Agora is open source project management without ads or lock-in."
+2. Dashboard: show projects, setup, and launch readiness.
+3. Today: show daily planning and focus work.
+4. Board/List: show normal project execution.
+5. Company/Portal: show scoped client visibility.
+6. Marketplace: install or publish a template or automation pack.
+7. Data: show portable export.
+8. Permissions/Operator: show role guardrails, previews, rationale, audit language, and undo.
 9. Close with: "Run it locally, connect the API, export your data, and shape it in the open."
 
 ## Boilerplate
