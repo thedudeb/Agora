@@ -5332,7 +5332,7 @@ function renderEmailDiagnosticsPanel() {
         `).join("")}
       </div>
       <div class="data-actions">
-        <button class="button button-secondary" type="button" id="backend-health-refresh" ${apiSession ? "" : "disabled"}>Refresh Health</button>
+        <button class="button button-secondary" type="button" data-backend-health-refresh ${apiSession ? "" : "disabled"}>Refresh Health</button>
         <button class="button button-primary" type="button" data-copy-feature-request-link>Copy Public Link</button>
       </div>
     </section>
@@ -5915,7 +5915,7 @@ function renderApiSyncPanel() {
           <button class="button button-secondary" type="button" id="api-save-workspace" ${canSaveWholeWorkspace() ? "" : "disabled"}>Save Snapshot</button>
           <button class="button button-secondary" type="button" id="api-restore-workspace-snapshot" ${apiSession ? "" : "disabled"}>Restore Snapshot</button>
           <button class="button button-secondary" type="button" id="api-sync-retry" ${apiSession && apiSyncQueue.length ? "" : "disabled"}>Retry Failed Syncs</button>
-          <button class="button button-secondary" type="button" id="backend-health-refresh" ${apiSession ? "" : "disabled"}>Refresh Health</button>
+          <button class="button button-secondary" type="button" data-backend-health-refresh ${apiSession ? "" : "disabled"}>Refresh Health</button>
         </div>
       </div>
       ${queueSummary.total ? `
@@ -8192,6 +8192,13 @@ function commandPaletteBaseItems() {
       disabled: !apiSession
     },
     {
+      id: "settings:account",
+      title: "Open account settings",
+      detail: "Owner signup, API URL, password login, reset, and Supabase auth",
+      group: "Setup",
+      keywords: "account owner signup login password reset api"
+    },
+    {
       id: "settings:sync",
       title: "Open sync settings",
       detail: "Connect API, Supabase, health checks, and failed syncs",
@@ -8204,6 +8211,13 @@ function commandPaletteBaseItems() {
       detail: "Roles, invitations, and company-scoped access",
       group: "Setup",
       keywords: "team users roles permissions invite"
+    },
+    {
+      id: "settings:feedback",
+      title: "Open feedback settings",
+      detail: "Public feature request link and email diagnostics",
+      group: "Setup",
+      keywords: "feedback feature request email diagnostics"
     },
     {
       id: "view:save",
@@ -8635,13 +8649,8 @@ function executeCommand(commandId) {
     return;
   }
 
-  if (commandId === "settings:sync") {
-    setSettingsTab("sync");
-    return;
-  }
-
-  if (commandId === "settings:members") {
-    setSettingsTab("members");
+  if (commandId.startsWith("settings:")) {
+    setSettingsTab(commandId.replace("settings:", ""));
     return;
   }
 
@@ -18201,7 +18210,7 @@ function renderBackendChecklist() {
       </article>
     </div>
     <div class="backend-actions">
-      <button class="button button-secondary compact-button" type="button" id="backend-health-refresh" ${apiSession ? "" : "disabled"}>Refresh Health</button>
+      <button class="button button-secondary compact-button" type="button" data-backend-health-refresh ${apiSession ? "" : "disabled"}>Refresh Health</button>
       <button class="button button-secondary compact-button" type="button" id="api-sync-retry" ${apiSession && apiSyncQueue.length ? "" : "disabled"}>Retry Failed Syncs</button>
     </div>
     ${renderBackendObservabilityPanel()}
@@ -24463,7 +24472,7 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  const backendHealthRefreshButton = event.target.closest("#backend-health-refresh");
+  const backendHealthRefreshButton = event.target.closest("[data-backend-health-refresh], #backend-health-refresh");
   if (backendHealthRefreshButton) {
     refreshBackendHealth();
     return;
