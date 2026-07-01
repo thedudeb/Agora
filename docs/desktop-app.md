@@ -89,6 +89,7 @@ Before shipping a desktop build:
 - Run `npm run test:fixtures` if import/export behavior changed.
 - Verify app launch on a clean OS user profile.
 - Verify app launch with Wi-Fi disabled.
+- Verify `Settings > Sync` or `Data` shows the Desktop and mobile readiness checklist passing for app shell, local workspace, retry queue, portable restore, and secret handling.
 - Verify local storage persists after restart.
 - Verify the packaged app contains no runtime CDN dependency.
 - Verify Settings can connect to a local or hosted API.

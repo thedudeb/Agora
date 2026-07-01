@@ -3877,6 +3877,68 @@ function apiConnectionTone() {
   return apiSession ? "inbox-green" : "inbox-neutral";
 }
 
+function offlineAppReadinessItems() {
+  const recovery = portableRecoveryStatus();
+  const contract = offlineStorageContract();
+  const queueSummary = apiSyncQueueSummary();
+  const hasSnapshot = Boolean(storageGet(workspaceSnapshotKey(state.workspace.id)) || storageGet(STORAGE_KEY));
+  const hasAppShell = Boolean(window.AGORA_DESKTOP?.offlineCapable || "serviceWorker" in navigator);
+  return [
+    {
+      label: "App shell",
+      done: hasAppShell,
+      detail: window.AGORA_DESKTOP?.offlineCapable ? "Desktop shell bundles Agora for offline launch." : "PWA service worker support is available for cached reloads."
+    },
+    {
+      label: "Local workspace",
+      done: hasSnapshot,
+      detail: hasSnapshot ? "Workspace snapshot is present on this device." : "Save or edit the workspace once to create the local snapshot."
+    },
+    {
+      label: "Retry queue",
+      done: Array.isArray(apiSyncQueue),
+      detail: queueSummary.total ? `${queueSummary.total} queued write${queueSummary.total === 1 ? "" : "s"}; ${queueSummary.conflicts} conflict${queueSummary.conflicts === 1 ? "" : "s"}.` : "Failed API writes have a durable local queue."
+    },
+    {
+      label: "Portable restore",
+      done: recovery.files.some((file) => file.path === "workspace.json") && recovery.files.some((file) => file.path === "offline-storage-contract.json"),
+      detail: `${recovery.score}/${recovery.total} recovery checks ready, including workspace.json and the offline contract.`
+    },
+    {
+      label: "Secret handling",
+      done: contract.security.rawTokensExported === false && contract.security.providerSecretsExported === false,
+      detail: "Exports omit raw tokens and provider secrets; native wrappers should use keychain or keystore storage."
+    }
+  ];
+}
+
+function renderOfflineAppReadinessPanel() {
+  const items = offlineAppReadinessItems();
+  const doneCount = items.filter((item) => item.done).length;
+  return `
+    <section class="panel offline-readiness-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Offline apps</p>
+          <h2>Desktop and mobile readiness</h2>
+        </div>
+        <span class="status-pill ${doneCount === items.length ? "inbox-green" : "inbox-amber"}">${doneCount}/${items.length}</span>
+      </div>
+      <div class="readiness-list compact-readiness">
+        ${items.map((item) => `
+          <article class="readiness-item ${item.done ? "is-done" : "is-pending"}">
+            <span>${item.done ? "OK" : "Next"}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail)}</p>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function isClientSession() {
   return apiSession?.membership?.role === "client";
 }
@@ -10986,6 +11048,7 @@ function renderMobileAppPanel() {
         </div>
       </div>
     </section>
+    ${renderOfflineAppReadinessPanel()}
   `;
 }
 
@@ -16626,6 +16689,7 @@ function renderSettings() {
 
       ${activeSettingsTab === "sync" ? `
       ${renderApiStatePanel()}
+      ${renderOfflineAppReadinessPanel()}
       ${renderApiSyncPanel()}
       ` : ""}
 
@@ -17000,6 +17064,7 @@ function renderDataManagement() {
     </div>
 
     ${renderPortableRecoveryConfidencePanel()}
+    ${renderOfflineAppReadinessPanel()}
 
     <div class="data-grid">
       <section class="panel">

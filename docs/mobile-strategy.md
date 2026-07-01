@@ -71,6 +71,7 @@ Before calling the mobile experience shippable:
 - Install Agora to the iOS home screen and Android home screen from Chrome.
 - Load a workspace once, then disable Wi-Fi and cellular data or turn on airplane mode.
 - Confirm Dashboard, Today, Board, List, Calendar, Inbox, Settings, Data import, and JSON export open without a network.
+- Confirm `Settings > Sync`, `Data`, or `Mobile App` shows the Desktop and mobile readiness checklist passing.
 - Create or edit a project/task while offline and confirm it persists after closing and reopening.
 - Re-enable the network and confirm any queued API sync retries from Settings.
 
