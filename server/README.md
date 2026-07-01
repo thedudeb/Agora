@@ -123,7 +123,7 @@ The verifier starts a temporary Agora API server with Supabase storage, uses a u
 ## Endpoints
 
 - `GET /api/health`: service health and active workspace metadata.
-- `GET /api/backend/health`: authenticated backend readiness, storage/auth drivers, workspace snapshot metadata, structured collection counts, production-mode status, and current session scope.
+- `GET /api/backend/health`: authenticated backend readiness, storage/auth drivers, workspace snapshot metadata, structured collection counts, request metrics, background job state, production-mode status, and current session scope.
 - `GET /api/scheduler/notifications/due`: returns due, unsent notification reminders visible to the authenticated session.
 - `POST /api/scheduler/notifications/run`: processes due reminders, marks them sent, and writes notification-history records. Use it from trusted cron, or set `AGORA_SCHEDULER_ENABLED=true` to run the scheduler inside the API process.
 - `POST /api/payments/checkout-intent`: creates a server-side checkout intent for paid marketplace templates and other billable workspace items.

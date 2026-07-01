@@ -4432,8 +4432,9 @@ function renderApiSyncPanel() {
           <p>${apiSession ? `${escapeHtml(realtimeStatusLabel())} - Last saved ${escapeHtml(apiLastSyncedLabel())}` : "Connect an account before saving or loading backend workspace data."}</p>
         </div>
         <div class="data-actions">
-          <button class="button button-primary" type="button" id="api-save-workspace" ${canSaveWholeWorkspace() ? "" : "disabled"}>Save to API</button>
-          <button class="button button-secondary" type="button" id="api-load-workspace" ${apiSession ? "" : "disabled"}>Load from API</button>
+          <button class="button button-primary" type="button" id="api-load-workspace" ${apiSession ? "" : "disabled"}>Load Records</button>
+          <button class="button button-secondary" type="button" id="api-save-workspace" ${canSaveWholeWorkspace() ? "" : "disabled"}>Save Snapshot</button>
+          <button class="button button-secondary" type="button" id="api-restore-workspace-snapshot" ${apiSession ? "" : "disabled"}>Restore Snapshot</button>
           <button class="button button-secondary" type="button" id="api-sync-retry" ${apiSession && apiSyncQueue.length ? "" : "disabled"}>Retry Failed Syncs</button>
           <button class="button button-secondary" type="button" id="backend-health-refresh" ${apiSession ? "" : "disabled"}>Refresh Health</button>
         </div>
@@ -15415,8 +15416,9 @@ function renderDataManagement() {
             <p>${apiSession ? `${escapeHtml(realtimeStatusLabel())} - Last saved ${escapeHtml(apiLastSyncedLabel())}` : "Connect from Settings to save or load workspace snapshots through the API."}</p>
           </div>
           <div class="data-actions">
-            <button class="button button-primary" type="button" id="api-save-workspace" ${apiSession ? "" : "disabled"}>Save to API</button>
-            <button class="button button-secondary" type="button" id="api-load-workspace" ${apiSession ? "" : "disabled"}>Load from API</button>
+            <button class="button button-primary" type="button" id="api-load-workspace" ${apiSession ? "" : "disabled"}>Load Records</button>
+            <button class="button button-secondary" type="button" id="api-save-workspace" ${apiSession ? "" : "disabled"}>Save Snapshot</button>
+            <button class="button button-secondary" type="button" id="api-restore-workspace-snapshot" ${apiSession ? "" : "disabled"}>Restore Snapshot</button>
             <button class="button button-secondary" type="button" id="api-import-workspace" ${apiSession ? "" : "disabled"}>Import to API</button>
           </div>
         </div>
@@ -16004,6 +16006,7 @@ function renderBackendChecklist() {
       <button class="button button-secondary compact-button" type="button" id="backend-health-refresh" ${apiSession ? "" : "disabled"}>Refresh Health</button>
       <button class="button button-secondary compact-button" type="button" id="api-sync-retry" ${apiSession && apiSyncQueue.length ? "" : "disabled"}>Retry Failed Syncs</button>
     </div>
+    ${renderBackendObservabilityPanel()}
     <div class="backend-checklist">
       ${backendReadinessItems().map((item) => `
         <article class="backend-item ${item.done ? "is-done" : "is-pending"}">
@@ -16042,6 +16045,42 @@ function renderBackendChecklist() {
           <article>
             <strong>${escapeHtml(item.label || item.path)}</strong>
             <p>${escapeHtml(item.error)} - ${escapeHtml(formatTimestamp(item.updatedAt))}</p>
+          </article>
+        `).join("")}
+      </div>
+    ` : ""}
+  `;
+}
+
+function renderBackendObservabilityPanel() {
+  const metrics = backendHealth?.observability || {};
+  const jobs = backendHealth?.jobs || {};
+  const routes = Array.isArray(metrics.routes) ? metrics.routes.slice(0, 6) : [];
+  return `
+    <div class="backend-health-summary">
+      <article>
+        <span>Requests</span>
+        <strong>${Number(metrics.total || 0)}</strong>
+      </article>
+      <article>
+        <span>API errors</span>
+        <strong>${Number(metrics.errors || 0)}</strong>
+      </article>
+      <article>
+        <span>Avg latency</span>
+        <strong>${Number(metrics.avgDurationMs || 0)}ms</strong>
+      </article>
+      <article>
+        <span>Jobs queued</span>
+        <strong>${Number(jobs.queued || 0)}</strong>
+      </article>
+    </div>
+    ${routes.length ? `
+      <div class="backend-record-list">
+        ${routes.map((route) => `
+          <article class="${route.errors ? "is-pending" : "is-ready"}">
+            <strong>${escapeHtml(route.route)}</strong>
+            <span>${Number(route.count || 0)} req / ${Number(route.avgDurationMs || 0)}ms avg</span>
           </article>
         `).join("")}
       </div>
@@ -20546,6 +20585,24 @@ async function loadWorkspaceFromApi() {
   }
 
   try {
+    let changed = await loadCoreRecordsFromApi();
+    changed = await loadStructuredRecordsFromApi() || changed;
+    saveApiSession({ ...apiSession, lastSyncedAt: new Date().toISOString() });
+    await refreshBackendHealth({ silent: true });
+    render();
+    showToast(changed ? "Records loaded from API" : "API records are already current", "success");
+  } catch (error) {
+    showToast(`API record load failed: ${error.message}`, "info");
+  }
+}
+
+async function restoreWorkspaceSnapshotFromApi() {
+  if (!apiSession) {
+    showToast("Connect to the API from Settings first", "info");
+    return;
+  }
+
+  try {
     const document = await apiRequest("/api/workspace");
     if (!document.snapshot) {
       showToast("No API workspace snapshot has been saved yet", "info");
@@ -20558,9 +20615,9 @@ async function loadWorkspaceFromApi() {
     saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, storageDriver: document.metadata.storage || apiSession.storageDriver });
     await refreshBackendHealth({ silent: true });
     render();
-    showToast("Workspace loaded from API", "success");
+    showToast("Workspace snapshot restored from API", "success");
   } catch (error) {
-    showToast(`API load failed: ${error.message}`, "info");
+    showToast(`API snapshot restore failed: ${error.message}`, "info");
   }
 }
 
@@ -21788,6 +21845,9 @@ document.addEventListener("click", (event) => {
 
   const apiLoadButton = event.target.closest("#api-load-workspace");
   if (apiLoadButton) loadWorkspaceFromApi();
+
+  const apiRestoreSnapshotButton = event.target.closest("#api-restore-workspace-snapshot");
+  if (apiRestoreSnapshotButton) restoreWorkspaceSnapshotFromApi();
 
   const apiImportButton = event.target.closest("#api-import-workspace");
   if (apiImportButton) importWorkspaceToApi();

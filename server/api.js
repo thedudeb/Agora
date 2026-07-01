@@ -75,6 +75,15 @@ const paymentIntents = new Map();
 const backgroundJobs = [];
 const backgroundJobHistory = [];
 let backgroundJobRunning = false;
+const requestMetrics = {
+  startedAt: new Date().toISOString(),
+  total: 0,
+  errors: 0,
+  totalDurationMs: 0,
+  maxDurationMs: 0,
+  byRoute: new Map(),
+  recentErrors: []
+};
 
 function envFlag(name, fallback = false) {
   const value = cleanString(process.env[name]).toLowerCase();
@@ -158,12 +167,96 @@ function drainBackgroundJobs() {
   });
 }
 
+function recordRequestMetric({ method, pathname, statusCode, durationMs }) {
+  const route = `${method} ${normalizeMetricPath(pathname)}`;
+  const failed = statusCode >= 500;
+  requestMetrics.total += 1;
+  requestMetrics.errors += failed ? 1 : 0;
+  requestMetrics.totalDurationMs += durationMs;
+  requestMetrics.maxDurationMs = Math.max(requestMetrics.maxDurationMs, durationMs);
+  const current = requestMetrics.byRoute.get(route) || { route, count: 0, errors: 0, totalDurationMs: 0, maxDurationMs: 0 };
+  current.count += 1;
+  current.errors += failed ? 1 : 0;
+  current.totalDurationMs += durationMs;
+  current.maxDurationMs = Math.max(current.maxDurationMs, durationMs);
+  requestMetrics.byRoute.set(route, current);
+  if (statusCode >= 400) {
+    requestMetrics.recentErrors.unshift({
+      route,
+      statusCode,
+      durationMs,
+      at: new Date().toISOString()
+    });
+    requestMetrics.recentErrors.splice(20);
+  }
+}
+
+function normalizeMetricPath(pathname) {
+  return cleanString(pathname)
+    .replace(/\/api\/tasks\/[^/]+/g, "/api/tasks/:id")
+    .replace(/\/api\/projects\/[^/]+/g, "/api/projects/:id")
+    .replace(/\/api\/feature-requests\/[^/]+/g, "/api/feature-requests/:id")
+    .replace(/\/api\/invitations\/[^/]+/g, "/api/invitations/:token")
+    .replace(/\/api\/records\/[^/]+/g, "/api/records/:collection")
+    .replace(/\/api\/files\/[^/]+/g, "/api/files/:id");
+}
+
+function requestMetricsSnapshot() {
+  const routes = Array.from(requestMetrics.byRoute.values())
+    .map((route) => ({
+      route: route.route,
+      count: route.count,
+      errors: route.errors,
+      avgDurationMs: route.count ? Math.round(route.totalDurationMs / route.count) : 0,
+      maxDurationMs: route.maxDurationMs
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 12);
+  return {
+    startedAt: requestMetrics.startedAt,
+    total: requestMetrics.total,
+    errors: requestMetrics.errors,
+    avgDurationMs: requestMetrics.total ? Math.round(requestMetrics.totalDurationMs / requestMetrics.total) : 0,
+    maxDurationMs: requestMetrics.maxDurationMs,
+    routes,
+    recentErrors: requestMetrics.recentErrors
+  };
+}
+
+function backgroundJobSnapshot() {
+  return {
+    queued: backgroundJobs.length,
+    running: backgroundJobRunning,
+    recent: backgroundJobHistory.slice(0, 20).map((job) => ({
+      id: job.id,
+      type: job.type,
+      status: job.status,
+      attempts: job.attempts,
+      metadata: job.metadata,
+      error: job.error || "",
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+      finishedAt: job.finishedAt || ""
+    }))
+  };
+}
+
 function createServer(options = {}) {
   const storage = options.storage || createStorage();
   const allowDemoAuth = options.allowDemoAuth ?? envFlag("AGORA_DEMO_AUTH", false);
   const allowPasswordlessAuth = options.allowPasswordlessAuth ?? envFlag("AGORA_PASSWORDLESS_AUTH", false);
 
   return http.createServer(async (request, response) => {
+    const requestStartedAt = Date.now();
+    const requestUrl = new URL(request.url, "http://localhost");
+    response.on("finish", () => {
+      recordRequestMetric({
+        method: request.method,
+        pathname: requestUrl.pathname,
+        statusCode: response.statusCode,
+        durationMs: Date.now() - requestStartedAt
+      });
+    });
     try {
       const corsAllowed = applyCors(request, response);
       if (request.method === "OPTIONS") {
@@ -176,7 +269,7 @@ function createServer(options = {}) {
         return;
       }
 
-      const url = new URL(request.url, "http://localhost");
+      const url = requestUrl;
 
       if (request.method === "GET" && url.pathname === "/api/health") {
         sendJson(response, 200, {
@@ -1052,6 +1145,20 @@ async function buildBackendHealth(storage, session) {
         : "Scheduler endpoints are available for cron or manual runs",
       fix: "Use AGORA_SCHEDULER_ENABLED=true for the API worker, or call the scheduler endpoint from trusted cron."
     },
+    {
+      id: "record-query-api",
+      label: "Record query API",
+      done: true,
+      detail: "Projects and tasks support paginated server-side query routes",
+      fix: "Use /api/projects and /api/tasks with limit, offset, and filter params before falling back to workspace snapshots."
+    },
+    {
+      id: "background-jobs",
+      label: "Background jobs",
+      done: backgroundJobs.length < 100,
+      detail: `${backgroundJobs.length} queued, ${backgroundJobHistory.filter((job) => job.status === "failed").length} recent failed`,
+      fix: "If queued jobs keep growing, move the in-process queue to a durable worker."
+    },
     ...productionGates,
     {
       id: "production-mode",
@@ -1092,6 +1199,8 @@ async function buildBackendHealth(storage, session) {
     },
     records: collectionReports,
     readiness,
+    observability: requestMetricsSnapshot(),
+    jobs: backgroundJobSnapshot(),
     generatedAt: new Date().toISOString()
   };
 }

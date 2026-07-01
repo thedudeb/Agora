@@ -40,8 +40,11 @@ async function run() {
     assert(backendHealth.auth === "local", "backend health did not expose auth driver");
     assert(backendHealth.records.some((record) => record.key === "comments"), "backend health did not report record collections");
     assert(backendHealth.readiness.some((item) => item.id === "structured-records"), "backend health did not include readiness items");
+    assert(backendHealth.readiness.some((item) => item.id === "record-query-api"), "backend health did not include query API readiness");
     assert(backendHealth.productionGates.some((item) => item.id === "allowed-origins"), "backend health did not include production gates");
     assert(backendHealth.readiness.some((item) => item.id === "password-reset-delivery"), "backend readiness did not include reset delivery gate");
+    assert(backendHealth.observability && Number.isFinite(backendHealth.observability.total), "backend health did not include observability metrics");
+    assert(backendHealth.jobs && Array.isArray(backendHealth.jobs.recent), "backend health did not include job metrics");
 
     const aiOperator = await request(`${baseUrl}/api/ai/operator`, {
       method: "POST",
@@ -685,6 +688,7 @@ async function run() {
     assert(commentsReport && commentsReport.count === 2, "backend health did not count structured comments");
     assert(chatReport && chatReport.count === 1, "backend health did not count structured chat");
     assert(finalBackendHealth.snapshot.counts.projects === 1, "backend health did not count snapshot projects");
+    assert(finalBackendHealth.observability.total > backendHealth.observability.total, "backend request metrics did not advance");
 
     const audit = await request(`${baseUrl}/api/audit-log`, {
       token: login.token
