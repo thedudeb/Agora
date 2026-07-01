@@ -4795,12 +4795,14 @@ function productionReadinessItems() {
     {
       label: "Supabase or API connected",
       done: hasApi,
-      detail: hasApi ? apiBackendLabel() : "Connect Settings to the API before production launch."
+      detail: hasApi ? apiBackendLabel() : "Connect Settings to the API before production launch.",
+      commandId: "settings:sync"
     },
     {
       label: "Backend health checked",
       done: Boolean(health.generatedAt || apiSession?.lastBackendCheckedAt),
-      detail: health.generatedAt ? `Last checked ${formatTimestamp(health.generatedAt)}` : "Run Backend Health after connecting."
+      detail: health.generatedAt ? `Last checked ${formatTimestamp(health.generatedAt)}` : "Run Backend Health after connecting.",
+      commandId: "route:data"
     },
     {
       label: "Hosted launch gates",
@@ -4809,32 +4811,38 @@ function productionReadinessItems() {
         ? failedProductionGates.length
           ? `${failedProductionGates.length} gate${failedProductionGates.length === 1 ? "" : "s"} need attention`
           : `${productionGates.length} gates passing`
-        : "Refresh Backend Health to inspect CORS, auth, reset, and proxy gates."
+        : "Refresh Backend Health to inspect CORS, auth, reset, and proxy gates.",
+      commandId: "route:data"
     },
     {
       label: "Auth driver selected",
       done: Boolean(health.auth || apiSession?.apiHealth?.auth),
-      detail: health.auth || apiSession?.apiHealth?.auth || "Use local auth for dev or Supabase Auth for hosted installs."
+      detail: health.auth || apiSession?.apiHealth?.auth || "Use local auth for dev or Supabase Auth for hosted installs.",
+      commandId: "settings:sync"
     },
     {
       label: "Role model configured",
       done: state.memberships.length >= workspaceMembers().length && Boolean(state.workspace.defaultRole),
-      detail: `${state.memberships.length} active memberships, default role ${state.workspace.defaultRole}.`
+      detail: `${state.memberships.length} active memberships, default role ${state.workspace.defaultRole}.`,
+      commandId: "settings:members"
     },
     {
       label: "Data export path verified",
       done: state.tasks.length > 0 && state.projects.length > 0,
-      detail: "JSON and CSV export are available from Data."
+      detail: "JSON and CSV export are available from Data.",
+      commandId: "route:data"
     },
     {
       label: "PWA shell ready",
       done: Boolean(navigator.serviceWorker),
-      detail: pwaStatusLabel()
+      detail: pwaStatusLabel(),
+      commandId: "readiness:open"
     },
     {
       label: "Theme selected",
       done: Boolean(state.workspace.theme?.preset),
-      detail: `${themePresets.find((theme) => theme.id === state.workspace.theme?.preset)?.label || "Agora"} / ${state.workspace.theme?.density || "comfortable"}`
+      detail: `${themePresets.find((theme) => theme.id === state.workspace.theme?.preset)?.label || "Agora"} / ${state.workspace.theme?.density || "comfortable"}`,
+      commandId: "route:settings"
     }
   ];
 }
@@ -4894,8 +4902,43 @@ function renderProductionReadinessPanel() {
             <strong>${escapeHtml(item.label)}</strong>
             <p>${escapeHtml(item.detail)}</p>
           </div>
+          ${item.commandId ? `<button class="button button-secondary compact-button" type="button" data-command-id="${escapeHtml(item.commandId)}">${item.done ? "Review" : "Fix"}</button>` : ""}
         </article>
       `).join("")}
+    </div>
+  `;
+}
+
+function renderProductionLaunchGuidePanel() {
+  const items = productionReadinessItems();
+  const score = readinessScore(items);
+  const openItems = items.filter((item) => !item.done);
+  const nextItems = (openItems.length ? openItems : items).slice(0, 3);
+  return `
+    <div class="hosted-launch-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Guided launch</p>
+          <h3>${openItems.length ? "Next production moves" : "Ready to launch"}</h3>
+        </div>
+        <span class="status-pill ${score.done === score.total ? "inbox-green" : "inbox-amber"}">${score.done}/${score.total}</span>
+      </div>
+      <div class="readiness-list compact-readiness">
+        ${nextItems.map((item, index) => `
+          <article class="readiness-item ${item.done ? "is-done" : "is-pending"}">
+            <span>${item.done ? "OK" : index + 1}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail)}</p>
+            </div>
+            <button class="button button-secondary compact-button" type="button" data-command-id="${escapeHtml(item.commandId || "readiness:open")}">${item.done ? "Review" : "Do This"}</button>
+          </article>
+        `).join("")}
+      </div>
+      <div class="launch-action-row">
+        <button class="button button-primary" type="button" data-command-id="launch:workspace">Open Launch Flow</button>
+        <button class="button button-secondary" type="button" data-command-id="readiness:open">Open Readiness Audit</button>
+      </div>
     </div>
   `;
 }
@@ -16145,6 +16188,7 @@ function renderSettings() {
           </div>
           <span class="status-pill ${productionReadinessScore().done === productionReadinessScore().total ? "inbox-green" : "inbox-amber"}">${productionReadinessScore().done}/${productionReadinessScore().total}</span>
         </div>
+        ${renderProductionLaunchGuidePanel()}
         ${renderProductionReadinessPanel()}
       </section>
       ` : ""}
@@ -17433,6 +17477,7 @@ function renderBackendChecklist() {
         </div>
         <span class="status-pill ${productionReadinessScore().done === productionReadinessScore().total ? "inbox-green" : "inbox-amber"}">${productionReadinessScore().done}/${productionReadinessScore().total}</span>
       </div>
+      ${renderProductionLaunchGuidePanel()}
       ${renderProductionReadinessPanel()}
       ${renderHostedLaunchRunbookPanel()}
     </div>
