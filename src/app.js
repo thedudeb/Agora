@@ -701,6 +701,7 @@ const marketplaceProjectTemplates = [
 const routes = {
   landing: "Agora",
   dashboard: "Dashboard",
+  launch: "Launch Flow",
   portal: "Portal",
   daily: "Today",
   inbox: "Inbox",
@@ -6517,6 +6518,13 @@ function commandPaletteBaseItems() {
       keywords: "first run setup onboarding wizard launch"
     },
     {
+      id: "launch:workspace",
+      title: "Launch first workspace",
+      detail: "Run the guided client template, automation, recovery, and invite flow",
+      group: "Golden path",
+      keywords: "launch first client workspace guided flow onboarding"
+    },
+    {
       id: "template:recommended",
       title: "Start with Client Onboarding",
       detail: "Open the recommended first template for a complete client project flow",
@@ -6914,6 +6922,11 @@ function executeCommand(commandId) {
 
   if (commandId === "onboarding:wizard") {
     openOnboardingWizard();
+    return;
+  }
+
+  if (commandId === "launch:workspace") {
+    openLaunchWorkspaceFlow();
     return;
   }
 
@@ -9340,6 +9353,7 @@ function render() {
 
   const routeRenderers = {
     landing: renderLandingPage,
+    launch: renderLaunchWorkspaceFlow,
     portal: renderClientPortal,
     project: renderProjectPage,
     company: renderCompanyPage,
@@ -9388,7 +9402,7 @@ function render() {
 }
 
 function sidebarGroupForRoute(route) {
-  if (["landing", "dashboard", "portal", "daily", "inbox"].includes(route)) return "home";
+  if (["landing", "dashboard", "launch", "portal", "daily", "inbox"].includes(route)) return "home";
   if (["board", "list", "calendar", "my-work", "time", "operator", "collaboration"].includes(route)) return "work";
   if (["reports", "goals", "marketplace", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
   if (["audit", "permissions", "data", "settings"].includes(route)) return "admin";
@@ -9615,7 +9629,7 @@ function renderLandingPage() {
           <h1>Agora</h1>
           <p class="landing-lede">Open source project management without ads, trackers, or lock-in. Run projects, clients, daily work, approvals, docs, automations, and time tracking from a self-hostable workspace your team can actually own.</p>
           <div class="landing-actions">
-            <button class="button button-primary" type="button" data-route="dashboard">Launch Workspace</button>
+            <button class="button button-primary" type="button" data-command-id="launch:workspace">Launch Workspace</button>
             <button class="button button-secondary" type="button" data-route="portal">View Client Portal</button>
           </div>
           <div class="landing-proof-row" aria-label="Product promises">
@@ -9861,7 +9875,7 @@ function renderDashboard() {
       title: "Launch the first client workspace",
       description: "Start with the client onboarding project, add the agency handoff workflow, then prove recovery before inviting the team.",
       actions: [
-        { label: "Start Client Workspace", commandId: "template:recommended", primary: true },
+        { label: "Launch Workspace", commandId: "launch:workspace", primary: true },
         { label: "Open Today", route: "daily" }
       ]
     })}
@@ -9955,6 +9969,228 @@ function renderWorkspaceTrustStrip() {
         </article>
       `).join("")}
     </section>
+  `;
+}
+
+function openLaunchWorkspaceFlow() {
+  state.selectedRoute = "launch";
+  openSidebarGroupForRoute("launch");
+  saveState();
+  render();
+}
+
+function launchWorkspaceItems() {
+  const template = recommendedFirstTemplate();
+  const pack = recommendedAutomationPack();
+  const recovery = portableRecoveryStatus();
+  const hasTeamAccess = state.memberships.filter((membership) => membership.status !== "revoked").length > 1
+    || state.invitations.some((invitation) => invitation.status === "pending");
+  const hasClientProject = activeProjects().length > 0 && state.companies.some((company) => company.status !== "Archived");
+  return [
+    {
+      label: "Client workspace",
+      detail: hasClientProject ? `${activeProjects().length} active project${activeProjects().length === 1 ? "" : "s"} ready` : "Create the client and first project.",
+      done: hasClientProject,
+      action: "Create Structure"
+    },
+    {
+      label: "Starter template",
+      detail: template ? `${template.name} is available for project setup.` : "Add or import a project template.",
+      done: Boolean(template && state.projectTemplates.length),
+      action: "Review Template"
+    },
+    {
+      label: "Handoff automation",
+      detail: pack ? automationMarketplaceInstalled(pack) ? `${pack.name} is installed.` : `${pack.name} is ready to install.` : "Add an automation pack.",
+      done: Boolean(pack && automationMarketplaceInstalled(pack)),
+      action: "Install Pack"
+    },
+    {
+      label: "Recovery proof",
+      detail: recovery.score >= 3 ? "Portable recovery has local evidence." : "Create a backup and export the bundle.",
+      done: recovery.score >= 3,
+      action: "Create Backup"
+    },
+    {
+      label: "Team invite",
+      detail: hasTeamAccess ? "Members or pending invitations are configured." : "Prepare the first teammate invite.",
+      done: hasTeamAccess,
+      action: "Prep Invite"
+    }
+  ];
+}
+
+function renderLaunchProgressPanel() {
+  const items = launchWorkspaceItems();
+  const doneCount = items.filter((item) => item.done).length;
+  return `
+    <section class="panel launch-progress-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Launch progress</p>
+          <h2>${doneCount}/${items.length} ready</h2>
+        </div>
+        <span class="status-pill ${doneCount === items.length ? "inbox-green" : "inbox-amber"}">${doneCount === items.length ? "Ready" : "In progress"}</span>
+      </div>
+      <div class="launch-step-grid">
+        ${items.map((item, index) => `
+          <article class="launch-step ${item.done ? "is-done" : "is-open"}">
+            <span>${item.done ? "OK" : index + 1}</span>
+            <strong>${escapeHtml(item.label)}</strong>
+            <p>${escapeHtml(item.detail)}</p>
+            <small>${escapeHtml(item.done ? "Complete" : item.action)}</small>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderLaunchClientSetupPanel() {
+  const firstClient = state.companies.find((company) => company.type === "Client" && company.status !== "Archived") || visibleCompanies()[0] || {};
+  const firstProject = activeProjects()[0] || {};
+  return `
+    <section class="panel launch-flow-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Step 1</p>
+          <h2>Create the client workspace</h2>
+        </div>
+        <span class="status-pill ${activeProjects().length ? "inbox-green" : "inbox-amber"}">${activeProjects().length ? "Project ready" : "Needs project"}</span>
+      </div>
+      <div class="launch-inline-form">
+        <label>
+          <span>Client</span>
+          <input id="onboarding-company-name" value="${escapeHtml(firstClient.name || "First Client")}" placeholder="First Client">
+        </label>
+        <label>
+          <span>Project</span>
+          <input id="onboarding-project-name" value="${escapeHtml(firstProject.name || "Client onboarding launch")}" placeholder="Client onboarding launch">
+        </label>
+        <button class="button button-primary" type="button" data-onboarding-inline="structure">Create Structure</button>
+        <button class="button button-secondary" type="button" data-command-id="template:recommended">Review Template</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderLaunchAutomationSetupPanel() {
+  const pack = recommendedAutomationPack();
+  const installed = pack ? automationMarketplaceInstalled(pack) : false;
+  return `
+    <section class="panel launch-flow-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Step 2</p>
+          <h2>Install the handoff workflow</h2>
+        </div>
+        <span class="status-pill ${installed ? "inbox-green" : "inbox-amber"}">${installed ? "Installed" : "Ready"}</span>
+      </div>
+      <p class="panel-note">${pack ? escapeHtml(pack.description) : "Automation packs add repeatable approval follow-ups and client update habits."}</p>
+      <div class="launch-action-row">
+        ${pack ? `<button class="button button-primary" type="button" data-install-automation-pack="${escapeHtml(pack.id)}" ${installed ? "disabled" : ""}>${installed ? "Installed" : "Install Pack"}</button>` : ""}
+        <button class="button button-secondary" type="button" data-command-id="automation:recommended">Review Marketplace</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderLaunchRecoverySetupPanel() {
+  const recovery = portableRecoveryStatus();
+  const latestBackup = recovery.latestBackup ? formatTimestamp(recovery.latestBackup.createdAt) : "No backup yet";
+  return `
+    <section class="panel launch-flow-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Step 3</p>
+          <h2>Prove recovery</h2>
+        </div>
+        <span class="status-pill ${recovery.score >= 3 ? "inbox-green" : "inbox-amber"}">${recovery.score}/4 ready</span>
+      </div>
+      <div class="launch-fact-grid">
+        <article><strong>${recovery.files.length}</strong><span>Bundle files</span></article>
+        <article><strong>${recovery.backups.length}</strong><span>Local backups</span></article>
+        <article><strong>${escapeHtml(latestBackup)}</strong><span>Latest backup</span></article>
+      </div>
+      <div class="launch-action-row">
+        <button class="button button-primary" type="button" data-recovery-action="create-backup">Create Backup</button>
+        <button class="button button-secondary" type="button" data-recovery-action="download-bundle">Download Bundle</button>
+        <button class="button button-secondary" type="button" data-command-id="recovery:plan">Open Recovery Plan</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderLaunchInviteSetupPanel() {
+  const hasTeamAccess = state.memberships.filter((membership) => membership.status !== "revoked").length > 1
+    || state.invitations.some((invitation) => invitation.status === "pending");
+  return `
+    <section class="panel launch-flow-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Step 4</p>
+          <h2>Invite the first teammate</h2>
+        </div>
+        <span class="status-pill ${hasTeamAccess ? "inbox-green" : "inbox-neutral"}">${hasTeamAccess ? "Access ready" : apiSession ? "API invite" : "Draft invite"}</span>
+      </div>
+      <div class="launch-inline-form">
+        <label>
+          <span>Name</span>
+          <input id="onboarding-invite-name" placeholder="Jordan Lee">
+        </label>
+        <label>
+          <span>Email</span>
+          <input id="onboarding-invite-email" type="email" placeholder="jordan@company.com">
+        </label>
+        <label>
+          <span>Role</span>
+          <select id="onboarding-invite-role">
+            ${workspaceRoles.map((role) => `<option value="${role.id}" ${role.id === state.workspace.defaultRole ? "selected" : ""}>${escapeHtml(role.label)}</option>`).join("")}
+          </select>
+        </label>
+        <button class="button button-primary" type="button" data-onboarding-inline="invite">${apiSession ? "Send Invite" : "Save Draft Invite"}</button>
+        <button class="button button-secondary" type="button" data-command-id="settings:members">Open Members</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderLaunchWorkspaceFlow() {
+  const items = launchWorkspaceItems();
+  const doneCount = items.filter((item) => item.done).length;
+  els.appView.innerHTML = `
+    ${renderRouteHeader({
+      eyebrow: "Launch flow",
+      title: "Launch the first client workspace",
+      description: "Create the client project, install the handoff workflow, prove recovery, and prepare the first teammate invite from one focused path.",
+      actions: [
+        { label: "Open Dashboard", route: "dashboard" },
+        { label: "Open Command Palette", id: "open-command-palette", primary: true }
+      ]
+    })}
+
+    ${renderLaunchProgressPanel()}
+
+    <div class="launch-flow-grid">
+      ${renderLaunchClientSetupPanel()}
+      ${renderLaunchAutomationSetupPanel()}
+      ${renderLaunchRecoverySetupPanel()}
+      ${renderLaunchInviteSetupPanel()}
+    </div>
+
+    ${doneCount === items.length ? `
+      <section class="panel launch-complete-panel">
+        <div>
+          <p class="eyebrow">Ready</p>
+          <h2>This workspace has a launch spine.</h2>
+          <p class="panel-note">The first client project, workflow automation, recovery evidence, and team access are in place. From here, Today and Inbox become the daily operating loop.</p>
+        </div>
+        <div class="launch-action-row">
+          <button class="button button-primary" type="button" data-route="daily">Open Today</button>
+          <button class="button button-secondary" type="button" data-route="inbox">Open Inbox</button>
+        </div>
+      </section>
+    ` : ""}
   `;
 }
 
