@@ -33,7 +33,7 @@ For the automated product gate, use [`qa-gate.md`](./qa-gate.md).
 - Create the private `agora-files` bucket.
 - Set `AGORA_STORAGE_DRIVER=supabase`, `AGORA_AUTH_DRIVER=supabase`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `AGORA_SUPABASE_STORAGE_BUCKET`.
 - Restart the API and verify Backend Health shows Supabase storage and Supabase Auth.
-- Confirm Backend Health shows Supabase environment credentials set, structured records reachable, file uploads configured, and production mode ready.
+- Confirm Backend Health shows Supabase environment credentials set, structured records reachable, file uploads configured, Email diagnostics, and production mode ready.
 - Run `npm run test:supabase` against a test workspace before pointing a real team at the project.
 
 ## 4. Verification Commands
@@ -63,6 +63,7 @@ Fix any failure before releasing. `qa` runs quick verification plus browser gold
 - Keep `SUPABASE_SERVICE_ROLE_KEY`, AI provider keys, Stripe keys, SMTP secrets, and webhook secrets server-only.
 - Disable `AGORA_DEMO_AUTH` and `AGORA_PASSWORDLESS_AUTH` outside trusted demos.
 - Confirm `AGORA_ALLOWED_ORIGINS` only includes expected app origins.
+- Confirm Email diagnostics is acceptable for the environment: SMTP/sender configured for invites and feature requests, and SMTP or webhook configured for password reset in production.
 - Review Admin > Permissions for excess admins, workspace import access, and Operator client-data access.
 - If enabling MCP, review `docs/mcp-server.md` and `docs/mcp-security-audit.md`, keep `AGORA_MCP_ALLOW_WRITES=false` by default, and use a least-privilege user token.
 - For customer migrations, run `npm run agora -- migrate preview` first, review warnings/confidence/source metadata, and export a recovery bundle before applying the imported workspace.
@@ -74,7 +75,9 @@ Fix any failure before releasing. `qa` runs quick verification plus browser gold
 - Deploy the API with `npm run start:api`.
 - Set production environment variables in the host dashboard, not in client code.
 - Confirm `/api/health`, `/api/backend/health`, `/api/payments/config`, and `/api/marketplace/catalog` respond after sign-in.
-- Open Backend Health and confirm the hosted launch runbook shows environment, persistence, public surface, recovery, and billing posture.
+- Open Settings > Account and complete Hosted onboarding.
+- Open Backend Health and confirm the hosted launch runbook shows environment, persistence, email, public surface, recovery, and billing posture.
+- Send one invite and one public feature request, then confirm the email jobs queue or deliver through the configured provider.
 - Run a real browser pass on desktop, Android phone width, iPhone width, and iPad width.
 
 ## 7. Rollback

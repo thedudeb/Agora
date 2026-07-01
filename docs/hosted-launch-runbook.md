@@ -4,6 +4,8 @@ Use this runbook when moving Agora from a local pilot to a hosted workspace with
 
 ## 1. Freeze The Candidate
 
+- Confirm the GitHub Actions `QA` workflow is green for the release commit.
+- Run `npm run qa`.
 - Run `npm run verify`.
 - Run `npm run launch:check`.
 - Export a portable workspace bundle from Data.
@@ -13,6 +15,7 @@ Use this runbook when moving Agora from a local pilot to a hosted workspace with
 
 - Set `AGORA_ALLOWED_ORIGINS` to the exact hosted app origin.
 - Set `AGORA_PUBLIC_APP_URL` to the hosted HTTPS app URL.
+- Set `AGORA_EMAIL_FROM`, `AGORA_FEATURE_REQUEST_EMAIL`, and SMTP credentials for invitations, feature request owner emails, and requester updates.
 - Keep `AGORA_DEMO_AUTH=false` and `AGORA_PASSWORDLESS_AUTH=false`.
 - Use SMTP or webhook password reset delivery, and keep `AGORA_PASSWORD_RESET_RETURN_TOKEN=false`.
 - Keep public feedback limits configured with `AGORA_PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS`, `AGORA_PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS`, and `AGORA_PUBLIC_FEATURE_BODY_LIMIT_BYTES`.
@@ -23,13 +26,17 @@ Use this runbook when moving Agora from a local pilot to a hosted workspace with
 - Create the private Supabase Storage bucket.
 - Set `AGORA_STORAGE_DRIVER=supabase` and `AGORA_AUTH_DRIVER=supabase`.
 - Restart the API, sign in, refresh Backend Health, and confirm production mode is ready.
+- Confirm Email diagnostics shows SMTP, sender, invitations, feature request owner, and password reset delivery in the expected state.
 - Run `npm run test:supabase` against a test workspace after migration or environment changes.
 
 ## 4. Verify Product Surfaces
 
 - Confirm `/api/health` responds publicly.
 - Sign in and confirm `/api/backend/health`, `/api/payments/config`, and `/api/marketplace/catalog`.
+- Open Settings > Account and complete Hosted onboarding: owner account, API sync, invite path, email delivery, feedback loop, and recovery proof.
+- Send a teammate/client invite and confirm it queues email delivery.
 - Submit a public feature request and confirm it creates a task and queues email delivery.
+- Move that feature request to another status, add a requester update, and confirm requester email queues when an email is present.
 - Publish and reload the marketplace catalog.
 - Check desktop, phone, and tablet widths in a real browser.
 

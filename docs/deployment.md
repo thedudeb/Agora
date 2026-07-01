@@ -12,6 +12,25 @@ npm run dev:api
 
 Open `http://127.0.0.1:5174`, go to Settings, create the first owner account, then save the workspace to the API from Settings or Data.
 
+## Hosted Path Overview
+
+For the current product shape, deploy Agora as two surfaces:
+
+- Static app: any static host that can serve the repo root, such as Vercel, Netlify, S3/CloudFront, or a simple Node/static server.
+- API: a long-running Node service that runs `npm run start:api`, owns secrets, sends email, talks to Supabase, and serves authenticated uploads/downloads.
+
+The browser app should only know the API URL entered in Settings. Keep Supabase service-role keys, SMTP credentials, AI provider keys, Stripe keys, and webhook secrets on the API server.
+
+Recommended first production sequence:
+
+1. Deploy the static app and API behind HTTPS.
+2. Set the required production environment variables below.
+3. Configure Supabase storage/auth and run migrations `001`, `002`, and `003`.
+4. Configure SMTP or password-reset webhook delivery.
+5. Sign in, open Settings > Account, and use Hosted onboarding to complete owner, API sync, invite, email, feedback, and recovery checks.
+6. Refresh Backend Health and confirm production gates, email diagnostics, background jobs, structured records, and Supabase mode are green.
+7. Run `npm run qa` locally and confirm the GitHub Actions `QA` workflow passes for the release commit.
+
 ## Required Production Environment
 
 ```sh
@@ -34,9 +53,14 @@ Use HTTPS in front of both app and API in production. Keep `AGORA_ALLOWED_ORIGIN
 Backend Health reports production gates for the hosted path:
 
 - `Allowed origins`: `AGORA_ALLOWED_ORIGINS` is set to the exact browser origin.
+- `Public app URL`: `AGORA_PUBLIC_APP_URL` is a hosted HTTPS URL for invite, reset, and feedback emails.
 - `Auth entrypoints`: demo and passwordless auth are disabled.
 - `Password reset delivery`: SMTP or webhook delivery is configured, with browser token return disabled.
+- `Team email delivery`: SMTP, sender, invitations, and feature request owner emails are configured.
+- `Public feature abuse limits`: public feedback body and rate limits are intentionally low.
 - `Rate-limit IP source`: direct socket IPs are used unless `AGORA_TRUST_PROXY=true` is intentionally enabled behind a trusted proxy.
+
+Settings > Account also shows Hosted onboarding, which is the operator-facing path for first-owner signup, API sync, teammate/client invite, email delivery, public feedback, and recovery proof.
 
 ## Supabase Persistence
 
@@ -105,9 +129,9 @@ Only sessions with `scheduler:run` can process due reminders. Keep cron credenti
 
 Agora supports reset-token creation and confirmation through the API. Production deployments should deliver reset tokens through SMTP or a webhook-backed email workflow.
 
-Feature requests use the same SMTP settings. Set `AGORA_FEATURE_REQUEST_EMAIL` to receive an email whenever the in-app or public feature request form saves a task. The shareable public form lives at `#feedback` on your deployed app URL. Set `AGORA_PUBLIC_FEATURE_REQUESTS=false` to turn the public form API off, and tune public abuse limits with `AGORA_PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS`, `AGORA_PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS`, and `AGORA_PUBLIC_FEATURE_BODY_LIMIT_BYTES`.
+Invitations and feature requests use the same SMTP settings. Set `AGORA_FEATURE_REQUEST_EMAIL` to receive an email whenever the in-app or public feature request form saves a task. The shareable public form lives at `#feedback` on your deployed app URL. Set `AGORA_PUBLIC_FEATURE_REQUESTS=false` to turn the public form API off, and tune public abuse limits with `AGORA_PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS`, `AGORA_PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS`, and `AGORA_PUBLIC_FEATURE_BODY_LIMIT_BYTES`.
 
-Feature request emails are queued through persisted background job state. JSON deployments store this in `background-jobs.json`; Supabase deployments store it in `agora_background_jobs` after migration `003_background_jobs.sql`. Tune queue pressure and retry timing with:
+Invitation, feature request, and requester update emails are queued through persisted background job state. JSON deployments store this in `background-jobs.json`; Supabase deployments store it in `agora_background_jobs` after migration `003_background_jobs.sql`. Tune queue pressure and retry timing with:
 
 ```sh
 AGORA_BACKGROUND_JOB_MAX_QUEUE=100
@@ -119,6 +143,8 @@ SMTP:
 
 ```sh
 AGORA_PASSWORD_RESET_DELIVERY=smtp
+AGORA_EMAIL_FROM=Agora <no-reply@your-domain.example>
+AGORA_FEATURE_REQUEST_EMAIL=owner@your-domain.example
 AGORA_SMTP_HOST=smtp.your-provider.example
 AGORA_SMTP_PORT=587
 AGORA_SMTP_SECURE=false
@@ -165,7 +191,7 @@ curl https://your-api.example.com/api/health
 
 Then sign in and open Settings or Data. Backend Health should show storage, auth, structured records, auth hardening, file uploads, audit log, and production mode readiness.
 
-Settings also includes a Deploy Confidence checklist and hosted launch runbook. Use them before inviting a real team: connect the API, refresh backend health, confirm auth mode, review the role matrix, verify export paths, choose a workspace theme/density, and run the hosted cutover steps in [`hosted-launch-runbook.md`](./hosted-launch-runbook.md).
+Settings also includes Hosted onboarding, Email diagnostics, a Deploy Confidence checklist, and the hosted launch runbook. Use them before inviting a real team: connect the API, refresh backend health, confirm auth mode, review the role matrix, verify export paths, configure SMTP/reset delivery, choose a workspace theme/density, and run the hosted cutover steps in [`hosted-launch-runbook.md`](./hosted-launch-runbook.md).
 
 For Supabase-backed deployments, run the deeper verifier after every migration or environment change:
 
@@ -177,6 +203,9 @@ npm run test:supabase
 
 - Create the first owner account.
 - Save or import the workspace snapshot to the API.
+- Refresh Backend Health and confirm Email diagnostics shows SMTP, sender, invitations, feature request owner, and password reset as expected.
+- Send or resend one teammate/client invite and confirm the email job queues.
+- Submit one public feature request and confirm it creates a task and queues owner email.
 - Choose the workspace theme and density in Settings.
 - Review the Settings permission matrix for admin, manager, member, and client access.
 - Confirm Deploy Confidence shows every expected item as ready for the chosen environment.
