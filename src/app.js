@@ -9865,6 +9865,7 @@ function renderDashboard() {
         { label: "Open Today", route: "daily" }
       ]
     })}
+    ${renderWorkspaceTrustStrip()}
     ${renderGoldenPathPanel()}
 
     <div class="metric-grid">
@@ -9885,6 +9886,75 @@ function renderDashboard() {
     <div class="dashboard-grid">
       ${renderDashboardWidgets({ visibleProjects, dueSoonTasks, tasks, timeEntries: getFilteredTimeEntries() })}
     </div>
+  `;
+}
+
+function workspaceTrustSignals() {
+  const recovery = portableRecoveryStatus();
+  const latestBackup = recovery.latestBackup ? `Latest backup ${formatTimestamp(recovery.latestBackup.createdAt)}` : "Create a backup before risky imports";
+  const health = backendHealth || apiSession?.backendHealth || {};
+  const productionGates = Array.isArray(health.productionGates) ? health.productionGates : [];
+  const failedProductionGates = productionGates.filter((gate) => !gate.done);
+  const backendValue = health.productionMode ? "Production" : apiSession ? "API connected" : "Local";
+  const backendDetail = apiSession
+    ? `${apiBackendLabel()} / ${apiLastSyncedLabel()}`
+    : "Browser storage until API is connected";
+  const securityValue = productionGates.length
+    ? failedProductionGates.length
+      ? `${failedProductionGates.length} gate${failedProductionGates.length === 1 ? "" : "s"} open`
+      : "Gates pass"
+    : apiSession
+      ? "Check gates"
+      : "Local mode";
+  const securityDetail = productionGates.length
+    ? failedProductionGates.length
+      ? "Refresh health after fixing hosted launch gates"
+      : `${productionGates.length} hosted launch gates passing`
+    : apiSession
+      ? "Refresh backend health for hosted auth, CORS, and proxy gates"
+      : "No hosted surface is active in this browser workspace";
+
+  return [
+    {
+      label: "Recovery",
+      value: `${recovery.score}/4 ready`,
+      detail: recovery.score >= 3 ? "Portable bundle and recovery evidence are available" : latestBackup,
+      tone: recovery.score >= 3 ? "inbox-green" : "inbox-amber",
+      commandId: "recovery:plan"
+    },
+    {
+      label: "Backend",
+      value: backendValue,
+      detail: backendDetail,
+      tone: health.productionMode ? "inbox-green" : apiSession ? "inbox-blue" : "inbox-neutral",
+      commandId: "settings:sync"
+    },
+    {
+      label: "Security",
+      value: securityValue,
+      detail: securityDetail,
+      tone: productionGates.length
+        ? failedProductionGates.length ? "inbox-amber" : "inbox-green"
+        : apiSession ? "inbox-amber" : "inbox-neutral",
+      commandId: "settings:sync"
+    }
+  ];
+}
+
+function renderWorkspaceTrustStrip() {
+  return `
+    <section class="workspace-trust-strip" aria-label="Workspace trust indicators">
+      ${workspaceTrustSignals().map((signal) => `
+        <article class="workspace-trust-card">
+          <div>
+            <span class="status-pill ${signal.tone}">${escapeHtml(signal.label)}</span>
+            <strong>${escapeHtml(signal.value)}</strong>
+            <small>${escapeHtml(signal.detail)}</small>
+          </div>
+          <button class="button button-secondary compact-button" type="button" data-command-id="${escapeHtml(signal.commandId)}">Review</button>
+        </article>
+      `).join("")}
+    </section>
   `;
 }
 

@@ -1527,6 +1527,51 @@ body[data-tutorial-target="view"] #app-view {
   justify-content: flex-end;
 }
 
+.workspace-trust-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+.workspace-trust-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.workspace-trust-card > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.workspace-trust-card .status-pill {
+  justify-self: start;
+}
+
+.workspace-trust-card strong,
+.workspace-trust-card small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.workspace-trust-card strong {
+  font-size: 1rem;
+}
+
+.workspace-trust-card small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .golden-path-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -6597,6 +6642,7 @@ body[data-density="compact"] .main-content {
   }
 
   .route-header,
+  .workspace-trust-strip,
   .dashboard-support-grid {
     grid-template-columns: 1fr;
   }
@@ -6607,6 +6653,10 @@ body[data-density="compact"] .main-content {
 
   .route-header-actions {
     justify-content: flex-start;
+  }
+
+  .workspace-trust-card {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .onboarding-wizard {
@@ -6817,6 +6867,10 @@ body[data-density="compact"] .main-content {
   }
 
   .route-header-actions .button {
+    width: 100%;
+  }
+
+  .workspace-trust-card .button {
     width: 100%;
   }
 
