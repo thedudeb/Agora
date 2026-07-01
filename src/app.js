@@ -401,6 +401,54 @@ const aiPermissionOptions = [
   { id: "integrationEvents", label: "Integration events", description: "Operator can trigger adapter health and integration digest checks." }
 ];
 
+const aiPermissionPresets = [
+  {
+    id: "safe",
+    label: "Safe",
+    description: "Read-only planning help with no client context or applied changes.",
+    permissions: {
+      createTasks: false,
+      planToday: false,
+      editDocs: false,
+      manageApprovals: false,
+      readClientData: false,
+      integrationEvents: false
+    }
+  },
+  {
+    id: "project-pm",
+    label: "Project PM",
+    description: "Can create and plan internal work, but cannot touch client docs or approvals.",
+    permissions: {
+      createTasks: true,
+      planToday: true,
+      editDocs: false,
+      manageApprovals: false,
+      readClientData: false,
+      integrationEvents: false
+    }
+  },
+  {
+    id: "client-pm",
+    label: "Client PM",
+    description: "Can draft client updates and approvals with preview, rationale, and undo.",
+    permissions: {
+      createTasks: true,
+      planToday: true,
+      editDocs: true,
+      manageApprovals: true,
+      readClientData: true,
+      integrationEvents: false
+    }
+  },
+  {
+    id: "ops-admin",
+    label: "Ops Admin",
+    description: "Full operator scope, including integration event checks.",
+    permissions: { ...aiPermissionDefaults }
+  }
+];
+
 const automationMarketplacePacks = [
   {
     id: "automation-pack-agency-handoff",
@@ -2101,6 +2149,7 @@ function normalizeState(nextState) {
     switcherImportPreview: normalizeSwitcherImportPreview(nextState.switcherImportPreview),
     switcherImportRollback: normalizeSwitcherImportRollback(nextState.switcherImportRollback),
     portableImportPreview: nextState.portableImportPreview && typeof nextState.portableImportPreview === "object" ? nextState.portableImportPreview : null,
+    automationPackImportPreview: nextState.automationPackImportPreview && typeof nextState.automationPackImportPreview === "object" ? nextState.automationPackImportPreview : null,
     inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
     inboxArchived: Array.isArray(nextState.inboxArchived) ? nextState.inboxArchived : [],
     inboxSnoozed: normalizeInboxSnoozed(nextState.inboxSnoozed),
@@ -4701,6 +4750,25 @@ function saveOperatorPermissions() {
   saveState();
   render();
   showToast("Operator permissions saved", "success");
+}
+
+function applyOperatorPermissionPreset(presetId) {
+  const preset = aiPermissionPresets.find((item) => item.id === presetId);
+  if (!preset) return;
+  state.workspace = {
+    ...state.workspace,
+    ai: {
+      ...aiSettings(),
+      permissions: normalizeAiPermissions(preset.permissions)
+    }
+  };
+  addAuditEvent({
+    action: "ai_operator_permission_preset",
+    detail: `Applied ${preset.label} Operator permission preset`
+  });
+  saveState();
+  render();
+  showToast(`${preset.label} preset applied`, "success");
 }
 
 function paymentSettings() {
@@ -9700,6 +9768,14 @@ function renderOperatorTrustPanel() {
       <div class="operator-source-list">
         ${operatorDataSourcesFor("workspace_brief integration").map((source) => `<span>${escapeHtml(source)}</span>`).join("")}
       </div>
+      <div class="operator-preset-list">
+        ${aiPermissionPresets.map((preset) => `
+          <button class="operator-preset-button" type="button" data-operator-permission-preset="${preset.id}">
+            <strong>${escapeHtml(preset.label)}</strong>
+            <span>${escapeHtml(preset.description)}</span>
+          </button>
+        `).join("")}
+      </div>
       <div class="operator-permission-list">
         ${aiPermissionOptions.map((option) => `
           <label class="operator-permission-row">
@@ -12878,6 +12954,67 @@ function automationMarketplacePackPayload(pack) {
   };
 }
 
+function parseAutomationPackPayload(rawJson) {
+  const parsed = JSON.parse(rawJson);
+  const pack = parsed.pack && typeof parsed.pack === "object" ? parsed.pack : parsed;
+  const name = String(pack.name || "").trim();
+  if (!name) throw new Error("Automation pack needs a name");
+  const rules = Array.isArray(pack.rules) ? pack.rules : [];
+  if (!rules.length) throw new Error("Automation pack needs at least one rule");
+  const packId = String(pack.id || `automation-pack-${slugFromName(name)}`).trim().slice(0, 96);
+  const creatorName = String(pack.creatorName || "Community creator").trim().slice(0, 96);
+  const license = String(pack.license || "Community workflow pack").trim().slice(0, 96);
+  const normalizedPack = {
+    id: packId,
+    name,
+    category: String(pack.category || "Community").trim().slice(0, 80) || "Community",
+    creatorName,
+    license,
+    description: String(pack.description || `Community automation pack for ${name}.`).trim().slice(0, 240),
+    rules: rules.slice(0, 20).map((rule, index) => normalizeAutomationRule({
+      ...rule,
+      id: rule.id || `${packId}-${index + 1}`,
+      marketplacePackId: packId,
+      source: "imported",
+      creatorName,
+      license,
+      lastRun: "",
+      runCount: 0
+    }))
+  };
+  return {
+    type: parsed.type || "agora.automation-pack",
+    exportVersion: parsed.exportVersion || 1,
+    exportedAt: parsed.exportedAt || "",
+    pack: normalizedPack
+  };
+}
+
+function automationPackImportPreview(rawJson) {
+  const payload = parseAutomationPackPayload(rawJson);
+  const existingKeys = new Set(state.automations.map((automation) => `${automation.marketplacePackId || ""}:${automation.name}`));
+  const duplicateCount = payload.pack.rules.filter((rule) => existingKeys.has(`${payload.pack.id}:${rule.name}`)).length;
+  return {
+    id: uid("automation-pack-preview"),
+    packId: payload.pack.id,
+    name: payload.pack.name,
+    category: payload.pack.category,
+    creatorName: payload.pack.creatorName,
+    license: payload.pack.license,
+    description: payload.pack.description,
+    ruleCount: payload.pack.rules.length,
+    duplicateCount,
+    exportedAt: payload.exportedAt,
+    rules: payload.pack.rules.map((rule) => ({
+      name: rule.name,
+      trigger: rule.trigger,
+      action: rule.action,
+      enabled: rule.enabled
+    })),
+    createdAt: new Date().toISOString()
+  };
+}
+
 function renderAutomationMarketplacePanel() {
   return `
     <section class="panel automation-marketplace-panel">
@@ -12914,7 +13051,50 @@ function renderAutomationMarketplacePanel() {
           `;
         }).join("")}
       </div>
+      <div class="automation-pack-import">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Community import</p>
+            <h3>Import automation pack JSON</h3>
+          </div>
+        </div>
+        <textarea id="automation-pack-import-payload" rows="8" placeholder="Paste an Agora automation pack JSON export"></textarea>
+        ${renderAutomationPackImportPreview()}
+        <div class="marketplace-actions">
+          <button class="button button-secondary" type="button" id="automation-pack-import-preview">Preview Pack</button>
+          <button class="button button-primary" type="button" id="automation-pack-import-install">Install Imported Pack</button>
+        </div>
+      </div>
     </section>
+  `;
+}
+
+function renderAutomationPackImportPreview() {
+  const preview = state.automationPackImportPreview;
+  if (!preview) {
+    return `
+      <div class="switcher-preview-empty">
+        <strong>No automation pack preview yet</strong>
+        <span>Preview a community pack before installing its rules.</span>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="switcher-preview-panel automation-pack-preview">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">${escapeHtml(preview.category)}</p>
+          <h3>${escapeHtml(preview.name)}</h3>
+        </div>
+        <span class="status-pill ${preview.duplicateCount ? "inbox-amber" : "inbox-green"}">${preview.ruleCount - preview.duplicateCount}/${preview.ruleCount} new</span>
+      </div>
+      <p class="panel-note">${escapeHtml(preview.description)}</p>
+      <div class="automation-pack-rules">
+        ${preview.rules.map((rule) => `<span>${escapeHtml(rule.name)}</span>`).join("")}
+      </div>
+      <small>${escapeHtml(preview.creatorName)} / ${escapeHtml(preview.license)}</small>
+    </div>
   `;
 }
 
@@ -15852,6 +16032,68 @@ function exportAutomationMarketplacePack(packId) {
   if (!pack) return;
   downloadJsonFile(`${slugFromName(pack.name)}-automation-pack.json`, JSON.stringify(automationMarketplacePackPayload(pack), null, 2));
   showToast("Automation pack exported", "success");
+}
+
+function previewAutomationPackImportPayload() {
+  const textarea = document.querySelector("#automation-pack-import-payload");
+  const rawJson = textarea?.value.trim();
+  if (!rawJson) {
+    showToast("Paste an automation pack JSON export first", "info");
+    return;
+  }
+
+  try {
+    state.automationPackImportPreview = automationPackImportPreview(rawJson);
+    saveState();
+    renderAutomations();
+    const nextTextarea = document.querySelector("#automation-pack-import-payload");
+    if (nextTextarea) nextTextarea.value = rawJson;
+    showToast("Automation pack preview ready", "success");
+  } catch (error) {
+    showToast(`Pack preview failed: ${error.message}`, "info");
+  }
+}
+
+function installAutomationPackImportPayload() {
+  const textarea = document.querySelector("#automation-pack-import-payload");
+  const rawJson = textarea?.value.trim();
+  if (!rawJson) {
+    showToast("Paste an automation pack JSON export first", "info");
+    return;
+  }
+
+  try {
+    const payload = parseAutomationPackPayload(rawJson);
+    const installedAt = new Date().toISOString();
+    const existingKeys = new Set(state.automations.map((automation) => `${automation.marketplacePackId || ""}:${automation.name}`));
+    const importedRules = payload.pack.rules
+      .filter((rule) => !existingKeys.has(`${payload.pack.id}:${rule.name}`))
+      .map((rule) => normalizeAutomationRule({
+        ...rule,
+        id: uid("automation"),
+        marketplacePackId: payload.pack.id,
+        source: "imported",
+        creatorName: payload.pack.creatorName,
+        installedAt,
+        license: payload.pack.license
+      }));
+    if (!importedRules.length) {
+      showToast("That automation pack is already installed", "info");
+      return;
+    }
+
+    state.automations = [...importedRules, ...state.automations].slice(0, 50);
+    state.automationPackImportPreview = null;
+    addAuditEvent({
+      action: "automation_pack_import",
+      detail: `Imported ${payload.pack.name} automation pack with ${importedRules.length} rules`
+    });
+    saveState();
+    render();
+    showToast(`Imported ${payload.pack.name}`, "success");
+  } catch (error) {
+    showToast(`Pack import failed: ${error.message}`, "info");
+  }
 }
 
 function selectedAutomationPackRuleIds() {
@@ -18824,6 +19066,18 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const automationPackImportPreviewButton = event.target.closest("#automation-pack-import-preview");
+  if (automationPackImportPreviewButton) {
+    previewAutomationPackImportPayload();
+    return;
+  }
+
+  const automationPackImportInstallButton = event.target.closest("#automation-pack-import-install");
+  if (automationPackImportInstallButton) {
+    installAutomationPackImportPayload();
+    return;
+  }
+
   const automationPackSelectAllButton = event.target.closest("#automation-pack-select-all");
   if (automationPackSelectAllButton) {
     setAutomationPackAuthorSelection(true);
@@ -18948,6 +19202,12 @@ document.addEventListener("click", (event) => {
   const operatorLocalModeButton = event.target.closest("#operator-local-mode");
   if (operatorLocalModeButton) {
     enableLocalOperatorMode();
+    return;
+  }
+
+  const operatorPermissionPresetButton = event.target.closest("[data-operator-permission-preset]");
+  if (operatorPermissionPresetButton) {
+    applyOperatorPermissionPreset(operatorPermissionPresetButton.dataset.operatorPermissionPreset);
     return;
   }
 

@@ -1708,6 +1708,35 @@ body[data-tutorial-target="view"] #app-view {
   line-height: 1.35;
 }
 
+.operator-preset-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.operator-preset-button {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  text-align: left;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.operator-preset-button:hover {
+  border-color: rgba(36, 90, 88, 0.42);
+  box-shadow: 0 0 0 3px rgba(36, 90, 88, 0.08);
+}
+
+.operator-preset-button span {
+  color: var(--muted);
+  line-height: 1.35;
+  font-size: 0.78rem;
+}
+
 .operator-signal-grid strong {
   display: block;
   font-size: 1.5rem;
@@ -2835,6 +2864,24 @@ body[data-tutorial-target="view"] #app-view {
   border-radius: 999px;
   font-size: 0.74rem;
   font-weight: 800;
+}
+
+.automation-pack-import {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.automation-pack-import textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.automation-pack-preview small {
+  display: block;
+  color: var(--muted);
 }
 
 .automation-pack-author-form {
@@ -6090,6 +6137,7 @@ body[data-density="compact"] .main-content {
   .automation-pack-author-form,
   .automation-pack-selection,
   .operator-permission-list,
+  .operator-preset-list,
   .onboarding-grid,
   .project-hero {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6413,6 +6461,7 @@ body[data-density="compact"] .main-content {
   .automation-pack-author-form,
   .automation-pack-selection,
   .operator-permission-list,
+  .operator-preset-list,
   .onboarding-grid,
   .project-command-grid,
   .mobile-roadmap-list,
