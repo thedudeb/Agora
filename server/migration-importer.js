@@ -28,19 +28,47 @@ function applyMigrationPlan(existingSnapshot = {}, plan = {}, options = {}) {
   const base = mode === "new-workspace" ? emptyWorkspace(plan.workspace?.name || "Imported Workspace") : cloneSnapshot(existingSnapshot);
   const rollback = cloneSnapshot(existingSnapshot);
 
-  const existingProjectIds = new Set(arrayOf(base.projects).map((project) => project.id));
-  const existingTaskIds = new Set(arrayOf(base.tasks).map((task) => task.id));
   const existingCommentIds = new Set(arrayOf(base.comments).map((comment) => comment.id));
+  const existingProjectBySourceKey = new Map(arrayOf(base.projects).map((project) => [sourceRecordKey(project), project]).filter(([key]) => key));
+  const existingTaskBySourceKey = new Map(arrayOf(base.tasks).map((task) => [sourceRecordKey(task), task]).filter(([key]) => key));
+  const existingCommentBySourceKey = new Map(arrayOf(base.comments).map((comment) => [sourceRecordKey(comment), comment]).filter(([key]) => key));
+  const projectIdRewrites = new Map();
+  const taskIdRewrites = new Map();
 
-  const projects = plan.projects
-    .filter((project) => !existingProjectIds.has(project.id))
-    .map((project) => ({ ...project, updatedAt: project.updatedAt || now }));
-  const tasks = plan.tasks
-    .filter((task) => !existingTaskIds.has(task.id))
-    .map((task) => ({ ...task, updatedAt: task.updatedAt || now }));
+  const projects = [];
+  for (const project of plan.projects) {
+    const existingProject = arrayOf(base.projects).find((item) => item.id === project.id) || existingProjectBySourceKey.get(sourceRecordKey(project));
+    if (existingProject) {
+      projectIdRewrites.set(project.id, existingProject.id);
+      continue;
+    }
+    projects.push({ ...project, updatedAt: project.updatedAt || now });
+    projectIdRewrites.set(project.id, project.id);
+  }
+
+  const tasks = [];
+  for (const task of plan.tasks) {
+    const existingTask = arrayOf(base.tasks).find((item) => item.id === task.id) || existingTaskBySourceKey.get(sourceRecordKey(task));
+    if (existingTask) {
+      taskIdRewrites.set(task.id, existingTask.id);
+      continue;
+    }
+    tasks.push({
+      ...task,
+      projectId: projectIdRewrites.get(task.projectId) || task.projectId,
+      updatedAt: task.updatedAt || now
+    });
+    taskIdRewrites.set(task.id, task.id);
+  }
   const comments = arrayOf(plan.comments)
-    .filter((comment) => !existingCommentIds.has(comment.id))
-    .map((comment) => ({ ...comment, updatedAt: comment.updatedAt || now }));
+    .filter((comment) => !existingCommentIds.has(comment.id) && !existingCommentBySourceKey.has(sourceRecordKey(comment)))
+    .map((comment) => ({
+      ...comment,
+      projectId: projectIdRewrites.get(comment.projectId) || comment.projectId,
+      taskId: taskIdRewrites.get(comment.taskId) || comment.taskId,
+      updatedAt: comment.updatedAt || now
+    }))
+    .filter((comment) => comment.taskId);
 
   const snapshot = normalizeSnapshot({
     ...base,
@@ -234,6 +262,7 @@ function buildMigrationPlan({ source, sourceLabel, imported, mode, workspaceName
       || projectBySourceKey.get(cleanString(task.projectName))
       || defaultProject;
     const id = uniqueId(cleanString(task.id) || `task-${slugFromName(title)}`, taskIds);
+    const status = normalizeStatus(task.status);
     taskIds.add(id);
     tasks.push({
       id,
@@ -241,7 +270,7 @@ function buildMigrationPlan({ source, sourceLabel, imported, mode, workspaceName
       title,
       description: cleanString(task.description) || `Imported from ${sourceLabel}.`,
       assignee: cleanString(task.assignee),
-      status: normalizeStatus(task.status),
+      status,
       priority: normalizePriority(task.priority),
       startDate: cleanDate(task.startDate),
       dueDate: cleanDate(task.dueDate),
@@ -251,6 +280,9 @@ function buildMigrationPlan({ source, sourceLabel, imported, mode, workspaceName
       comments: [],
       customFields: sourceFields(source, importBatchId, task, index),
       createdAt: cleanString(task.createdAt) || now,
+      updatedAt: cleanString(task.updatedAt) || "",
+      completedAt: cleanDateTime(task.completedAt) || (status === "done" ? cleanDateTime(task.updatedAt || task.dueDate) : ""),
+      archivedAt: cleanDateTime(task.archivedAt),
       sortOrder: Number.isFinite(Number(task.sortOrder)) ? Number(task.sortOrder) : index
     });
   }
@@ -315,6 +347,7 @@ function buildMigrationPlan({ source, sourceLabel, imported, mode, workspaceName
 function rowsToImportedRecords(rows, context = {}) {
   const projectNames = new Map();
   const tasks = [];
+  const comments = [];
   let skipped = 0;
   rows.forEach((row, index) => {
     const title = fieldValue(row, ["title", "task", "name", "task_name", "card_name", "item_name", "summary"]);
@@ -331,22 +364,47 @@ function rowsToImportedRecords(rows, context = {}) {
         description: `Imported from ${context.sourceLabel || "Generic CSV"}.`
       });
     }
+    const sourceId = fieldValue(row, ["id", "task_id", "card_id", "item_id", "issue_key", "key", "identifier"]) || `${index + 1}`;
+    const completedAt = fieldValue(row, ["completed_at", "completed_date", "completion_date", "resolved_at", "resolutiondate", "closed_at"]);
+    const updatedAt = fieldValue(row, ["updated", "updated_at", "modified", "last_modified"]);
+    const archivedFlag = truthyField(fieldValue(row, ["archived", "closed"]));
+    const archivedAt = fieldValue(row, ["archived_at", "archived_date", "closed_at"]) || (archivedFlag ? updatedAt || completedAt : "");
+    const sourceUrl = fieldValue(row, ["source_url", "task_url", "issue_url", "card_url", "url", "link", "permalink"]);
+    const attachmentUrls = splitList(fieldValue(row, ["attachments", "attachment", "attachment_url", "attachment_urls", "files", "file_urls"]));
+    const commentBody = fieldValue(row, ["comment", "comments", "latest_comment", "last_comment"]);
     tasks.push({
-      id: fieldValue(row, ["id", "task_id", "card_id", "item_id", "issue_key", "key", "identifier"]) || `task-${slugFromName(title)}`,
-      sourceId: fieldValue(row, ["id", "task_id", "card_id", "item_id", "issue_key", "key", "identifier"]) || `${index + 1}`,
+      id: sourceId || `task-${slugFromName(title)}`,
+      sourceId,
+      sourceUrl,
+      attachmentUrls,
       projectSourceId: projectName,
       projectName,
       title,
       description: fieldValue(row, ["description", "notes", "details", "body"]),
       assignee: fieldValue(row, ["assignee", "owner", "person", "assigned_to"]),
-      status: fieldValue(row, ["status", "state", "column", "completed", "complete", "resolution"]),
+      status: fieldValue(row, ["status", "state", "column", "completed", "complete", "resolution"]) || (completedAt ? "completed" : archivedAt ? "closed" : ""),
       priority: fieldValue(row, ["priority", "importance"]),
       dueDate: fieldValue(row, ["due", "due_date", "due_on", "deadline", "date", "target_date"]),
       startDate: fieldValue(row, ["start", "start_date", "created", "created_at"]),
+      createdAt: fieldValue(row, ["created", "created_at"]),
+      updatedAt,
+      completedAt,
+      archivedAt,
       tags: splitList(fieldValue(row, ["tags", "labels"])),
       rawFields: row,
       sortOrder: index
     });
+    if (commentBody) {
+      comments.push({
+        id: `comment-${context.source || "csv"}-${slugFromName(sourceId)}-${index + 1}`,
+        taskSourceId: sourceId,
+        body: commentBody,
+        author: fieldValue(row, ["comment_author", "author", "creator", "created_by"]),
+        createdAt: fieldValue(row, ["comment_created_at", "comment_date", "created", "created_at"]),
+        sourceId: `${sourceId}:comment:${index + 1}`,
+        rawFields: row
+      });
+    }
   });
   return {
     rawRows: context.rawRows ?? rows.length,
@@ -355,7 +413,7 @@ function rowsToImportedRecords(rows, context = {}) {
     warnings: skipped ? [`${skipped} row${skipped === 1 ? "" : "s"} skipped because no task title was detected.`] : [],
     projects: Array.from(projectNames.values()),
     tasks,
-    comments: []
+    comments
   };
 }
 
@@ -457,7 +515,11 @@ function mappedFields(headers = []) {
     ["priority", ["priority", "importance"]],
     ["due date", ["due", "due_date", "due_on", "deadline", "date", "target_date"]],
     ["description", ["description", "notes", "details", "body"]],
-    ["tags", ["tags", "labels"]]
+    ["tags", ["tags", "labels"]],
+    ["source url", ["source_url", "task_url", "issue_url", "card_url", "url", "link", "permalink"]],
+    ["attachments", ["attachments", "attachment", "attachment_url", "attachment_urls", "files", "file_urls"]],
+    ["comments", ["comment", "comments", "latest_comment", "last_comment"]],
+    ["completed", ["completed_at", "completed_date", "completion_date", "resolved_at", "resolutiondate", "closed_at"]]
   ];
   const headerSet = new Set(headers.map(normalizeHeader));
   return groups
@@ -472,6 +534,10 @@ function fieldValue(row, keys) {
     if (Object.prototype.hasOwnProperty.call(row, key) && cleanString(row[key])) return cleanString(row[key]);
   }
   return "";
+}
+
+function truthyField(value) {
+  return ["true", "yes", "y", "1", "closed", "archived"].includes(cleanString(value).toLowerCase());
 }
 
 function normalizeHeader(header) {
@@ -515,16 +581,37 @@ function cleanDate(value) {
   return parsed.toISOString().slice(0, 10);
 }
 
+function cleanDateTime(value) {
+  const raw = cleanString(value);
+  if (!raw) return "";
+  const parsed = new Date(raw);
+  if (!Number.isFinite(parsed.getTime())) return "";
+  return parsed.toISOString();
+}
+
 function sourceFields(sourceSystem, importBatchId, record = {}, index = 0) {
+  const attachmentUrls = uniqueList([
+    ...arrayOf(record.attachmentUrls),
+    ...splitList(record.attachmentUrls)
+  ]);
   return {
     ...(record.customFields && typeof record.customFields === "object" ? record.customFields : {}),
     sourceSystem,
     sourceId: cleanString(record.sourceId || record.id || `${index + 1}`),
     sourceUrl: cleanString(record.sourceUrl),
+    ...(attachmentUrls.length ? { attachmentUrls } : {}),
     importBatchId,
     importedAt: new Date().toISOString(),
     rawFields: record.rawFields && typeof record.rawFields === "object" ? record.rawFields : undefined
   };
+}
+
+function sourceRecordKey(record = {}) {
+  const fields = record.customFields && typeof record.customFields === "object" ? record.customFields : {};
+  const sourceSystem = cleanString(fields.sourceSystem || record.sourceSystem);
+  const sourceId = cleanString(fields.sourceId || record.sourceId || record.id);
+  if (!sourceSystem || !sourceId) return "";
+  return `${sourceSystem}:${sourceId}`;
 }
 
 function normalizeSnapshot(snapshot = {}) {
