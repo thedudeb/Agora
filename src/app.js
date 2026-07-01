@@ -9352,16 +9352,16 @@ function renderLandingPage() {
         <div class="landing-hero-copy">
           <p class="eyebrow">Open source project management</p>
           <h1>Agora</h1>
-          <p class="landing-lede">A self-hostable command center for projects, clients, daily work, files, approvals, and time tracking, built for teams that want clarity without surveillance or lock-in.</p>
+          <p class="landing-lede">Open source project management without ads, trackers, or lock-in. Run projects, clients, daily work, approvals, docs, automations, and time tracking from a self-hostable workspace your team can actually own.</p>
           <div class="landing-actions">
             <button class="button button-primary" type="button" data-route="dashboard">Launch Workspace</button>
             <button class="button button-secondary" type="button" data-route="portal">View Client Portal</button>
           </div>
           <div class="landing-proof-row" aria-label="Product promises">
             <span>No ads</span>
-            <span>No trackers</span>
             <span>Self-hostable</span>
-            <span>Open source</span>
+            <span>Portable exports</span>
+            <span>Auditable AI</span>
           </div>
         </div>
       </section>
@@ -9394,13 +9394,13 @@ function renderLandingPage() {
         <div class="landing-solution-copy">
           <p class="eyebrow">The answer</p>
           <h2>A calmer operating layer for modern teams.</h2>
-          <p>Agora brings core project management into one workspace: portfolio views, boards, lists, calendars, daily planning, docs, files, intake, notifications, client portals, automations, and structured API storage.</p>
+          <p>Agora brings project management into one workspace: boards, lists, calendars, daily planning, company views, client portals, docs, files, intake, notifications, reports, templates, automations, and structured API storage.</p>
           <button class="button button-primary" type="button" data-route="templates">Explore Templates</button>
         </div>
         <div class="landing-signal-stack" aria-label="Agora capabilities">
-          <article><strong>Client portals</strong><span>Company-scoped visibility for stakeholders.</span></article>
-          <article><strong>Daily planning</strong><span>Focus lanes inspired by personal task tools.</span></article>
-          <article><strong>Open data path</strong><span>Local JSON today, Supabase-backed records when ready.</span></article>
+          <article><strong>Client-ready operations</strong><span>Company-scoped visibility, approvals, time, reports, and portals for multi-client work.</span></article>
+          <article><strong>Open data path</strong><span>Local JSON today, portable bundles, API sync, and Supabase-backed records when ready.</span></article>
+          <article><strong>AI with receipts</strong><span>Operator actions use permissions, previews, rationale, audit logs, and undo paths.</span></article>
           <article><strong>No ads, ever</strong><span>The workspace exists to organize work, not monetize attention.</span></article>
         </div>
       </section>

@@ -1,8 +1,8 @@
 # Agora
 
-Open source project management for teams that want clarity without lock-in.
+Open source project management without ads, trackers, or lock-in.
 
-Agora is a self-hostable project management workspace inspired by tools like Asana and Nifty. It is designed for teams that need projects, tasks, views, collaboration, milestones, and visibility while keeping control of their data and workflow.
+Agora is a self-hostable project management workspace inspired by tools like Asana and Nifty. It is designed for teams that need projects, tasks, clients, daily planning, approvals, automations, time tracking, and visibility while keeping control of their data and workflow.
 
 ## Status
 
@@ -85,7 +85,7 @@ To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`
 
 Demo auth and passwordless email login are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true` or `AGORA_PASSWORDLESS_AUTH=true` and restart `npm run dev:api`.
 
-For deployment details, Vercel static hosting, Supabase Storage setup, SMTP/webhook password reset delivery, and release checks, see [`docs/deployment.md`](./docs/deployment.md). For a repeatable pre-release gate, see [`docs/release-checklist.md`](./docs/release-checklist.md). For portable bundle structure and restore details, see [`docs/portable-workspace.md`](./docs/portable-workspace.md).
+For deployment details, Vercel static hosting, Supabase Storage setup, SMTP/webhook password reset delivery, and release checks, see [`docs/deployment.md`](./docs/deployment.md). For marketing positioning and public launch copy, see [`docs/marketing-strategy.md`](./docs/marketing-strategy.md) and [`docs/launch-kit.md`](./docs/launch-kit.md). For a repeatable pre-release gate, see [`docs/release-checklist.md`](./docs/release-checklist.md). For portable bundle structure and restore details, see [`docs/portable-workspace.md`](./docs/portable-workspace.md).
 
 ## Supabase Storage
 
