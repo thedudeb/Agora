@@ -18,6 +18,7 @@ const checkFiles = [
   "scripts/capture-screenshots.js",
   "scripts/golden-path-qa.js",
   "scripts/agora-cli.js",
+  "scripts/agora-mcp-server.js",
   "desktop/electron/main.cjs",
   "desktop/electron/preload.cjs"
 ];
