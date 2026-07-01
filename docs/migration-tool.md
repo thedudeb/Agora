@@ -6,6 +6,7 @@ Agora's migration tool turns exports from other project-management tools into a 
 
 - Generic CSV task exports.
 - Trello JSON board exports.
+- Asana, Jira, Linear, and ClickUp CSV exports.
 - Merge into an existing Agora workspace JSON.
 - Create a new imported workspace snapshot.
 - Preserve source metadata on imported projects, tasks, and comments.
@@ -39,6 +40,15 @@ Preview a generic CSV export:
 npm run agora -- migrate preview tasks.csv --source generic-csv
 ```
 
+Preview source-specific CSV exports:
+
+```sh
+npm run agora -- migrate preview asana-export.csv --source asana-csv
+npm run agora -- migrate preview jira-export.csv --source jira-csv
+npm run agora -- migrate preview linear-export.csv --source linear-csv
+npm run agora -- migrate preview clickup-export.csv --source clickup-csv
+```
+
 Get machine-readable output:
 
 ```sh
@@ -67,19 +77,20 @@ npm run agora -- migrate apply trello-export.json \
   --out trello-import-workspace.json
 ```
 
-## Generic CSV Fields
+## CSV Fields
 
-The generic CSV adapter maps common export headers:
+The generic, Asana, Jira, Linear, and ClickUp CSV adapters map common export headers:
 
 | Agora field | Accepted headers |
 | --- | --- |
 | Task title | `title`, `task`, `name`, `task_name`, `card_name`, `item_name`, `summary` |
-| Project | `project`, `list`, `board`, `space`, `folder`, `group`, `section`, `workspace` |
+| Source id | `id`, `task_id`, `card_id`, `item_id`, `issue_key`, `key`, `identifier` |
+| Project | `project`, `project_name`, `list`, `board`, `space`, `folder`, `group`, `section`, `workspace`, `team`, `team_name` |
 | Assignee | `assignee`, `owner`, `person`, `assigned_to` |
-| Status | `status`, `state`, `column` |
+| Status | `status`, `state`, `column`, `completed`, `complete`, `resolution` |
 | Priority | `priority`, `importance` |
-| Due date | `due`, `due_date`, `deadline`, `date` |
-| Start date | `start`, `start_date` |
+| Due date | `due`, `due_date`, `due_on`, `deadline`, `date`, `target_date` |
+| Start date | `start`, `start_date`, `created`, `created_at` |
 | Description | `description`, `notes`, `details`, `body` |
 | Tags | `tags`, `labels` |
 
@@ -122,13 +133,10 @@ New adapters should return normalized imported records:
 
 Recommended order:
 
-1. Asana CSV.
-2. Jira CSV.
-3. Linear CSV/JSON.
-4. ClickUp CSV.
-5. monday.com CSV.
-6. Notion database CSV.
-7. OAuth/API connectors after file-based imports are stable.
+1. monday.com CSV.
+2. Notion database CSV.
+3. Linear JSON.
+4. Asana/Jira/ClickUp richer vendor-specific edge cases.
+5. OAuth/API connectors after file-based imports are stable.
 
 Attachments should stay metadata-only until the import preview and rollback path is proven with real users.
-

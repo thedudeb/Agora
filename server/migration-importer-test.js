@@ -72,6 +72,39 @@ function run() {
   assert(trelloPlan.tasks[0].customFields.sourceUrl.includes("trello.example"), "Trello source URL metadata missing");
   assert(trelloPlan.comments[0].body.includes("Client approved"), "Trello card comment missing");
 
+  const vendorSamples = [
+    {
+      source: "asana-csv",
+      payload: "Task ID,Name,Project,Section,Assignee,Completed,Due Date,Notes,Tags\nasana-1,Publish launch page,Website,Launch,Mara,false,2026-07-22,Ship the landing page,marketing"
+    },
+    {
+      source: "jira-csv",
+      payload: "Issue key,Summary,Project name,Status,Priority,Assignee,Due date,Description,Labels\nAG-7,Fix onboarding bug,Agora,In Progress,High,Eli,2026-07-23,Resolve setup blocker,bug"
+    },
+    {
+      source: "linear-csv",
+      payload: "Identifier,Title,Team,Status,Priority,Assignee,Target Date,Description,Labels\nLIN-12,Design import review,Product,Review,Low,Nina,2026-07-24,Review migration UX,design"
+    },
+    {
+      source: "clickup-csv",
+      payload: "Task ID,Task Name,List,Status,Priority,Assignee,Due Date,Description,Tags\nCU-44,QA migrated workspace,Migration,to do,urgent,Sam,2026-07-25,Check imported data,qa"
+    }
+  ];
+
+  for (const sample of vendorSamples) {
+    const vendorPlan = createMigrationPlan({
+      source: sample.source,
+      payload: sample.payload,
+      existingSnapshot: workspace
+    });
+    validateMigrationPlan(vendorPlan);
+    assert(vendorPlan.source === sample.source, `${sample.source} plan source mismatch`);
+    assert(vendorPlan.counts.tasks === 1, `${sample.source} should import one task`);
+    assert(vendorPlan.tasks[0].customFields.sourceSystem === sample.source, `${sample.source} source metadata missing`);
+    assert(vendorPlan.tasks[0].customFields.sourceId, `${sample.source} source id missing`);
+    assert(vendorPlan.confidence >= 60, `${sample.source} confidence too low`);
+  }
+
   console.log("Migration importer test passed.");
 }
 

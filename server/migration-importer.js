@@ -1,6 +1,6 @@
 const crypto = require("node:crypto");
 
-const SUPPORTED_SOURCES = ["generic-csv", "trello-json"];
+const SUPPORTED_SOURCES = ["generic-csv", "trello-json", "asana-csv", "jira-csv", "linear-csv", "clickup-csv"];
 
 function createMigrationPlan(options = {}) {
   const payload = String(options.payload || "");
@@ -120,18 +120,7 @@ const migrationAdapters = {
   "generic-csv": {
     label: "Generic CSV",
     parse(payload) {
-      const rows = rowsFromCsv(payload);
-      if (rows.length < 2) throw new Error("CSV needs a header row and at least one task row");
-      const headers = rows[0].map(normalizeHeader);
-      const records = rows.slice(1)
-        .filter((row) => row.some((cell) => String(cell || "").trim()))
-        .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] || ""])));
-      return rowsToImportedRecords(records, {
-        source: "generic-csv",
-        sourceLabel: "Generic CSV",
-        mappedFields: mappedFields(headers),
-        rawRows: records.length
-      });
+      return parseCsvSource(payload, "generic-csv", "Generic CSV");
     }
   },
   "trello-json": {
@@ -139,8 +128,47 @@ const migrationAdapters = {
     parse(payload) {
       return parseTrelloJson(payload);
     }
+  },
+  "asana-csv": {
+    label: "Asana CSV",
+    parse(payload) {
+      return parseCsvSource(payload, "asana-csv", "Asana CSV");
+    }
+  },
+  "jira-csv": {
+    label: "Jira CSV",
+    parse(payload) {
+      return parseCsvSource(payload, "jira-csv", "Jira CSV");
+    }
+  },
+  "linear-csv": {
+    label: "Linear CSV",
+    parse(payload) {
+      return parseCsvSource(payload, "linear-csv", "Linear CSV");
+    }
+  },
+  "clickup-csv": {
+    label: "ClickUp CSV",
+    parse(payload) {
+      return parseCsvSource(payload, "clickup-csv", "ClickUp CSV");
+    }
   }
 };
+
+function parseCsvSource(payload, source, sourceLabel) {
+  const rows = rowsFromCsv(payload);
+  if (rows.length < 2) throw new Error("CSV needs a header row and at least one task row");
+  const headers = rows[0].map(normalizeHeader);
+  const records = rows.slice(1)
+    .filter((row) => row.some((cell) => String(cell || "").trim()))
+    .map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] || ""])));
+  return rowsToImportedRecords(records, {
+    source,
+    sourceLabel,
+    mappedFields: mappedFields(headers),
+    rawRows: records.length
+  });
+}
 
 function buildMigrationPlan({ source, sourceLabel, imported, mode, workspaceName, existingSnapshot }) {
   const now = new Date().toISOString();
@@ -294,7 +322,7 @@ function rowsToImportedRecords(rows, context = {}) {
       skipped += 1;
       return;
     }
-    const projectName = fieldValue(row, ["project", "list", "board", "space", "folder", "group", "section", "workspace"]) || `${context.sourceLabel || "Generic"} Import`;
+    const projectName = fieldValue(row, ["project", "project_name", "list", "board", "space", "folder", "group", "section", "workspace", "team", "team_name"]) || `${context.sourceLabel || "Generic"} Import`;
     if (!projectNames.has(projectName.toLowerCase())) {
       projectNames.set(projectName.toLowerCase(), {
         id: `project-${slugFromName(projectName)}`,
@@ -304,17 +332,17 @@ function rowsToImportedRecords(rows, context = {}) {
       });
     }
     tasks.push({
-      id: fieldValue(row, ["id", "task_id", "card_id", "item_id"]) || `task-${slugFromName(title)}`,
-      sourceId: fieldValue(row, ["id", "task_id", "card_id", "item_id"]) || `${index + 1}`,
+      id: fieldValue(row, ["id", "task_id", "card_id", "item_id", "issue_key", "key", "identifier"]) || `task-${slugFromName(title)}`,
+      sourceId: fieldValue(row, ["id", "task_id", "card_id", "item_id", "issue_key", "key", "identifier"]) || `${index + 1}`,
       projectSourceId: projectName,
       projectName,
       title,
       description: fieldValue(row, ["description", "notes", "details", "body"]),
       assignee: fieldValue(row, ["assignee", "owner", "person", "assigned_to"]),
-      status: fieldValue(row, ["status", "state", "column"]),
+      status: fieldValue(row, ["status", "state", "column", "completed", "complete", "resolution"]),
       priority: fieldValue(row, ["priority", "importance"]),
-      dueDate: fieldValue(row, ["due", "due_date", "deadline", "date"]),
-      startDate: fieldValue(row, ["start", "start_date"]),
+      dueDate: fieldValue(row, ["due", "due_date", "due_on", "deadline", "date", "target_date"]),
+      startDate: fieldValue(row, ["start", "start_date", "created", "created_at"]),
       tags: splitList(fieldValue(row, ["tags", "labels"])),
       rawFields: row,
       sortOrder: index
@@ -423,11 +451,11 @@ function rowsFromCsv(payload) {
 function mappedFields(headers = []) {
   const groups = [
     ["title", ["title", "task", "name", "task_name", "card_name", "item_name", "summary"]],
-    ["project", ["project", "list", "board", "space", "folder", "group", "section", "workspace"]],
+    ["project", ["project", "project_name", "list", "board", "space", "folder", "group", "section", "workspace", "team", "team_name"]],
     ["assignee", ["assignee", "owner", "person", "assigned_to"]],
     ["status", ["status", "state", "column"]],
     ["priority", ["priority", "importance"]],
-    ["due date", ["due", "due_date", "deadline", "date"]],
+    ["due date", ["due", "due_date", "due_on", "deadline", "date", "target_date"]],
     ["description", ["description", "notes", "details", "body"]],
     ["tags", ["tags", "labels"]]
   ];
@@ -454,11 +482,17 @@ function normalizeSource(source) {
   const normalized = String(source || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   if (["csv", "generic", "generic-csv"].includes(normalized)) return "generic-csv";
   if (["trello", "trello-json", "json"].includes(normalized)) return "trello-json";
+  if (["asana", "asana-csv"].includes(normalized)) return "asana-csv";
+  if (["jira", "jira-csv"].includes(normalized)) return "jira-csv";
+  if (["linear", "linear-csv"].includes(normalized)) return "linear-csv";
+  if (["clickup", "clickup-csv"].includes(normalized)) return "clickup-csv";
   return normalized;
 }
 
 function normalizeStatus(value) {
   const normalized = cleanString(value).toLowerCase();
+  if (["true", "yes", "y", "1"].includes(normalized)) return "done";
+  if (["false", "no", "n", "0"].includes(normalized)) return "todo";
   if (["done", "complete", "completed", "closed", "resolved", "deployed"].includes(normalized)) return "done";
   if (["doing", "in progress", "in_progress", "active", "working", "started"].includes(normalized)) return "doing";
   if (["review", "qa", "testing", "blocked review"].includes(normalized)) return "review";

@@ -116,6 +116,7 @@ npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json --
 npm run agora -- launch check tests/fixtures/portable-workspace-bundle.json
 npm run agora -- marketplace validate templates/marketplace.json
 npm run agora -- migrate preview tests/fixtures/trello-board.json --source trello-json
+npm run agora -- migrate preview asana-export.csv --source asana-csv
 npm run agora -- migrate apply tasks.csv --source generic-csv --workspace tests/fixtures/workspace.json --out imported-workspace.json
 ```
 
@@ -142,6 +143,7 @@ npm run agora -- launch check tests/fixtures/portable-workspace-bundle.json --st
 npm run agora -- marketplace validate templates/marketplace.json
 npm run agora -- migrate preview tests/fixtures/trello-board.json --source trello-json
 npm run agora -- migrate preview tasks.csv --source generic-csv --json
+npm run agora -- migrate preview jira-export.csv --source jira-csv
 ```
 
 ## Launch Preflight

@@ -111,7 +111,7 @@ const commands = {
       const { positional, options } = parseOptions(args);
       const [subcommand, filePath] = positional;
       if (!["preview", "apply"].includes(subcommand) || !filePath) {
-        throw new Error("Usage: npm run agora -- migrate preview <file> [--source generic-csv|trello-json] [--workspace workspace.json] [--mode merge|new-workspace] [--json]\n       npm run agora -- migrate apply <file> --workspace workspace.json --out imported-workspace.json [--source generic-csv|trello-json] [--mode merge|new-workspace]");
+        throw new Error("Usage: npm run agora -- migrate preview <file> [--source generic-csv|trello-json|asana-csv|jira-csv|linear-csv|clickup-csv] [--workspace workspace.json] [--mode merge|new-workspace] [--json]\n       npm run agora -- migrate apply <file> --workspace workspace.json --out imported-workspace.json [--source generic-csv|trello-json|asana-csv|jira-csv|linear-csv|clickup-csv] [--mode merge|new-workspace]");
       }
       runMigrationCommand(subcommand, filePath, options);
     }
@@ -232,6 +232,7 @@ Examples:
   npm run agora -- marketplace validate templates/marketplace.json
   npm run agora -- migrate preview tests/fixtures/trello-board.json --source trello-json
   npm run agora -- migrate preview tasks.csv --source generic-csv --json
+  npm run agora -- migrate preview asana-export.csv --source asana-csv
 `);
 }
 
