@@ -8,6 +8,8 @@ For the hosted cutover sequence, use the [`hosted-launch-runbook.md`](./hosted-l
 
 - Run `npm run dev` and open `http://127.0.0.1:5174`.
 - Confirm the landing page, Dashboard, Today, Board, Marketplace, Permissions, Data, Settings, and mobile-width navigation render.
+- Confirm Android Chrome can install Agora as a standalone PWA with the launcher icon, screenshots, and shortcuts from `manifest.webmanifest`.
+- Confirm the installed Android PWA opens in airplane mode, supports local edits, and can export workspace JSON offline.
 - Create a local backup from Data before testing destructive imports.
 - Export a portable workspace bundle and confirm it includes `workspace.json`, templates, automations, Markdown, CSV, audit, and operator context.
 
@@ -65,7 +67,7 @@ Fix any failure before releasing. `launch:check` runs quick verification plus br
 - Set production environment variables in the host dashboard, not in client code.
 - Confirm `/api/health`, `/api/backend/health`, `/api/payments/config`, and `/api/marketplace/catalog` respond after sign-in.
 - Open Backend Health and confirm the hosted launch runbook shows environment, persistence, public surface, recovery, and billing posture.
-- Run a real browser pass on desktop, iPhone width, and iPad width.
+- Run a real browser pass on desktop, Android phone width, iPhone width, and iPad width.
 
 ## 7. Rollback
 

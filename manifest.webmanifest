@@ -1,8 +1,9 @@
 {
   "name": "Agora Project Management",
   "short_name": "Agora",
+  "id": "./",
   "description": "Open source project management for teams that want clarity without lock-in.",
-  "start_url": "./",
+  "start_url": "./?source=pwa",
   "scope": "./",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "browser"],
@@ -10,7 +11,20 @@
   "theme_color": "#245a58",
   "orientation": "any",
   "categories": ["business", "productivity"],
+  "prefer_related_applications": false,
   "icons": [
+    {
+      "src": "./assets/icons/agora-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./assets/icons/agora-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
     {
       "src": "./assets/agora-mark.svg",
       "sizes": "64x64",
@@ -18,24 +32,50 @@
       "purpose": "any maskable"
     }
   ],
+  "screenshots": [
+    {
+      "src": "./assets/screenshots/agora-mobile-today.png",
+      "sizes": "500x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Plan mobile work offline from Today."
+    },
+    {
+      "src": "./assets/screenshots/agora-mobile-launch.png",
+      "sizes": "500x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Review launch readiness from an Android home-screen install."
+    },
+    {
+      "src": "./assets/screenshots/agora-dashboard.png",
+      "sizes": "1265x712",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Coordinate project work from the Agora dashboard."
+    }
+  ],
   "shortcuts": [
     {
       "name": "Today",
       "short_name": "Today",
       "description": "Open your daily task plan.",
-      "url": "./#daily"
+      "url": "./#daily",
+      "icons": [{ "src": "./assets/icons/agora-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Inbox",
       "short_name": "Inbox",
       "description": "Open workspace notifications.",
-      "url": "./#inbox"
+      "url": "./#inbox",
+      "icons": [{ "src": "./assets/icons/agora-192.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "New Task",
       "short_name": "Task",
       "description": "Open Agora and create a task.",
-      "url": "./#dashboard"
+      "url": "./#dashboard",
+      "icons": [{ "src": "./assets/icons/agora-192.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
 }

@@ -15,7 +15,9 @@ The PWA path keeps Agora on one codebase while adding mobile-app behavior:
 - Prepare notification permission and service worker hooks.
 - Preserve fast iteration while the product model is still changing.
 
-Current iOS coverage is the installable PWA. There is no native iOS wrapper in this repo yet, so any future App Store build should preserve the same offline contract: bundled app assets, local workspace persistence, queued API sync, import/export while offline, and no required hosted service to launch.
+Current iOS and Android coverage is the installable PWA. There is no native iOS or Android wrapper in this repo yet, so any future app-store build should preserve the same offline contract: bundled app assets, local workspace persistence, queued API sync, import/export while offline, and no required hosted service to launch.
+
+Android installability should be validated against Chrome's PWA path: manifest PNG icons, maskable launcher support, mobile screenshots, standalone launch, cached app shell, local workspace edits, offline export/import, and queued API sync after reconnect.
 
 ## 2. Mobile task workflows
 
@@ -66,8 +68,15 @@ Recommended paths:
 
 Before calling the mobile experience shippable:
 
-- Install Agora to the iOS home screen.
-- Load a workspace once, then disable Wi-Fi and cellular data.
+- Install Agora to the iOS home screen and Android home screen from Chrome.
+- Load a workspace once, then disable Wi-Fi and cellular data or turn on airplane mode.
 - Confirm Dashboard, Today, Board, List, Calendar, Inbox, Settings, Data import, and JSON export open without a network.
 - Create or edit a project/task while offline and confirm it persists after closing and reopening.
 - Re-enable the network and confirm any queued API sync retries from Settings.
+
+Android-specific pass:
+
+- Confirm the launcher icon uses the PNG maskable icon and does not crop the mark.
+- Confirm the install prompt shows Agora screenshots and app name correctly.
+- Confirm shortcuts for Today, Inbox, and New Task open the installed app.
+- Confirm Android Chrome can export a workspace JSON file while offline.
