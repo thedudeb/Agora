@@ -21,6 +21,7 @@ const checkFiles = [
   "scripts/recovery-stress-test.js",
   "scripts/capture-screenshots.js",
   "scripts/golden-path-qa.js",
+  "scripts/release-qa.js",
   "scripts/agora-cli.js",
   "scripts/agora-mcp-server.js",
   "desktop/electron/main.cjs",
@@ -71,6 +72,10 @@ const commands = {
   golden: {
     summary: "Run browser QA for onboarding and golden paths",
     run: async () => runStep("golden path QA", [process.execPath, [path.join(ROOT, "scripts", "golden-path-qa.js")]])
+  },
+  qa: {
+    summary: "Run release QA: quick verification plus browser golden paths",
+    run: async () => runStep("release QA", [process.execPath, [path.join(ROOT, "scripts", "release-qa.js")]])
   },
   bundle: {
     summary: "Inspect portable workspace bundles",

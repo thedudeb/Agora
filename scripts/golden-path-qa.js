@@ -12,9 +12,41 @@ const BASE_URL = process.env.AGORA_GOLDEN_BASE_URL || "";
 const CHROME_TIMEOUT_MS = Number(process.env.AGORA_GOLDEN_TIMEOUT_MS || 60000);
 const ROUTE_WAIT_MS = Number(process.env.AGORA_GOLDEN_WAIT_MS || 5000);
 
-const checks = [
+const staticChecks = [
+  {
+    name: "App shell",
+    path: "/",
+    status: 200,
+    contentType: "text/html",
+    required: ["Agora", "app-view", "src/app.js"]
+  },
+  {
+    name: "PWA manifest",
+    path: "/manifest.webmanifest",
+    status: 200,
+    contentType: "application/manifest+json",
+    required: ["Agora Project Management", "standalone", "agora-mobile-today.png"]
+  },
+  {
+    name: "Offline fallback page",
+    path: "/offline.html",
+    status: 200,
+    contentType: "text/html",
+    required: ["Agora is offline", "Your local workspace remains on this device"]
+  },
+  {
+    name: "Missing route uses offline fallback",
+    path: "/missing-test-route",
+    status: 404,
+    contentType: "text/html",
+    required: ["Agora is offline"]
+  }
+];
+
+const routeChecks = [
   {
     name: "Dashboard onboarding golden paths",
+    suite: "first-run",
     route: "dashboard",
     width: 1265,
     height: 712,
@@ -29,6 +61,7 @@ const checks = [
   },
   {
     name: "Guided launch flow",
+    suite: "first-run",
     route: "launch",
     width: 1265,
     height: 712,
@@ -43,6 +76,7 @@ const checks = [
   },
   {
     name: "Production readiness audit",
+    suite: "release",
     route: "readiness",
     width: 1265,
     height: 712,
@@ -58,6 +92,7 @@ const checks = [
   },
   {
     name: "Template to project path",
+    suite: "workspace",
     route: "templates",
     width: 1265,
     height: 712,
@@ -73,6 +108,7 @@ const checks = [
   },
   {
     name: "Marketplace automation path",
+    suite: "workspace",
     route: "marketplace",
     width: 1265,
     height: 712,
@@ -91,6 +127,7 @@ const checks = [
   },
   {
     name: "Portable recovery path",
+    suite: "data",
     route: "data",
     width: 1265,
     height: 712,
@@ -102,11 +139,15 @@ const checks = [
       "Download Bundle",
       "Create Backup",
       "Import bundle",
-      "Preview Bundle"
+      "Preview Bundle",
+      "Desktop and mobile readiness",
+      "Workspace schema",
+      "offline-storage-contract.json"
     ]
   },
   {
     name: "Settings production controls",
+    suite: "admin",
     route: "settings",
     width: 1265,
     height: 712,
@@ -123,7 +164,54 @@ const checks = [
     ]
   },
   {
+    name: "Settings sync and offline readiness",
+    suite: "offline",
+    route: "settings",
+    query: { settingsTab: "sync" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Backend health",
+      "Offline apps",
+      "Desktop and mobile readiness",
+      "Local workspace",
+      "Retry queue",
+      "Portable restore"
+    ]
+  },
+  {
+    name: "Settings security posture",
+    suite: "security",
+    route: "settings",
+    query: { settingsTab: "security" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Current access",
+      "Active sessions",
+      "Offline security posture",
+      "Local-first means the device matters",
+      "Download Redacted Bundle",
+      "Permission matrix"
+    ]
+  },
+  {
+    name: "Settings feedback intake",
+    suite: "feedback",
+    route: "settings",
+    query: { settingsTab: "feedback" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Feature request intake",
+      "Public submit link",
+      "Open Feature Requests",
+      "Submit Internal Request"
+    ]
+  },
+  {
     name: "Mobile dashboard golden paths",
+    suite: "mobile",
     route: "dashboard",
     width: 500,
     height: 844,
@@ -137,6 +225,7 @@ const checks = [
   },
   {
     name: "Feature request triage",
+    suite: "feedback",
     route: "feature-requests",
     width: 1265,
     height: 712,
@@ -149,6 +238,7 @@ const checks = [
   },
   {
     name: "Public feedback form",
+    suite: "feedback",
     route: "feedback",
     width: 390,
     height: 760,
@@ -173,8 +263,14 @@ async function main() {
     : await startStaticServer();
 
   try {
-    for (const check of checks) {
-      const url = `${server.baseUrl}/?route=${encodeURIComponent(check.route)}&golden=${Date.now()}`;
+    for (const check of staticChecks) {
+      const response = await requestUrlWithBody(`${server.baseUrl}${check.path}`);
+      assertStaticSurface(check, response);
+      console.log(`Passed ${check.name}`);
+    }
+
+    for (const check of routeChecks) {
+      const url = buildRouteUrl(server.baseUrl, check);
       const dom = await runChrome(chromePath, [
         "--headless=new",
         "--disable-gpu",
@@ -191,14 +287,60 @@ async function main() {
         url
       ]);
       assertGoldenPath(check, dom);
-      console.log(`Passed ${check.name}`);
+      console.log(`Passed ${check.name} [${check.suite}]`);
     }
   } finally {
     await server.stop();
   }
 
   console.log("");
-  console.log(`Golden path QA passed: ${checks.length} route checks`);
+  console.log(`Golden path QA passed: ${staticChecks.length} static checks, ${routeChecks.length} route checks`);
+}
+
+function buildRouteUrl(baseUrl, check) {
+  const params = new URLSearchParams({
+    route: check.route,
+    golden: String(Date.now())
+  });
+  Object.entries(check.query || {}).forEach(([key, value]) => {
+    params.set(key, value);
+  });
+  return `${baseUrl}/?${params.toString()}`;
+}
+
+function assertStaticSurface(check, response) {
+  if (response.statusCode !== check.status) {
+    throw new Error(`${check.name} returned HTTP ${response.statusCode}, expected ${check.status}`);
+  }
+  const contentType = response.headers["content-type"] || "";
+  if (!contentType.includes(check.contentType)) {
+    throw new Error(`${check.name} returned content-type ${contentType || "(missing)"}, expected ${check.contentType}`);
+  }
+  assertSecurityHeaders(check.name, response.headers);
+  const body = String(response.body || "");
+  check.required.forEach((phrase) => {
+    if (!body.includes(phrase)) {
+      throw new Error(`${check.name} is missing expected text: ${phrase}`);
+    }
+  });
+}
+
+function assertSecurityHeaders(name, headers) {
+  const csp = headers["content-security-policy"] || "";
+  const requiredCsp = ["default-src 'self'", "object-src 'none'", "frame-ancestors 'none'", "base-uri 'self'"];
+  requiredCsp.forEach((directive) => {
+    if (!csp.includes(directive)) throw new Error(`${name} is missing CSP directive: ${directive}`);
+  });
+  const expected = {
+    "x-content-type-options": "nosniff",
+    "cross-origin-opener-policy": "same-origin",
+    "referrer-policy": "strict-origin-when-cross-origin"
+  };
+  Object.entries(expected).forEach(([header, value]) => {
+    if ((headers[header] || "").toLowerCase() !== value) {
+      throw new Error(`${name} has invalid ${header}: ${headers[header] || "(missing)"}`);
+    }
+  });
 }
 
 function assertGoldenPath(check, dom) {
@@ -209,6 +351,9 @@ function assertGoldenPath(check, dom) {
   }
   if (normalized.includes("could not render") || normalized.includes("view error")) {
     throw new Error(`${check.name} rendered an error state: ${errorSnippet(text)}`);
+  }
+  if (normalized.includes("typeerror") || normalized.includes("referenceerror")) {
+    throw new Error(`${check.name} rendered a JavaScript error string: ${errorSnippet(text)}`);
   }
   check.required.forEach((phrase) => {
     if (!normalized.includes(phrase.toLowerCase())) {
@@ -322,7 +467,7 @@ function waitForServer(baseUrl, child, logsForError) {
         reject(new Error(`Golden path QA server exited early:\n${logsForError()}`));
         return;
       }
-      requestUrl(baseUrl).then(resolve).catch((error) => {
+      requestUrlWithBody(baseUrl).then(resolve).catch((error) => {
         if (Date.now() > deadline) {
           reject(new Error(`Timed out waiting for ${baseUrl}: ${error.message}\n${logsForError()}`));
           return;
@@ -334,12 +479,22 @@ function waitForServer(baseUrl, child, logsForError) {
   });
 }
 
-function requestUrl(url) {
+function requestUrlWithBody(url) {
   return new Promise((resolve, reject) => {
     const request = http.get(url, (response) => {
-      response.resume();
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk) => {
+        body += chunk;
+      });
       response.on("end", () => {
-        if (response.statusCode && response.statusCode >= 200 && response.statusCode < 500) resolve();
+        if (response.statusCode && response.statusCode >= 200 && response.statusCode < 500) {
+          resolve({
+            statusCode: response.statusCode,
+            headers: response.headers,
+            body
+          });
+        }
         else reject(new Error(`HTTP ${response.statusCode}`));
       });
     });

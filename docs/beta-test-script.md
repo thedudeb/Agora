@@ -70,6 +70,7 @@ For each failure, record:
 ## Required Commands Before Beta
 
 ```sh
+npm run qa
 npm run verify:quick
 npm run test:golden
 npm run test:recovery

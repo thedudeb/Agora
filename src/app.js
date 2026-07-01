@@ -10809,11 +10809,16 @@ function routeFeedbackFromLocation({ shouldRender = false } = {}) {
 }
 
 function routeFromLocation({ shouldRender = false } = {}) {
-  const route = new URLSearchParams(window.location.search).get("route");
+  const params = new URLSearchParams(window.location.search);
+  const route = params.get("route");
   if (!route) return false;
   const nextRoute = routeFallback(route.trim());
   if (!routes[nextRoute]) return false;
   state.selectedRoute = nextRoute;
+  if (nextRoute === "settings") {
+    const requestedSettingsTab = params.get("settingsTab") || params.get("tab");
+    if (requestedSettingsTab) state.selectedSettingsTab = settingsTabFallback(requestedSettingsTab.trim());
+  }
   if (nextRoute !== "project") state.selectedProjectTab = "overview";
   openSidebarGroupForRoute(nextRoute);
   saveState();

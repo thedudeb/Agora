@@ -4,6 +4,8 @@ Use this checklist before tagging, deploying, or telling a team to run Agora in 
 
 For the hosted cutover sequence, use the [`hosted-launch-runbook.md`](./hosted-launch-runbook.md) alongside this checklist.
 
+For the automated product gate, use [`qa-gate.md`](./qa-gate.md).
+
 ## 1. Local App
 
 - Run `npm run dev` and open `http://127.0.0.1:5174`.
@@ -37,6 +39,7 @@ For the hosted cutover sequence, use the [`hosted-launch-runbook.md`](./hosted-l
 ## 4. Verification Commands
 
 ```sh
+npm run qa
 npm run verify
 npm run launch:check
 ```
@@ -51,7 +54,7 @@ npm run test:golden
 npm run test:api
 ```
 
-Fix any failure before releasing. `launch:check` runs quick verification plus browser golden-path QA. `test:importers` checks generic CSV and Trello JSON migration planning/apply behavior. `test:golden` browser-checks the first-run dashboard, template-to-project path, marketplace automation path, and portable recovery path. `test:api` covers auth, permissions, structured records, payments, marketplace publishing, scheduler behavior, audit logs, and API persistence.
+Fix any failure before releasing. `qa` runs quick verification plus browser golden-path QA. `launch:check` remains the shorter launch-focused gate. `test:importers` checks generic CSV and Trello JSON migration planning/apply behavior. `test:golden` browser-checks the app shell, PWA/offline fallback, first-run dashboard, template-to-project path, marketplace automation path, Data recovery/schema/offline readiness, Settings sync/security/feedback tabs, feature request triage, and mobile/public feedback paths. `test:api` covers auth, permissions, structured records, payments, marketplace publishing, scheduler behavior, audit logs, and API persistence.
 
 ## 5. Security Gate
 
