@@ -598,11 +598,24 @@ function validatePortableBundle(bundle) {
     }
   }
 
-  ["README.md", "tasks.csv"].forEach((requiredPath) => {
+  ["README.md", "tasks.csv", "offline-storage-contract.json"].forEach((requiredPath) => {
     if (!bundle.files.some((file) => file.path === requiredPath)) {
       report.warnings.push(`Missing recommended file ${requiredPath}.`);
     }
   });
+
+  const contractFile = bundle.files.find((file) => file.path === "offline-storage-contract.json" && file.kind === "json");
+  if (contractFile?.content) {
+    try {
+      const contract = JSON.parse(contractFile.content);
+      if (contract.type !== "agora.offline-storage-contract") report.warnings.push("offline-storage-contract.json has an unexpected type.");
+      if (contract.version !== 1) report.warnings.push("offline-storage-contract.json should use version 1.");
+      if (!Array.isArray(contract.collections) || !contract.collections.includes("tasks")) report.warnings.push("offline-storage-contract.json should list workspace collections.");
+      if (!contract.syncQueue?.key) report.warnings.push("offline-storage-contract.json should document the sync queue key.");
+    } catch (error) {
+      report.errors.push(`offline-storage-contract.json is not valid JSON: ${error.message}`);
+    }
+  }
 
   return report;
 }

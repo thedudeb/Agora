@@ -4951,8 +4951,8 @@ function hostedLaunchRunbookItems() {
     },
     {
       label: "Recovery bundle",
-      done: recovery.score >= 3,
-      detail: `${recovery.score}/4 recovery checks ready before cutover.`
+      done: recovery.score >= Math.max(3, recovery.total - 1),
+      detail: `${recovery.score}/${recovery.total} recovery checks ready before cutover.`
     },
     {
       label: "Billing posture",
@@ -6653,8 +6653,74 @@ function visibleTaskCustomFields(task) {
 function workspaceSnapshot() {
   return {
     ...state,
+    offlineStorageContract: offlineStorageContract(),
     exportedAt: new Date().toISOString(),
     exportVersion: 1
+  };
+}
+
+function offlineStorageContract() {
+  const queueSummary = apiSyncQueueSummary();
+  return {
+    type: "agora.offline-storage-contract",
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    targets: ["web-pwa", "mac-desktop", "windows-desktop", "ios", "android"],
+    principles: [
+      "App shell launches without network.",
+      "Workspace state remains readable and writable locally.",
+      "API writes enter a durable retry queue when sync fails.",
+      "Portable bundles include the restore-ready workspace snapshot.",
+      "Raw API tokens and provider secrets are not exported."
+    ],
+    localStores: [
+      { key: STORAGE_KEY, purpose: "Legacy/default browser workspace snapshot", required: true },
+      { key: WORKSPACE_REGISTRY_KEY, purpose: "Local workspace registry and switcher metadata", required: true },
+      { key: ACTIVE_WORKSPACE_ID_KEY, purpose: "Last active workspace id", required: true },
+      { key: workspaceSnapshotKey(state.workspace.id), purpose: "Active workspace snapshot", required: true },
+      { key: workspaceBackupKey(state.workspace.id), purpose: "Per-workspace local backup ring", required: true, maxRecords: MAX_WORKSPACE_BACKUPS },
+      { key: API_SYNC_QUEUE_KEY, purpose: "Durable failed-write retry queue", required: true },
+      { key: API_SESSION_KEY, purpose: "Current API session for this install", required: false, secret: true }
+    ],
+    collections: [
+      "workspace",
+      "companies",
+      "projects",
+      "tasks",
+      "comments",
+      "activities",
+      "documents",
+      "files",
+      "approvals",
+      "timeEntries",
+      "automations",
+      "projectTemplates",
+      "operatorActions",
+      "auditEvents",
+      "notificationSettings",
+      "importHistory"
+    ],
+    syncQueue: {
+      key: API_SYNC_QUEUE_KEY,
+      total: queueSummary.total,
+      pending: queueSummary.pending,
+      conflicts: queueSummary.conflicts,
+      attempts: queueSummary.attempts,
+      recordShape: ["id", "label", "path", "method", "body", "error", "status", "attempts", "createdAt", "updatedAt", "lastAttemptAt", "nextRetryAt", "blockedBy", "conflict"]
+    },
+    restore: {
+      primaryFile: "workspace.json",
+      bundleFile: "offline-storage-contract.json",
+      importPath: "Data > Portable restore",
+      supportsNewWorkspace: true,
+      supportsReplaceCurrent: true
+    },
+    security: {
+      rawTokensExported: false,
+      providerSecretsExported: false,
+      localEncryption: "platform-wrapper",
+      recommendedNativeStorage: "Use OS keychain/keystore for API session secrets and app sandbox storage for workspace snapshots."
+    }
   };
 }
 
@@ -6940,6 +7006,7 @@ function portableProjectMarkdown(project) {
 function portableWorkspaceManifest() {
   const snapshot = workspaceSnapshot();
   const ai = aiSettings();
+  const contract = snapshot.offlineStorageContract || offlineStorageContract();
   const companies = Array.isArray(state.companies) ? state.companies : [];
   const projects = Array.isArray(state.projects) ? state.projects : [];
   const tasks = Array.isArray(state.tasks) ? state.tasks : [];
@@ -6978,7 +7045,16 @@ function portableWorkspaceManifest() {
       includesCsvExports: true,
       includesAutomationPacks: true,
       includesOperatorLedger: true,
+      includesOfflineStorageContract: true,
       restorePath: "Data > Import JSON can restore workspace.json into Agora."
+    },
+    offlineStorageContract: {
+      type: contract.type,
+      version: contract.version,
+      targets: contract.targets,
+      localStores: contract.localStores.length,
+      collections: contract.collections.length,
+      syncQueueKey: contract.syncQueue.key
     },
     ai: {
       provider: ai.provider,
@@ -7004,6 +7080,7 @@ function portableWorkspaceReadme() {
     `- ${manifest.counts.templates} project templates`,
     `- ${manifest.counts.documents} docs and ${manifest.counts.files} files metadata records`,
     `- ${manifest.counts.operatorActions} AI operator action ledger entries`,
+    `- Offline storage contract v${manifest.offlineStorageContract.version} for ${manifest.offlineStorageContract.targets.join(", ")}`,
     "",
     "## Restore",
     "",
@@ -7017,9 +7094,11 @@ function portableWorkspaceReadme() {
 
 function portableWorkspaceFiles() {
   const operatorBundle = operatorContextBundle();
+  const contract = offlineStorageContract();
   return [
     { path: "README.md", kind: "markdown", content: portableWorkspaceReadme() },
     { path: "workspace.json", kind: "json", content: exportWorkspaceJson() },
+    { path: "offline-storage-contract.json", kind: "json", content: JSON.stringify(contract, null, 2) },
     { path: "tasks.csv", kind: "csv", content: exportTasksCsv() },
     { path: "time.csv", kind: "csv", content: exportTimeCsv() },
     { path: "automations.json", kind: "json", content: JSON.stringify({ type: "agora.automations", exportVersion: 1, exportedAt: new Date().toISOString(), automations: state.automations }, null, 2) },
@@ -11244,9 +11323,9 @@ function workspaceTrustSignals() {
   return [
     {
       label: "Recovery",
-      value: `${recovery.score}/4 ready`,
-      detail: recovery.score >= 3 ? "Portable bundle and recovery evidence are available" : latestBackup,
-      tone: recovery.score >= 3 ? "inbox-green" : "inbox-amber",
+      value: `${recovery.score}/${recovery.total} ready`,
+      detail: recovery.score >= Math.max(3, recovery.total - 1) ? "Portable bundle, offline contract, and recovery evidence are available" : latestBackup,
+      tone: recovery.score >= Math.max(3, recovery.total - 1) ? "inbox-green" : "inbox-amber",
       commandId: "recovery:plan"
     },
     {
@@ -11320,8 +11399,8 @@ function launchWorkspaceItems() {
     },
     {
       label: "Recovery proof",
-      detail: recovery.score >= 3 ? "Portable recovery has local evidence." : "Create a backup and export the bundle.",
-      done: recovery.score >= 3,
+      detail: recovery.score >= Math.max(3, recovery.total - 1) ? "Portable recovery has local evidence." : "Create a backup and export the bundle.",
+      done: recovery.score >= Math.max(3, recovery.total - 1),
       action: "Create Backup"
     },
     {
@@ -11418,7 +11497,7 @@ function renderLaunchRecoverySetupPanel() {
           <p class="eyebrow">Step 3</p>
           <h2>Prove recovery</h2>
         </div>
-        <span class="status-pill ${recovery.score >= 3 ? "inbox-green" : "inbox-amber"}">${recovery.score}/4 ready</span>
+        <span class="status-pill ${recovery.score >= Math.max(3, recovery.total - 1) ? "inbox-green" : "inbox-amber"}">${recovery.score}/${recovery.total} ready</span>
       </div>
       <div class="launch-fact-grid">
         <article><strong>${recovery.files.length}</strong><span>Bundle files</span></article>
@@ -16743,17 +16822,20 @@ function portableRecoveryStatus() {
   const manifest = portableWorkspaceManifest();
   const files = portableWorkspaceFiles();
   const hasExport = state.auditEvents.some((event) => event.action === "workspace_export");
+  const checks = [
+    files.some((file) => file.path === "workspace.json"),
+    files.some((file) => file.path === "offline-storage-contract.json"),
+    files.some((file) => file.path === "README.md"),
+    files.some((file) => file.path === "audit-log.md"),
+    backups.length > 0 || hasExport
+  ];
   return {
     backups,
     manifest,
     files,
     latestBackup: backups[0] || null,
-    score: [
-      files.some((file) => file.path === "workspace.json"),
-      files.some((file) => file.path === "README.md"),
-      files.some((file) => file.path === "audit-log.md"),
-      backups.length > 0 || hasExport
-    ].filter(Boolean).length
+    score: checks.filter(Boolean).length,
+    total: checks.length
   };
 }
 
@@ -16776,7 +16858,7 @@ function renderPortableRecoveryConfidencePanel() {
           <p class="eyebrow">Recovery confidence</p>
           <h2>Know you can leave and restore</h2>
         </div>
-        <span class="status-pill ${status.score >= 3 ? "inbox-green" : "inbox-amber"}">${status.score}/4 ready</span>
+        <span class="status-pill ${status.score >= Math.max(3, status.total - 1) ? "inbox-green" : "inbox-amber"}">${status.score}/${status.total} ready</span>
       </div>
       <p class="panel-note">The portable bundle includes workspace JSON, Markdown, CSV, automations, templates, audit history, and operator context. Use the CLI inspect path before imports or handoffs.</p>
       <div class="recovery-confidence-grid">
@@ -16784,6 +16866,11 @@ function renderPortableRecoveryConfidencePanel() {
           <span>Bundle files</span>
           <strong>${status.files.length}</strong>
           <small>${counts.projects} projects / ${counts.tasks} tasks</small>
+        </article>
+        <article>
+          <span>Offline contract</span>
+          <strong>v${status.manifest.offlineStorageContract.version}</strong>
+          <small>${status.manifest.offlineStorageContract.targets.length} app targets / ${status.manifest.offlineStorageContract.collections} collections</small>
         </article>
         <article>
           <span>Local backups</span>

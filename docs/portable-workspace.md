@@ -70,6 +70,7 @@ Choose `Preview Bundle` before restoring. The preview shows file count, project 
 
 - `README.md`: Human-readable export summary and restore instructions.
 - `workspace.json`: Full Agora workspace snapshot used for restore.
+- `offline-storage-contract.json`: Machine-readable contract for web, desktop, iOS, and Android offline storage, sync queue, restore, and local secret handling.
 - `tasks.csv`: Flat task export for spreadsheets or external tools.
 - `time.csv`: Employee time-tracking export.
 - `automations.json`: Local automation rules.
@@ -81,6 +82,7 @@ Choose `Preview Bundle` before restoring. The preview shows file count, project 
 ## Safety Notes
 
 - Restore uses `workspace.json`; other files are included for portability, inspection, and migration.
+- Native wrappers should implement `offline-storage-contract.json`: bundled app shell, local workspace snapshots, durable failed-write queue, portable restore, and OS keychain/keystore handling for API session secrets.
 - Replacing the current workspace creates a local backup first.
 - API secrets, Supabase service-role keys, and AI provider keys are not exported by the browser app.
 - Operator context respects the current Operator permission settings when exported.
