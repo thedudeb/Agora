@@ -3886,6 +3886,7 @@ function onboardingItems() {
   const hasProject = activeProjects().length > 0;
   const hasTeam = setupMemberships.length > 1 || state.invitations.some((invitation) => invitation.status === "pending");
   const hasApi = Boolean(apiSession);
+  const hasRecovery = loadWorkspaceBackups().length > 0 || Boolean(state.switcherImportRollback?.backupId);
   return [
     {
       id: "data",
@@ -3936,7 +3937,14 @@ function onboardingItems() {
       action: "account"
     },
     {
-      id: "notifications",
+      id: "recovery",
+      label: "Recovery point",
+      detail: hasRecovery ? "Backup available" : "Create backup",
+      done: hasRecovery,
+      action: "backup"
+    },
+    {
+      id: "recovery",
       label: "Notifications",
       detail: state.onboarding?.notificationsReviewed ? "Preferences reviewed" : "Choose alerts and delivery",
       done: Boolean(state.onboarding?.notificationsReviewed),
@@ -4013,6 +4021,18 @@ function onboardingWizardSteps() {
     {
       id: "notifications",
       eyebrow: "Step 6",
+      title: "Create a recovery point",
+      body: "Before a team depends on the workspace, create a local backup or portable bundle so imports, API restores, and setup experiments have a clean recovery path.",
+      done: items.recovery?.done,
+      detail: items.recovery?.detail || "Create backup",
+      primaryAction: "backup",
+      primaryLabel: "Create Backup",
+      secondaryAction: "import",
+      secondaryLabel: "Open Migration Studio"
+    },
+    {
+      id: "notifications",
+      eyebrow: "Step 7",
       title: "Review notification delivery",
       body: "Decide which alerts belong in the inbox, browser notifications, webhook payloads, or email handoff before launch.",
       done: items.notifications?.done,
@@ -4024,7 +4044,7 @@ function onboardingWizardSteps() {
     },
     {
       id: "templates",
-      eyebrow: "Step 7",
+      eyebrow: "Step 8",
       title: "Pick starter workflows",
       body: "Install or review templates for the kind of work this team runs: client delivery, software, finance, art, marketing, research, or internal ops.",
       done: items.templates?.done,
@@ -4113,11 +4133,12 @@ function renderOnboardingPanel() {
         </div>
         <button class="button button-primary compact-button" type="button" data-onboarding-action="${escapeHtml(nextAction.action || "wizard")}">${setupComplete ? "Review Sync" : "Continue"}</button>
       </div>
+      ${renderFirstValuePath()}
       <div class="onboarding-choice-row">
         <button class="button button-primary" type="button" data-onboarding-action="wizard">${state.onboarding?.wizardActive ? "Hide Wizard" : "Open Wizard"}</button>
         <button class="button ${state.onboarding?.sampleMode === "demo" ? "button-primary" : "button-secondary"}" type="button" data-onboarding-action="use-demo">Use Demo Data</button>
         <button class="button ${state.onboarding?.sampleMode === "clean" ? "button-primary" : "button-secondary"}" type="button" data-onboarding-action="start-clean">Start Clean</button>
-        <button class="button ${state.onboarding?.sampleMode === "import" ? "button-primary" : "button-secondary"}" type="button" data-onboarding-action="import">Import CSV</button>
+        <button class="button ${state.onboarding?.sampleMode === "import" ? "button-primary" : "button-secondary"}" type="button" data-onboarding-action="import">Migration Studio</button>
         <button class="button ${state.onboarding?.sampleMode === "template" ? "button-primary" : "button-secondary"}" type="button" data-onboarding-action="templates">Use Template</button>
         <button class="button button-secondary" type="button" data-onboarding-action="dismiss">${setupComplete ? "Done" : "Hide"}</button>
       </div>
@@ -4135,6 +4156,51 @@ function renderOnboardingPanel() {
         `).join("")}
       </div>
     </section>
+  `;
+}
+
+function renderFirstValuePath() {
+  const cards = [
+    {
+      label: "Migrate",
+      value: state.switcherImportPreview ? `${state.switcherImportPreview.stats?.tasks || 0} tasks previewed` : state.onboarding?.sampleMode === "import" ? "Import mode" : "CSV or Trello JSON",
+      detail: "Bring existing projects into Agora with preview, source trace, backup, and rollback.",
+      action: "import",
+      primary: state.onboarding?.sampleMode === "import"
+    },
+    {
+      label: "Template",
+      value: `${state.projectTemplates.length} starters`,
+      detail: "Start from a repeatable workflow when there is no export to migrate.",
+      action: "templates",
+      primary: state.onboarding?.sampleMode === "template"
+    },
+    {
+      label: "First project",
+      value: activeProjects().length ? `${activeProjects().length} active` : "Not created",
+      detail: "Create one real project so reports, board, timeline, and Today have useful work.",
+      action: "project",
+      primary: !activeProjects().length
+    },
+    {
+      label: "Recovery",
+      value: loadWorkspaceBackups().length ? `${loadWorkspaceBackups().length} backup${loadWorkspaceBackups().length === 1 ? "" : "s"}` : "No backup",
+      detail: "Create a safety point before imports, API sync, or team onboarding.",
+      action: "backup",
+      primary: !loadWorkspaceBackups().length
+    }
+  ];
+  return `
+    <div class="switcher-report-grid">
+      ${cards.map((card) => `
+        <article>
+          <span>${escapeHtml(card.label)}</span>
+          <strong>${escapeHtml(card.value)}</strong>
+          <small>${escapeHtml(card.detail)}</small>
+          <button class="button ${card.primary ? "button-primary" : "button-secondary"} compact-button" type="button" data-onboarding-action="${escapeHtml(card.action)}">${card.primary ? "Start" : "Open"}</button>
+        </article>
+      `).join("")}
+    </div>
   `;
 }
 
@@ -9867,6 +9933,21 @@ function handleOnboardingAction(action) {
     saveState();
     render();
     showToast("Review starter templates and marketplace packs", "info");
+    return;
+  }
+
+  if (action === "backup") {
+    state.onboarding = {
+      ...state.onboarding,
+      dismissed: false,
+      wizardActive: true
+    };
+    saveWorkspaceBackups([workspaceBackupRecord("First value checkpoint"), ...loadWorkspaceBackups()]);
+    state.selectedRoute = "data";
+    openSidebarGroupForRoute("data");
+    saveState();
+    render();
+    showToast("First-value recovery backup created", "success");
     return;
   }
 
