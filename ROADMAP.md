@@ -1,63 +1,87 @@
-# Roadmap
+# Agora Roadmap
 
-This roadmap describes the intended direction for Agora. It will evolve as the prototype turns into a self-hostable product.
+Agora is open source project management without ads, trackers, or lock-in. This roadmap keeps the public direction clear while the prototype moves toward a self-hostable product teams can trust.
+
+## Product North Star
+
+Agora should become a calm, inspectable project command center for teams that need projects, clients, daily planning, approvals, automations, docs, time tracking, reporting, and auditable AI without giving up ownership of their workspace.
 
 ## Current Prototype
 
-Agora currently includes a dependency-free browser app, local app server, API scaffold, JSON storage, optional Supabase storage, first-run onboarding, guided tutorial mode, launch-readiness guidance, a Cmd/Ctrl+K command palette, keyboard shortcuts, local multi-workspace switching, clean/demo workspace setup, local workspace backups, account signup/login, Supabase email/password auth, invitations, role permissions, company-scoped access controls, API-first company/project/task records, split Settings tabs for account, sync, security, integrations, and developer readiness, merged local/API audit logs, project/task views, saved views, project PM snapshots, company and client portals, docs/files, intake, templates, automations with previews, notifications, time tracking, import/export, command-style search, copyable status reports, polling-based live refresh, task viewer presence, same-page cursor presence, mentions, watched-task inbox signals, stale edit warnings, customizable workspace themes, deployment readiness checks, accessibility basics, and PWA shell support.
+Agora currently includes:
 
-## Phase 0: Project Foundation
+- Browser app with local persistence and no app dependencies.
+- Static app server and dependency-free API scaffold.
+- Local JSON storage plus optional Supabase storage/auth.
+- First-run onboarding, guided tutorial mode, launch readiness, command palette, keyboard shortcuts, and PWA shell.
+- Dashboard, Today, Inbox, Board, List, Calendar, My Work, Time, Reports, Goals, Companies, Client Portal, Docs/Files, Intake, Templates, Automations, Marketplace, Data, Audit, Permissions, Operator, and Settings views.
+- Workspace switcher with create, duplicate, archive, and local backups.
+- Member invitations, owner signup, password auth, Supabase auth, role permissions, and company-scoped access.
+- API-backed workspace snapshots and structured records.
+- Portable JSON/CSV/Markdown exports and competitor import helpers.
+- Notifications, watched tasks, mentions, inbox signals, scheduler endpoints, and notification history.
+- Collaboration primitives: chat, whiteboards, same-page cursor presence, live task viewers, and stale edit warnings.
+- AI Operator with local mode, bring-your-own-AI server adapters, permissions, previews, rationale, audit ledger, and undo paths.
+- Template and automation marketplace primitives, including API-backed catalog publishing and creator payout metadata.
+- Payment-adapter foundation for test/manual/Stripe/x402 marketplace entitlement flows.
+- Marketing strategy, launch kit, release checklist, deployment guide, and portable workspace documentation.
 
-- Finalize product requirements.
-- Choose initial technical architecture. ✅
-- Add development setup documentation. ✅
-- Define contribution standards and issue labels.
-- Publish a small set of design principles and core user flows.
-- Establish the first API, auth, and persistence foundation. ✅
-- Draft the database schema for self-hosted deployments. ✅
+## Now
 
-## Phase 1: MVP
+These are the highest-priority areas before a broader public launch.
 
-- Workspace creation and member invitations.
-- Local workspace switcher with create, duplicate, archive, and switch actions. ✅
-- Local backup and restore center for each browser workspace. ✅
-- Role-aware authentication, company-scoped access, and session management.
-- API-backed workspace persistence. ✅
-- Project creation with configurable statuses.
-- Task creation, assignment, due dates, priorities, comments, and attachments.
-- List and board project views.
-- My Work view for assigned tasks across projects.
-- Basic in-app notifications.
-- Self-hosting setup guide.
-- Workspace theme presets and deploy-readiness guidance.
-- First-run setup flow with clean/demo workspace choice. ✅
-- Guided tutorial mode for new users. ✅
-- Launch-readiness panel, keyboard command palette, and shortcut help. ✅
+- Capture screenshot and demo assets for README, landing page, Product Hunt, and social posts.
+- Tighten the landing page proof sections around no ads, self-hosting, portable exports, client work, and auditable AI.
+- Improve README scanning with screenshots, quick feature blocks, and a clearer "who this is for" section.
+- Keep local setup boring: `cp .env.example .env`, `npm run dev`, `npm run dev:api`, `npm run check`, `npm run test:api`.
+- Make Supabase setup easier to validate from docs and Backend Health.
+- Add issue templates for bug reports, feature proposals, templates, automations, and docs improvements.
+- Expand fixture tests for portable bundles, marketplace packs, and import/export behavior.
 
-## Phase 2: Team Planning
+## Next
 
-- Calendar or timeline view.
-- Milestones and project dashboards.
-- Project templates and project duplication.
-- Guest access for client or stakeholder collaboration.
-- Saved filters and saved project views. ✅
-- Production-grade search and command palette actions. ✅
-- Data export for workspace and project content.
+These make Agora more credible for real teams and contributors.
 
-## Phase 3: Extensibility
-
-- Webhooks.
-- Public API foundations.
-- Import from common project management formats.
-- Email notification configuration.
-- Authentication provider configuration.
-- Plugin or integration strategy.
+- Improve marketplace flows: preview hosted packs, show trust metadata, and support community contribution review.
+- Add richer onboarding for first owner setup, Supabase connection, and first project creation.
+- Build contributor-friendly starter issues for templates, automations, integrations, docs, accessibility, and mobile polish.
+- Add a public comparison page or doc for Asana, Nifty, ClickUp, monday, Notion, Linear, and open source alternatives.
+- Add screenshot automation or a repeatable capture script once the local browser flow is stable.
+- Strengthen API persistence around conflict handling, record-level sync, and migration safety.
+- Expand accessibility verification across keyboard-only use, focus states, color contrast, reduced motion, and screen reader landmarks.
+- Improve mobile and tablet flows for Today, Board, Inbox, Marketplace, and Settings.
 
 ## Later
 
-- Advanced automations.
-- Resource planning and capacity views.
-- Native mobile apps.
-- Theme marketplace/export support for self-hosters.
-- Deeper third-party integrations.
-- Hosted cloud option, if the community and maintainers decide to pursue it.
+These are larger bets after the core self-hosted path is stable.
+
+- Native mobile apps or a deeper mobile wrapper around the PWA.
+- Integration adapters for Slack, GitHub, Google Drive, Google Calendar, Zapier, and custom webhooks.
+- Plugin or extension strategy for self-hosters.
+- Theme marketplace/export support.
+- Advanced automations with condition builders, logs, retries, and approval gates.
+- More complete resource planning, forecasting, billing, and retainer workflows.
+- Real Stripe and x402 payment adapters with webhook verification.
+- Hosted cloud option, only if the community and maintainers decide it fits the project.
+
+## Contribution Lanes
+
+Good places to help:
+
+- Project templates for specific industries.
+- Automation packs for common workflows.
+- Docs and launch assets.
+- Accessibility audits and fixes.
+- Mobile/iPad layout polish.
+- API smoke tests and portable fixture coverage.
+- Supabase setup verification and deployment recipes.
+- Integrations and import/export adapters.
+
+## Release Principles
+
+- No ads, no trackers, no attention marketplace.
+- Keep data portable and exportable.
+- Keep secrets server-only.
+- Prefer practical workflows over sprawling configuration.
+- Keep AI actions permissioned, previewable, auditable, and reversible where possible.
+- Document tradeoffs when the product makes an opinionated choice.
