@@ -547,6 +547,12 @@ const automationMarketplacePacks = [
 
 const themePresets = [
   {
+    id: "auto",
+    label: "Auto",
+    description: "Follow your browser or OS light and dark appearance.",
+    swatches: ["#f6f5f0", "#76b7ad", "#151817"]
+  },
+  {
     id: "agora",
     label: "Agora",
     description: "Warm neutral workspace with the classic Agora teal accent.",
@@ -907,7 +913,7 @@ const seedData = {
     storageMode: "Browser local storage",
     backendTarget: "API + PostgreSQL",
     theme: {
-      preset: "agora",
+      preset: "auto",
       density: "comfortable"
     },
     ai: {
@@ -1948,6 +1954,7 @@ let pwaInstallReady = false;
 let notificationPermissionState = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
 let lenis = null;
 const reducedMotionQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+const darkModeQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
 
 const els = {
   appView: document.querySelector("#app-view"),
@@ -2214,6 +2221,12 @@ function normalizeWorkspaceTheme(theme = {}) {
   const preset = themePresets.some((item) => item.id === theme.preset) ? theme.preset : seedData.workspace.theme.preset;
   const density = densityOptions.some((item) => item.id === theme.density) ? theme.density : seedData.workspace.theme.density;
   return { preset, density };
+}
+
+function resolvedWorkspaceThemePreset(theme = state?.workspace?.theme) {
+  const normalized = normalizeWorkspaceTheme(theme);
+  if (normalized.preset === "auto") return darkModeQuery?.matches ? "night" : "agora";
+  return normalized.preset;
 }
 
 function normalizeDashboardWidgets(widgets = []) {
@@ -2632,9 +2645,11 @@ function normalizeWorkspacePayments(payments = {}) {
 
 function applyWorkspaceTheme() {
   const theme = normalizeWorkspaceTheme(state?.workspace?.theme);
-  document.body.dataset.theme = theme.preset;
+  const resolvedPreset = resolvedWorkspaceThemePreset(theme);
+  document.body.dataset.theme = resolvedPreset;
+  document.body.dataset.themePreference = theme.preset;
   document.body.dataset.density = theme.density;
-  const activePreset = themePresets.find((preset) => preset.id === theme.preset) || themePresets[0];
+  const activePreset = themePresets.find((preset) => preset.id === resolvedPreset) || themePresets.find((preset) => preset.id === "agora");
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", activePreset.swatches[1]);
 }
 
@@ -4044,6 +4059,7 @@ function renderTutorialOverlay() {
 
 function renderThemeOption(theme) {
   const active = state.workspace.theme?.preset === theme.id;
+  const resolved = theme.id === "auto" ? `Currently ${themePresets.find((preset) => preset.id === resolvedWorkspaceThemePreset())?.label || "Agora"}` : theme.description;
   return `
     <label class="theme-option ${active ? "is-active" : ""}">
       <input type="radio" name="workspace-theme" value="${theme.id}" ${active ? "checked" : ""}>
@@ -4051,7 +4067,7 @@ function renderThemeOption(theme) {
         ${theme.swatches.map((color) => `<i style="background: ${color}"></i>`).join("")}
       </span>
       <strong>${escapeHtml(theme.label)}</strong>
-      <small>${escapeHtml(theme.description)}</small>
+      <small>${escapeHtml(resolved)}</small>
     </label>
   `;
 }
@@ -14730,7 +14746,7 @@ function renderSettings() {
       ${metric("Roles", workspaceRoles.length)}
       ${metric("Companies", state.companies.length)}
       ${metric("Storage", apiBackendLabel())}
-      ${metric("Theme", themePresets.find((theme) => theme.id === state.workspace.theme?.preset)?.label || "Agora")}
+      ${metric("Theme", state.workspace.theme?.preset === "auto" ? `Auto / ${themePresets.find((theme) => theme.id === resolvedWorkspaceThemePreset())?.label || "Agora"}` : themePresets.find((theme) => theme.id === state.workspace.theme?.preset)?.label || "Agora")}
       ${metric("Payments", paymentProviderLabel(payments.provider))}
     </div>
 
@@ -22470,6 +22486,18 @@ if (reducedMotionQuery?.addEventListener) {
   reducedMotionQuery.addEventListener("change", handleReducedMotionChange);
 } else if (reducedMotionQuery?.addListener) {
   reducedMotionQuery.addListener(handleReducedMotionChange);
+}
+
+function handleColorSchemeChange() {
+  if (state.workspace.theme?.preset !== "auto") return;
+  applyWorkspaceTheme();
+  if (state.selectedRoute === "settings") render();
+}
+
+if (darkModeQuery?.addEventListener) {
+  darkModeQuery.addEventListener("change", handleColorSchemeChange);
+} else if (darkModeQuery?.addListener) {
+  darkModeQuery.addListener(handleColorSchemeChange);
 }
 
 initSmoothScroll();

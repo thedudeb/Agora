@@ -116,6 +116,7 @@ const checks = [
       "Open Sync",
       "Account",
       "Workspace",
+      "Auto",
       "Members",
       "Sync",
       "Trust"
