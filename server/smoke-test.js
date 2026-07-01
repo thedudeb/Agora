@@ -591,6 +591,7 @@ async function run() {
     assert(workspace.snapshot.workspace.name === "Smoke Test Studio", "workspace load failed");
     assert(workspace.snapshot.workspace.payments.entitlements.some((entitlement) => entitlement.itemId === "marketplace-agency-retainer-os"), "workspace snapshot dropped payment entitlement");
     assert(workspace.snapshot.users.some((user) => user.email === "jordan@example.test"), "workspace save dropped accepted invite user");
+    assert(workspace.snapshot.users.every((user) => !user.passwordHash && !user.passwordSalt && !user.passwordResetTokenHash), "workspace snapshot leaked auth secret fields");
     assert(workspace.snapshot.invitations.some((invite) => invite.email === "jordan@example.test" && invite.status === "accepted"), "workspace save dropped invitation state");
     assert(workspace.snapshot.projects[0].name === "Updated Smoke Project", "project not stored in workspace");
     assert(workspace.snapshot.tasks[0].title === "Updated Smoke Task", "task not stored in workspace");
@@ -1029,6 +1030,28 @@ async function testLockedAuthDefaults() {
       }
     });
     assert(passwordLogin.user.id === signup.user.id, "password login should keep working when passwordless auth is disabled");
+
+    for (let index = 0; index < 8; index += 1) {
+      const failedLogin = await requestError(`${baseUrl}/api/auth/password-login`, {
+        method: "POST",
+        headers: { "x-forwarded-for": `203.0.113.${index + 1}` },
+        body: {
+          email: "missing@example.test",
+          password: "wrong-password"
+        }
+      });
+      assert(failedLogin.status === 401, "invalid password should fail before the rate limit is exhausted");
+    }
+
+    const rateLimitedLogin = await requestError(`${baseUrl}/api/auth/password-login`, {
+      method: "POST",
+      headers: { "x-forwarded-for": "203.0.113.250" },
+      body: {
+        email: "missing@example.test",
+        password: "wrong-password"
+      }
+    });
+    assert(rateLimitedLogin.status === 429, "spoofed forwarded IPs should not bypass auth rate limits");
   } finally {
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(dataDir, { recursive: true, force: true });
@@ -1299,6 +1322,7 @@ async function request(url, options = {}) {
     method: options.method || "GET",
     headers: {
       "Content-Type": "application/json",
+      ...(options.headers || {}),
       ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
     },
     body: options.body ? JSON.stringify(options.body) : undefined
@@ -1315,6 +1339,7 @@ async function requestError(url, options = {}) {
     method: options.method || "GET",
     headers: {
       "Content-Type": "application/json",
+      ...(options.headers || {}),
       ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
     },
     body: options.body ? JSON.stringify(options.body) : undefined
@@ -1330,6 +1355,7 @@ async function requestRaw(url, options = {}) {
   const response = await fetch(url, {
     method: options.method || "GET",
     headers: {
+      ...(options.headers || {}),
       ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
     }
   });

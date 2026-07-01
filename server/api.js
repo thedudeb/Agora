@@ -82,8 +82,11 @@ function positiveNumber(value, fallback) {
 }
 
 function clientIp(request) {
-  const forwarded = cleanString(request.headers["x-forwarded-for"]).split(",")[0]?.trim();
-  return forwarded || request.socket?.remoteAddress || "unknown";
+  if (envFlag("AGORA_TRUST_PROXY", false)) {
+    const forwarded = cleanString(request.headers["x-forwarded-for"]).split(",")[0]?.trim();
+    if (forwarded) return forwarded;
+  }
+  return request.socket?.remoteAddress || "unknown";
 }
 
 function assertRateLimit(request, scope, limit = AUTH_RATE_LIMIT_ATTEMPTS, windowMs = AUTH_RATE_LIMIT_WINDOW_MS) {
@@ -731,7 +734,7 @@ function createServer(options = {}) {
         }
         const document = await storage.loadWorkspace();
         if (document?.snapshot) {
-          sendJson(response, 200, { ...document, snapshot: scopedSnapshot(document.snapshot, session) });
+          sendJson(response, 200, publicWorkspaceDocument(document, session));
           return;
         }
         sendJson(response, 200, document || {
@@ -752,7 +755,7 @@ function createServer(options = {}) {
         }
         const body = await readJsonBody(request);
         const document = await saveWorkspaceSnapshot(storage, body.snapshot || body, session, "workspace_update");
-        sendJson(response, 200, document);
+        sendJson(response, 200, publicWorkspaceDocument(document, session));
         return;
       }
 
@@ -763,7 +766,7 @@ function createServer(options = {}) {
         }
         const body = await readJsonBody(request);
         const document = await saveWorkspaceSnapshot(storage, body.snapshot || body, session, "workspace_import");
-        sendJson(response, 200, document);
+        sendJson(response, 200, publicWorkspaceDocument(document, session));
         return;
       }
 
@@ -1673,6 +1676,23 @@ function isClientSession(session) {
 
 function sessionCompanyId(session) {
   return cleanString(session?.membership?.companyId || session?.user?.companyId);
+}
+
+function publicWorkspaceDocument(document = {}, session) {
+  return {
+    ...document,
+    snapshot: publicSnapshot(document.snapshot || {}, session)
+  };
+}
+
+function publicSnapshot(snapshot = {}, session) {
+  const scoped = scopedSnapshot(snapshot, session);
+  return {
+    ...scoped,
+    users: publicUsers(workspaceUsers(scoped)),
+    memberships: workspaceMemberships(scoped),
+    invitations: workspaceInvitations(scoped)
+  };
 }
 
 function scopedSnapshot(snapshot = {}, session) {
