@@ -2009,6 +2009,8 @@ let networkOnline = typeof navigator === "undefined" ? true : navigator.onLine !
 let backendHealth = apiSession?.backendHealth || null;
 let auditEvents = [];
 let auditLoading = false;
+let activeApiSessions = [];
+let activeApiSessionsStatus = "";
 let marketplaceApiCatalog = null;
 let marketplaceApiLoading = false;
 let realtimePollTimer = null;
@@ -2848,6 +2850,8 @@ function clearApiSession() {
   apiSession = null;
   backendHealth = null;
   auditEvents = [];
+  activeApiSessions = [];
+  activeApiSessionsStatus = "";
   apiSessionStore.clear();
   stopRealtimePolling();
 }
@@ -2989,6 +2993,59 @@ async function refreshBackendHealth(options = {}) {
       showToast(`Backend health failed: ${error.message}`, "info");
     }
     return null;
+  }
+}
+
+async function refreshApiSessions(options = {}) {
+  if (!apiSession) {
+    activeApiSessions = [];
+    activeApiSessionsStatus = "Connect the API to manage sessions.";
+    if (!options.silent) render();
+    return null;
+  }
+
+  try {
+    const result = await apiRequest("/api/auth/sessions");
+    activeApiSessions = Array.isArray(result.sessions) ? result.sessions : [];
+    activeApiSessionsStatus = result.scope === "workspace" ? "Showing workspace sessions." : "Showing your sessions.";
+    if (!options.silent) {
+      render();
+      showToast("Active sessions refreshed", "success");
+    }
+    return result;
+  } catch (error) {
+    activeApiSessionsStatus = error.message;
+    if (!options.silent) {
+      render();
+      showToast(`Session refresh failed: ${error.message}`, "info");
+    }
+    return null;
+  }
+}
+
+async function revokeApiSession(sessionId) {
+  if (!apiSession) {
+    showToast("Connect the API before revoking sessions", "info");
+    return;
+  }
+  const target = activeApiSessions.find((session) => session.id === sessionId);
+  try {
+    const result = await apiRequest(`/api/auth/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "DELETE"
+    });
+    activeApiSessions = activeApiSessions.filter((session) => session.id !== sessionId);
+    activeApiSessionsStatus = `Revoked ${sessionId}.`;
+    if (result.current || target?.current) {
+      clearApiSession();
+      render();
+      showToast("Current API session revoked", "success");
+      return;
+    }
+    await refreshApiSessions({ silent: true });
+    render();
+    showToast("API session revoked", "success");
+  } catch (error) {
+    showToast(`Session revoke failed: ${error.message}`, "info");
   }
 }
 
@@ -4913,6 +4970,62 @@ function renderCurrentAccessPanel() {
       </div>
       ${membership?.invitedBy ? `<p class="settings-help">Invited by ${escapeHtml(memberName(membership.invitedBy))}${membership.joinedAt ? ` on ${escapeHtml(formatDate(membership.joinedAt.slice(0, 10)))}` : ""}.</p>` : ""}
     </section>
+  `;
+}
+
+function renderSessionManagementPanel() {
+  const sessions = activeApiSessions || [];
+  const statusText = activeApiSessionsStatus || (apiSession ? "Refresh to list active API sessions." : "Connect the API to manage sessions.");
+  return `
+    <section class="panel access-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Tokens</p>
+          <h2>Active sessions</h2>
+        </div>
+        <button class="button button-secondary compact-button" type="button" id="api-sessions-refresh" ${apiSession ? "" : "disabled"}>Refresh</button>
+      </div>
+      <p class="panel-note">Agora shows hashed token ids only. Revoke sessions after MCP demos, shared config exposure, lost devices, or old browser sessions.</p>
+      <div class="switcher-report-grid">
+        <article>
+          <span>Visible scope</span>
+          <strong>${escapeHtml(apiSession?.permissions?.includes("members:write") ? "Workspace" : apiSession ? "Self" : "Offline")}</strong>
+          <small>${escapeHtml(statusText)}</small>
+        </article>
+        <article>
+          <span>Sessions</span>
+          <strong>${sessions.length}</strong>
+          <small>${apiSession ? "Backed by the API session registry." : "No API session connected."}</small>
+        </article>
+        <article>
+          <span>Current token</span>
+          <strong>${escapeHtml(sessions.find((session) => session.current)?.id || "Unknown")}</strong>
+          <small>Current browser session cannot be shown as a raw token.</small>
+        </article>
+      </div>
+      <div class="invitation-list">
+        ${sessions.length ? sessions.map(renderApiSessionRow).join("") : emptyState(statusText)}
+      </div>
+    </section>
+  `;
+}
+
+function renderApiSessionRow(session) {
+  const role = workspaceRoles.find((item) => item.id === session.membership?.role);
+  return `
+    <article class="invitation-row">
+      <div>
+        <h3>${escapeHtml(session.user?.name || session.user?.email || "API session")}</h3>
+        <p>${escapeHtml(session.user?.email || "")} - ${escapeHtml(role?.label || session.membership?.role || "member")} - ${session.membership?.companyId ? escapeHtml(companyName(session.membership.companyId)) : "Workspace-wide"}</p>
+        <code>${escapeHtml(session.id)}</code>
+      </div>
+      <div>
+        <span class="status-pill ${session.current ? "inbox-green" : "inbox-neutral"}">${session.current ? "Current" : "Active"}</span>
+        <small>Created ${escapeHtml(formatTimestamp(session.createdAt))}</small>
+        <small>Expires ${escapeHtml(formatTimestamp(session.expiresAt))}</small>
+        <button class="button button-secondary compact-button" type="button" data-api-session-revoke="${escapeHtml(session.id)}">${session.current ? "Revoke Current" : "Revoke"}</button>
+      </div>
+    </article>
   `;
 }
 
@@ -16152,6 +16265,7 @@ function renderSettings() {
 
       ${activeSettingsTab === "security" ? `
       ${renderCurrentAccessPanel()}
+      ${renderSessionManagementPanel()}
       ${renderPermissionMatrix()}
       ` : ""}
 
@@ -23359,6 +23473,18 @@ document.addEventListener("click", (event) => {
   const backendHealthRefreshButton = event.target.closest("#backend-health-refresh");
   if (backendHealthRefreshButton) {
     refreshBackendHealth();
+    return;
+  }
+
+  const apiSessionsRefreshButton = event.target.closest("#api-sessions-refresh");
+  if (apiSessionsRefreshButton) {
+    refreshApiSessions();
+    return;
+  }
+
+  const apiSessionRevokeButton = event.target.closest("[data-api-session-revoke]");
+  if (apiSessionRevokeButton) {
+    revokeApiSession(apiSessionRevokeButton.dataset.apiSessionRevoke);
     return;
   }
 
