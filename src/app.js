@@ -2153,6 +2153,7 @@ function normalizeState(nextState) {
     switcherImportPreview: normalizeSwitcherImportPreview(nextState.switcherImportPreview),
     switcherImportRollback: normalizeSwitcherImportRollback(nextState.switcherImportRollback),
     portableImportPreview: nextState.portableImportPreview && typeof nextState.portableImportPreview === "object" ? nextState.portableImportPreview : null,
+    templateImportPreview: nextState.templateImportPreview && typeof nextState.templateImportPreview === "object" ? nextState.templateImportPreview : null,
     automationPackImportPreview: nextState.automationPackImportPreview && typeof nextState.automationPackImportPreview === "object" ? nextState.automationPackImportPreview : null,
     inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
     inboxArchived: Array.isArray(nextState.inboxArchived) ? nextState.inboxArchived : [],
@@ -4963,6 +4964,25 @@ function paidMarketplaceTemplates() {
   return marketplaceProjectTemplates.filter(marketplaceTemplateRequiresEntitlement);
 }
 
+function templateTrustWarnings(template) {
+  const warnings = [];
+  const price = marketplaceTemplatePrice(template);
+  const payout = templatePayoutSettings(template);
+  if (!template.creatorName) warnings.push("Creator name missing");
+  if (price.cents && !payout.walletAddress) warnings.push("Paid template has no payout wallet");
+  if (!Array.isArray(template.tasks) || !template.tasks.length) warnings.push("No tasks included");
+  if (!template.description) warnings.push("Description missing");
+  return warnings;
+}
+
+function automationPackTrustWarnings(pack) {
+  const warnings = [];
+  if (!pack.creatorName) warnings.push("Creator name missing");
+  if (!pack.license) warnings.push("License missing");
+  if (!Array.isArray(pack.rules) || !pack.rules.length) warnings.push("No rules included");
+  return warnings;
+}
+
 async function requestAiOperator(mode, context) {
   return apiRequest("/api/ai/operator", {
     method: "POST",
@@ -5489,20 +5509,77 @@ function downloadProjectTemplate(templateId) {
   showToast("Template JSON downloaded", "success");
 }
 
-function importProjectTemplateJson(rawJson) {
+function parseProjectTemplatePayload(rawJson, options = {}) {
   const parsed = JSON.parse(rawJson);
-  const source = Array.isArray(parsed.templates) ? parsed.templates[0] : parsed.template || parsed;
-  const template = validateProjectTemplate(source);
-  state.projectTemplates = [template, ...state.projectTemplates.filter((item) => item.id !== template.id && item.name.toLowerCase() !== template.name.toLowerCase())];
+  const sources = Array.isArray(parsed.templates) ? parsed.templates : [parsed.template || parsed];
+  const templates = sources
+    .filter((item) => item && typeof item === "object")
+    .map((item) => validateProjectTemplate(item, { preserveId: Boolean(options.preserveId) }));
+  if (!templates.length) throw new Error("Template JSON did not include any templates");
+  return {
+    type: parsed.type || "agora.project-template",
+    exportVersion: parsed.exportVersion || parsed.version || 1,
+    exportedAt: parsed.exportedAt || "",
+    templates
+  };
+}
+
+function projectTemplateImportPreview(rawJson) {
+  const payload = parseProjectTemplatePayload(rawJson, { preserveId: true });
+  const installedKeys = new Set(state.projectTemplates.flatMap((template) => [template.id, template.name.toLowerCase()]));
+  const creatorNames = new Set(payload.templates.map(templateCreatorLabel));
+  const warnings = [];
+  payload.templates.forEach((template) => {
+    templateTrustWarnings(template).forEach((warning) => warnings.push(`${template.name}: ${warning}`));
+    if (installedKeys.has(template.id) || installedKeys.has(template.name.toLowerCase())) warnings.push(`${template.name}: already installed`);
+  });
+  if (payload.exportVersion !== 1) warnings.push(`Export version ${payload.exportVersion} may need review`);
+  return {
+    id: uid("template-import-preview"),
+    type: payload.type,
+    typeLabel: payload.type === "agora.template-marketplace" ? "Template marketplace" : "Template JSON",
+    exportedAt: payload.exportedAt,
+    templateCount: payload.templates.length,
+    newCount: payload.templates.filter((template) => !installedKeys.has(template.id) && !installedKeys.has(template.name.toLowerCase())).length,
+    taskCount: payload.templates.reduce((total, template) => total + template.tasks.length, 0),
+    milestoneCount: payload.templates.reduce((total, template) => total + template.milestones.length, 0),
+    docCount: payload.templates.reduce((total, template) => total + template.docs.length, 0),
+    premiumCount: payload.templates.filter(marketplaceTemplateRequiresEntitlement).length,
+    creatorCount: creatorNames.size,
+    intakeCount: payload.templates.filter((template) => template.intakeForm).length,
+    warningCount: warnings.length,
+    warnings: warnings.slice(0, 8),
+    templates: payload.templates.map((template) => ({
+      id: template.id,
+      name: template.name,
+      category: template.category,
+      tasks: template.tasks.length,
+      priceLabel: marketplaceTemplatePriceLabel(template),
+      installed: installedKeys.has(template.id) || installedKeys.has(template.name.toLowerCase())
+    })),
+    createdAt: new Date().toISOString()
+  };
+}
+
+function importProjectTemplateJson(rawJson) {
+  const payload = parseProjectTemplatePayload(rawJson);
+  const importedTemplates = payload.templates;
+  const importedIds = new Set(importedTemplates.map((template) => template.id));
+  const importedNames = new Set(importedTemplates.map((template) => template.name.toLowerCase()));
+  state.projectTemplates = [
+    ...importedTemplates,
+    ...state.projectTemplates.filter((item) => !importedIds.has(item.id) && !importedNames.has(item.name.toLowerCase()))
+  ];
   state.templateLibrary = {
     ...(state.templateLibrary || {}),
     category: "all",
     query: "",
-    selectedProjectTemplateId: template.id
+    selectedProjectTemplateId: importedTemplates[0]?.id || ""
   };
+  state.templateImportPreview = null;
   saveState();
   render();
-  showToast(`Imported ${template.name}`, "success");
+  showToast(`Imported ${importedTemplates.length} template${importedTemplates.length === 1 ? "" : "s"}`, "success");
 }
 
 function csvValue(value) {
@@ -12968,12 +13045,45 @@ function renderTemplateMarketplacePanel() {
       <div class="template-import-panel">
         <label>
           <span>Import shared template JSON</span>
-          <textarea id="template-import-json" rows="6" placeholder="Paste an Agora project-template JSON export"></textarea>
+          <textarea id="template-import-json" rows="6" placeholder="Paste an Agora project-template or template-marketplace JSON export"></textarea>
         </label>
-        <button class="button button-secondary" type="button" id="template-import-button">Import Template</button>
+        ${renderProjectTemplateImportPreview()}
+        <div class="marketplace-actions">
+          <button class="button button-secondary" type="button" id="template-import-preview">Preview JSON</button>
+          <button class="button button-primary" type="button" id="template-import-button">Install Templates</button>
+        </div>
       </div>
     </section>
   `;
+}
+
+function renderMarketplaceTrustFacts(facts, warnings = []) {
+  return `
+    <div class="marketplace-trust-grid">
+      ${facts.map((fact) => `
+        <span>
+          <strong>${escapeHtml(fact.value)}</strong>
+          <small>${escapeHtml(fact.label)}</small>
+        </span>
+      `).join("")}
+    </div>
+    ${warnings.length ? `
+      <div class="marketplace-warning-list">
+        ${warnings.map((warning) => `<span>${escapeHtml(warning)}</span>`).join("")}
+      </div>
+    ` : ""}
+  `;
+}
+
+function renderTemplateTrustFacts(template, { installed = false } = {}) {
+  const warnings = templateTrustWarnings(template);
+  return renderMarketplaceTrustFacts([
+    { label: "Validation", value: warnings.length ? `${warnings.length} warning${warnings.length === 1 ? "" : "s"}` : "Validated" },
+    { label: "Creator", value: templateCreatorLabel(template) },
+    { label: "Access", value: installed ? "Installed" : marketplaceTemplatePriceLabel(template) },
+    { label: "Contents", value: `${template.tasks.length} tasks` },
+    { label: "Payout", value: templatePayoutLabel(template) }
+  ], warnings);
 }
 
 function renderMarketplaceTemplateCard(template) {
@@ -12999,6 +13109,7 @@ function renderMarketplaceTemplateCard(template) {
           <span>${template.docs.length} docs</span>
           <span>${template.durationDays} days</span>
         </div>
+        ${renderTemplateTrustFacts(template, { installed })}
       </div>
       <div class="marketplace-actions">
         <button class="button button-secondary compact-button" type="button" data-export-marketplace-template="${template.id}" ${locked ? "disabled" : ""}>Export JSON</button>
@@ -13006,6 +13117,50 @@ function renderMarketplaceTemplateCard(template) {
         <button class="button button-primary compact-button" type="button" data-install-marketplace-template="${template.id}" ${installed || locked ? "disabled" : ""}>${installed ? "Installed" : locked ? "Locked" : "Install"}</button>
       </div>
     </article>
+  `;
+}
+
+function renderProjectTemplateImportPreview() {
+  const preview = state.templateImportPreview;
+  if (!preview) {
+    return `
+      <div class="switcher-preview-empty">
+        <strong>No template preview yet</strong>
+        <span>Preview shared JSON to see template counts, creator metadata, pricing, and warnings before installing.</span>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="switcher-preview-panel template-import-preview">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">${escapeHtml(preview.typeLabel)}</p>
+          <h3>${preview.templateCount} template${preview.templateCount === 1 ? "" : "s"} ready</h3>
+        </div>
+        <span class="status-pill ${preview.warningCount ? "inbox-amber" : "inbox-green"}">${preview.warningCount ? `${preview.warningCount} warnings` : "Validated"}</span>
+      </div>
+      <p class="panel-note">${preview.newCount}/${preview.templateCount} new to this workspace. Includes ${preview.taskCount} tasks, ${preview.milestoneCount} milestones, and ${preview.docCount} docs.</p>
+      <div class="marketplace-trust-grid">
+        <span><strong>${preview.premiumCount}</strong><small>Premium</small></span>
+        <span><strong>${preview.creatorCount}</strong><small>Creators</small></span>
+        <span><strong>${preview.intakeCount}</strong><small>Intake forms</small></span>
+        <span><strong>${preview.exportedAt ? formatDate(preview.exportedAt) : "Unknown"}</strong><small>Exported</small></span>
+      </div>
+      <div class="switcher-preview-list">
+        ${preview.templates.map((template) => `
+          <article>
+            <strong>${escapeHtml(template.name)}</strong>
+            <span>${escapeHtml(template.category)} / ${template.tasks} tasks / ${escapeHtml(template.priceLabel)}${template.installed ? " / already installed" : ""}</span>
+          </article>
+        `).join("")}
+      </div>
+      ${preview.warnings.length ? `
+        <div class="marketplace-warning-list">
+          ${preview.warnings.map((warning) => `<span>${escapeHtml(warning)}</span>`).join("")}
+        </div>
+      ` : ""}
+    </div>
   `;
 }
 
@@ -13244,6 +13399,8 @@ function automationPackImportPreview(rawJson) {
   const payload = parseAutomationPackPayload(rawJson);
   const existingKeys = new Set(state.automations.map((automation) => `${automation.marketplacePackId || ""}:${automation.name}`));
   const duplicateCount = payload.pack.rules.filter((rule) => existingKeys.has(`${payload.pack.id}:${rule.name}`)).length;
+  const warnings = automationPackTrustWarnings(payload.pack);
+  if (duplicateCount) warnings.push(`${duplicateCount} rule${duplicateCount === 1 ? "" : "s"} already installed`);
   return {
     id: uid("automation-pack-preview"),
     packId: payload.pack.id,
@@ -13254,6 +13411,8 @@ function automationPackImportPreview(rawJson) {
     description: payload.pack.description,
     ruleCount: payload.pack.rules.length,
     duplicateCount,
+    warningCount: warnings.length,
+    warnings,
     exportedAt: payload.exportedAt,
     rules: payload.pack.rules.map((rule) => ({
       name: rule.name,
@@ -13263,6 +13422,16 @@ function automationPackImportPreview(rawJson) {
     })),
     createdAt: new Date().toISOString()
   };
+}
+
+function renderAutomationPackTrustFacts(pack, { installed = false, duplicateCount = 0, warnings = null } = {}) {
+  const warningList = warnings || automationPackTrustWarnings(pack);
+  return renderMarketplaceTrustFacts([
+    { label: "Validation", value: warningList.length ? `${warningList.length} warning${warningList.length === 1 ? "" : "s"}` : "Validated" },
+    { label: "Creator", value: pack.creatorName || "Community creator" },
+    { label: "License", value: pack.license || "Not set" },
+    { label: "Rules", value: installed ? "Installed" : `${Math.max(0, pack.rules.length - duplicateCount)}/${pack.rules.length} new` }
+  ], warningList);
 }
 
 function renderAutomationMarketplacePanel() {
@@ -13289,6 +13458,7 @@ function renderAutomationMarketplacePanel() {
                 <h3>${escapeHtml(pack.name)}</h3>
                 <p>${escapeHtml(pack.description)}</p>
                 <small>${escapeHtml(pack.creatorName)} / ${escapeHtml(pack.license)}</small>
+                ${renderAutomationPackTrustFacts(pack, { installed })}
               </div>
               <div class="automation-pack-rules">
                 ${pack.rules.map((rule) => `<span>${escapeHtml(rule.name)}</span>`).join("")}
@@ -13340,6 +13510,11 @@ function renderAutomationPackImportPreview() {
         <span class="status-pill ${preview.duplicateCount ? "inbox-amber" : "inbox-green"}">${preview.ruleCount - preview.duplicateCount}/${preview.ruleCount} new</span>
       </div>
       <p class="panel-note">${escapeHtml(preview.description)}</p>
+      ${renderAutomationPackTrustFacts({
+        creatorName: preview.creatorName,
+        license: preview.license,
+        rules: preview.rules
+      }, { duplicateCount: preview.duplicateCount, warnings: preview.warnings })}
       <div class="automation-pack-rules">
         ${preview.rules.map((rule) => `<span>${escapeHtml(rule.name)}</span>`).join("")}
       </div>
@@ -15889,6 +16064,29 @@ async function grantSelectedPaymentEntitlement() {
   await grantMarketplaceTemplateEntitlement(templateId, source);
 }
 
+function restoreTextareaValue(selector, value) {
+  const textarea = document.querySelector(selector);
+  if (textarea) textarea.value = value;
+}
+
+function previewProjectTemplateImportPayload() {
+  const textarea = document.querySelector("#template-import-json");
+  const rawJson = textarea?.value.trim() || "";
+  if (!rawJson) {
+    showToast("Paste template JSON first", "info");
+    return;
+  }
+  try {
+    state.templateImportPreview = projectTemplateImportPreview(rawJson);
+    saveState();
+    render();
+    restoreTextareaValue("#template-import-json", rawJson);
+    showToast("Template preview ready", "success");
+  } catch (error) {
+    showToast(`Template preview failed: ${error.message}`, "info");
+  }
+}
+
 function importProjectTemplateFromTextarea() {
   const textarea = document.querySelector("#template-import-json");
   const rawJson = textarea?.value.trim() || "";
@@ -16579,9 +16777,8 @@ function previewAutomationPackImportPayload() {
   try {
     state.automationPackImportPreview = automationPackImportPreview(rawJson);
     saveState();
-    renderAutomations();
-    const nextTextarea = document.querySelector("#automation-pack-import-payload");
-    if (nextTextarea) nextTextarea.value = rawJson;
+    render();
+    restoreTextareaValue("#automation-pack-import-payload", rawJson);
     showToast("Automation pack preview ready", "success");
   } catch (error) {
     showToast(`Pack preview failed: ${error.message}`, "info");
@@ -19505,6 +19702,12 @@ document.addEventListener("click", (event) => {
   const importTemplateButton = event.target.closest("#template-import-button");
   if (importTemplateButton) {
     importProjectTemplateFromTextarea();
+    return;
+  }
+
+  const previewTemplateImportButton = event.target.closest("#template-import-preview");
+  if (previewTemplateImportButton) {
+    previewProjectTemplateImportPayload();
     return;
   }
 

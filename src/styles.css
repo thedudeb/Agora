@@ -2941,6 +2941,58 @@ body[data-tutorial-target="view"] #app-view {
   align-items: center;
 }
 
+.marketplace-trust-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.marketplace-trust-grid span {
+  min-width: 0;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.marketplace-trust-grid strong,
+.marketplace-trust-grid small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.marketplace-trust-grid strong {
+  color: var(--text);
+  font-size: 0.82rem;
+}
+
+.marketplace-trust-grid small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.marketplace-warning-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.marketplace-warning-list span {
+  min-height: 24px;
+  padding: 4px 8px;
+  color: #7a4a08;
+  background: rgba(245, 158, 11, 0.13);
+  border: 1px solid rgba(245, 158, 11, 0.26);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
 .marketplace-actions,
 .template-preview-actions {
   display: flex;
