@@ -57,21 +57,34 @@ const commands = {
   bundle: {
     summary: "Inspect portable workspace bundles",
     run: async (args) => {
-      const [subcommand, filePath] = args;
+      const { positional, options } = parseOptions(args);
+      const [subcommand, filePath] = positional;
       if (subcommand !== "inspect" || !filePath) {
-        throw new Error("Usage: npm run agora -- bundle inspect <file>");
+        throw new Error("Usage: npm run agora -- bundle inspect <file> [--json]");
       }
-      inspectPortableBundle(filePath);
+      inspectPortableBundle(filePath, options);
+    }
+  },
+  launch: {
+    summary: "Check first-client launch readiness from a portable bundle",
+    run: async (args) => {
+      const { positional, options } = parseOptions(args);
+      const [subcommand, filePath] = positional;
+      if (subcommand !== "check" || !filePath) {
+        throw new Error("Usage: npm run agora -- launch check <bundle.json> [--strict] [--json]");
+      }
+      checkLaunchReadiness(filePath, options);
     }
   },
   marketplace: {
     summary: "Validate marketplace template and automation pack JSON",
     run: async (args) => {
-      const [subcommand, filePath] = args;
+      const { positional, options } = parseOptions(args);
+      const [subcommand, filePath] = positional;
       if (subcommand !== "validate" || !filePath) {
-        throw new Error("Usage: npm run agora -- marketplace validate <file>");
+        throw new Error("Usage: npm run agora -- marketplace validate <file> [--json]");
       }
-      validateMarketplaceFile(filePath);
+      validateMarketplaceFile(filePath, options);
     }
   },
   verify: {
@@ -157,13 +170,16 @@ Commands:
   supabase                      Verify real Supabase setup from .env
   screenshots                   Refresh launch screenshots
   golden                        Run onboarding/golden-path browser QA
-  bundle inspect <file>         Inspect a portable workspace bundle
+  bundle inspect <file> [--json] Inspect a portable workspace bundle
+  launch check <bundle>         Check first-client launch readiness
   marketplace validate <file>   Validate marketplace/template/automation JSON
   help                          Show this help
 
 Options:
   --quick       With verify, skip the API smoke test
   --supabase    With verify, include real Supabase verification
+  --strict      With launch check, fail when readiness items are incomplete
+  --json        Print machine-readable JSON for inspect/check/validate
 
 Examples:
   npm run agora -- verify
@@ -172,48 +188,220 @@ Examples:
   npm run agora -- screenshots
   npm run agora -- golden
   npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
+  npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json --json
+  npm run agora -- launch check tests/fixtures/portable-workspace-bundle.json --strict
   npm run agora -- marketplace validate templates/marketplace.json
 `);
 }
 
-function inspectPortableBundle(filePath) {
+function parseOptions(args) {
+  return args.reduce((result, arg) => {
+    if (arg === "--json") result.options.json = true;
+    else if (arg === "--strict") result.options.strict = true;
+    else result.positional.push(arg);
+    return result;
+  }, { positional: [], options: { json: false, strict: false } });
+}
+
+function inspectPortableBundle(filePath, options = {}) {
   const bundle = readJsonFile(filePath);
-  const report = validatePortableBundle(bundle);
-  printReport(report);
+  const inspection = portableBundleInspection(bundle);
+  const { report, workspaceSnapshot, counts } = inspection;
+  if (options.json) {
+    printJson({
+      report,
+      workspace: workspaceSummary(bundle, workspaceSnapshot),
+      counts,
+      files: portableFileSummary(bundle)
+    });
+  } else {
+    printReport(report);
+  }
   if (report.errors.length) {
     throw new Error(`Portable bundle is invalid: ${report.errors.length} error${report.errors.length === 1 ? "" : "s"}`);
   }
 
-  const workspaceFile = bundle.files.find((file) => file.path === "workspace.json" && file.kind === "json");
-  const workspaceSnapshot = JSON.parse(workspaceFile.content);
+  if (options.json) return;
+
   console.log("");
   console.log("Portable Bundle");
-  console.log(`Workspace: ${bundle.workspace?.name || workspaceSnapshot.workspace?.name || "Unnamed"} (${bundle.workspace?.id || workspaceSnapshot.workspace?.id || "no-id"})`);
+  const workspace = workspaceSummary(bundle, workspaceSnapshot);
+  console.log(`Workspace: ${workspace.name} (${workspace.id})`);
   console.log(`Export version: ${bundle.exportVersion}`);
   console.log(`Exported at: ${bundle.exportedAt || "unknown"}`);
   console.log(`Files: ${bundle.files.length}`);
   console.log("");
   console.log("Counts:");
-  Object.entries(bundle.counts || bundleCountsFromSnapshot(workspaceSnapshot)).forEach(([key, value]) => {
+  Object.entries(counts).forEach(([key, value]) => {
     console.log(`- ${key}: ${value}`);
   });
   console.log("");
   console.log("Included files:");
-  bundle.files.forEach((file) => {
+  portableFileSummary(bundle).forEach((file) => {
     console.log(`- ${file.path} (${file.kind || "unknown"}, ${Number(file.size || String(file.content || "").length)} bytes)`);
   });
 }
 
-function validateMarketplaceFile(filePath) {
+function validateMarketplaceFile(filePath, options = {}) {
   const payload = readJsonFile(filePath);
   const report = validateMarketplacePayload(payload);
-  printReport(report);
+  if (options.json) printJson({ report });
+  else printReport(report);
   if (report.errors.length) {
     throw new Error(`Marketplace artifact is invalid: ${report.errors.length} error${report.errors.length === 1 ? "" : "s"}`);
   }
 
+  if (!options.json) {
+    console.log("");
+    console.log("Marketplace artifact is valid.");
+  }
+}
+
+function checkLaunchReadiness(filePath, options = {}) {
+  const bundle = readJsonFile(filePath);
+  const inspection = portableBundleInspection(bundle);
+  const readiness = launchReadinessReport(inspection);
+
+  if (options.json) {
+    printJson({
+      report: inspection.report,
+      readiness,
+      workspace: workspaceSummary(bundle, inspection.workspaceSnapshot),
+      counts: inspection.counts
+    });
+  } else {
+    printReport(inspection.report);
+  }
+
+  if (inspection.report.errors.length) {
+    throw new Error(`Portable bundle is invalid: ${inspection.report.errors.length} error${inspection.report.errors.length === 1 ? "" : "s"}`);
+  }
+
+  if (options.json) {
+    if (options.strict && readiness.open.length) {
+      throw new Error(`Launch readiness failed: ${readiness.open.length} incomplete item${readiness.open.length === 1 ? "" : "s"}`);
+    }
+    return;
+  }
+
   console.log("");
-  console.log("Marketplace artifact is valid.");
+  console.log("Launch Readiness");
+  console.log(`${readiness.done}/${readiness.total} ready (${readiness.status})`);
+  readiness.items.forEach((item) => {
+    console.log(`- ${item.done ? "OK" : "NEXT"} ${item.label}: ${item.detail}`);
+  });
+
+  if (readiness.nextActions.length) {
+    console.log("");
+    console.log("Next actions:");
+    readiness.nextActions.forEach((action) => console.log(`- ${action}`));
+  }
+
+  if (options.strict && readiness.open.length) {
+    throw new Error(`Launch readiness failed: ${readiness.open.length} incomplete item${readiness.open.length === 1 ? "" : "s"}`);
+  }
+}
+
+function portableBundleInspection(bundle) {
+  const report = validatePortableBundle(bundle);
+  const workspaceSnapshot = workspaceSnapshotFromBundle(bundle, report);
+  return {
+    report,
+    workspaceSnapshot,
+    counts: bundle.counts || bundleCountsFromSnapshot(workspaceSnapshot),
+    files: portableFileSummary(bundle)
+  };
+}
+
+function workspaceSnapshotFromBundle(bundle, report = createReport("Portable bundle")) {
+  const workspaceFile = Array.isArray(bundle.files)
+    ? bundle.files.find((file) => file.path === "workspace.json" && file.kind === "json")
+    : null;
+  if (!workspaceFile?.content) return {};
+  try {
+    return JSON.parse(workspaceFile.content);
+  } catch (error) {
+    if (!report.errors.some((item) => item.startsWith("workspace.json is not valid JSON"))) {
+      report.errors.push(`workspace.json is not valid JSON: ${error.message}`);
+    }
+    return {};
+  }
+}
+
+function workspaceSummary(bundle, snapshot = {}) {
+  return {
+    id: bundle.workspace?.id || snapshot.workspace?.id || "no-id",
+    name: bundle.workspace?.name || snapshot.workspace?.name || "Unnamed",
+    slug: bundle.workspace?.slug || snapshot.workspace?.slug || ""
+  };
+}
+
+function portableFileSummary(bundle) {
+  if (!Array.isArray(bundle.files)) return [];
+  return bundle.files.map((file) => ({
+    path: file.path || "",
+    kind: file.kind || "unknown",
+    size: Number(file.size || String(file.content || "").length)
+  }));
+}
+
+function launchReadinessReport({ workspaceSnapshot, files, counts }) {
+  const filePaths = new Set(files.map((file) => file.path));
+  const pendingInvitations = Array.isArray(workspaceSnapshot.invitations)
+    ? workspaceSnapshot.invitations.filter((invitation) => invitation.status === "pending")
+    : [];
+  const activeMemberships = Array.isArray(workspaceSnapshot.memberships)
+    ? workspaceSnapshot.memberships.filter((membership) => membership.status !== "revoked")
+    : [];
+  const automations = Array.isArray(workspaceSnapshot.automations) ? workspaceSnapshot.automations : [];
+  const templates = Array.isArray(workspaceSnapshot.projectTemplates) ? workspaceSnapshot.projectTemplates : [];
+  const items = [
+    {
+      label: "Workspace identity",
+      done: Boolean(workspaceSnapshot.workspace?.id && workspaceSnapshot.workspace?.name),
+      detail: workspaceSnapshot.workspace?.name || "workspace.json should include workspace id and name",
+      action: "Export a fresh portable bundle from Data."
+    },
+    {
+      label: "Client project",
+      done: Number(counts.projects || 0) > 0,
+      detail: `${Number(counts.projects || 0)} project${Number(counts.projects || 0) === 1 ? "" : "s"} in bundle`,
+      action: "Create the first client project through Launch Flow."
+    },
+    {
+      label: "Actionable tasks",
+      done: Number(counts.tasks || 0) > 0,
+      detail: `${Number(counts.tasks || 0)} task${Number(counts.tasks || 0) === 1 ? "" : "s"} in bundle`,
+      action: "Create or import template tasks before launch."
+    },
+    {
+      label: "Starter workflow",
+      done: templates.length > 0 || automations.length > 0,
+      detail: `${templates.length} template${templates.length === 1 ? "" : "s"}, ${automations.length} automation${automations.length === 1 ? "" : "s"}`,
+      action: "Install the client onboarding template or agency handoff pack."
+    },
+    {
+      label: "Recovery files",
+      done: ["workspace.json", "README.md", "tasks.csv"].every((filePath) => filePaths.has(filePath)),
+      detail: `${files.length} portable file${files.length === 1 ? "" : "s"} included`,
+      action: "Download a full portable bundle with JSON, Markdown, and CSV files."
+    },
+    {
+      label: "Team access",
+      done: activeMemberships.length > 1 || pendingInvitations.length > 0,
+      detail: `${activeMemberships.length} active membership${activeMemberships.length === 1 ? "" : "s"}, ${pendingInvitations.length} pending invite${pendingInvitations.length === 1 ? "" : "s"}`,
+      action: "Invite the first teammate or confirm role memberships."
+    }
+  ];
+  const open = items.filter((item) => !item.done);
+  return {
+    status: open.length ? "incomplete" : "ready",
+    done: items.length - open.length,
+    total: items.length,
+    items,
+    open: open.map((item) => item.label),
+    nextActions: open.map((item) => item.action)
+  };
 }
 
 function validateMarketplacePayload(payload) {
@@ -458,6 +646,10 @@ function printReport(report) {
   }
   report.warnings.forEach((warning) => console.log(`Warning: ${warning}`));
   report.errors.forEach((error) => console.log(`Error: ${error}`));
+}
+
+function printJson(payload) {
+  console.log(JSON.stringify(payload, null, 2));
 }
 
 function isObject(value) {

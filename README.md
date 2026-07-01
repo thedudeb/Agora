@@ -110,6 +110,8 @@ npm run verify:supabase # verify + real Supabase project checks
 npm run screenshots # refresh launch screenshots with local Chrome/Chromium
 npm run agora -- verify # power-user CLI: check + fixtures + API smoke
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
+npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json --json
+npm run agora -- launch check tests/fixtures/portable-workspace-bundle.json
 npm run agora -- marketplace validate templates/marketplace.json
 ```
 
@@ -125,6 +127,9 @@ npm run agora -- verify --supabase
 npm run agora -- screenshots
 npm run agora -- golden
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
+npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json --json
+npm run agora -- launch check tests/fixtures/portable-workspace-bundle.json
+npm run agora -- launch check tests/fixtures/portable-workspace-bundle.json --strict
 npm run agora -- marketplace validate templates/marketplace.json
 ```
 
