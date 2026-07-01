@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 const crypto = require("node:crypto");
 const readline = require("node:readline");
+const { loadEnvFile } = require("../server/env");
+
+loadEnvFile();
 
 const PROTOCOL_VERSION = "2025-06-18";
 const SERVER_VERSION = "0.1.0";
@@ -222,7 +225,7 @@ async function handleMessage(message) {
 
 async function handleInitialize(params = {}) {
   return {
-    protocolVersion: params.protocolVersion || PROTOCOL_VERSION,
+    protocolVersion: negotiatedProtocolVersion(params.protocolVersion),
     capabilities: {
       tools: { listChanged: false },
       resources: { subscribe: false, listChanged: false }
@@ -615,6 +618,10 @@ function jsonRpcError(code, message) {
   return { code, message };
 }
 
+function negotiatedProtocolVersion(requested) {
+  return requested === PROTOCOL_VERSION ? requested : PROTOCOL_VERSION;
+}
+
 function writeResponse(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
 }
@@ -761,4 +768,3 @@ function errorPayload(label) {
     error: error.message
   });
 }
-

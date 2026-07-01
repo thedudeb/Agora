@@ -81,6 +81,16 @@ npm run launch:check
 npm run verify:supabase
 ```
 
+## MCP Server
+
+Agora also includes a local stdio MCP server for power-user clients:
+
+```sh
+AGORA_API_URL=http://127.0.0.1:8787 AGORA_API_TOKEN=replace-with-session-token npm run mcp
+```
+
+The MCP server uses the normal API, respects role permissions and company scope, and keeps writes disabled unless `AGORA_MCP_ALLOW_WRITES=true`. See [`../docs/mcp-server.md`](../docs/mcp-server.md) for setup, client config examples, tools, resources, and security notes.
+
 ## Supabase Storage
 
 Agora can use Supabase Postgres for API persistence without adding a Node dependency. The storage adapter talks to Supabase through PostgREST using server-only credentials.

@@ -98,6 +98,7 @@ npm run dev       # serve the browser app
 npm run dev:api   # start the local API
 npm start         # serve the browser app for a host/runtime
 npm run start:api # start the API for a host/runtime
+npm run mcp       # start the local stdio MCP server for power-user clients
 npm run check     # syntax-check app and server files
 npm run verify:quick # syntax + portable fixture validation + recovery stress test
 npm run verify    # syntax + fixtures + recovery + API smoke test
@@ -117,6 +118,8 @@ npm run agora -- marketplace validate templates/marketplace.json
 ```
 
 To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`. Add browser origins to `AGORA_ALLOWED_ORIGINS` when hosting the app somewhere other than localhost.
+
+For MCP clients, set `AGORA_API_URL`, `AGORA_API_TOKEN`, and optionally `AGORA_MCP_ALLOW_WRITES=true`, then run `npm run mcp`. See [`docs/mcp-server.md`](./docs/mcp-server.md) for client config examples, tools, resources, and security notes.
 
 For power users and self-hosters, the lightweight CLI wraps common project operations:
 

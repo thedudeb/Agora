@@ -58,6 +58,7 @@ Fix any failure before releasing. `launch:check` runs quick verification plus br
 - Disable `AGORA_DEMO_AUTH` and `AGORA_PASSWORDLESS_AUTH` outside trusted demos.
 - Confirm `AGORA_ALLOWED_ORIGINS` only includes expected app origins.
 - Review Admin > Permissions for excess admins, workspace import access, and Operator client-data access.
+- If enabling MCP, review `docs/mcp-server.md` and `docs/mcp-security-audit.md`, keep `AGORA_MCP_ALLOW_WRITES=false` by default, and use a least-privilege user token.
 - Export a recovery bundle before importing data, changing auth settings, or switching storage drivers.
 
 ## 6. Deploy

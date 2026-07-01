@@ -49,6 +49,7 @@ Before inviting a real team:
 - Confirm Supabase RLS policies with `npm run test:supabase`.
 - Review Admin > Permissions for excess admins, workspace import access, and Operator client-data access.
 - Review automation clients against `docs/api-agent-contract.md`; keep them read-only by default and require confirmation before destructive, external, payment, scheduler, import, or membership actions.
+- For MCP clients, follow `docs/mcp-server.md`, keep `AGORA_MCP_ALLOW_WRITES=false` by default, and rotate any token that appears in prompts, logs, screenshots, or shared config files.
 - Export a recovery bundle before major imports, migrations, or auth changes.
 
 ## AI And Data Handling
