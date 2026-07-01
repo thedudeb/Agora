@@ -3266,6 +3266,53 @@ function renderSettingsTabs(activeTab) {
   `;
 }
 
+function renderSettingsSectionIntro(activeTab) {
+  const sections = {
+    account: ["Account access", "Sign in, change passwords, and connect the browser to the API."],
+    workspace: ["Workspace defaults", "Set the name, role defaults, theme, capacity, and deployment readiness."],
+    trust: ["Trust posture", "Review portability, privacy, AI rationale, and auditability."],
+    members: ["Team governance", "Confirm ownership, invite authority, client scope, and offboarding posture."],
+    integrations: ["Connected tools", "Plan sync adapters, notification delivery, and AI provider settings."],
+    payments: ["Marketplace payments", "Configure provider planning, spend caps, entitlements, and audit events."],
+    sync: ["Backend sync", "Save, load, repair, and verify API/Supabase health."],
+    security: ["Access controls", "Inspect current access, roles, permissions, and operator guardrails."],
+    developer: ["Developer readiness", "Inspect backend health, records, queues, and launch checks."]
+  };
+  const [title, detail] = sections[activeTab] || sections.account;
+  return `
+    <section class="settings-section-intro">
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(detail)}</span>
+    </section>
+  `;
+}
+
+function renderRouteHeader({ eyebrow = "", title, description = "", actions = [] }) {
+  return `
+    <section class="route-header">
+      <div>
+        ${eyebrow ? `<p class="eyebrow">${escapeHtml(eyebrow)}</p>` : ""}
+        <h1>${escapeHtml(title)}</h1>
+        ${description ? `<p>${escapeHtml(description)}</p>` : ""}
+      </div>
+      ${actions.length ? `
+        <div class="route-header-actions">
+          ${actions.map((action) => `
+            <button
+              class="button ${action.primary ? "button-primary" : "button-secondary"}"
+              type="button"
+              ${action.commandId ? `data-command-id="${escapeHtml(action.commandId)}"` : ""}
+              ${action.route ? `data-route="${escapeHtml(action.route)}"` : ""}
+              ${action.id ? `id="${escapeHtml(action.id)}"` : ""}
+              ${action.disabled ? "disabled" : ""}
+            >${escapeHtml(action.label)}</button>
+          `).join("")}
+        </div>
+      ` : ""}
+    </section>
+  `;
+}
+
 function createBlankWorkspaceState(options = {}) {
   const blank = structuredClone(seedData);
   const owner = members[0];
@@ -9809,16 +9856,28 @@ function renderDashboard() {
   const completionRate = tasks.length ? Math.round((completedTasks.length / tasks.length) * 100) : 0;
 
   els.appView.innerHTML = `
-    ${renderOnboardingPanel()}
+    ${renderRouteHeader({
+      eyebrow: "Dashboard",
+      title: "Launch the first client workspace",
+      description: "Start with the client onboarding project, add the agency handoff workflow, then prove recovery before inviting the team.",
+      actions: [
+        { label: "Start Client Workspace", commandId: "template:recommended", primary: true },
+        { label: "Open Today", route: "daily" }
+      ]
+    })}
     ${renderGoldenPathPanel()}
-    ${renderLaunchReadinessPanel()}
-    ${renderTeamLaunchChecklistPanel()}
 
     <div class="metric-grid">
       ${metric("Open tasks", openTasks.length)}
       ${metric("Completed", completedTasks.length)}
       ${metric("Overdue", overdueTasks.length)}
       ${metric("Progress", `${completionRate}%`)}
+    </div>
+
+    <div class="dashboard-support-grid">
+      ${renderOnboardingPanel()}
+      ${renderLaunchReadinessPanel()}
+      ${renderTeamLaunchChecklistPanel()}
     </div>
 
     ${renderDashboardBuilder()}
@@ -13000,6 +13059,16 @@ function marketplaceApiStats() {
 function renderMarketplaceHub() {
   const stats = marketplaceHubStats();
   els.appView.innerHTML = `
+    ${renderRouteHeader({
+      eyebrow: "Marketplace",
+      title: "Install and share portable workflows",
+      description: "Use project templates and automation packs as plain JSON building blocks for repeatable client delivery.",
+      actions: [
+        { label: "Review Agency Handoff Pack", commandId: "automation:recommended", primary: true },
+        { label: "Open Templates", route: "templates" }
+      ]
+    })}
+
     <div class="metric-grid">
       ${metric("Templates", `${stats.installedTemplates}/${stats.projectTemplates}`)}
       ${metric("Automation packs", `${stats.installedAutomationPacks}/${stats.automationPacks}`)}
@@ -13097,6 +13166,16 @@ function renderTemplates() {
   }
 
   els.appView.innerHTML = `
+    ${renderRouteHeader({
+      eyebrow: "Templates",
+      title: "Start from proven project patterns",
+      description: "Create the first client workspace from Client Onboarding, then save, import, or share templates as your process matures.",
+      actions: [
+        { label: "Start Client Onboarding", commandId: "template:recommended", primary: true },
+        { label: "Open Marketplace", route: "marketplace" }
+      ]
+    })}
+
     <div class="metric-grid">
       ${metric("Project templates", state.projectTemplates.length)}
       ${metric("Marketplace", marketplaceProjectTemplates.length)}
@@ -13817,6 +13896,16 @@ function renderAutomations() {
   const suggestions = automationSuggestions();
 
   els.appView.innerHTML = `
+    ${renderRouteHeader({
+      eyebrow: "Automations",
+      title: "Make the handoff workflow repeatable",
+      description: "Install safe workflow packs, author local rules, and keep automation runs auditable and reversible.",
+      actions: [
+        { label: "Review Agency Handoff Pack", commandId: "automation:recommended", primary: true },
+        { label: "Open Marketplace", route: "marketplace" }
+      ]
+    })}
+
     <div class="metric-grid">
       ${metric("Rules", state.automations.length)}
       ${metric("Enabled", enabled.length)}
@@ -14010,6 +14099,16 @@ function renderSettings() {
   if (state.selectedSettingsTab !== activeSettingsTab) state.selectedSettingsTab = activeSettingsTab;
 
   els.appView.innerHTML = `
+    ${renderRouteHeader({
+      eyebrow: "Settings",
+      title: "Set up the workspace for a real team",
+      description: "Connect accounts, confirm ownership, tune roles, verify sync, and keep deployment readiness visible.",
+      actions: [
+        { label: "Open Members", commandId: "settings:members", primary: true },
+        { label: "Open Sync", commandId: "settings:sync" }
+      ]
+    })}
+
     <div class="metric-grid">
       ${metric("Members", memberships.length)}
       ${metric("Roles", workspaceRoles.length)}
@@ -14020,6 +14119,7 @@ function renderSettings() {
     </div>
 
     ${renderSettingsTabs(activeSettingsTab)}
+    ${renderSettingsSectionIntro(activeSettingsTab)}
 
     <div class="settings-grid settings-section settings-section-${activeSettingsTab}">
       ${activeSettingsTab === "account" ? `
@@ -14525,6 +14625,16 @@ function renderDataManagement() {
   const backups = loadWorkspaceBackups();
 
   els.appView.innerHTML = `
+    ${renderRouteHeader({
+      eyebrow: "Data",
+      title: "Keep the workspace portable and recoverable",
+      description: "Back up the browser workspace, verify API sync, inspect bundle contents, and restore safely before risky changes.",
+      actions: [
+        { label: "Open Recovery Plan", commandId: "recovery:plan", primary: true },
+        { label: "Create Backup", commandId: "backup:create" }
+      ]
+    })}
+
     <div class="metric-grid">
       ${metric("Projects", activeProjects().length)}
       ${metric("Tasks", activeTasks().length)}

@@ -1494,6 +1494,39 @@ body[data-tutorial-target="view"] #app-view {
   margin-bottom: 16px;
 }
 
+.route-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: end;
+  margin-bottom: 16px;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.route-header h1 {
+  margin: 0;
+  font-size: 1.55rem;
+  line-height: 1.1;
+}
+
+.route-header p:not(.eyebrow) {
+  max-width: 780px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.route-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .golden-path-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1585,6 +1618,18 @@ body[data-tutorial-target="view"] #app-view {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.7fr);
   gap: 16px;
+}
+
+.dashboard-support-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 16px;
+  align-items: start;
+  margin-bottom: 16px;
+}
+
+.dashboard-support-grid .team-launch-panel {
+  grid-column: 1 / -1;
 }
 
 .dashboard-builder-panel {
@@ -3569,6 +3614,27 @@ body[data-tutorial-target="view"] #app-view {
 .settings-tab:disabled {
   cursor: not-allowed;
   opacity: 0.46;
+}
+
+.settings-section-intro {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: baseline;
+  margin: -4px 0 16px;
+  padding: 10px 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.settings-section-intro strong {
+  color: var(--text);
+}
+
+.settings-section-intro span {
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .settings-section-account,
@@ -6517,6 +6583,19 @@ body[data-density="compact"] .main-content {
     min-height: 36px;
   }
 
+  .route-header,
+  .dashboard-support-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .route-header {
+    align-items: start;
+  }
+
+  .route-header-actions {
+    justify-content: flex-start;
+  }
+
   .onboarding-wizard {
     grid-template-columns: 1fr;
   }
@@ -6707,6 +6786,24 @@ body[data-density="compact"] .main-content {
   }
 
   .settings-tab {
+    width: 100%;
+  }
+
+  .route-header {
+    padding: 14px;
+  }
+
+  .route-header h1 {
+    font-size: 1.32rem;
+  }
+
+  .route-header-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .route-header-actions .button {
     width: 100%;
   }
 
