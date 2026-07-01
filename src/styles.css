@@ -3692,6 +3692,91 @@ body[data-tutorial-target="view"] #app-view {
   color: var(--muted);
 }
 
+.marketplace-api-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.marketplace-api-grid,
+.permissions-risk-grid,
+.operator-permission-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.marketplace-api-grid article,
+.permissions-risk-grid article,
+.operator-permission-grid article {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.marketplace-api-grid strong,
+.permissions-risk-grid strong {
+  font-size: 1.5rem;
+}
+
+.marketplace-api-panel small,
+.permissions-risk-grid small,
+.operator-permission-grid small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.permissions-audit-panel {
+  margin-bottom: 14px;
+}
+
+.permissions-audit-matrix {
+  overflow-x: auto;
+}
+
+.permissions-member-list {
+  display: grid;
+  gap: 8px;
+}
+
+.permissions-member-list article {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto minmax(160px, 0.8fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.permissions-member-list strong,
+.operator-permission-grid strong {
+  display: block;
+}
+
+.permissions-member-list span,
+.permissions-member-list small {
+  color: var(--muted);
+}
+
+.operator-permission-grid article > span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.operator-permission-grid article.is-allowed {
+  border-color: color-mix(in srgb, var(--amber), var(--line) 45%);
+}
+
+.operator-permission-grid article.is-denied {
+  border-color: color-mix(in srgb, var(--green), var(--line) 45%);
+}
+
 .member-role-list,
 .backend-checklist,
 .backend-record-list,
@@ -6209,6 +6294,9 @@ body[data-density="compact"] .main-content {
   .automation-pack-list,
   .automation-pack-author-form,
   .automation-pack-selection,
+  .marketplace-api-grid,
+  .permissions-risk-grid,
+  .operator-permission-grid,
   .operator-permission-list,
   .operator-preset-list,
   .onboarding-grid,
@@ -6554,7 +6642,8 @@ body[data-density="compact"] .main-content {
   }
 
   .payment-audit-event,
-  .payment-entitlement {
+  .payment-entitlement,
+  .permissions-member-list article {
     grid-template-columns: 1fr;
   }
 

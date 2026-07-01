@@ -720,6 +720,7 @@ const routes = {
   intake: "Intake",
   fields: "Custom Fields",
   audit: "Audit Log",
+  permissions: "Permissions",
   data: "Data",
   settings: "Settings",
   companies: "Companies",
@@ -1916,6 +1917,8 @@ let apiSyncQueue = apiSyncQueueStore.load();
 let backendHealth = apiSession?.backendHealth || null;
 let auditEvents = [];
 let auditLoading = false;
+let marketplaceApiCatalog = null;
+let marketplaceApiLoading = false;
 let realtimePollTimer = null;
 let realtimeLastRefreshAt = "";
 let realtimeLastChangedAt = "";
@@ -3157,6 +3160,7 @@ function canAccessRoute(route) {
   if (!apiSession) return true;
   const routePermissions = {
     audit: "audit:read",
+    permissions: "audit:read",
     data: "workspace:import",
     settings: "workspace:read",
     reports: "workspace:read",
@@ -9097,6 +9101,7 @@ function render() {
     intake: renderIntake,
     fields: renderCustomFields,
     audit: renderAuditLog,
+    permissions: renderPermissionsAudit,
     data: renderDataManagement,
     settings: renderSettings,
     companies: renderCompanies,
@@ -9125,7 +9130,7 @@ function sidebarGroupForRoute(route) {
   if (["landing", "dashboard", "portal", "daily", "inbox"].includes(route)) return "home";
   if (["board", "list", "calendar", "my-work", "time", "operator", "collaboration"].includes(route)) return "work";
   if (["reports", "goals", "marketplace", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
-  if (["audit", "data", "settings"].includes(route)) return "admin";
+  if (["audit", "permissions", "data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
   if (route === "invite") return "";
   return "";
@@ -12674,6 +12679,14 @@ function marketplaceHubStats() {
   };
 }
 
+function marketplaceApiStats() {
+  return {
+    projectTemplates: Array.isArray(marketplaceApiCatalog?.projectTemplates) ? marketplaceApiCatalog.projectTemplates.length : 0,
+    automationPacks: Array.isArray(marketplaceApiCatalog?.automationPacks) ? marketplaceApiCatalog.automationPacks.length : 0,
+    updatedAt: marketplaceApiCatalog?.updatedAt || ""
+  };
+}
+
 function renderMarketplaceHub() {
   const stats = marketplaceHubStats();
   els.appView.innerHTML = `
@@ -12716,9 +12729,50 @@ function renderMarketplaceHub() {
       </section>
 
       ${renderTemplateMarketplacePanel()}
+      ${renderMarketplaceApiPanel()}
       ${renderAutomationMarketplacePanel()}
       ${renderAutomationPackAuthorPanel()}
     </div>
+  `;
+}
+
+function renderMarketplaceApiPanel() {
+  const stats = marketplaceApiStats();
+  const authoredRules = state.automations.filter((automation) => automation.source !== "marketplace" && automation.source !== "imported");
+  return `
+    <section class="panel marketplace-api-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Hosted registry</p>
+          <h2>Marketplace API</h2>
+        </div>
+        <span class="status-pill ${apiSession ? "inbox-green" : "inbox-neutral"}">${apiSession ? "API connected" : "Offline"}</span>
+      </div>
+      <p class="panel-note">Publish local project templates and authored automation rules to the Agora API, then load the hosted catalog into another workspace.</p>
+      <div class="marketplace-api-grid">
+        <article>
+          <strong>${state.projectTemplates.length}</strong>
+          <span>Local templates ready to publish</span>
+        </article>
+        <article>
+          <strong>${authoredRules.length}</strong>
+          <span>Authored automation rules</span>
+        </article>
+        <article>
+          <strong>${stats.projectTemplates}</strong>
+          <span>API templates loaded</span>
+        </article>
+        <article>
+          <strong>${stats.automationPacks}</strong>
+          <span>API automation packs loaded</span>
+        </article>
+      </div>
+      <div class="marketplace-actions">
+        <button class="button button-primary" type="button" id="marketplace-api-publish" ${apiSession && !marketplaceApiLoading ? "" : "disabled"}>${marketplaceApiLoading ? "Working" : "Publish Local Catalog"}</button>
+        <button class="button button-secondary" type="button" id="marketplace-api-load" ${apiSession && !marketplaceApiLoading ? "" : "disabled"}>Load API Catalog</button>
+      </div>
+      <small>${stats.updatedAt ? `API catalog updated ${escapeHtml(formatTimestamp(stats.updatedAt))}` : "Connect the API and publish once to make the hosted registry available."}</small>
+    </section>
   `;
 }
 
@@ -14274,6 +14328,185 @@ function renderAuditEvent(event) {
       </div>
       <code>${escapeHtml(event.id || "")}</code>
     </article>
+  `;
+}
+
+function permissionCatalog() {
+  return [
+    ["workspace:read", "Read workspace"],
+    ["workspace:write", "Edit workspace"],
+    ["workspace:import", "Import workspace"],
+    ["audit:read", "Read audit log"],
+    ["members:write", "Manage members"],
+    ["projects:write", "Manage projects"],
+    ["tasks:write", "Manage tasks"],
+    ["time:write", "Log time"],
+    ["comments:write", "Comment"],
+    ["activity:write", "Activity"],
+    ["attachments:write", "Docs and files"],
+    ["approvals:write", "Approvals"],
+    ["notifications:write", "Notifications"],
+    ["integrations:write", "Integrations"],
+    ["scheduler:run", "Run scheduler"],
+    ["payments:write", "Payments"]
+  ];
+}
+
+function rolePermissionMap() {
+  return {
+    admin: ["workspace:read", "workspace:write", "workspace:import", "audit:read", "members:write", "projects:write", "tasks:write", "time:write", "comments:write", "activity:write", "attachments:write", "approvals:write", "notifications:write", "integrations:write", "scheduler:run", "payments:write"],
+    manager: ["workspace:read", "workspace:write", "audit:read", "projects:write", "tasks:write", "time:write", "comments:write", "activity:write", "attachments:write", "approvals:write", "notifications:write", "integrations:write", "scheduler:run", "payments:write"],
+    member: ["workspace:read", "time:write", "comments:write", "activity:write", "attachments:write"],
+    client: ["workspace:read", "comments:write", "activity:write", "approvals:write"]
+  };
+}
+
+function permissionsAuditRows() {
+  const memberships = Array.isArray(state.memberships) ? state.memberships : [];
+  return workspaceMembers().map((member) => {
+    const membership = memberships.find((item) => item.memberId === member.id) || {};
+    const roleId = membership.role || member.role || state.workspace.defaultRole || "member";
+    const role = workspaceRoles.find((item) => item.id === roleId);
+    const companyIds = Array.isArray(membership.companyIds) ? membership.companyIds : membership.companyId ? [membership.companyId] : [];
+    return {
+      member,
+      roleId,
+      roleLabel: role?.label || roleId,
+      companyScope: companyIds.length ? companyIds.map(companyName).join(", ") : "Workspace-wide",
+      permissions: rolePermissionMap()[roleId] || []
+    };
+  });
+}
+
+function permissionRiskFlags(rows = permissionsAuditRows()) {
+  const permissions = operatorPermissions();
+  const ai = aiSettings();
+  return [
+    {
+      label: "Admins",
+      value: rows.filter((row) => row.roleId === "admin").length,
+      tone: rows.filter((row) => row.roleId === "admin").length > 1 ? "amber" : "green",
+      detail: "Keep admin count intentionally small before production."
+    },
+    {
+      label: "Workspace imports",
+      value: rows.filter((row) => row.permissions.includes("workspace:import")).length,
+      tone: rows.filter((row) => row.permissions.includes("workspace:import")).length > 1 ? "amber" : "green",
+      detail: "Import permission can replace the API source of truth."
+    },
+    {
+      label: "Operator client data",
+      value: permissions.readClientData ? "Allowed" : "Blocked",
+      tone: permissions.readClientData ? "amber" : "green",
+      detail: "Client context should be intentional for BYO AI providers."
+    },
+    {
+      label: "AI provider",
+      value: aiProviderLabel(),
+      tone: ai.provider === "local" ? "green" : "amber",
+      detail: ai.provider === "local" ? "Local deterministic operator only." : `${aiProviderLabel()} runs through the API server.`
+    }
+  ];
+}
+
+function renderPermissionsAudit() {
+  const rows = permissionsAuditRows();
+  const roleMap = rolePermissionMap();
+  const operatorAllowed = aiPermissionOptions.filter((option) => operatorPermissions()[option.id]);
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Members", rows.length)}
+      ${metric("Admins", rows.filter((row) => row.roleId === "admin").length)}
+      ${metric("Roles", workspaceRoles.length)}
+      ${metric("Operator", operatorPermissionSummary())}
+      ${metric("API mode", apiSession ? "Connected" : "Local")}
+    </div>
+
+    <section class="panel permissions-audit-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Admin</p>
+          <h2>Role and Operator audit</h2>
+        </div>
+        <button class="button button-secondary" type="button" data-route="settings">Open Settings</button>
+      </div>
+      <div class="permissions-risk-grid">
+        ${permissionRiskFlags(rows).map((flag) => `
+          <article>
+            <span class="status-pill inbox-${flag.tone}">${escapeHtml(flag.label)}</span>
+            <strong>${escapeHtml(flag.value)}</strong>
+            <small>${escapeHtml(flag.detail)}</small>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+
+    <section class="panel permissions-audit-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Access matrix</p>
+          <h2>Workspace roles</h2>
+        </div>
+        <span class="status-pill inbox-neutral">${permissionCatalog().length} permissions</span>
+      </div>
+      <div class="permission-matrix permissions-audit-matrix" role="table" aria-label="Workspace role permissions">
+        <div class="permission-row permission-head" role="row">
+          <span role="columnheader">Permission</span>
+          ${workspaceRoles.map((role) => `<strong role="columnheader">${escapeHtml(role.label)}</strong>`).join("")}
+        </div>
+        ${permissionCatalog().map(([permission, label]) => `
+          <div class="permission-row" role="row">
+            <span role="rowheader">${escapeHtml(label)}</span>
+            ${workspaceRoles.map((role) => `<span class="${roleMap[role.id]?.includes(permission) ? "is-allowed" : "is-denied"}">${roleMap[role.id]?.includes(permission) ? "Yes" : "No"}</span>`).join("")}
+          </div>
+        `).join("")}
+      </div>
+    </section>
+
+    <section class="panel permissions-audit-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Members</p>
+          <h2>Scope review</h2>
+        </div>
+        <span class="status-pill inbox-blue">${rows.filter((row) => row.companyScope !== "Workspace-wide").length} scoped</span>
+      </div>
+      <div class="permissions-member-list">
+        ${rows.map((row) => `
+          <article>
+            <div>
+              <strong>${escapeHtml(row.member.name)}</strong>
+              <span>${escapeHtml(row.member.email || row.member.role || "Team member")}</span>
+            </div>
+            <span class="status-pill inbox-neutral">${escapeHtml(row.roleLabel)}</span>
+            <span>${escapeHtml(row.companyScope)}</span>
+            <small>${row.permissions.length} permissions</small>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+
+    <section class="panel permissions-audit-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Operator guardrails</p>
+          <h2>AI permissions</h2>
+        </div>
+        <span class="status-pill ${operatorAllowed.length === aiPermissionOptions.length ? "inbox-amber" : "inbox-green"}">${operatorAllowed.length}/${aiPermissionOptions.length} allowed</span>
+      </div>
+      <div class="operator-permission-grid">
+        ${aiPermissionOptions.map((option) => {
+          const allowed = operatorPermissions()[option.id];
+          return `
+            <article class="${allowed ? "is-allowed" : "is-denied"}">
+              <span>${allowed ? "Allowed" : "Blocked"}</span>
+              <strong>${escapeHtml(option.label)}</strong>
+              <small>${escapeHtml(option.description)}</small>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
   `;
 }
 
@@ -16182,6 +16415,110 @@ function exportAutomationMarketplacePack(packId) {
   if (!pack) return;
   downloadJsonFile(`${slugFromName(pack.name)}-automation-pack.json`, JSON.stringify(automationMarketplacePackPayload(pack), null, 2));
   showToast("Automation pack exported", "success");
+}
+
+function authoredAutomationPackForApi() {
+  const rules = state.automations
+    .filter((automation) => automation.source !== "marketplace" && automation.source !== "imported")
+    .slice(0, 20);
+  if (!rules.length) return null;
+  const name = `${state.workspace.name} Workflow Pack`;
+  const pack = {
+    id: `automation-pack-${slugFromName(state.workspace.slug || state.workspace.name)}-local`,
+    name,
+    category: "Workspace",
+    creatorName: memberName(activeMemberId()) || state.workspace.name,
+    license: "Workspace-authored workflow pack",
+    description: `Automation rules shared from ${state.workspace.name}.`,
+    rules: rules.map((rule) => automationRuleForPack(rule, {
+      name,
+      creatorName: memberName(activeMemberId()) || state.workspace.name,
+      license: "Workspace-authored workflow pack"
+    }))
+  };
+  return pack;
+}
+
+async function publishMarketplaceCatalogToApi() {
+  if (!apiSession) {
+    showToast("Connect the API before publishing marketplace packs", "info");
+    return;
+  }
+  marketplaceApiLoading = true;
+  render();
+  try {
+    const automationPack = authoredAutomationPackForApi();
+    const result = await apiRequest("/api/marketplace/catalog", {
+      method: "POST",
+      body: {
+        projectTemplates: state.projectTemplates.map((template) => projectTemplateExportPayload(template).template),
+        automationPacks: automationPack ? [automationPack] : []
+      }
+    });
+    marketplaceApiCatalog = result.catalog;
+    addAuditEvent({
+      action: "marketplace_catalog_publish",
+      detail: `Published ${result.published?.projectTemplates || 0} templates and ${result.published?.automationPacks || 0} automation packs to the API`,
+      targetType: "marketplace",
+      impact: "medium"
+    });
+    showToast("Marketplace catalog published to API", "success");
+  } catch (error) {
+    showToast(`Marketplace publish failed: ${error.message}`, "info");
+  } finally {
+    marketplaceApiLoading = false;
+    saveState();
+    render();
+  }
+}
+
+function mergeApiMarketplaceCatalog(catalog = {}) {
+  const incomingTemplates = Array.isArray(catalog.projectTemplates) ? catalog.projectTemplates : [];
+  const incomingPacks = Array.isArray(catalog.automationPacks) ? catalog.automationPacks : [];
+  const templateIds = new Set(marketplaceProjectTemplates.map((template) => template.id));
+  incomingTemplates.forEach((template) => {
+    try {
+      const normalized = validateProjectTemplate(template, { preserveId: true });
+      if (!templateIds.has(normalized.id)) {
+        marketplaceProjectTemplates.push(normalized);
+        templateIds.add(normalized.id);
+      }
+    } catch {
+      // Hosted marketplace items are optional; skip malformed entries without breaking the hub.
+    }
+  });
+  const packIds = new Set(automationMarketplacePacks.map((pack) => pack.id));
+  incomingPacks.forEach((pack) => {
+    try {
+      const normalized = parseAutomationPackPayload(JSON.stringify({ type: "agora.automation-pack", pack })).pack;
+      if (!packIds.has(normalized.id)) {
+        automationMarketplacePacks.push(normalized);
+        packIds.add(normalized.id);
+      }
+    } catch {
+      // Same defensive behavior as templates: keep the rest of the catalog usable.
+    }
+  });
+}
+
+async function loadMarketplaceCatalogFromApi() {
+  if (!apiSession) {
+    showToast("Connect the API before loading marketplace packs", "info");
+    return;
+  }
+  marketplaceApiLoading = true;
+  render();
+  try {
+    const result = await apiRequest("/api/marketplace/catalog");
+    marketplaceApiCatalog = result.catalog;
+    mergeApiMarketplaceCatalog(result.catalog);
+    showToast("Marketplace catalog loaded from API", "success");
+  } catch (error) {
+    showToast(`Marketplace load failed: ${error.message}`, "info");
+  } finally {
+    marketplaceApiLoading = false;
+    render();
+  }
 }
 
 function previewAutomationPackImportPayload() {
@@ -19213,6 +19550,18 @@ document.addEventListener("click", (event) => {
   const exportAutomationPackButton = event.target.closest("[data-export-automation-pack]");
   if (exportAutomationPackButton) {
     exportAutomationMarketplacePack(exportAutomationPackButton.dataset.exportAutomationPack);
+    return;
+  }
+
+  const marketplaceApiPublishButton = event.target.closest("#marketplace-api-publish");
+  if (marketplaceApiPublishButton) {
+    publishMarketplaceCatalogToApi();
+    return;
+  }
+
+  const marketplaceApiLoadButton = event.target.closest("#marketplace-api-load");
+  if (marketplaceApiLoadButton) {
+    loadMarketplaceCatalogFromApi();
     return;
   }
 

@@ -164,6 +164,55 @@ async function run() {
     });
     assert(paymentEntitlements.entitlements.some((entitlement) => entitlement.itemId === "marketplace-agency-retainer-os"), "payment entitlement list did not include server grant");
 
+    const blockedMarketplacePublish = await requestError(`${baseUrl}/api/marketplace/catalog`, {
+      method: "POST",
+      token: accepted.token,
+      body: {
+        projectTemplates: [{
+          id: "marketplace-member-blocked",
+          name: "Blocked Member Template",
+          tasks: [{ key: "blocked-task", title: "Blocked task" }]
+        }]
+      }
+    });
+    assert(blockedMarketplacePublish.status === 403, "member should not publish marketplace catalog");
+
+    const marketplacePublish = await request(`${baseUrl}/api/marketplace/catalog`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        projectTemplates: [{
+          id: "marketplace-smoke-template",
+          name: "Smoke Marketplace Template",
+          category: "Smoke",
+          description: "Template published by the smoke test.",
+          creatorName: "Smoke Test",
+          tasks: [{ key: "kickoff", title: "Kickoff smoke marketplace", priority: "high", dueOffset: 2 }]
+        }],
+        automationPacks: [{
+          id: "automation-pack-smoke",
+          name: "Smoke Automation Pack",
+          category: "Smoke",
+          creatorName: "Smoke Test",
+          license: "Test",
+          rules: [{ name: "Smoke due soon", trigger: "Task due soon", action: "Create follow-up task" }]
+        }]
+      }
+    });
+    assert(marketplacePublish.published.projectTemplates === 1, "marketplace publish did not count templates");
+    assert(marketplacePublish.catalog.automationPacks.some((pack) => pack.id === "automation-pack-smoke"), "marketplace publish did not store automation pack");
+
+    const marketplaceCatalog = await request(`${baseUrl}/api/marketplace/catalog`, {
+      token: login.token
+    });
+    assert(marketplaceCatalog.catalog.projectTemplates.some((template) => template.id === "marketplace-smoke-template"), "marketplace catalog did not include template");
+
+    const marketplaceExport = await request(`${baseUrl}/api/marketplace/export/project-template/marketplace-smoke-template`, {
+      token: login.token
+    });
+    assert(marketplaceExport.type === "agora.project-template", "marketplace export did not return project-template payload");
+    assert(marketplaceExport.template.id === "marketplace-smoke-template", "marketplace export returned wrong template");
+
     const createdProject = await request(`${baseUrl}/api/projects`, {
       method: "POST",
       token: login.token,

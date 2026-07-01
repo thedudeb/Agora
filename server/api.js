@@ -336,6 +336,46 @@ function createServer(options = {}) {
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/api/marketplace/catalog") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const snapshot = scopedSnapshot(await storage.loadWorkspaceSnapshot(), session);
+        sendJson(response, 200, {
+          catalog: marketplaceCatalogFromSnapshot(snapshot),
+          generatedAt: new Date().toISOString()
+        });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/marketplace/catalog") {
+        if (!hasPermission(session, "projects:write")) {
+          sendError(response, 403, "Missing projects write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const result = await publishMarketplaceCatalog(storage, body, session);
+        sendJson(response, 201, result);
+        return;
+      }
+
+      const marketplaceExportMatch = url.pathname.match(/^\/api\/marketplace\/export\/([^/]+)\/([^/]+)$/);
+      if (marketplaceExportMatch && request.method === "GET") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const snapshot = scopedSnapshot(await storage.loadWorkspaceSnapshot(), session);
+        const payload = marketplaceExportPayload(
+          marketplaceExportMatch[1],
+          decodeURIComponent(marketplaceExportMatch[2]),
+          marketplaceCatalogFromSnapshot(snapshot)
+        );
+        sendJson(response, 200, payload);
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/ai/operator") {
         if (!hasPermission(session, "workspace:read")) {
           sendError(response, 403, "Missing workspace read permission");
@@ -978,6 +1018,202 @@ function paymentConfig() {
       }
     ]
   };
+}
+
+function marketplaceCatalogFromSnapshot(snapshot = {}) {
+  return normalizeMarketplaceCatalog(snapshot.workspace?.marketplace || {});
+}
+
+function normalizeMarketplaceCatalog(catalog = {}) {
+  return {
+    projectTemplates: Array.isArray(catalog.projectTemplates)
+      ? catalog.projectTemplates.map(normalizeMarketplaceProjectTemplate).filter(Boolean).slice(0, 200)
+      : [],
+    automationPacks: Array.isArray(catalog.automationPacks)
+      ? catalog.automationPacks.map(normalizeMarketplaceAutomationPack).filter(Boolean).slice(0, 200)
+      : [],
+    updatedAt: cleanString(catalog.updatedAt),
+    updatedBy: cleanString(catalog.updatedBy)
+  };
+}
+
+async function publishMarketplaceCatalog(storage, body = {}, session) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const existing = marketplaceCatalogFromSnapshot(snapshot);
+  const incomingTemplates = Array.isArray(body.projectTemplates) ? body.projectTemplates : [];
+  const incomingAutomationPacks = Array.isArray(body.automationPacks) ? body.automationPacks : [];
+  const projectTemplates = mergeMarketplaceItems(
+    existing.projectTemplates,
+    incomingTemplates.map(normalizeMarketplaceProjectTemplate).filter(Boolean)
+  );
+  const automationPacks = mergeMarketplaceItems(
+    existing.automationPacks,
+    incomingAutomationPacks.map(normalizeMarketplaceAutomationPack).filter(Boolean)
+  );
+  if (!incomingTemplates.length && !incomingAutomationPacks.length) {
+    publicError(400, "Publish at least one project template or automation pack");
+  }
+
+  const now = new Date().toISOString();
+  const catalog = {
+    projectTemplates,
+    automationPacks,
+    updatedAt: now,
+    updatedBy: session.user.id
+  };
+  const nextSnapshot = {
+    ...snapshot,
+    workspace: {
+      ...workspace,
+      ...(snapshot.workspace || {}),
+      marketplace: catalog
+    }
+  };
+  await storage.saveWorkspaceSnapshot(nextSnapshot, {
+    storage: storage.driver || "json-file",
+    updatedBy: session.user.id,
+    action: "marketplace_catalog_publish"
+  });
+  await storage.appendAuditEvent({
+    actorId: session.user.id,
+    action: "marketplace_catalog_publish",
+    workspaceId: workspace.id,
+    detail: `${session.user.name} published ${incomingTemplates.length} project template${incomingTemplates.length === 1 ? "" : "s"} and ${incomingAutomationPacks.length} automation pack${incomingAutomationPacks.length === 1 ? "" : "s"}`
+  });
+  return {
+    catalog,
+    published: {
+      projectTemplates: incomingTemplates.length,
+      automationPacks: incomingAutomationPacks.length
+    }
+  };
+}
+
+function mergeMarketplaceItems(existing = [], incoming = []) {
+  const byId = new Map();
+  for (const item of existing) byId.set(item.id, item);
+  for (const item of incoming) byId.set(item.id, item);
+  return Array.from(byId.values()).slice(0, 200);
+}
+
+function normalizeMarketplaceProjectTemplate(template = {}) {
+  const source = template.template && typeof template.template === "object" ? template.template : template;
+  const name = cleanString(source.name).slice(0, 120);
+  if (!name) return null;
+  const tasks = Array.isArray(source.tasks) ? source.tasks : [];
+  if (!tasks.length) return null;
+  return {
+    id: cleanString(source.id) || `template-${slugFromName(name)}`,
+    name,
+    category: cleanString(source.category || "Community").slice(0, 80),
+    description: cleanString(source.description || `Community template for ${name}`).slice(0, 320),
+    owner: cleanString(source.owner || source.creatorId || "marketplace"),
+    creatorName: cleanString(source.creatorName || sessionlessCreatorName(source)).slice(0, 96),
+    durationDays: boundedInteger(source.durationDays || 14, 1, 365),
+    priceCents: Math.max(0, Math.round(Number(source.priceCents) || 0)),
+    currency: paymentCurrency(source.currency),
+    payout: normalizePaymentPayout(source.payout || source),
+    tasks: tasks.slice(0, 80).map((task, index) => ({
+      key: cleanString(task.key || `task-${index + 1}`).slice(0, 80),
+      title: cleanString(task.title || `Task ${index + 1}`).slice(0, 160),
+      description: cleanString(task.description).slice(0, 1000),
+      assignee: cleanString(task.assignee || "mara").slice(0, 80),
+      priority: ["urgent", "high", "normal", "low"].includes(task.priority) ? task.priority : "normal",
+      startOffset: boundedInteger(task.startOffset, 0, 365),
+      dueOffset: boundedInteger(task.dueOffset ?? task.startOffset ?? 1, 0, 365),
+      tags: Array.isArray(task.tags) ? task.tags.map(cleanString).filter(Boolean).slice(0, 8) : [],
+      blockedBy: Array.isArray(task.blockedBy) ? task.blockedBy.map(cleanString).filter(Boolean).slice(0, 12) : [],
+      subtasks: Array.isArray(task.subtasks) ? task.subtasks.map(cleanString).filter(Boolean).slice(0, 20) : []
+    })),
+    milestones: Array.isArray(source.milestones) ? source.milestones.slice(0, 30).map((milestone, index) => ({
+      title: cleanString(milestone.title || `Milestone ${index + 1}`).slice(0, 160),
+      description: cleanString(milestone.description).slice(0, 1000),
+      owner: cleanString(milestone.owner || "mara").slice(0, 80),
+      dueOffset: boundedInteger(milestone.dueOffset || 7, 0, 365),
+      status: ["planned", "active", "completed"].includes(milestone.status) ? milestone.status : "planned",
+      taskKeys: Array.isArray(milestone.taskKeys) ? milestone.taskKeys.map(cleanString).filter(Boolean).slice(0, 20) : []
+    })) : [],
+    docs: Array.isArray(source.docs) ? source.docs.slice(0, 30).map((document, index) => ({
+      title: cleanString(document.title || `Template Doc ${index + 1}`).slice(0, 160),
+      type: cleanString(document.type || "Template").slice(0, 80),
+      body: cleanString(document.body).slice(0, 10000)
+    })) : [],
+    intakeForm: source.intakeForm && typeof source.intakeForm === "object" ? {
+      title: cleanString(source.intakeForm.title || `${name} Intake`).slice(0, 160),
+      assignee: cleanString(source.intakeForm.assignee || "mara").slice(0, 80),
+      description: cleanString(source.intakeForm.description || `Capture requests for ${name}.`).slice(0, 1000)
+    } : null
+  };
+}
+
+function normalizeMarketplaceAutomationPack(pack = {}) {
+  const source = pack.pack && typeof pack.pack === "object" ? pack.pack : pack;
+  const name = cleanString(source.name).slice(0, 120);
+  if (!name) return null;
+  const rules = Array.isArray(source.rules) ? source.rules : [];
+  if (!rules.length) return null;
+  const id = cleanString(source.id) || `automation-pack-${slugFromName(name)}`;
+  return {
+    id,
+    name,
+    category: cleanString(source.category || "Community").slice(0, 80),
+    creatorName: cleanString(source.creatorName || "Community creator").slice(0, 96),
+    license: cleanString(source.license || "Community workflow pack").slice(0, 96),
+    description: cleanString(source.description || `Community automation pack for ${name}.`).slice(0, 320),
+    rules: rules.slice(0, 30).map((rule, index) => ({
+      id: cleanString(rule.id || `${id}-${index + 1}`),
+      name: cleanString(rule.name || `Rule ${index + 1}`).slice(0, 160),
+      trigger: cleanString(rule.trigger || "Task due soon").slice(0, 160),
+      action: cleanString(rule.action || "Create follow-up task").slice(0, 160),
+      triggerKind: cleanString(rule.triggerKind || "task_due_soon").slice(0, 80),
+      conditionKind: cleanString(rule.conditionKind || "any").slice(0, 80),
+      conditionValue: cleanString(rule.conditionValue).slice(0, 160),
+      actionKind: cleanString(rule.actionKind || "create_task").slice(0, 80),
+      actionTarget: cleanString(rule.actionTarget).slice(0, 240),
+      enabled: rule.enabled !== false,
+      marketplacePackId: id,
+      source: "marketplace",
+      creatorName: cleanString(source.creatorName || rule.creatorName || "Community creator").slice(0, 96),
+      license: cleanString(source.license || rule.license || "Community workflow pack").slice(0, 96)
+    }))
+  };
+}
+
+function marketplaceExportPayload(type, id, catalog) {
+  const normalizedType = cleanString(type);
+  if (normalizedType === "project-template" || normalizedType === "project-templates") {
+    const template = catalog.projectTemplates.find((item) => item.id === id);
+    if (!template) publicError(404, "Marketplace project template not found");
+    return {
+      type: "agora.project-template",
+      exportVersion: 1,
+      exportedAt: new Date().toISOString(),
+      template
+    };
+  }
+  if (normalizedType === "automation-pack" || normalizedType === "automation-packs") {
+    const pack = catalog.automationPacks.find((item) => item.id === id);
+    if (!pack) publicError(404, "Marketplace automation pack not found");
+    return {
+      type: "agora.automation-pack",
+      exportVersion: 1,
+      exportedAt: new Date().toISOString(),
+      pack
+    };
+  }
+  publicError(400, "Unsupported marketplace export type");
+}
+
+function sessionlessCreatorName(source = {}) {
+  return cleanString(source.creatorName || source.author || source.owner || "Community creator");
+}
+
+function slugFromName(value) {
+  return cleanString(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "")
+    .slice(0, 80) || "item";
 }
 
 function paymentEntitlements(snapshot = {}) {
