@@ -7191,30 +7191,67 @@ body[data-density="compact"] .main-content {
   }
 
   .sidebar {
-    gap: 10px;
-    padding: 12px max(12px, env(safe-area-inset-right)) 12px max(12px, env(safe-area-inset-left));
+    gap: 6px;
+    padding: 8px max(10px, env(safe-area-inset-right)) 8px max(10px, env(safe-area-inset-left));
   }
 
   .brand {
-    min-height: 38px;
+    min-height: 30px;
+    gap: 8px;
   }
 
   .brand img {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
+  }
+
+  .brand small {
+    display: none;
+  }
+
+  .workspace-switcher {
+    gap: 6px;
+    padding: 7px;
+  }
+
+  .workspace-switcher span {
+    display: none;
+  }
+
+  .workspace-switcher select {
+    min-height: 32px;
+  }
+
+  .workspace-switcher-actions .icon-button {
+    width: 30px;
+    height: 30px;
+  }
+
+  .nav-list,
+  .project-list {
+    gap: 4px;
+  }
+
+  .nav-group {
+    gap: 2px;
+  }
+
+  .nav-group-toggle {
+    min-height: 24px;
+    padding: 2px 6px;
   }
 
   .nav-item {
-    min-width: 96px;
-    min-height: 40px;
-    padding: 7px 10px;
-    font-size: 0.88rem;
+    min-width: 88px;
+    min-height: 34px;
+    padding: 5px 8px;
+    font-size: 0.84rem;
   }
 
   .project-pill {
-    min-width: 168px;
-    min-height: 40px;
-    padding: 7px 10px;
+    min-width: 148px;
+    min-height: 34px;
+    padding: 5px 8px;
   }
 
   .secondary-action {
@@ -7226,18 +7263,18 @@ body[data-density="compact"] .main-content {
 
   .topbar {
     display: grid;
-    gap: 14px;
+    gap: 8px;
     justify-content: stretch;
-    margin-bottom: 14px;
+    margin-bottom: 10px;
   }
 
   .topbar h1 {
-    font-size: 1.55rem;
+    font-size: 1.34rem;
   }
 
   .topbar-actions {
     display: grid;
-    grid-template-columns: 42px minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: 38px minmax(0, 1fr) minmax(0, 1fr);
     gap: 8px;
     justify-content: stretch;
   }
@@ -7248,8 +7285,8 @@ body[data-density="compact"] .main-content {
   }
 
   .notification-button {
-    width: 42px;
-    min-height: 42px;
+    width: 38px;
+    min-height: 38px;
   }
 
   .button,
@@ -7257,11 +7294,34 @@ body[data-density="compact"] .main-content {
   input,
   select,
   textarea {
-    min-height: 42px;
+    min-height: 38px;
   }
 
   .button {
-    padding: 8px 10px;
+    padding: 7px 9px;
+  }
+
+  .toolbar {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding: 10px;
+    scroll-snap-type: x proximity;
+  }
+
+  .toolbar label {
+    flex: 0 0 min(190px, 68vw);
+    scroll-snap-align: start;
+  }
+
+  .saved-view-actions {
+    flex: 0 0 min(230px, 78vw);
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    scroll-snap-align: start;
   }
 
   .golden-path-panel {
