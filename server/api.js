@@ -236,7 +236,7 @@ function serializeBackgroundJob(job = {}) {
 
 function normalizeBackgroundJob(job = {}) {
   if (!job.id || !job.type) return null;
-  const status = ["queued", "running", "succeeded", "failed", "rejected"].includes(job.status) ? job.status : "queued";
+  const status = ["queued", "running", "succeeded", "failed", "rejected", "canceled", "cleared"].includes(job.status) ? job.status : "queued";
   const createdAt = cleanString(job.createdAt) || new Date().toISOString();
   return {
     id: cleanString(job.id),
@@ -409,11 +409,12 @@ function backgroundJobSnapshot() {
     queued: backgroundJobs.length,
     maxQueue: BACKGROUND_JOB_MAX_QUEUE,
     running: backgroundJobRunning,
-    recent: backgroundJobHistory.slice(0, 20).map((job) => ({
+    recent: backgroundJobHistory.filter((job) => job.status !== "cleared").slice(0, 20).map((job) => ({
       id: job.id,
       type: job.type,
       status: job.status,
       attempts: job.attempts,
+      maxAttempts: job.maxAttempts,
       metadata: job.metadata,
       error: job.error || "",
       createdAt: job.createdAt,
@@ -422,6 +423,55 @@ function backgroundJobSnapshot() {
       finishedAt: job.finishedAt || ""
     }))
   };
+}
+
+function backgroundJobAction(jobId, action) {
+  const job = backgroundJobHistory.find((item) => item.id === jobId);
+  if (!job) publicError(404, "Background job not found");
+  const now = new Date().toISOString();
+
+  if (action === "retry") {
+    if (!backgroundJobHandler(job)) publicError(400, "Background job type cannot be retried");
+    if (!["failed", "rejected", "canceled"].includes(job.status)) publicError(409, "Only failed, rejected, or canceled jobs can be retried");
+    job.status = "queued";
+    job.error = "";
+    job.attempts = 0;
+    job.nextRunAt = "";
+    job.finishedAt = "";
+    job.updatedAt = now;
+    if (!backgroundJobs.some((queued) => queued.job.id === job.id)) {
+      backgroundJobs.push({ job, handler: null, runAt: Date.now() });
+    }
+    persistBackgroundJobs();
+    scheduleBackgroundDrain();
+    return job;
+  }
+
+  if (action === "cancel") {
+    if (job.status === "running") publicError(409, "Running jobs cannot be canceled");
+    if (job.status !== "queued") publicError(409, "Only queued jobs can be canceled");
+    backgroundJobs.splice(0, backgroundJobs.length, ...backgroundJobs.filter((queued) => queued.job.id !== job.id));
+    job.status = "canceled";
+    job.error = "";
+    job.nextRunAt = "";
+    job.finishedAt = now;
+    job.updatedAt = now;
+    persistBackgroundJobs();
+    return job;
+  }
+
+  if (action === "clear") {
+    if (job.status === "running") publicError(409, "Running jobs cannot be cleared");
+    backgroundJobs.splice(0, backgroundJobs.length, ...backgroundJobs.filter((queued) => queued.job.id !== job.id));
+    job.status = "cleared";
+    job.nextRunAt = "";
+    job.finishedAt = job.finishedAt || now;
+    job.updatedAt = now;
+    persistBackgroundJobs();
+    return job;
+  }
+
+  publicError(404, "Background job action not found");
 }
 
 function createServer(options = {}) {
@@ -626,6 +676,17 @@ function createServer(options = {}) {
         }
         const health = await buildBackendHealth(storage, session);
         sendJson(response, 200, health);
+        return;
+      }
+
+      const backendJobActionMatch = url.pathname.match(/^\/api\/backend\/jobs\/([^/]+)\/(retry|cancel|clear)$/);
+      if (backendJobActionMatch && request.method === "POST") {
+        if (!hasPermission(session, "scheduler:run")) {
+          sendError(response, 403, "Missing scheduler run permission");
+          return;
+        }
+        const job = backgroundJobAction(decodeURIComponent(backendJobActionMatch[1]), backendJobActionMatch[2]);
+        sendJson(response, 200, { job, jobs: backgroundJobSnapshot() });
         return;
       }
 

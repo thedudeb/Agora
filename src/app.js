@@ -2759,6 +2759,35 @@ async function refreshBackendHealth(options = {}) {
   }
 }
 
+async function runBackendJobAction(jobId, action) {
+  if (!apiSession) {
+    showToast("Connect to the API before managing background jobs", "info");
+    return;
+  }
+  if (!canWrite("scheduler:run")) {
+    showToast("Your role cannot manage background jobs", "info");
+    return;
+  }
+  try {
+    const result = await apiRequest(`/api/backend/jobs/${encodeURIComponent(jobId)}/${encodeURIComponent(action)}`, {
+      method: "POST"
+    });
+    backendHealth = {
+      ...(backendHealth || {}),
+      jobs: result.jobs || backendHealth?.jobs || {},
+      generatedAt: new Date().toISOString()
+    };
+    saveApiSession({
+      ...apiSession,
+      backendHealth
+    });
+    render();
+    showToast(`Background job ${action} complete`, "success");
+  } catch (error) {
+    showToast(`Background job ${action} failed: ${error.message}`, "info");
+  }
+}
+
 async function loadAuditLogFromApi(options = {}) {
   if (!apiSession) {
     if (!options.silent) showToast("Connect to the API from Settings first", "info");
@@ -16057,6 +16086,7 @@ function renderBackendObservabilityPanel() {
   const metrics = backendHealth?.observability || {};
   const jobs = backendHealth?.jobs || {};
   const routes = Array.isArray(metrics.routes) ? metrics.routes.slice(0, 6) : [];
+  const recentJobs = Array.isArray(jobs.recent) ? jobs.recent.slice(0, 8) : [];
   return `
     <div class="backend-health-summary">
       <article>
@@ -16086,6 +16116,57 @@ function renderBackendObservabilityPanel() {
         `).join("")}
       </div>
     ` : ""}
+    <div class="backend-job-console">
+      <div class="panel-header compact-panel-header">
+        <div>
+          <p class="eyebrow">Worker jobs</p>
+          <h3>Background queue</h3>
+        </div>
+        <span class="status-pill ${Number(jobs.queued || 0) ? "inbox-amber" : "inbox-green"}">${Number(jobs.queued || 0)}/${Number(jobs.maxQueue || 0)} queued</span>
+      </div>
+      ${recentJobs.length ? `
+        <div class="backend-job-list">
+          ${recentJobs.map(renderBackendJobRow).join("")}
+        </div>
+      ` : `<p class="empty-state">No background jobs yet.</p>`}
+    </div>
+  `;
+}
+
+function renderBackendJobRow(job = {}) {
+  const status = job.status || "queued";
+  const canManageJobs = Boolean(apiSession && canWrite("scheduler:run") && job.id);
+  const retryable = canManageJobs && ["failed", "rejected", "canceled"].includes(status);
+  const cancelable = canManageJobs && status === "queued";
+  const clearable = canManageJobs && ["succeeded", "failed", "rejected", "canceled"].includes(status);
+  const tone = status === "succeeded"
+    ? "inbox-green"
+    : status === "queued" || status === "running"
+      ? "inbox-amber"
+      : "inbox-red";
+  const metadata = job.metadata || {};
+  const detail = [
+    metadata.taskId ? `Task ${metadata.taskId}` : "",
+    job.nextRunAt ? `Next ${formatTimestamp(job.nextRunAt)}` : "",
+    job.error ? job.error : ""
+  ].filter(Boolean).join(" / ");
+  return `
+    <article class="backend-job-row">
+      <div>
+        <span class="status-pill ${tone}">${escapeHtml(status)}</span>
+        <strong>${escapeHtml(job.type || "background-job")}</strong>
+        <p>${escapeHtml(detail || `Updated ${formatTimestamp(job.updatedAt || job.createdAt || new Date().toISOString())}`)}</p>
+      </div>
+      <div class="backend-job-meta">
+        <span>${Number(job.attempts || 0)}/${Number(job.maxAttempts || 3)} tries</span>
+        <span>${job.updatedAt ? escapeHtml(formatTimestamp(job.updatedAt)) : "Not run"}</span>
+      </div>
+      <div class="backend-job-actions">
+        <button class="button button-secondary compact-button" type="button" data-backend-job-action="retry" data-backend-job-id="${escapeHtml(job.id || "")}" ${retryable ? "" : "disabled"}>Retry</button>
+        <button class="button button-secondary compact-button" type="button" data-backend-job-action="cancel" data-backend-job-id="${escapeHtml(job.id || "")}" ${cancelable ? "" : "disabled"}>Cancel</button>
+        <button class="button button-secondary button-danger compact-button" type="button" data-backend-job-action="clear" data-backend-job-id="${escapeHtml(job.id || "")}" ${clearable ? "" : "disabled"}>Clear</button>
+      </div>
+    </article>
   `;
 }
 
@@ -21808,6 +21889,12 @@ document.addEventListener("click", (event) => {
   const backendHealthRefreshButton = event.target.closest("#backend-health-refresh");
   if (backendHealthRefreshButton) {
     refreshBackendHealth();
+    return;
+  }
+
+  const backendJobActionButton = event.target.closest("[data-backend-job-action]");
+  if (backendJobActionButton) {
+    runBackendJobAction(backendJobActionButton.dataset.backendJobId, backendJobActionButton.dataset.backendJobAction);
     return;
   }
 

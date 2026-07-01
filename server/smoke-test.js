@@ -7,6 +7,32 @@ const { createStorage, createSupabaseStorage } = require("./storage");
 async function run() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-api-"));
   const storage = createStorage({ dataDir, driver: "json" });
+  await storage.saveBackgroundJobs([
+    {
+      id: "job-json-failed-smoke",
+      type: "unknown-smoke-job",
+      status: "failed",
+      attempts: 3,
+      maxAttempts: 3,
+      metadata: { taskId: "task-smoke" },
+      payload: {},
+      error: "Smoke failure",
+      createdAt: "2026-06-28T12:00:00.000Z",
+      updatedAt: "2026-06-28T12:05:00.000Z",
+      finishedAt: "2026-06-28T12:05:00.000Z"
+    },
+    {
+      id: "job-json-queued-smoke",
+      type: "unknown-smoke-job",
+      status: "queued",
+      attempts: 0,
+      maxAttempts: 3,
+      metadata: { taskId: "task-smoke" },
+      payload: {},
+      createdAt: "2026-06-28T12:00:00.000Z",
+      updatedAt: "2026-06-28T12:00:00.000Z"
+    }
+  ]);
   const server = createServer({
     storage,
     allowDemoAuth: true,
@@ -34,9 +60,15 @@ async function run() {
     });
     assert(access.users.length === 4, "member list did not include demo users");
 
-    const backendHealth = await request(`${baseUrl}/api/backend/health`, {
+    let backendHealth = await request(`${baseUrl}/api/backend/health`, {
       token: login.token
     });
+    if (!backendHealth.jobs?.recent?.some((job) => job.id === "job-json-failed-smoke")) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      backendHealth = await request(`${baseUrl}/api/backend/health`, {
+        token: login.token
+      });
+    }
     assert(backendHealth.storage === "json-file", "backend health did not expose storage driver");
     assert(backendHealth.auth === "local", "backend health did not expose auth driver");
     assert(backendHealth.records.some((record) => record.key === "comments"), "backend health did not report record collections");
@@ -46,6 +78,23 @@ async function run() {
     assert(backendHealth.readiness.some((item) => item.id === "password-reset-delivery"), "backend readiness did not include reset delivery gate");
     assert(backendHealth.observability && Number.isFinite(backendHealth.observability.total), "backend health did not include observability metrics");
     assert(backendHealth.jobs && Array.isArray(backendHealth.jobs.recent), "backend health did not include job metrics");
+    assert(backendHealth.jobs.recent.some((job) => job.id === "job-json-failed-smoke"), "backend health did not hydrate persisted job history");
+    const canceledJob = await request(`${baseUrl}/api/backend/jobs/job-json-queued-smoke/cancel`, {
+      method: "POST",
+      token: login.token
+    });
+    assert(canceledJob.job.status === "canceled", "background job cancel action failed");
+    const retryBlocked = await requestError(`${baseUrl}/api/backend/jobs/job-json-failed-smoke/retry`, {
+      method: "POST",
+      token: login.token
+    });
+    assert(retryBlocked.status === 400, "unregistered background job retry should fail");
+    const clearedJob = await request(`${baseUrl}/api/backend/jobs/job-json-failed-smoke/clear`, {
+      method: "POST",
+      token: login.token
+    });
+    assert(clearedJob.job.status === "cleared", "background job clear action failed");
+    assert(!clearedJob.jobs.recent.some((job) => job.id === "job-json-failed-smoke"), "cleared background job stayed in recent list");
     await storage.saveBackgroundJobs([{
       id: "job-json-smoke",
       type: "feature-request-email",

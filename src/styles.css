@@ -5071,6 +5071,53 @@ body[data-tutorial-target="view"] #app-view {
   white-space: nowrap;
 }
 
+.backend-job-console {
+  margin-top: 12px;
+}
+
+.compact-panel-header {
+  margin-bottom: 8px;
+}
+
+.backend-job-list {
+  display: grid;
+  gap: 8px;
+}
+
+.backend-job-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(120px, 0.6fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.backend-job-row p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.backend-job-meta,
+.backend-job-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.backend-job-meta span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
 .sync-queue-list {
   margin-top: 10px;
 }
@@ -7466,6 +7513,15 @@ body[data-density="compact"] .main-content {
   .nav-list,
   .project-list {
     grid-template-columns: 1fr;
+  }
+
+  .backend-job-row {
+    grid-template-columns: 1fr;
+  }
+
+  .backend-job-meta,
+  .backend-job-actions {
+    justify-content: flex-start;
   }
 
   .payment-audit-event,
