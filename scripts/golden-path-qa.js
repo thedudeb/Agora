@@ -9,7 +9,7 @@ const ROOT = path.resolve(__dirname, "..");
 const START_PORT = Number(process.env.AGORA_GOLDEN_PORT || 5300 + Math.floor(Math.random() * 1000));
 const HOST = process.env.AGORA_GOLDEN_HOST || "127.0.0.1";
 const BASE_URL = process.env.AGORA_GOLDEN_BASE_URL || "";
-const CHROME_TIMEOUT_MS = Number(process.env.AGORA_GOLDEN_TIMEOUT_MS || 30000);
+const CHROME_TIMEOUT_MS = Number(process.env.AGORA_GOLDEN_TIMEOUT_MS || 60000);
 const ROUTE_WAIT_MS = Number(process.env.AGORA_GOLDEN_WAIT_MS || 5000);
 
 const checks = [

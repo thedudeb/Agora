@@ -32,13 +32,20 @@ Use this checklist before tagging, deploying, or telling a team to run Agora in 
 ## 4. Verification Commands
 
 ```sh
+npm run verify
+npm run launch:check
+```
+
+For quicker iteration or debugging, the underlying commands are:
+
+```sh
 npm run check
 npm run test:fixtures
 npm run test:golden
 npm run test:api
 ```
 
-Fix any failure before releasing. `test:golden` browser-checks the first-run dashboard, template-to-project path, marketplace automation path, and portable recovery path. `test:api` covers auth, permissions, structured records, payments, marketplace publishing, scheduler behavior, audit logs, and API persistence.
+Fix any failure before releasing. `launch:check` runs quick verification plus browser golden-path QA. `test:golden` browser-checks the first-run dashboard, template-to-project path, marketplace automation path, and portable recovery path. `test:api` covers auth, permissions, structured records, payments, marketplace publishing, scheduler behavior, audit logs, and API persistence.
 
 ## 5. Security Gate
 

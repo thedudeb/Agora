@@ -70,6 +70,15 @@ npm run agora -- marketplace validate templates/marketplace.json
 
 `verify` runs syntax checks, fixture validation, and the API smoke test. `--quick` skips the API smoke test, and `--supabase` includes the real Supabase verifier from `.env`. `golden` browser-checks onboarding and core product paths. `bundle inspect` summarizes portable workspace exports, and `marketplace validate` checks project-template and automation-pack JSON before sharing it.
 
+The package scripts expose the same preflight path:
+
+```sh
+npm run verify:quick
+npm run verify
+npm run launch:check
+npm run verify:supabase
+```
+
 ## Supabase Storage
 
 Agora can use Supabase Postgres for API persistence without adding a Node dependency. The storage adapter talks to Supabase through PostgREST using server-only credentials.

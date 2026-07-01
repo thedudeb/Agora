@@ -99,10 +99,14 @@ npm run dev:api   # start the local API
 npm start         # serve the browser app for a host/runtime
 npm run start:api # start the API for a host/runtime
 npm run check     # syntax-check app and server files
+npm run verify:quick # syntax + portable fixture validation
+npm run verify    # syntax + fixtures + API smoke test
+npm run launch:check # quick verification + browser golden-path QA
 npm run test:api  # run the dependency-free API smoke test
 npm run test:fixtures # validate portable workspace and automation pack fixtures
 npm run test:golden # browser-check onboarding, marketplace, templates, and portable recovery
 npm run test:supabase # verify a real Supabase project end to end
+npm run verify:supabase # verify + real Supabase project checks
 npm run screenshots # refresh launch screenshots with local Chrome/Chromium
 npm run agora -- verify # power-user CLI: check + fixtures + API smoke
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
@@ -122,6 +126,27 @@ npm run agora -- screenshots
 npm run agora -- golden
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
 npm run agora -- marketplace validate templates/marketplace.json
+```
+
+## Launch Preflight
+
+Use this before pushing a release candidate:
+
+```sh
+npm run verify
+npm run launch:check
+```
+
+For a fast local confidence check while iterating:
+
+```sh
+npm run verify:quick
+```
+
+For hosted Supabase installs, configure `.env`, run both migrations, create the private storage bucket, then run:
+
+```sh
+npm run verify:supabase
 ```
 
 Demo auth and passwordless email login are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true` or `AGORA_PASSWORDLESS_AUTH=true` and restart `npm run dev:api`.
