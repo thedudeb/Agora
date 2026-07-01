@@ -2012,6 +2012,9 @@ let auditEvents = [];
 let auditLoading = false;
 let activeApiSessions = [];
 let activeApiSessionsStatus = "";
+let activeApiSessionsLoading = false;
+let activeApiSessionsRefreshedAt = "";
+let activeApiSessionsAutoRefreshKey = "";
 let marketplaceApiCatalog = null;
 let marketplaceApiLoading = false;
 let realtimePollTimer = null;
@@ -2882,6 +2885,9 @@ function clearApiSession() {
   auditEvents = [];
   activeApiSessions = [];
   activeApiSessionsStatus = "";
+  activeApiSessionsLoading = false;
+  activeApiSessionsRefreshedAt = "";
+  activeApiSessionsAutoRefreshKey = "";
   apiSessionStore.clear();
   stopRealtimePolling();
 }
@@ -3030,14 +3036,21 @@ async function refreshApiSessions(options = {}) {
   if (!apiSession) {
     activeApiSessions = [];
     activeApiSessionsStatus = "Connect the API to manage sessions.";
+    activeApiSessionsLoading = false;
+    activeApiSessionsRefreshedAt = "";
     if (!options.silent) render();
     return null;
   }
 
+  activeApiSessionsLoading = true;
+  activeApiSessionsStatus = "Refreshing active sessions...";
+  if (!options.silent) render();
   try {
     const result = await apiRequest("/api/auth/sessions");
     activeApiSessions = Array.isArray(result.sessions) ? result.sessions : [];
     activeApiSessionsStatus = result.scope === "workspace" ? "Showing workspace sessions." : "Showing your sessions.";
+    activeApiSessionsRefreshedAt = new Date().toISOString();
+    activeApiSessionsLoading = false;
     if (!options.silent) {
       render();
       showToast("Active sessions refreshed", "success");
@@ -3045,12 +3058,28 @@ async function refreshApiSessions(options = {}) {
     return result;
   } catch (error) {
     activeApiSessionsStatus = error.message;
+    activeApiSessionsLoading = false;
     if (!options.silent) {
       render();
       showToast(`Session refresh failed: ${error.message}`, "info");
     }
     return null;
   }
+}
+
+function maybeRefreshApiSessionsForSecurity() {
+  if (!apiSession || activeApiSessionsLoading) return;
+  const sessionKey = [
+    apiSession.baseUrl || "",
+    apiSession.workspaceId || "",
+    apiSession.memberId || "",
+    apiSession.userId || ""
+  ].join(":");
+  if (activeApiSessionsAutoRefreshKey === sessionKey && activeApiSessionsRefreshedAt) return;
+  activeApiSessionsAutoRefreshKey = sessionKey;
+  refreshApiSessions({ silent: true }).then(() => {
+    if (state.selectedRoute === "settings" && state.selectedSettingsTab === "security") render();
+  });
 }
 
 async function revokeApiSession(sessionId) {
@@ -5006,6 +5035,8 @@ function renderCurrentAccessPanel() {
 function renderSessionManagementPanel() {
   const sessions = activeApiSessions || [];
   const statusText = activeApiSessionsStatus || (apiSession ? "Refresh to list active API sessions." : "Connect the API to manage sessions.");
+  const currentSession = sessions.find((session) => session.current);
+  const lastChecked = activeApiSessionsRefreshedAt ? formatTimestamp(activeApiSessionsRefreshedAt) : "Not checked";
   return `
     <section class="panel access-panel">
       <div class="panel-header">
@@ -5013,7 +5044,7 @@ function renderSessionManagementPanel() {
           <p class="eyebrow">Tokens</p>
           <h2>Active sessions</h2>
         </div>
-        <button class="button button-secondary compact-button" type="button" id="api-sessions-refresh" ${apiSession ? "" : "disabled"}>Refresh</button>
+        <button class="button button-secondary compact-button" type="button" id="api-sessions-refresh" ${apiSession && !activeApiSessionsLoading ? "" : "disabled"}>${activeApiSessionsLoading ? "Refreshing" : "Refresh"}</button>
       </div>
       <p class="panel-note">Agora shows hashed token ids only. Revoke sessions after MCP demos, shared config exposure, lost devices, or old browser sessions.</p>
       <div class="switcher-report-grid">
@@ -5024,13 +5055,18 @@ function renderSessionManagementPanel() {
         </article>
         <article>
           <span>Sessions</span>
-          <strong>${sessions.length}</strong>
-          <small>${apiSession ? "Backed by the API session registry." : "No API session connected."}</small>
+          <strong>${activeApiSessionsLoading ? "..." : sessions.length}</strong>
+          <small>${apiSession ? `Last checked ${escapeHtml(lastChecked)}.` : "No API session connected."}</small>
         </article>
         <article>
           <span>Current token</span>
-          <strong>${escapeHtml(sessions.find((session) => session.current)?.id || "Unknown")}</strong>
-          <small>Current browser session cannot be shown as a raw token.</small>
+          <strong>${escapeHtml(currentSession?.id || (apiSession ? "Connected" : "Offline"))}</strong>
+          <small>${currentSession ? "Revoking this signs out this browser." : "Refresh to match the current browser token."}</small>
+        </article>
+        <article>
+          <span>Token safety</span>
+          <strong>${apiSession ? "Hashed ids" : "Offline"}</strong>
+          <small>Raw API tokens are never rendered in the session list.</small>
         </article>
       </div>
       <div class="invitation-list">
@@ -5042,6 +5078,7 @@ function renderSessionManagementPanel() {
 
 function renderApiSessionRow(session) {
   const role = workspaceRoles.find((item) => item.id === session.membership?.role);
+  const revokeLabel = session.current ? "Revoke & Sign Out" : "Revoke";
   return `
     <article class="invitation-row">
       <div>
@@ -5053,7 +5090,7 @@ function renderApiSessionRow(session) {
         <span class="status-pill ${session.current ? "inbox-green" : "inbox-neutral"}">${session.current ? "Current" : "Active"}</span>
         <small>Created ${escapeHtml(formatTimestamp(session.createdAt))}</small>
         <small>Expires ${escapeHtml(formatTimestamp(session.expiresAt))}</small>
-        <button class="button button-secondary compact-button" type="button" data-api-session-revoke="${escapeHtml(session.id)}">${session.current ? "Revoke Current" : "Revoke"}</button>
+        <button class="button button-secondary compact-button" type="button" data-api-session-revoke="${escapeHtml(session.id)}" aria-label="${escapeHtml(revokeLabel)} ${escapeHtml(session.id)}">${escapeHtml(revokeLabel)}</button>
       </div>
     </article>
   `;
@@ -23000,6 +23037,7 @@ document.addEventListener("click", (event) => {
     state.selectedSettingsTab = settingsTabFallback(settingsTabButton.dataset.settingsTab);
     saveState();
     render();
+    if (state.selectedSettingsTab === "security") maybeRefreshApiSessionsForSecurity();
     return;
   }
 
@@ -23010,6 +23048,7 @@ document.addEventListener("click", (event) => {
     openSidebarGroupForRoute("settings");
     saveState();
     render();
+    if (state.selectedSettingsTab === "security") maybeRefreshApiSessionsForSecurity();
     return;
   }
 
