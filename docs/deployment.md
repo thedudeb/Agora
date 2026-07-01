@@ -20,6 +20,7 @@ AGORA_API_PORT=8787
 AGORA_ALLOWED_ORIGINS=https://your-agora-app.example.com
 AGORA_PUBLIC_APP_URL=https://your-agora-app.example.com
 AGORA_EMAIL_FROM=Agora <no-reply@your-domain.example>
+AGORA_FEATURE_REQUEST_EMAIL=owner@your-domain.example
 AGORA_SESSION_TTL_SECONDS=28800
 AGORA_INVITATION_TTL_DAYS=14
 AGORA_PASSWORD_RESET_TTL_MINUTES=30
@@ -101,6 +102,8 @@ Only sessions with `scheduler:run` can process due reminders. Keep cron credenti
 ## Password Reset
 
 Agora supports reset-token creation and confirmation through the API. Production deployments should deliver reset tokens through SMTP or a webhook-backed email workflow.
+
+Feature requests use the same SMTP settings. Set `AGORA_FEATURE_REQUEST_EMAIL` to receive an email whenever the in-app feature request form saves a task.
 
 SMTP:
 

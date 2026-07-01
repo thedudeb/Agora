@@ -152,6 +152,7 @@
               <small class="notification-badge" id="notification-count" hidden>0</small>
             </button>
             <button class="button button-secondary" type="button" id="new-project-button">New Project</button>
+            <button class="button button-secondary" type="button" id="feature-request-button">Feature Request</button>
             <button class="button button-primary" type="button" id="new-task-button">New Task</button>
           </div>
         </header>
@@ -263,6 +264,54 @@
         <div class="modal-actions">
           <button class="button button-secondary" type="button" data-close-dialog="task-dialog">Cancel</button>
           <button class="button button-primary" type="submit">Save Task</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="modal" id="feature-request-dialog" aria-labelledby="feature-request-form-title" data-lenis-prevent>
+      <form method="dialog" id="feature-request-form" class="modal-form">
+        <div class="modal-header">
+          <div>
+            <p class="eyebrow">Feedback</p>
+            <h2 id="feature-request-form-title">Feature Request</h2>
+          </div>
+          <button class="icon-button" type="button" data-close-dialog="feature-request-dialog" aria-label="Close">x</button>
+        </div>
+
+        <label>
+          <span>Title</span>
+          <input id="feature-request-title-input" required maxlength="120" placeholder="Add client approval reminders">
+        </label>
+        <label>
+          <span>Details</span>
+          <textarea id="feature-request-details" rows="5" placeholder="What should this help people do?"></textarea>
+        </label>
+        <div class="form-grid">
+          <label>
+            <span>Project</span>
+            <select id="feature-request-project" required></select>
+          </label>
+          <label>
+            <span>Impact</span>
+            <select id="feature-request-impact" required>
+              <option value="nice-to-have">Nice to have</option>
+              <option value="workflow-blocker">Workflow blocker</option>
+              <option value="revenue-risk">Revenue risk</option>
+              <option value="bug-regression">Bug or regression</option>
+            </select>
+          </label>
+          <label>
+            <span>Your name</span>
+            <input id="feature-request-requester" maxlength="80" placeholder="Mara Chen">
+          </label>
+          <label>
+            <span>Your email</span>
+            <input id="feature-request-email" type="email" maxlength="120" placeholder="mara@example.com">
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button class="button button-secondary" type="button" data-close-dialog="feature-request-dialog">Cancel</button>
+          <button class="button button-primary" type="submit">Send Request</button>
         </div>
       </form>
     </dialog>

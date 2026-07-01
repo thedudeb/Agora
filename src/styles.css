@@ -7274,7 +7274,7 @@ body[data-density="compact"] .main-content {
 
   .topbar-actions {
     display: grid;
-    grid-template-columns: 38px minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: 38px repeat(3, minmax(0, 1fr));
     gap: 8px;
     justify-content: stretch;
   }

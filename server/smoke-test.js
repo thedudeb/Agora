@@ -355,6 +355,30 @@ async function run() {
     });
     assert(tasks.tasks.length === 1, "task list failed");
 
+    const featureRequest = await request(`${baseUrl}/api/feature-requests`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        task: {
+          id: "feature-request-smoke",
+          projectId: "project-smoke",
+          title: "Feature request: Smoke feedback",
+          status: "todo",
+          priority: "normal",
+          tags: ["feature-request", "feedback"]
+        },
+        request: {
+          title: "Smoke feedback",
+          details: "Make sure feature requests become tasks.",
+          requester: "Smoke Tester",
+          email: "smoke@example.test",
+          impact: "nice-to-have"
+        }
+      }
+    });
+    assert(featureRequest.task.id === "feature-request-smoke", "feature request task failed");
+    assert(featureRequest.email.delivered === false, "feature request email should be skipped without SMTP");
+
     const scopedInvitation = await request(`${baseUrl}/api/invitations`, {
       method: "POST",
       token: login.token,
@@ -596,9 +620,10 @@ async function run() {
     assert(workspace.snapshot.users.every((user) => !user.passwordHash && !user.passwordSalt && !user.passwordResetTokenHash), "workspace snapshot leaked auth secret fields");
     assert(workspace.snapshot.invitations.some((invite) => invite.email === "jordan@example.test" && invite.status === "accepted"), "workspace save dropped invitation state");
     assert(workspace.snapshot.projects[0].name === "Updated Smoke Project", "project not stored in workspace");
-    assert(workspace.snapshot.tasks[0].title === "Updated Smoke Task", "task not stored in workspace");
+    const smokeTask = workspace.snapshot.tasks.find((task) => task.id === "task-smoke");
+    assert(smokeTask?.title === "Updated Smoke Task", "task not stored in workspace");
     assert(workspace.snapshot.projects[0].archivedAt, "project archive not stored in workspace");
-    assert(workspace.snapshot.tasks[0].archivedAt, "project archive did not archive task");
+    assert(smokeTask.archivedAt, "project archive did not archive task");
     assert(workspace.snapshot.comments.some((comment) => comment.body === "Smoke test comment"), "comment not stored in workspace");
     assert(workspace.snapshot.comments.some((comment) => comment.author === accepted.user.id), "member comment author not stored correctly");
     assert(workspace.snapshot.timeEntries.some((entry) => entry.memberId === accepted.user.id), "member time entry not stored correctly");

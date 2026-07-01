@@ -584,6 +584,18 @@ function createServer(options = {}) {
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/feature-requests") {
+        if (!hasPermission(session, "tasks:write")) {
+          sendError(response, 403, "Missing tasks write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const task = await upsertTask(storage, body.task || body, session, "feature_request");
+        const email = await deliverFeatureRequest({ task, request: body.request || {}, session });
+        sendJson(response, 201, { task, email });
+        return;
+      }
+
       const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
       const taskRestoreMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/restore$/);
       if (taskRestoreMatch && request.method === "POST") {
@@ -1901,6 +1913,53 @@ async function deliverPasswordReset(user, token, expiresAt) {
   publicError(500, `Unsupported password reset delivery mode: ${mode}`);
 }
 
+async function deliverFeatureRequest({ task, request, session }) {
+  const to = cleanString(process.env.AGORA_FEATURE_REQUEST_EMAIL || process.env.AGORA_OWNER_EMAIL);
+  if (!to) {
+    return { mode: "not-configured", delivered: false, reason: "Set AGORA_FEATURE_REQUEST_EMAIL to receive feature request emails." };
+  }
+
+  const smtpHost = cleanString(process.env.AGORA_SMTP_HOST || process.env.SMTP_HOST);
+  if (!smtpHost) {
+    return { mode: "not-configured", delivered: false, reason: "Set AGORA_SMTP_HOST to send feature request emails." };
+  }
+
+  try {
+    await sendSmtpMail(featureRequestPayload({ task, request, session, to }));
+    return { mode: "smtp", delivered: true, to };
+  } catch (error) {
+    return { mode: "smtp", delivered: false, to, error: error.message };
+  }
+}
+
+function featureRequestPayload({ task, request, session, to }) {
+  const projectName = cleanString(request.projectName || "");
+  const requester = cleanString(request.requester || session.user.name || session.user.email);
+  const requesterEmail = cleanString(request.email || session.user.email || "");
+  const impact = cleanString(request.impactLabel || request.impact || task.customFields?.impact || "feature-request");
+  const details = cleanString(request.details || task.description || "No details provided.");
+  return {
+    to,
+    from: cleanString(process.env.AGORA_EMAIL_FROM || process.env.SMTP_FROM || "Agora <no-reply@localhost>"),
+    subject: smtpHeader(`Agora feature request: ${task.title.replace(/^Feature request:\s*/i, "")}`),
+    text: [
+      "A feature request was submitted in Agora.",
+      "",
+      `Workspace: ${workspace.name}`,
+      `Project: ${projectName || task.projectId}`,
+      `Task: ${task.title}`,
+      `Task ID: ${task.id}`,
+      `Impact: ${impact}`,
+      `Submitted by: ${requester}${requesterEmail ? ` <${requesterEmail}>` : ""}`,
+      "",
+      "Details:",
+      details,
+      "",
+      "The request was also saved as a task on the board."
+    ].join("\n")
+  };
+}
+
 function passwordResetPayload(user, token, expiresAt) {
   const appUrl = cleanString(process.env.AGORA_PUBLIC_APP_URL || process.env.AGORA_APP_URL || "http://127.0.0.1:5174").replace(/\/+$/, "");
   const resetUrl = `${appUrl}/#settings?resetToken=${encodeURIComponent(token)}&email=${encodeURIComponent(user.email)}`;
@@ -2057,6 +2116,10 @@ function smtpMessage(payload) {
     "",
     payload.text.replace(/^\./gm, "..")
   ].join("\r\n");
+}
+
+function smtpHeader(value) {
+  return cleanString(value).replace(/[\r\n]+/g, " ").slice(0, 240);
 }
 
 function emailAddress(value) {

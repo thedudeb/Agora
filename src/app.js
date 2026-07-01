@@ -1969,6 +1969,8 @@ const els = {
   taskDialog: document.querySelector("#task-dialog"),
   taskForm: document.querySelector("#task-form"),
   taskFormTitle: document.querySelector("#task-form-title"),
+  featureRequestDialog: document.querySelector("#feature-request-dialog"),
+  featureRequestForm: document.querySelector("#feature-request-form"),
   projectDialog: document.querySelector("#project-dialog"),
   projectForm: document.querySelector("#project-form"),
   companyDialog: document.querySelector("#company-dialog"),
@@ -6419,6 +6421,14 @@ function commandPaletteBaseItems() {
       keywords: "task todo issue card"
     },
     {
+      id: "create:feature-request",
+      title: "Feature request",
+      detail: "Send feedback to the taskboard and owner inbox",
+      group: "Create",
+      keywords: "feature request feedback idea product",
+      disabled: !canWrite("tasks:write")
+    },
+    {
       id: "create:project",
       title: "New project",
       detail: "Start a project with owner, company, and dates",
@@ -6657,7 +6667,7 @@ function isShortcutTypingTarget(target) {
 }
 
 function isBlockingShortcutDialogOpen() {
-  return [els.taskDialog, els.projectDialog, els.companyDialog, els.workspaceDialog]
+  return [els.taskDialog, els.featureRequestDialog, els.projectDialog, els.companyDialog, els.workspaceDialog]
     .some((dialog) => dialog?.open);
 }
 
@@ -6854,6 +6864,11 @@ function executeCommand(commandId) {
     }
     populateTaskForm();
     openDialog(els.taskDialog);
+    return;
+  }
+
+  if (commandId === "create:feature-request") {
+    openFeatureRequestDialog();
     return;
   }
 
@@ -9450,6 +9465,12 @@ function renderPermissionChrome() {
     newTaskButton.hidden = client;
     newTaskButton.disabled = !canWrite("tasks:write");
     newTaskButton.title = canWrite("tasks:write") ? "" : "Your role cannot create tasks.";
+  }
+  const featureRequestButton = document.querySelector("#feature-request-button");
+  if (featureRequestButton) {
+    featureRequestButton.hidden = client;
+    featureRequestButton.disabled = !canWrite("tasks:write");
+    featureRequestButton.title = canWrite("tasks:write") ? "" : "Your role cannot submit feature requests.";
   }
   const notificationButton = document.querySelector("#notification-button");
   if (notificationButton) notificationButton.hidden = client;
@@ -16565,6 +16586,100 @@ function populateTaskForm(task = null) {
   renderTaskTimeTracking(task?.id || "");
 }
 
+function openFeatureRequestDialog() {
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot submit feature requests", "info");
+    return;
+  }
+  if (!activeProjects().length) {
+    showToast("Create a project before sending feature requests", "info");
+    return;
+  }
+  populateFeatureRequestForm();
+  openDialog(els.featureRequestDialog);
+}
+
+function populateFeatureRequestForm() {
+  const projectOptions = activeProjects();
+  const selectedProject = projectOptions.some((project) => project.id === state.selectedProject)
+    ? state.selectedProject
+    : projectOptions[0]?.id;
+  fillSelect("#feature-request-project", projectOptions, selectedProject, "name");
+  document.querySelector("#feature-request-title-input").value = "";
+  document.querySelector("#feature-request-details").value = "";
+  document.querySelector("#feature-request-impact").value = "nice-to-have";
+  document.querySelector("#feature-request-requester").value = apiSession?.user?.name || memberName(activeMemberId());
+  document.querySelector("#feature-request-email").value = apiSession?.user?.email || "";
+}
+
+function featureRequestPriority(impact) {
+  if (impact === "workflow-blocker" || impact === "bug-regression") return "urgent";
+  if (impact === "revenue-risk") return "high";
+  return "normal";
+}
+
+function featureRequestImpactLabel(impact) {
+  return {
+    "nice-to-have": "Nice to have",
+    "workflow-blocker": "Workflow blocker",
+    "revenue-risk": "Revenue risk",
+    "bug-regression": "Bug or regression"
+  }[impact] || "Nice to have";
+}
+
+function featureRequestDescription({ requester, email, impact, details }) {
+  return [
+    `Requester: ${requester || "Unknown"}`,
+    `Email: ${email || "Not provided"}`,
+    `Impact: ${featureRequestImpactLabel(impact)}`,
+    "",
+    details || "No additional details provided."
+  ].join("\n");
+}
+
+function createFeatureRequestTask(payload) {
+  const now = new Date().toISOString();
+  const task = normalizeTaskRecord({
+    id: uid("task"),
+    projectId: payload.projectId,
+    title: `Feature request: ${payload.title}`,
+    description: featureRequestDescription(payload),
+    assignee: activeMemberId(),
+    status: "todo",
+    priority: featureRequestPriority(payload.impact),
+    startDate: todayKey(),
+    dueDate: "",
+    blockedBy: [],
+    tags: ["feature-request", "feedback", ...(payload.impact === "bug-regression" ? ["bug"] : [])],
+    subtasks: [],
+    customFields: {
+      requestType: "feature-request",
+      requester: payload.requester,
+      requesterEmail: payload.email,
+      impact: featureRequestImpactLabel(payload.impact)
+    },
+    createdAt: now,
+    updatedAt: now
+  });
+
+  state.tasks = [task, ...state.tasks];
+  state.selectedRoute = "board";
+  state.selectedProject = "all";
+  state.filters = { ...state.filters, assignee: "all", status: "all", priority: "all", query: "" };
+  openSidebarGroupForRoute("board");
+  addActivity({
+    projectId: task.projectId,
+    taskId: task.id,
+    type: "task_create",
+    message: `captured feature request ${payload.title}`
+  });
+  saveState();
+  closeDialog(els.featureRequestDialog);
+  render();
+  showToast("Feature request added to the taskboard", "success");
+  syncFeatureRequestToApi(task, payload);
+}
+
 function showTaskEditWarning(task) {
   const warning = document.querySelector("#task-edit-warning");
   if (!warning || !task) return;
@@ -20258,6 +20373,35 @@ async function syncTaskToApi(task, action = "Task synced", isNew = false) {
   }
 }
 
+async function syncFeatureRequestToApi(task, request) {
+  if (!apiSession) return;
+
+  try {
+    const result = await apiRequest("/api/feature-requests", {
+      method: "POST",
+      body: { task, request }
+    });
+    if (result.task && mergeCoreRecordsFromApi({ tasks: [result.task] })) {
+      saveState();
+      render();
+    }
+    if (result.email?.delivered) {
+      showToast("Feature request emailed", "success");
+    } else {
+      showToast("Feature request saved. Email delivery is not configured.", "info");
+    }
+  } catch (error) {
+    queueApiSyncFailure({
+      label: "Feature request",
+      path: "/api/feature-requests",
+      method: "POST",
+      body: { task, request },
+      error: error.message
+    });
+    showToast(`Feature request saved locally. Email/API sync failed: ${error.message}`, "info");
+  }
+}
+
 async function syncTaskArchiveToApi(taskId) {
   if (!apiSession) return;
 
@@ -21606,6 +21750,8 @@ document.querySelector("#new-task-button").addEventListener("click", () => {
   openDialog(els.taskDialog);
 });
 
+document.querySelector("#feature-request-button").addEventListener("click", openFeatureRequestDialog);
+
 document.querySelector("#new-project-button").addEventListener("click", () => {
   if (!canWrite("projects:write")) {
     showToast("Your role cannot create projects", "info");
@@ -21615,7 +21761,7 @@ document.querySelector("#new-project-button").addEventListener("click", () => {
   openDialog(els.projectDialog);
 });
 
-[els.taskDialog, els.projectDialog, els.companyDialog, els.workspaceDialog, els.commandDialog, els.shortcutsDialog].filter(Boolean).forEach((dialog) => {
+[els.taskDialog, els.featureRequestDialog, els.projectDialog, els.companyDialog, els.workspaceDialog, els.commandDialog, els.shortcutsDialog].filter(Boolean).forEach((dialog) => {
   dialog.addEventListener("close", () => {
     if (dialog === els.taskDialog) {
       const taskId = document.querySelector("#task-id")?.value || "";
@@ -21843,6 +21989,32 @@ els.taskForm.addEventListener("submit", (event) => {
   render();
   showToast(existingTask ? "Task updated" : "Task created", "success");
   syncTaskToApi(task, existingTask ? "Task synced to API" : "Task created in API", !existingTask);
+});
+
+els.featureRequestForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot submit feature requests", "info");
+    return;
+  }
+
+  const title = document.querySelector("#feature-request-title-input").value.trim();
+  const projectId = document.querySelector("#feature-request-project").value;
+  if (!title || !projectId) {
+    showToast("Feature requests need a title and project", "info");
+    return;
+  }
+
+  createFeatureRequestTask({
+    projectId,
+    projectName: byId(state.projects, projectId)?.name || projectId,
+    title,
+    details: document.querySelector("#feature-request-details").value.trim(),
+    requester: document.querySelector("#feature-request-requester").value.trim(),
+    email: document.querySelector("#feature-request-email").value.trim(),
+    impact: document.querySelector("#feature-request-impact").value,
+    impactLabel: featureRequestImpactLabel(document.querySelector("#feature-request-impact").value)
+  });
 });
 
 els.projectForm.addEventListener("submit", (event) => {

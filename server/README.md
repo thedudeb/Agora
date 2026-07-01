@@ -160,6 +160,7 @@ The verifier starts a temporary Agora API server with Supabase storage, uses a u
 - `POST /api/projects/:id/restore`: restores an archived project for admin/project-manager roles.
 - `GET /api/tasks`: lists the current session's canonical tasks for API-connected clients. Supports `?projectId=...`.
 - `POST /api/tasks`: creates a task for admin/project-manager roles.
+- `POST /api/feature-requests`: creates a feature-request task and sends an owner email when `AGORA_FEATURE_REQUEST_EMAIL` and SMTP are configured.
 - `PUT /api/tasks/:id`: updates a task for admin/project-manager roles.
 - `DELETE /api/tasks/:id`: archives a task for admin/project-manager roles.
 - `POST /api/tasks/:id/restore`: restores an archived task for admin/project-manager roles.
