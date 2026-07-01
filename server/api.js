@@ -673,6 +673,17 @@ function createServer(options = {}) {
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/api/auth/sessions") {
+        sendJson(response, 200, listActiveSessions(session));
+        return;
+      }
+
+      const sessionRevokeMatch = url.pathname.match(/^\/api\/auth\/sessions\/([^/]+)$/);
+      if (sessionRevokeMatch && request.method === "DELETE") {
+        sendJson(response, 200, revokeActiveSession(session, decodeURIComponent(sessionRevokeMatch[1])));
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/auth/change-password") {
         const body = await readJsonBody(request);
         const result = await changePassword(storage, session, body);
@@ -2317,6 +2328,61 @@ async function requireSession(request, response, storage) {
 function isSessionExpired(session) {
   const expiresAt = Date.parse(session?.expiresAt || "");
   return Number.isFinite(expiresAt) && expiresAt <= Date.now();
+}
+
+function listActiveSessions(currentSession) {
+  const canSeeAll = hasPermission(currentSession, "members:write");
+  const activeSessions = Array.from(sessions.values()).filter((item) => {
+    if (isSessionExpired(item)) {
+      sessions.delete(item.token);
+      return false;
+    }
+    return canSeeAll || item.user.id === currentSession.user.id;
+  });
+
+  return {
+    sessions: activeSessions.map((item) => publicSessionToken(item, currentSession)),
+    scope: canSeeAll ? "workspace" : "self"
+  };
+}
+
+function revokeActiveSession(currentSession, tokenId) {
+  const target = Array.from(sessions.values()).find((item) => sessionTokenId(item.token) === tokenId);
+  if (!target || isSessionExpired(target)) {
+    if (target) sessions.delete(target.token);
+    publicError(404, "Session token not found");
+  }
+
+  if (target.user.id !== currentSession.user.id && !hasPermission(currentSession, "members:write")) {
+    publicError(403, "Missing members write permission");
+  }
+
+  sessions.delete(target.token);
+  return {
+    ok: true,
+    revoked: sessionTokenId(target.token),
+    current: target.token === currentSession.token
+  };
+}
+
+function publicSessionToken(session, currentSession) {
+  return {
+    id: sessionTokenId(session.token),
+    current: session.token === currentSession.token,
+    user: session.user,
+    membership: {
+      role: session.membership.role,
+      status: session.membership.status,
+      companyId: cleanString(session.membership.companyId)
+    },
+    permissions: session.permissions,
+    createdAt: session.createdAt,
+    expiresAt: session.expiresAt
+  };
+}
+
+function sessionTokenId(token) {
+  return crypto.createHash("sha256").update(cleanString(token)).digest("hex").slice(0, 24);
 }
 
 function supabaseAuthEnabled() {

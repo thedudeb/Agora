@@ -45,7 +45,7 @@ Residual risks:
 ## Next Security Steps
 
 - Add a dedicated MCP integration test that starts a temporary API, logs in, and calls read/write tools with writes both disabled and enabled.
-- Add token creation and revocation UX for short-lived automation tokens.
+- Add UI around the active-session revocation API and then dedicated short-lived automation tokens.
 - Add optional per-tool allowlists, for example `AGORA_MCP_TOOLS=list_tasks,get_task`.
 - Add a remote MCP design only after OAuth, origin checks, rate limits, and audit logging are specified.
 - Add deeper server-side audit entries for MCP write tool calls with client name, tool name, target id, and rationale when available.

@@ -60,6 +60,31 @@ async function run() {
     });
     assert(access.users.length === 4, "member list did not include demo users");
 
+    const secondLogin = await request(`${baseUrl}/api/auth/demo-login`, {
+      method: "POST",
+      body: { memberId: "mara" }
+    });
+    assert(secondLogin.token && secondLogin.token !== login.token, "second demo login did not create a distinct token");
+
+    const activeSessions = await request(`${baseUrl}/api/auth/sessions`, {
+      token: login.token
+    });
+    assert(activeSessions.scope === "workspace", "admin session list should include workspace scope");
+    assert(activeSessions.sessions.some((item) => item.current === true && item.user.id === "mara"), "session list did not include current session");
+    const secondSession = activeSessions.sessions.find((item) => item.current === false && item.user.id === "mara");
+    assert(secondSession?.id, "session list did not expose second session id");
+    assert(!secondSession.id.includes(secondLogin.token), "session list leaked raw token");
+
+    const revokedSession = await request(`${baseUrl}/api/auth/sessions/${secondSession.id}`, {
+      method: "DELETE",
+      token: login.token
+    });
+    assert(revokedSession.ok === true && revokedSession.revoked === secondSession.id, "session revoke did not return revoked id");
+    const revokedAccess = await requestError(`${baseUrl}/api/session`, {
+      token: secondLogin.token
+    });
+    assert(revokedAccess.status === 401, "revoked token should not authenticate");
+
     let backendHealth = await request(`${baseUrl}/api/backend/health`, {
       token: login.token
     });

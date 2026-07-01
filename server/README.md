@@ -153,6 +153,8 @@ The verifier starts a temporary Agora API server with Supabase storage, uses a u
 - `POST /api/auth/supabase-login`: exchanges a Supabase Auth access token for an Agora API session when `AGORA_AUTH_DRIVER=supabase`. Body: `{ "accessToken": "supabase-access-token" }`.
 - `POST /api/auth/logout`: clears the current session.
 - `GET /api/session`: returns the current authenticated session.
+- `GET /api/auth/sessions`: lists active in-memory Agora sessions visible to the current user. Admins can see workspace sessions; other users see their own. Returned ids are hashes, not raw tokens.
+- `DELETE /api/auth/sessions/:id`: revokes an active in-memory Agora session by hashed id. Users can revoke their own sessions; admins can revoke workspace sessions.
 - `GET /api/members`: returns workspace users, memberships, and invitations.
 - `GET /api/invitations`: lists workspace invitations for admins.
 - `POST /api/invitations`: creates or refreshes an invitation for admins. Body: `{ "email": "jordan@example.com", "name": "Jordan Lee", "role": "member", "companyId": "optional-company-id" }`.

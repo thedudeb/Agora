@@ -128,7 +128,7 @@ Successful write tools also attempt to create an `mcp_tool` activity record on t
 
 - Prefer local API URLs or trusted private network URLs.
 - Use least-privilege sessions. A client-scoped token should be enough for client review workflows.
-- Rotate the token after demos, screen shares, exported configs, or accidental prompt/log exposure.
+- Rotate the token after demos, screen shares, exported configs, or accidental prompt/log exposure. Use `GET /api/auth/sessions` and `DELETE /api/auth/sessions/:id` to find and revoke active in-memory Agora sessions.
 - Keep `AGORA_MCP_ALLOW_WRITES=false` unless the client is trusted and the workflow needs writes.
 - Let the MCP host ask for human approval before running write tools.
 - Do not paste service-role keys, AI provider keys, SMTP passwords, Stripe keys, x402 keys, or Supabase service keys into MCP configs.

@@ -20,7 +20,7 @@ Agents can use any session token accepted by Agora:
 - Passwordless login when intentionally enabled: `POST /api/auth/login`
 - Demo login only when `AGORA_DEMO_AUTH=true` in trusted local demos: `POST /api/auth/demo-login`
 
-Production agents should use short-lived user sessions where possible and rotate tokens after demos, screenshots, exports, or handoffs.
+Production agents should use short-lived user sessions where possible and rotate tokens after demos, screenshots, exports, or handoffs. API-connected clients can list active in-memory Agora sessions with `GET /api/auth/sessions` and revoke one with `DELETE /api/auth/sessions/:id`; returned ids are hashed token identifiers, not raw bearer tokens.
 
 ## Roles And Permission Surface
 
@@ -106,4 +106,3 @@ Agent actions should be attributable to a user session and should include plain-
 - The role and company scope used for the action.
 - A preview of each write.
 - The undo or recovery path when one exists.
-
