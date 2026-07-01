@@ -4127,12 +4127,21 @@ function normalizeComment(comment) {
   if (!comment.id || !comment.taskId || !comment.body) {
     publicError(400, "Comment requires id, taskId, and body");
   }
+  const kind = cleanString(comment.kind);
+  const status = cleanString(comment.status);
   return {
     id: String(comment.id),
     taskId: String(comment.taskId),
+    parentId: comment.parentId ? String(comment.parentId) : "",
     author: comment.author ? String(comment.author) : "",
     body: String(comment.body),
-    createdAt: comment.createdAt ? String(comment.createdAt) : new Date().toISOString()
+    kind: ["comment", "question", "decision"].includes(kind) ? kind : "comment",
+    status: ["open", "resolved"].includes(status) ? status : "open",
+    mentionIds: Array.isArray(comment.mentionIds) ? comment.mentionIds.map(String) : [],
+    resolvedAt: comment.resolvedAt ? String(comment.resolvedAt) : "",
+    resolvedBy: comment.resolvedBy ? String(comment.resolvedBy) : "",
+    createdAt: comment.createdAt ? String(comment.createdAt) : new Date().toISOString(),
+    updatedAt: comment.updatedAt ? String(comment.updatedAt) : comment.createdAt ? String(comment.createdAt) : new Date().toISOString()
   };
 }
 

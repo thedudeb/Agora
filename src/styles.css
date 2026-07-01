@@ -6905,6 +6905,22 @@ body[data-density="compact"] .main-content {
   border-radius: 8px;
 }
 
+.comment-item.is-reply {
+  margin-left: 16px;
+  background: var(--surface);
+}
+
+.comment-item.is-resolved {
+  opacity: 0.78;
+}
+
+.comment-meta > span {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
 .comment-item p,
 .activity-item p {
   margin: 0;
@@ -6913,6 +6929,19 @@ body[data-density="compact"] .main-content {
 
 .comment-meta {
   margin-bottom: 6px;
+}
+
+.comment-mentions,
+.comment-actions,
+.comment-replies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.comment-replies {
+  display: grid;
 }
 
 .comment-meta small,
@@ -6925,6 +6954,32 @@ body[data-density="compact"] .main-content {
   display: grid;
   gap: 8px;
   margin-top: 10px;
+}
+
+.comment-composer-options {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.5fr) minmax(180px, 1fr);
+  gap: 8px;
+}
+
+.mention-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mention-picker label {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 999px;
 }
 
 .comment-composer .button,

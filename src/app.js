@@ -2267,6 +2267,7 @@ function normalizeState(nextState) {
     chatMessages: normalizeChatMessages(nextState.chatMessages),
     whiteboards: normalizeWhiteboards(nextState.whiteboards),
     approvals: Array.isArray(nextState.approvals) ? nextState.approvals : seedData.approvals,
+    comments: normalizeComments(nextState.comments),
     raidItems: normalizeRaidItems(nextState.raidItems),
     customFields: Array.isArray(nextState.customFields) ? nextState.customFields : seedData.customFields,
     documents: Array.isArray(nextState.documents) ? nextState.documents : seedData.documents,
@@ -2460,6 +2461,39 @@ function normalizeNotificationReminders(reminders = []) {
     }))
     .filter((reminder) => reminder.sourceId && reminder.remindAt)
     .slice(0, 100);
+}
+
+function normalizeCommentKind(kind = "comment") {
+  return ["comment", "question", "decision"].includes(kind) ? kind : "comment";
+}
+
+function normalizeCommentStatus(status = "open") {
+  return ["open", "resolved"].includes(status) ? status : "open";
+}
+
+function normalizeComments(comments = []) {
+  const source = Array.isArray(comments) ? comments : seedData.comments;
+  return source
+    .filter((comment) => comment && typeof comment === "object")
+    .map((comment) => {
+      const mentionIds = Array.isArray(comment.mentionIds) ? comment.mentionIds.map(String).filter(Boolean) : [];
+      return {
+        id: comment.id || uid("comment"),
+        taskId: String(comment.taskId || ""),
+        parentId: String(comment.parentId || "") === String(comment.id || "") ? "" : String(comment.parentId || ""),
+        author: String(comment.author || currentMemberId),
+        body: String(comment.body || "").trim().slice(0, 1200),
+        kind: normalizeCommentKind(comment.kind),
+        status: normalizeCommentStatus(comment.status),
+        mentionIds: Array.from(new Set(mentionIds)),
+        resolvedAt: comment.resolvedAt ? String(comment.resolvedAt) : "",
+        resolvedBy: comment.resolvedBy ? String(comment.resolvedBy) : "",
+        createdAt: comment.createdAt || new Date().toISOString(),
+        updatedAt: comment.updatedAt || comment.createdAt || new Date().toISOString()
+      };
+    })
+    .filter((comment) => comment.taskId && comment.body)
+    .slice(0, 500);
 }
 
 function normalizeChatMessages(messages = []) {
@@ -3060,6 +3094,7 @@ function normalizeCompanyRecord(company = {}) {
 
 function normalizeCollectionRecords(collection, items = []) {
   if (collection === "companies") return items.map(normalizeCompanyRecord).filter((company) => company.id);
+  if (collection === "comments") return normalizeComments(items);
   if (collection === "chatMessages") return normalizeChatMessages(items);
   if (collection === "whiteboards") return normalizeWhiteboards(items);
   if (collection === "notificationReminders") return normalizeNotificationReminders(items);
@@ -7513,8 +7548,10 @@ function mentionTokensFromText(value) {
 
 function mentionedMembers(comment) {
   const tokens = new Set(mentionTokensFromText(comment.body));
-  if (!tokens.size) return [];
+  const explicitMentions = new Set(Array.isArray(comment.mentionIds) ? comment.mentionIds : []);
+  if (!tokens.size && !explicitMentions.size) return [];
   return workspaceMembers().filter((member) => {
+    if (explicitMentions.has(member.id)) return true;
     const memberTokens = memberMentionTokens(member);
     return Array.from(tokens).some((token) => memberTokens.has(token));
   });
@@ -8679,6 +8716,22 @@ function getTaskComments(taskId) {
   return state.comments
     .filter((comment) => comment.taskId === taskId)
     .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+}
+
+function rootTaskComments(taskId) {
+  const taskComments = getTaskComments(taskId);
+  const ids = new Set(taskComments.map((comment) => comment.id));
+  return taskComments.filter((comment) => !comment.parentId || !ids.has(comment.parentId));
+}
+
+function commentReplies(commentId) {
+  return state.comments
+    .filter((comment) => comment.parentId === commentId)
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+}
+
+function openCommentCount(taskId) {
+  return getTaskComments(taskId).filter((comment) => comment.status !== "resolved").length;
 }
 
 function getProjectActivity(projectId, limit = 6) {
@@ -13148,6 +13201,8 @@ function renderTaskCollaboration(taskId = "") {
   }
 
   const comments = getTaskComments(taskId);
+  const rootComments = rootTaskComments(taskId);
+  const openComments = openCommentCount(taskId);
   const activities = getTaskActivity(taskId, 5);
   const presence = collaborationPresenceForTask(taskId);
   const liveViewers = livePresenceMembers({ taskId });
@@ -13166,7 +13221,7 @@ function renderTaskCollaboration(taskId = "") {
       <section>
         <div class="collaboration-header">
           <p class="eyebrow">Comments</p>
-          <span>${comments.length}</span>
+          <span>${openComments}/${comments.length}</span>
         </div>
         ${liveViewers.length ? `
           <div class="live-viewer-row" aria-label="Viewing this task now">
@@ -13180,9 +13235,34 @@ function renderTaskCollaboration(taskId = "") {
           ${presence.map((member) => `<span class="presence-pill"><span class="avatar">${member.name.split(" ").map((part) => part[0]).join("")}</span>${escapeHtml(member.name)}</span>`).join("")}
         </div>
         <div class="comment-list">
-          ${comments.length ? comments.map(renderComment).join("") : emptyState("No comments yet.")}
+          ${rootComments.length ? rootComments.map((comment) => renderComment(comment)).join("") : emptyState("No comments yet.")}
         </div>
         <div class="comment-composer">
+          <div class="comment-composer-options">
+            <label>
+              <span>Type</span>
+              <select id="comment-kind">
+                <option value="comment">Comment</option>
+                <option value="question">Question</option>
+                <option value="decision">Decision</option>
+              </select>
+            </label>
+            <label>
+              <span>Reply to</span>
+              <select id="comment-parent">
+                <option value="">New thread</option>
+                ${rootComments.map((comment) => `<option value="${comment.id}">${escapeHtml(`${memberName(comment.author)}: ${comment.body.slice(0, 42)}`)}</option>`).join("")}
+              </select>
+            </label>
+          </div>
+          <div class="mention-picker" aria-label="Mention teammates">
+            ${workspaceMembers().map((member) => `
+              <label>
+                <input type="checkbox" data-comment-mention="${member.id}">
+                <span>@${escapeHtml(member.name.split(" ")[0] || member.name)}</span>
+              </label>
+            `).join("")}
+          </div>
           <textarea id="comment-body" rows="3" placeholder="Add a comment or @mention a teammate"></textarea>
           <button class="button button-secondary" type="button" id="comment-submit">Comment</button>
         </div>
@@ -13431,16 +13511,53 @@ function renderCommentBody(body) {
   return escapeHtml(body).replace(/@([a-z0-9._-]+)/gi, '<span class="mention-token">@$1</span>');
 }
 
-function renderComment(comment) {
+function commentKindLabel(kind) {
+  return {
+    comment: "Comment",
+    question: "Question",
+    decision: "Decision"
+  }[normalizeCommentKind(kind)] || "Comment";
+}
+
+function commentTone(comment) {
+  if (comment.status === "resolved") return "green";
+  if (comment.kind === "decision") return "blue";
+  if (comment.kind === "question") return "amber";
+  return "neutral";
+}
+
+function renderCommentMentionChips(comment) {
+  const mentioned = mentionedMembers(comment);
+  if (!mentioned.length) return "";
   return `
-    <article class="comment-item">
+    <div class="comment-mentions" aria-label="Mentioned teammates">
+      ${mentioned.map((member) => `<span class="mention-token">@${escapeHtml(member.name.split(" ")[0] || member.name)}</span>`).join("")}
+    </div>
+  `;
+}
+
+function renderComment(comment, depth = 0) {
+  const replies = commentReplies(comment.id);
+  const canManage = comment.author === activeMemberId() || canWrite("comments:write");
+  return `
+    <article class="comment-item ${comment.status === "resolved" ? "is-resolved" : ""} ${depth ? "is-reply" : ""}">
       <span class="avatar">${memberName(comment.author).split(" ").map((part) => part[0]).join("")}</span>
       <div>
         <div class="comment-meta">
-          <strong>${memberName(comment.author)}</strong>
-          <small>${formatTimestamp(comment.createdAt)}</small>
+          <span>
+            <strong>${memberName(comment.author)}</strong>
+            <span class="status-pill inbox-${commentTone(comment)}">${escapeHtml(comment.status === "resolved" ? "Resolved" : commentKindLabel(comment.kind))}</span>
+          </span>
+          <small>${formatTimestamp(comment.updatedAt || comment.createdAt)}</small>
         </div>
         <p>${renderCommentBody(comment.body)}</p>
+        ${renderCommentMentionChips(comment)}
+        <div class="comment-actions">
+          ${depth ? "" : `<button class="button button-secondary compact-button" type="button" data-comment-reply="${comment.id}">Reply</button>`}
+          ${comment.kind === "decision" ? "" : `<button class="button button-secondary compact-button" type="button" data-comment-kind="decision" data-comment-id="${comment.id}">Mark Decision</button>`}
+          ${canManage ? `<button class="button button-secondary compact-button" type="button" data-comment-status="${comment.status === "resolved" ? "open" : "resolved"}" data-comment-id="${comment.id}">${comment.status === "resolved" ? "Reopen" : "Resolve"}</button>` : ""}
+        </div>
+        ${replies.length ? `<div class="comment-replies">${replies.map((reply) => renderComment(reply, depth + 1)).join("")}</div>` : ""}
       </div>
     </article>
   `;
@@ -17828,21 +17945,44 @@ function addTaskComment() {
   const task = byId(state.tasks, taskId);
   if (!task || !body) return;
 
+  const mentionIds = Array.from(document.querySelectorAll("[data-comment-mention]:checked"))
+    .map((input) => input.dataset.commentMention)
+    .filter(Boolean);
+  const kind = normalizeCommentKind(document.querySelector("#comment-kind")?.value || "comment");
+  const parentId = document.querySelector("#comment-parent")?.value || "";
+  const now = new Date().toISOString();
   const comment = {
     id: uid("comment"),
     taskId,
+    parentId,
     author: activeMemberId(),
     body,
-    createdAt: new Date().toISOString()
+    kind,
+    status: "open",
+    mentionIds,
+    resolvedAt: "",
+    resolvedBy: "",
+    createdAt: now,
+    updatedAt: now
   };
-  state.comments = [comment, ...state.comments];
+  state.comments = normalizeComments([comment, ...state.comments]);
   setTaskWatching(taskId, true);
+  mentionedMembers(comment).forEach((member) => {
+    if (member.id === activeMemberId()) return;
+    logNotificationHistory({
+      kind: "mention",
+      title: `Mentioned ${member.name}`,
+      message: `${memberName(activeMemberId())} mentioned ${member.name} on ${task.title}.`,
+      reason: body.slice(0, 180),
+      channel: "in-app"
+    });
+  });
 
   addActivity({
     projectId: task.projectId,
     taskId,
-    type: "comment",
-    message: `commented on ${task.title}`
+    type: kind === "decision" ? "decision" : "comment",
+    message: `${parentId ? "replied on" : kind === "decision" ? "recorded a decision on" : "commented on"} ${task.title}`
   });
 
   saveState();
@@ -17850,6 +17990,54 @@ function addTaskComment() {
   render();
   showToast("Comment added", "success");
   syncCommentToApi(comment, "Comment synced to API");
+}
+
+function setCommentReplyTarget(commentId) {
+  const parentSelect = document.querySelector("#comment-parent");
+  const bodyInput = document.querySelector("#comment-body");
+  if (!parentSelect || !bodyInput) return;
+  parentSelect.value = commentId;
+  bodyInput.focus();
+  showToast("Reply target selected", "info");
+}
+
+function updateCommentRecord(commentId, updates = {}) {
+  const existing = state.comments.find((comment) => comment.id === commentId);
+  if (!existing) return;
+  const now = new Date().toISOString();
+  const nextComment = {
+    ...existing,
+    ...updates,
+    kind: updates.kind ? normalizeCommentKind(updates.kind) : normalizeCommentKind(existing.kind),
+    status: updates.status ? normalizeCommentStatus(updates.status) : normalizeCommentStatus(existing.status),
+    updatedAt: now
+  };
+  if (updates.status === "resolved") {
+    nextComment.resolvedAt = now;
+    nextComment.resolvedBy = activeMemberId();
+  } else if (updates.status === "open") {
+    nextComment.resolvedAt = "";
+    nextComment.resolvedBy = "";
+  }
+  state.comments = normalizeComments(state.comments.map((comment) => comment.id === commentId ? nextComment : comment));
+  const task = byId(state.tasks, nextComment.taskId);
+  if (task) {
+    addActivity({
+      projectId: task.projectId,
+      taskId: task.id,
+      type: nextComment.status === "resolved" ? "comment_resolved" : nextComment.kind === "decision" ? "decision" : "comment_update",
+      message: nextComment.status === "resolved"
+        ? `resolved a thread on ${task.title}`
+        : nextComment.kind === "decision"
+          ? `marked a decision on ${task.title}`
+          : `updated a comment on ${task.title}`
+    });
+  }
+  saveState();
+  renderTaskCollaboration(nextComment.taskId);
+  render();
+  showToast(nextComment.status === "resolved" ? "Thread resolved" : nextComment.kind === "decision" ? "Decision recorded" : "Comment updated", "success");
+  syncCommentToApi(nextComment, "Comment synced to API");
 }
 
 function addTaskTimeEntry() {
@@ -22909,6 +23097,24 @@ document.addEventListener("click", (event) => {
 
   const commentButton = event.target.closest("#comment-submit");
   if (commentButton) addTaskComment();
+
+  const commentReplyButton = event.target.closest("[data-comment-reply]");
+  if (commentReplyButton) {
+    setCommentReplyTarget(commentReplyButton.dataset.commentReply);
+    return;
+  }
+
+  const commentStatusButton = event.target.closest("[data-comment-status]");
+  if (commentStatusButton) {
+    updateCommentRecord(commentStatusButton.dataset.commentId, { status: commentStatusButton.dataset.commentStatus });
+    return;
+  }
+
+  const commentKindButton = event.target.closest("[data-comment-kind]");
+  if (commentKindButton) {
+    updateCommentRecord(commentKindButton.dataset.commentId, { kind: commentKindButton.dataset.commentKind });
+    return;
+  }
 
   const watchTaskButton = event.target.closest("[data-toggle-watch-task]");
   if (watchTaskButton) {
