@@ -2,6 +2,12 @@
 
 This folder holds shareable Agora project-template packs. Each template can be imported from the Templates page by pasting the JSON into the marketplace import box.
 
+Validate a template marketplace file before sharing it:
+
+```sh
+npm run agora -- marketplace validate templates/marketplace.json
+```
+
 ## Format
 
 Use either a single template object or an export wrapper:

@@ -50,7 +50,7 @@ These make Agora more credible for real teams and contributors.
 - Add a public comparison page or doc for Asana, Nifty, ClickUp, monday, Notion, Linear, and open source alternatives.
 - Expand screenshot automation to cover portal, data export, permissions, Operator, and tablet views.
 - Strengthen API persistence around conflict handling, record-level sync, and migration safety.
-- Explore CLI import/export and marketplace/template validation commands for self-hosters.
+- Expand CLI import/export commands now that portable bundle inspection and marketplace/template validation are available.
 - Expand accessibility verification across keyboard-only use, focus states, color contrast, reduced motion, and screen reader landmarks.
 - Improve mobile and tablet flows for Today, Board, Inbox, Marketplace, and Settings.
 - Validate the optional Electron desktop shell on macOS and Windows with signed release requirements documented.

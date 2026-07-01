@@ -104,6 +104,8 @@ npm run test:fixtures # validate portable workspace and automation pack fixtures
 npm run test:supabase # verify a real Supabase project end to end
 npm run screenshots # refresh launch screenshots with local Chrome/Chromium
 npm run agora -- verify # power-user CLI: check + fixtures + API smoke
+npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
+npm run agora -- marketplace validate templates/marketplace.json
 ```
 
 To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`. Add browser origins to `AGORA_ALLOWED_ORIGINS` when hosting the app somewhere other than localhost.
@@ -116,6 +118,8 @@ npm run agora -- verify
 npm run agora -- verify --quick
 npm run agora -- verify --supabase
 npm run agora -- screenshots
+npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
+npm run agora -- marketplace validate templates/marketplace.json
 ```
 
 Demo auth and passwordless email login are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true` or `AGORA_PASSWORDLESS_AUTH=true` and restart `npm run dev:api`.

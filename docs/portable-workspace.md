@@ -14,6 +14,12 @@ acme-studio-portable-bundle-2026-07-01.json
 
 You can also download only the Markdown manifest with `Download Manifest`.
 
+Power users can inspect a saved bundle from the CLI:
+
+```sh
+npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
+```
+
 ## Import Flow
 
 Open `Data > Portable restore > Import bundle`.
@@ -112,3 +118,9 @@ Automation packs are separate JSON files that can be imported from `Automations 
 ```
 
 Imported packs are normalized before installation, duplicate rules from the same pack are skipped, and imported rules keep creator/license metadata.
+
+Before sharing an automation pack, validate it with:
+
+```sh
+npm run agora -- marketplace validate tests/fixtures/automation-pack.json
+```
