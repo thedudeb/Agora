@@ -2599,6 +2599,7 @@ async function createPublicFeatureRequest(storage, body) {
       featureStatus: "new",
       featureStatusLabel: "New",
       source: "public",
+      submittedAt: now,
       requester: request.requester,
       requesterEmail,
       impact: request.impactLabel
@@ -2657,13 +2658,14 @@ function isFeatureRequestTaskRecord(task) {
 
 function normalizeFeatureStatus(value) {
   const status = cleanString(value).toLowerCase();
-  return ["new", "reviewing", "planned", "shipped", "declined"].includes(status) ? status : "new";
+  if (status === "reviewing") return "triaged";
+  return ["new", "triaged", "planned", "shipped", "declined"].includes(status) ? status : "new";
 }
 
 function featureStatusLabel(status) {
   return {
     new: "New",
-    reviewing: "Reviewing",
+    triaged: "Triaged",
     planned: "Planned",
     shipped: "Shipped",
     declined: "Declined"

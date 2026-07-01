@@ -227,7 +227,7 @@ const statuses = [
 
 const featureRequestStatuses = [
   { id: "new", label: "New" },
-  { id: "reviewing", label: "Reviewing" },
+  { id: "triaged", label: "Triaged" },
   { id: "planned", label: "Planned" },
   { id: "shipped", label: "Shipped" },
   { id: "declined", label: "Declined" }
@@ -3642,6 +3642,14 @@ function isOnboardingComplete() {
   return score.done === score.total;
 }
 
+function onboardingNextAction() {
+  return onboardingItems().find((item) => !item.done) || {
+    label: "Workspace ready",
+    detail: "Core setup is complete.",
+    action: "sync"
+  };
+}
+
 function shouldShowOnboardingPanel() {
   return !state.onboarding?.dismissed || !isOnboardingComplete();
 }
@@ -3679,6 +3687,7 @@ function renderOnboardingPanel() {
   const score = onboardingScore();
   const setupComplete = score.done === score.total;
   const wizard = renderOnboardingWizard();
+  const nextAction = onboardingNextAction();
   return `
     <section class="panel onboarding-panel">
       <div class="panel-header">
@@ -3687,6 +3696,14 @@ function renderOnboardingPanel() {
           <h2>Workspace setup</h2>
         </div>
         <span class="status-pill ${setupComplete ? "inbox-green" : "inbox-amber"}">${score.done}/${score.total}</span>
+      </div>
+      <div class="onboarding-next-action">
+        <div>
+          <span>${setupComplete ? "Ready" : "Recommended next"}</span>
+          <strong>${escapeHtml(nextAction.label)}</strong>
+          <p>${escapeHtml(nextAction.detail || "")}</p>
+        </div>
+        <button class="button button-primary compact-button" type="button" data-onboarding-action="${escapeHtml(nextAction.action || "wizard")}">${setupComplete ? "Review Sync" : "Continue"}</button>
       </div>
       <div class="onboarding-choice-row">
         <button class="button button-primary" type="button" data-onboarding-action="wizard">${state.onboarding?.wizardActive ? "Hide Wizard" : "Open Wizard"}</button>
@@ -6950,6 +6967,13 @@ function executeCommand(commandId) {
 
   if (commandId === "create:feature-request") {
     openFeatureRequestDialog();
+    return;
+  }
+
+  if (commandId === "feature:clear-filters") {
+    state.featureRequestFilters = { status: "all", source: "all", impact: "all" };
+    saveState();
+    render();
     return;
   }
 
@@ -11768,6 +11792,7 @@ function renderClientPortal() {
 
   const portal = companyPortalSnapshot(company.id);
   const visibleTasks = portal.tasks.filter((task) => task.status !== "done").slice(0, 6);
+  const featureRequests = portal.tasks.filter(isFeatureRequestTask).slice(0, 6);
   const sharedAssets = [...portal.documents, ...portal.files]
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
     .slice(0, 6);
@@ -11850,6 +11875,19 @@ function renderClientPortal() {
       <section class="panel">
         <div class="panel-header">
           <div>
+            <p class="eyebrow">Requests</p>
+            <h2>Feature request status</h2>
+          </div>
+          <span class="status-pill inbox-blue">${featureRequests.length}</span>
+        </div>
+        <div class="portal-list">
+          ${featureRequests.length ? featureRequests.map(renderClientFeatureRequestSummary).join("") : emptyState("No feature requests are visible yet.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
             <p class="eyebrow">Next up</p>
             <h2>Open work</h2>
           </div>
@@ -11900,6 +11938,20 @@ function renderClientTaskSummary(task) {
           <span>${formatDate(task.dueDate)}</span>
         </div>
       </div>
+    </article>
+  `;
+}
+
+function renderClientFeatureRequestSummary(task) {
+  const status = featureRequestStatus(task);
+  return `
+    <article class="portal-asset-row">
+      <div>
+        <span class="status-pill inbox-${status === "shipped" ? "green" : status === "declined" ? "neutral" : "blue"}">${escapeHtml(featureRequestStatusLabel(status))}</span>
+        <strong>${escapeHtml(task.title.replace(/^Feature request:\s*/i, ""))}</strong>
+        <span>${escapeHtml(task.customFields?.impact || "Nice to have")} / ${escapeHtml(featureRequestLifecycleSummary(task))}</span>
+      </div>
+      <small>${task.customFields?.lastRequesterUpdateAt ? formatTimestamp(task.customFields.lastRequesterUpdateAt) : formatTimestamp(task.updatedAt || task.createdAt)}</small>
     </article>
   `;
 }
@@ -16793,16 +16845,65 @@ function featureRequestTasks() {
     });
 }
 
+function featureRequestFilteredTasks() {
+  const filters = state.featureRequestFilters || {};
+  return featureRequestTasks()
+    .filter((task) => !filters.status || filters.status === "all" || featureRequestStatus(task) === filters.status)
+    .filter((task) => !filters.source || filters.source === "all" || featureRequestSource(task) === filters.source)
+    .filter((task) => !filters.impact || filters.impact === "all" || task.customFields?.impact === filters.impact);
+}
+
+function featureRequestSource(task) {
+  return task?.customFields?.source || (task?.tags?.includes("public") ? "public" : "in-app");
+}
+
+function featureRequestSourceLabel(source) {
+  return source === "public" ? "Public form" : source === "api" ? "API" : "In-app";
+}
+
+function featureRequestAgeDays(task) {
+  const created = Date.parse(task.createdAt || task.updatedAt || "");
+  if (!Number.isFinite(created)) return 0;
+  return Math.max(0, Math.floor((Date.now() - created) / 86400000));
+}
+
+function featureRequestNeedsTriage(task) {
+  return featureRequestStatus(task) === "new" && featureRequestAgeDays(task) >= 2;
+}
+
+function featureRequestLifecycleSummary(task) {
+  const status = featureRequestStatus(task);
+  if (status === "shipped") return "Requester can be told what changed.";
+  if (status === "declined") return "Requester should get a short reason.";
+  if (status === "planned") return "Ready for roadmap or sprint planning.";
+  if (status === "triaged") return "Impact understood; waiting on prioritization.";
+  return featureRequestNeedsTriage(task) ? "Needs triage; older than 2 days." : "New request waiting for first review.";
+}
+
+function featureRequestSuggestedUpdate(status) {
+  return {
+    new: "Thanks, we received this and will review it shortly.",
+    triaged: "We reviewed this and are evaluating priority and fit.",
+    planned: "This is planned; we will share timing when it is scheduled.",
+    shipped: "This has shipped. Here is what changed...",
+    declined: "We are not moving forward right now because..."
+  }[status] || "Short update to email the requester";
+}
+
 function featureRequestPublicLink() {
   return `${window.location.origin}${window.location.pathname}#feedback`;
 }
 
 function renderFeatureRequests() {
   const requests = featureRequestTasks();
+  const visibleRequests = featureRequestFilteredTasks();
   const counts = featureRequestStatuses.map((status) => ({
     ...status,
     count: requests.filter((task) => featureRequestStatus(task) === status.id).length
   }));
+  const publicCount = requests.filter((task) => featureRequestSource(task) === "public").length;
+  const staleNewCount = requests.filter(featureRequestNeedsTriage).length;
+  const requesterUpdates = requests.filter((task) => task.customFields?.lastRequesterUpdateAt).length;
 
   els.appView.innerHTML = `
     <section class="panel">
@@ -16819,6 +16920,23 @@ function renderFeatureRequests() {
       <div class="metric-grid">
         ${counts.map((status) => metric(status.label, status.count)).join("")}
       </div>
+      <div class="feature-request-insights">
+        <article>
+          <span>Public source</span>
+          <strong>${publicCount}</strong>
+          <small>${requests.length ? Math.round((publicCount / requests.length) * 100) : 0}% of request intake</small>
+        </article>
+        <article class="${staleNewCount ? "is-hot" : ""}">
+          <span>Triage SLA</span>
+          <strong>${staleNewCount}</strong>
+          <small>${staleNewCount ? "new requests older than 2 days" : "all new requests are fresh"}</small>
+        </article>
+        <article>
+          <span>Requester updates</span>
+          <strong>${requesterUpdates}</strong>
+          <small>${requests.length ? `${Math.round((requesterUpdates / requests.length) * 100)}% have updates` : "no requests yet"}</small>
+        </article>
+      </div>
     </section>
 
     <section class="panel">
@@ -16829,8 +16947,32 @@ function renderFeatureRequests() {
         </div>
         <span class="status-pill inbox-blue">${escapeHtml(featureRequestPublicLink())}</span>
       </div>
+      <div class="feature-request-filterbar">
+        <label>
+          <span>Status</span>
+          <select data-feature-filter="status">
+            <option value="all">All statuses</option>
+            ${featureRequestStatuses.map((status) => `<option value="${status.id}" ${state.featureRequestFilters?.status === status.id ? "selected" : ""}>${escapeHtml(status.label)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Source</span>
+          <select data-feature-filter="source">
+            <option value="all">All sources</option>
+            <option value="public" ${state.featureRequestFilters?.source === "public" ? "selected" : ""}>Public form</option>
+            <option value="in-app" ${state.featureRequestFilters?.source === "in-app" ? "selected" : ""}>In-app</option>
+          </select>
+        </label>
+        <label>
+          <span>Impact</span>
+          <select data-feature-filter="impact">
+            <option value="all">All impact</option>
+            ${["Nice to have", "Workflow blocker", "Revenue risk", "Bug or regression"].map((impact) => `<option value="${impact}" ${state.featureRequestFilters?.impact === impact ? "selected" : ""}>${escapeHtml(impact)}</option>`).join("")}
+          </select>
+        </label>
+      </div>
       <div class="feature-request-list">
-        ${requests.length ? requests.map(renderFeatureRequestRow).join("") : emptyState("No feature requests yet.", { label: "Open Request Form", commandId: "create:feature-request" })}
+        ${visibleRequests.length ? visibleRequests.map(renderFeatureRequestRow).join("") : emptyState(requests.length ? "No requests match these filters." : "No feature requests yet.", { label: requests.length ? "Clear Filters" : "Open Request Form", commandId: requests.length ? "feature:clear-filters" : "create:feature-request" })}
       </div>
     </section>
   `;
@@ -16842,13 +16984,21 @@ function renderFeatureRequestRow(task) {
   const impact = task.customFields?.impact || "Nice to have";
   const status = featureRequestStatus(task);
   const lastUpdate = task.customFields?.lastRequesterUpdateAt || "";
+  const source = featureRequestSource(task);
+  const age = featureRequestAgeDays(task);
+  const needsTriage = featureRequestNeedsTriage(task);
   return `
-    <article class="feature-request-row">
+    <article class="feature-request-row ${needsTriage ? "needs-triage" : ""}">
       <div>
-        <span class="status-pill inbox-neutral">${escapeHtml(impact)}</span>
+        <div class="feature-request-chip-row">
+          <span class="status-pill inbox-neutral">${escapeHtml(impact)}</span>
+          <span class="status-pill ${source === "public" ? "inbox-blue" : "inbox-neutral"}">${escapeHtml(featureRequestSourceLabel(source))}</span>
+          <span class="status-pill ${needsTriage ? "inbox-amber" : "inbox-green"}">${age ? `${age}d old` : "today"}</span>
+        </div>
         <h3>${escapeHtml(task.title.replace(/^Feature request:\s*/i, ""))}</h3>
         <p>${escapeHtml(task.description.split("\n").slice(-1)[0] || task.description)}</p>
         <small>${escapeHtml(projectName(task.projectId))} - ${escapeHtml(requester)}${requesterEmail ? ` - ${escapeHtml(requesterEmail)}` : ""}</small>
+        <small>${escapeHtml(featureRequestLifecycleSummary(task))}</small>
         ${lastUpdate ? `<small>Last requester update ${escapeHtml(formatTimestamp(lastUpdate))}</small>` : ""}
       </div>
       <div class="feature-request-controls">
@@ -16860,7 +17010,7 @@ function renderFeatureRequestRow(task) {
         </label>
         <label>
           <span>Requester update</span>
-          <textarea rows="2" data-feature-update-note="${escapeHtml(task.id)}" placeholder="Short update to email the requester"></textarea>
+          <textarea rows="2" data-feature-update-note="${escapeHtml(task.id)}" placeholder="${escapeHtml(featureRequestSuggestedUpdate(status))}"></textarea>
         </label>
         <div class="feature-request-actions">
           <button class="button button-secondary compact-button" type="button" data-edit-task="${escapeHtml(task.id)}">Open Task</button>
@@ -16997,7 +17147,7 @@ function isFeatureRequestTask(task) {
 }
 
 function featureRequestStatus(task) {
-  const status = task?.customFields?.featureStatus || "new";
+  const status = task?.customFields?.featureStatus === "reviewing" ? "triaged" : task?.customFields?.featureStatus || "new";
   return featureRequestStatuses.some((item) => item.id === status) ? status : "new";
 }
 
@@ -17043,6 +17193,7 @@ function createFeatureRequestTask(payload) {
       requestType: "feature-request",
       featureStatus: "new",
       source: payload.source || "in-app",
+      submittedAt: now,
       requester: payload.requester,
       requesterEmail: payload.email,
       impact: featureRequestImpactLabel(payload.impact)
@@ -22383,6 +22534,20 @@ els.appView.addEventListener("change", (event) => {
   const featureStatusSelect = event.target.closest("[data-feature-status-task]");
   if (featureStatusSelect) {
     updateFeatureRequestStatus(featureStatusSelect.dataset.featureStatusTask, featureStatusSelect.value);
+    return;
+  }
+
+  const featureFilterSelect = event.target.closest("[data-feature-filter]");
+  if (featureFilterSelect) {
+    state.featureRequestFilters = {
+      status: "all",
+      source: "all",
+      impact: "all",
+      ...(state.featureRequestFilters || {}),
+      [featureFilterSelect.dataset.featureFilter]: featureFilterSelect.value
+    };
+    saveState();
+    render();
     return;
   }
 
