@@ -383,6 +383,93 @@ const automationActionOptions = [
   { id: "notify_channel", label: "Notify integration channel" }
 ];
 
+const automationMarketplacePacks = [
+  {
+    id: "automation-pack-agency-handoff",
+    name: "Agency Client Handoff",
+    category: "Agency",
+    creatorName: "Agora Community",
+    license: "MIT-style workflow pack",
+    description: "Catch risky client delivery moments, draft updates, and keep approvals moving without building rules from scratch.",
+    rules: [
+      {
+        name: "Draft weekly client update",
+        triggerKind: "task_due_soon",
+        conditionKind: "company",
+        conditionValue: "Client",
+        actionKind: "draft_update",
+        actionTarget: "client update",
+        enabled: true
+      },
+      {
+        name: "Chase pending client approval",
+        triggerKind: "approval_pending",
+        conditionKind: "company",
+        conditionValue: "Client",
+        actionKind: "create_task",
+        actionTarget: "approval follow-up",
+        enabled: true
+      }
+    ]
+  },
+  {
+    id: "automation-pack-founder-ops",
+    name: "Founder Ops",
+    category: "Operations",
+    creatorName: "Agora Community",
+    license: "MIT-style workflow pack",
+    description: "A lightweight operator pack for small teams that need due-soon work surfaced and blockers logged fast.",
+    rules: [
+      {
+        name: "Plan high-risk due-soon work",
+        triggerKind: "task_due_soon",
+        conditionKind: "priority",
+        conditionValue: "High",
+        actionKind: "create_task",
+        actionTarget: "today follow-up",
+        enabled: true
+      },
+      {
+        name: "Log blocked work for standup",
+        triggerKind: "task_blocked",
+        conditionKind: "any",
+        conditionValue: "",
+        actionKind: "add_activity",
+        actionTarget: "standup note",
+        enabled: true
+      }
+    ]
+  },
+  {
+    id: "automation-pack-release-control",
+    name: "Release Control",
+    category: "Software",
+    creatorName: "Agora Community",
+    license: "MIT-style workflow pack",
+    description: "Watch milestones, raise risky launch tasks, and create a trail for engineering release coordination.",
+    rules: [
+      {
+        name: "Watch release milestones",
+        triggerKind: "milestone_due",
+        conditionKind: "any",
+        conditionValue: "",
+        actionKind: "add_activity",
+        actionTarget: "release watch",
+        enabled: true
+      },
+      {
+        name: "Escalate blocked launch work",
+        triggerKind: "task_blocked",
+        conditionKind: "project",
+        conditionValue: "Launch",
+        actionKind: "set_risk",
+        actionTarget: "High",
+        enabled: true
+      }
+    ]
+  }
+];
+
 const themePresets = [
   {
     id: "agora",
@@ -2283,7 +2370,12 @@ function normalizeAutomationRule(automation = {}) {
     actionTarget: String(automation.actionTarget || "").trim().slice(0, 96),
     enabled: automation.enabled !== false,
     lastRun: automation.lastRun || "",
-    runCount: Number(automation.runCount || 0)
+    runCount: Number(automation.runCount || 0),
+    marketplacePackId: String(automation.marketplacePackId || "").trim().slice(0, 96),
+    source: String(automation.source || "").trim().slice(0, 48),
+    creatorName: String(automation.creatorName || "").trim().slice(0, 96),
+    installedAt: automation.installedAt || "",
+    license: String(automation.license || "").trim().slice(0, 96)
   };
 }
 
@@ -4461,6 +4553,76 @@ function aiConnectionSummary() {
   return "Server adapter ready";
 }
 
+function aiOperatorTrustState() {
+  const settings = aiSettings();
+  return {
+    provider: settings.provider,
+    providerLabel: aiProviderLabel(),
+    model: settings.model || "Not set",
+    baseUrl: settings.baseUrl || "Server default",
+    keySource: settings.keySource,
+    dataPolicy: settings.dataPolicy,
+    promptTemplate: settings.promptTemplate,
+    auditMode: settings.auditMode,
+    connection: aiConnectionSummary(),
+    externalProvider: aiProviderNeedsApi(),
+    serverSideSecretsOnly: settings.provider === "local" || settings.keySource !== "Browser",
+    actionLedgerEntries: recentOperatorActions(50).length
+  };
+}
+
+function operatorContextBundle() {
+  const context = workspaceAiContext();
+  return {
+    type: "agora.ai-operator-context",
+    exportVersion: 1,
+    exportedAt: new Date().toISOString(),
+    workspace: {
+      id: state.workspace.id,
+      name: state.workspace.name,
+      slug: state.workspace.slug
+    },
+    trust: aiOperatorTrustState(),
+    sources: operatorDataSourcesFor("workspace_brief"),
+    visibleContext: {
+      brief: context.brief,
+      tasks: context.tasks,
+      approvals: context.approvals,
+      activities: context.activities,
+      documents: context.documents
+    },
+    actionLedger: recentOperatorActions(50),
+    generatedDocs: recentOperatorDocuments(12)
+  };
+}
+
+function downloadOperatorContextBundle() {
+  downloadJsonFile(`${slugFromName(state.workspace.name)}-operator-context-${todayKey()}.json`, JSON.stringify(operatorContextBundle(), null, 2));
+  showToast("Operator context exported", "success");
+}
+
+function enableLocalOperatorMode() {
+  state.workspace = {
+    ...state.workspace,
+    ai: {
+      ...aiSettings(),
+      provider: "local",
+      model: "Agora deterministic operator",
+      baseUrl: "",
+      keySource: "Not required",
+      dataPolicy: "No external AI",
+      auditMode: "Preview, rationale, undo"
+    }
+  };
+  addAuditEvent({
+    action: "ai_operator_local_mode",
+    detail: "Switched the AI Operator to local deterministic mode"
+  });
+  saveState();
+  render();
+  showToast("Local operator mode enabled", "success");
+}
+
 function paymentSettings() {
   return normalizeWorkspacePayments(state.workspace?.payments);
 }
@@ -4972,8 +5134,8 @@ function exportWorkspaceJson() {
   return JSON.stringify(workspaceSnapshot(), null, 2);
 }
 
-function downloadJsonFile(filename, json) {
-  const blob = new Blob([json], { type: "application/json" });
+function downloadTextFile(filename, text, type = "text/plain") {
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -4982,6 +5144,10 @@ function downloadJsonFile(filename, json) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function downloadJsonFile(filename, json) {
+  downloadTextFile(filename, json, "application/json");
 }
 
 function uniqueTemplateId(candidateId) {
@@ -5145,6 +5311,156 @@ function exportTimeCsv() {
   return [headers, ...rows].map((row) => row.map(csvValue).join(",")).join("\n");
 }
 
+function portableAuditLogMarkdown() {
+  const events = (Array.isArray(state.auditEvents) ? state.auditEvents : [])
+    .slice()
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 40);
+  if (!events.length) return "# Audit Log\n\nNo local audit events are available yet.\n";
+  return [
+    "# Audit Log",
+    "",
+    ...events.map((event) => [
+      `## ${event.action || "event"}`,
+      `- Time: ${event.createdAt ? formatTimestamp(event.createdAt) : "Unknown"}`,
+      `- Actor: ${memberName(event.actorId) || event.actorId || "Unknown"}`,
+      `- Impact: ${auditImpactLevel(event)}`,
+      `- Detail: ${event.detail || "No detail"}`
+    ].join("\n"))
+  ].join("\n\n");
+}
+
+function portableProjectMarkdown(project) {
+  const projectTasks = getProjectTasks(project.id, false);
+  const company = projectCompany(project.id);
+  return [
+    `# ${project.name}`,
+    "",
+    `Company: ${company?.name || "No company"}`,
+    `Status: ${project.status}`,
+    `Owner: ${memberName(project.owner)}`,
+    `Progress: ${projectProgress(project)}%`,
+    "",
+    "## Open Tasks",
+    projectTasks.length ? projectTasks.map((task) => `- [${task.status === "done" ? "x" : " "}] ${task.title} / ${memberName(task.assignee)} / ${task.dueDate || "No due date"}`).join("\n") : "No tasks yet.",
+    "",
+    "## Recent Activity",
+    getProjectActivity(project.id, 8).length ? getProjectActivity(project.id, 8).map((activity) => `- ${formatTimestamp(activity.createdAt)}: ${activity.message}`).join("\n") : "No recent activity."
+  ].join("\n");
+}
+
+function portableWorkspaceManifest() {
+  const snapshot = workspaceSnapshot();
+  const ai = aiSettings();
+  return {
+    type: "agora.portable-workspace",
+    exportVersion: 1,
+    exportedAt: snapshot.exportedAt,
+    workspace: {
+      id: state.workspace.id,
+      name: state.workspace.name,
+      slug: state.workspace.slug,
+      visibility: state.workspace.visibility,
+      storageMode: state.workspace.storageMode,
+      backendTarget: state.workspace.backendTarget
+    },
+    counts: {
+      companies: state.companies.length,
+      projects: state.projects.length,
+      tasks: state.tasks.length,
+      members: workspaceMembers().length,
+      automations: state.automations.length,
+      templates: state.projectTemplates.length,
+      documents: state.documents.length,
+      files: state.files.length,
+      timeEntries: state.timeEntries.length,
+      operatorActions: recentOperatorActions(50).length
+    },
+    portability: {
+      canRunOffline: true,
+      includesJsonSnapshot: true,
+      includesCsvExports: true,
+      includesAutomationPacks: true,
+      includesOperatorLedger: true,
+      restorePath: "Data > Import JSON can restore workspace.json into Agora."
+    },
+    ai: {
+      provider: ai.provider,
+      model: ai.model,
+      dataPolicy: ai.dataPolicy,
+      auditMode: ai.auditMode,
+      keySource: ai.keySource
+    }
+  };
+}
+
+function portableWorkspaceReadme() {
+  const manifest = portableWorkspaceManifest();
+  return [
+    `# ${manifest.workspace.name} Portable Workspace`,
+    "",
+    `Exported: ${formatTimestamp(manifest.exportedAt)}`,
+    "",
+    "## What Is Included",
+    "",
+    `- ${manifest.counts.projects} projects and ${manifest.counts.tasks} tasks`,
+    `- ${manifest.counts.automations} automation rules`,
+    `- ${manifest.counts.templates} project templates`,
+    `- ${manifest.counts.documents} docs and ${manifest.counts.files} files metadata records`,
+    `- ${manifest.counts.operatorActions} AI operator action ledger entries`,
+    "",
+    "## Restore",
+    "",
+    "Open Agora, go to Data, paste `workspace.json` into Import JSON, and choose whether to replace the current workspace or import it as a new workspace.",
+    "",
+    "## Open Source Portability Promise",
+    "",
+    "The bundle is plain JSON, CSV, and Markdown so a team can inspect it, archive it, transform it, or move it into another self-hosted system."
+  ].join("\n");
+}
+
+function portableWorkspaceFiles() {
+  const operatorBundle = operatorContextBundle();
+  return [
+    { path: "README.md", kind: "markdown", content: portableWorkspaceReadme() },
+    { path: "workspace.json", kind: "json", content: exportWorkspaceJson() },
+    { path: "tasks.csv", kind: "csv", content: exportTasksCsv() },
+    { path: "time.csv", kind: "csv", content: exportTimeCsv() },
+    { path: "automations.json", kind: "json", content: JSON.stringify({ type: "agora.automations", exportVersion: 1, exportedAt: new Date().toISOString(), automations: state.automations }, null, 2) },
+    { path: "templates.json", kind: "json", content: JSON.stringify({ type: "agora.project-templates", exportVersion: 1, exportedAt: new Date().toISOString(), templates: state.projectTemplates.map((template) => validateProjectTemplate(template, { preserveId: true })) }, null, 2) },
+    { path: "operator-ledger.json", kind: "json", content: JSON.stringify(operatorBundle, null, 2) },
+    { path: "audit-log.md", kind: "markdown", content: portableAuditLogMarkdown() },
+    ...activeProjects().slice(0, 40).map((project) => ({
+      path: `projects/${slugFromName(project.name)}.md`,
+      kind: "markdown",
+      content: portableProjectMarkdown(project)
+    }))
+  ];
+}
+
+function portableWorkspaceBundle() {
+  const files = portableWorkspaceFiles();
+  const manifest = portableWorkspaceManifest();
+  return {
+    ...manifest,
+    manifest,
+    files: files.map((file) => ({
+      ...file,
+      size: file.content.length
+    }))
+  };
+}
+
+function downloadPortableWorkspaceBundle() {
+  downloadJsonFile(`${slugFromName(state.workspace.name)}-portable-bundle-${todayKey()}.json`, JSON.stringify(portableWorkspaceBundle(), null, 2));
+  showToast("Portable workspace bundle downloaded", "success");
+}
+
+function downloadPortableWorkspaceManifest() {
+  downloadTextFile(`${slugFromName(state.workspace.name)}-portable-manifest-${todayKey()}.md`, portableWorkspaceReadme(), "text/markdown");
+  showToast("Portable manifest downloaded", "success");
+}
+
 function importWorkspaceJson(rawJson, options = {}) {
   const parsed = JSON.parse(rawJson);
   if (options.backupLabel) saveWorkspaceBackups([workspaceBackupRecord(options.backupLabel), ...loadWorkspaceBackups()]);
@@ -5230,15 +5546,7 @@ function deleteWorkspaceBackup(backupId) {
 }
 
 function downloadWorkspaceExport() {
-  const blob = new Blob([exportWorkspaceJson()], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${slugFromName(state.workspace.name)}-${todayKey()}.json`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  downloadJsonFile(`${slugFromName(state.workspace.name)}-${todayKey()}.json`, exportWorkspaceJson());
   showToast("Workspace export downloaded", "success");
 }
 
@@ -9183,6 +9491,8 @@ function renderOperatorCenter() {
         </div>
       </section>
 
+      ${renderOperatorTrustPanel()}
+
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -9219,6 +9529,52 @@ function renderOperatorCenter() {
         </div>
       </section>
     </div>
+  `;
+}
+
+function renderOperatorTrustPanel() {
+  const trust = aiOperatorTrustState();
+  const context = workspaceAiContext();
+  return `
+    <section class="panel operator-trust-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Bring your own AI</p>
+          <h2>Trust and context</h2>
+        </div>
+        <span class="status-pill ${trust.externalProvider ? "inbox-amber" : "inbox-green"}">${escapeHtml(trust.connection)}</span>
+      </div>
+      <div class="operator-trust-grid">
+        <article>
+          <span>Provider</span>
+          <strong>${escapeHtml(trust.providerLabel)}</strong>
+          <small>${escapeHtml(trust.keySource)}</small>
+        </article>
+        <article>
+          <span>Data policy</span>
+          <strong>${escapeHtml(trust.dataPolicy)}</strong>
+          <small>${escapeHtml(trust.promptTemplate)}</small>
+        </article>
+        <article>
+          <span>Visible context</span>
+          <strong>${context.tasks.length} tasks</strong>
+          <small>${context.approvals.length} approvals / ${context.documents.length} docs</small>
+        </article>
+        <article>
+          <span>Audit mode</span>
+          <strong>${escapeHtml(trust.auditMode)}</strong>
+          <small>${trust.actionLedgerEntries} ledger entries</small>
+        </article>
+      </div>
+      <div class="operator-source-list">
+        ${operatorDataSourcesFor("workspace_brief integration").map((source) => `<span>${escapeHtml(source)}</span>`).join("")}
+      </div>
+      <div class="operator-command-actions">
+        <button class="button button-primary" type="button" id="operator-context-export">Export Context</button>
+        <button class="button button-secondary" type="button" id="operator-local-mode">Use Local Mode</button>
+        <button class="button button-secondary" type="button" data-route="settings">AI Settings</button>
+      </div>
+    </section>
   `;
 }
 
@@ -12355,6 +12711,69 @@ function renderTaskTemplateCard(template) {
   `;
 }
 
+function automationMarketplaceInstalled(pack) {
+  return pack.rules.every((rule) => state.automations.some((automation) => automation.marketplacePackId === pack.id && automation.name === rule.name));
+}
+
+function automationMarketplacePackPayload(pack) {
+  return {
+    type: "agora.automation-pack",
+    exportVersion: 1,
+    exportedAt: new Date().toISOString(),
+    pack: {
+      ...pack,
+      rules: pack.rules.map((rule) => normalizeAutomationRule({
+        ...rule,
+        id: `${pack.id}-${slugFromName(rule.name)}`,
+        marketplacePackId: pack.id,
+        source: "marketplace",
+        creatorName: pack.creatorName,
+        license: pack.license
+      }))
+    }
+  };
+}
+
+function renderAutomationMarketplacePanel() {
+  return `
+    <section class="panel automation-marketplace-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Open automation marketplace</p>
+          <h2>Install workflow packs</h2>
+        </div>
+        <span class="status-pill inbox-blue">${automationMarketplacePacks.length} packs</span>
+      </div>
+      <p class="panel-note">Community packs are plain JSON rules. Install them locally, export them, remix them, and share them with another Agora workspace.</p>
+      <div class="automation-pack-list">
+        ${automationMarketplacePacks.map((pack) => {
+          const installed = automationMarketplaceInstalled(pack);
+          return `
+            <article class="automation-pack-card ${installed ? "is-installed" : ""}">
+              <div>
+                <div class="marketplace-card-kicker">
+                  <span class="status-pill inbox-neutral">${escapeHtml(pack.category)}</span>
+                  <span class="status-pill ${installed ? "inbox-green" : "inbox-blue"}">${installed ? "Installed" : `${pack.rules.length} rules`}</span>
+                </div>
+                <h3>${escapeHtml(pack.name)}</h3>
+                <p>${escapeHtml(pack.description)}</p>
+                <small>${escapeHtml(pack.creatorName)} / ${escapeHtml(pack.license)}</small>
+              </div>
+              <div class="automation-pack-rules">
+                ${pack.rules.map((rule) => `<span>${escapeHtml(rule.name)}</span>`).join("")}
+              </div>
+              <div class="marketplace-actions">
+                <button class="button button-primary compact-button" type="button" data-install-automation-pack="${pack.id}" ${installed ? "disabled" : ""}>Install Pack</button>
+                <button class="button button-secondary compact-button" type="button" data-export-automation-pack="${pack.id}">Export JSON</button>
+              </div>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderAutomations() {
   const enabled = state.automations.filter((automation) => automation.enabled);
   const recentHistory = state.automationHistory.slice(0, 8);
@@ -12419,6 +12838,8 @@ function renderAutomations() {
           ${state.automations.map(renderAutomationCard).join("")}
         </div>
       </section>
+
+      ${renderAutomationMarketplacePanel()}
 
       <section class="panel">
         <div class="panel-header">
@@ -12964,6 +13385,30 @@ function renderDataManagement() {
         <textarea class="export-textarea" id="json-export" rows="18" readonly>${escapeHtml(exportWorkspaceJson())}</textarea>
       </section>
 
+      <section class="panel portable-workspace-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Portable workspace OS</p>
+            <h2>Full bundle</h2>
+          </div>
+          <span class="status-pill inbox-green">Open files</span>
+        </div>
+        <p class="panel-note">Download a plain JSON bundle with Markdown, CSV, automations, templates, audit history, and operator context so your workspace can move without asking permission.</p>
+        <div class="portable-file-grid">
+          ${portableWorkspaceFiles().slice(0, 8).map((file) => `
+            <article>
+              <strong>${escapeHtml(file.path)}</strong>
+              <span>${escapeHtml(file.kind)} / ${file.content.length.toLocaleString()} chars</span>
+            </article>
+          `).join("")}
+        </div>
+        <div class="data-actions">
+          <button class="button button-primary" type="button" id="download-portable-bundle">Download Bundle</button>
+          <button class="button button-secondary" type="button" id="download-portable-manifest">Download Manifest</button>
+          <button class="button button-secondary" type="button" id="backup-create-from-portable">Create Backup</button>
+        </div>
+      </section>
+
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -13321,6 +13766,7 @@ function renderAutomationCard(automation) {
         <h3>${escapeHtml(automation.name)}</h3>
         <p><strong>When:</strong> ${escapeHtml(automation.trigger)}${automation.conditionKind !== "any" ? ` / ${escapeHtml(automationConditionOptions.find((option) => option.id === automation.conditionKind)?.label || "Condition")}: ${escapeHtml(automation.conditionValue || "not set")}` : ""}</p>
         <p><strong>Then:</strong> ${escapeHtml(automation.action)}${automation.actionTarget ? ` / ${escapeHtml(automation.actionTarget)}` : ""}</p>
+        ${automation.source === "marketplace" ? `<p class="automation-source">Pack: ${escapeHtml(automation.creatorName || "Community")} / ${escapeHtml(automation.license || "Open workflow")}</p>` : ""}
         <div class="automation-preview">
           <span>${escapeHtml(preview.label)}</span>
           <strong>${escapeHtml(preview.value)}</strong>
@@ -15107,6 +15553,47 @@ function toggleAutomation(ruleId) {
   showToast("Automation updated", "success");
 }
 
+function installAutomationMarketplacePack(packId) {
+  const pack = automationMarketplacePacks.find((item) => item.id === packId);
+  if (!pack) return;
+  const existingNames = new Set(state.automations.map((automation) => `${automation.marketplacePackId}:${automation.name}`));
+  const installedAt = new Date().toISOString();
+  const rules = pack.rules
+    .filter((rule) => !existingNames.has(`${pack.id}:${rule.name}`))
+    .map((rule) => normalizeAutomationRule({
+      ...rule,
+      id: uid("automation"),
+      trigger: automationTriggerLabel(rule.triggerKind),
+      action: automationActionLabel(rule.actionKind),
+      marketplacePackId: pack.id,
+      source: "marketplace",
+      creatorName: pack.creatorName,
+      installedAt,
+      license: pack.license
+    }));
+
+  if (!rules.length) {
+    showToast("Automation pack is already installed", "info");
+    return;
+  }
+
+  state.automations = [...rules, ...state.automations].slice(0, 50);
+  addAuditEvent({
+    action: "automation_pack_install",
+    detail: `Installed ${pack.name} automation pack with ${rules.length} rules`
+  });
+  saveState();
+  render();
+  showToast(`Installed ${pack.name}`, "success");
+}
+
+function exportAutomationMarketplacePack(packId) {
+  const pack = automationMarketplacePacks.find((item) => item.id === packId);
+  if (!pack) return;
+  downloadJsonFile(`${slugFromName(pack.name)}-automation-pack.json`, JSON.stringify(automationMarketplacePackPayload(pack), null, 2));
+  showToast("Automation pack exported", "success");
+}
+
 function saveAutomationRule() {
   const id = document.querySelector("#automation-id")?.value || uid("automation");
   const existing = byId(state.automations, id);
@@ -15137,7 +15624,12 @@ function saveAutomationRule() {
     actionTarget,
     enabled,
     lastRun: existing?.lastRun || "",
-    runCount: Number(existing?.runCount || 0)
+    runCount: Number(existing?.runCount || 0),
+    marketplacePackId: existing?.marketplacePackId || "",
+    source: existing?.source || "",
+    creatorName: existing?.creatorName || "",
+    installedAt: existing?.installedAt || "",
+    license: existing?.license || ""
   };
 
   state.automations = existing
@@ -17935,6 +18427,18 @@ document.addEventListener("click", (event) => {
   const toggleAutomationButton = event.target.closest("[data-toggle-automation]");
   if (toggleAutomationButton) toggleAutomation(toggleAutomationButton.dataset.toggleAutomation);
 
+  const installAutomationPackButton = event.target.closest("[data-install-automation-pack]");
+  if (installAutomationPackButton) {
+    installAutomationMarketplacePack(installAutomationPackButton.dataset.installAutomationPack);
+    return;
+  }
+
+  const exportAutomationPackButton = event.target.closest("[data-export-automation-pack]");
+  if (exportAutomationPackButton) {
+    exportAutomationMarketplacePack(exportAutomationPackButton.dataset.exportAutomationPack);
+    return;
+  }
+
   const saveAutomationButton = event.target.closest("#automation-create");
   if (saveAutomationButton) {
     saveAutomationRule();
@@ -18029,6 +18533,18 @@ document.addEventListener("click", (event) => {
   const aiSaveButton = event.target.closest("#ai-save-settings");
   if (aiSaveButton) {
     saveAiSettings();
+    return;
+  }
+
+  const operatorContextExportButton = event.target.closest("#operator-context-export");
+  if (operatorContextExportButton) {
+    downloadOperatorContextBundle();
+    return;
+  }
+
+  const operatorLocalModeButton = event.target.closest("#operator-local-mode");
+  if (operatorLocalModeButton) {
+    enableLocalOperatorMode();
     return;
   }
 
@@ -18131,8 +18647,23 @@ document.addEventListener("click", (event) => {
   const downloadExportButton = event.target.closest("#download-json-export");
   if (downloadExportButton) downloadWorkspaceExport();
 
+  const downloadPortableBundleButton = event.target.closest("#download-portable-bundle");
+  if (downloadPortableBundleButton) {
+    downloadPortableWorkspaceBundle();
+    return;
+  }
+
+  const downloadPortableManifestButton = event.target.closest("#download-portable-manifest");
+  if (downloadPortableManifestButton) {
+    downloadPortableWorkspaceManifest();
+    return;
+  }
+
   const backupCreateButton = event.target.closest("#backup-create");
   if (backupCreateButton) createWorkspaceBackup();
+
+  const portableBackupCreateButton = event.target.closest("#backup-create-from-portable");
+  if (portableBackupCreateButton) createWorkspaceBackup("Portable bundle checkpoint");
 
   const backupRestoreButton = event.target.closest("[data-backup-restore]");
   if (backupRestoreButton) {
