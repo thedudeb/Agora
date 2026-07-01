@@ -931,6 +931,7 @@ const seedData = {
   selectedDashboardLayoutId: "layout-command-center",
   switcherImportPreview: null,
   switcherImportRollback: null,
+  importHistory: [],
   workspace: {
     id: "workspace-acme",
     name: "Acme Studio",
@@ -2258,6 +2259,7 @@ function normalizeState(nextState) {
     selectedDashboardLayoutId: normalizeSelectedDashboardLayoutId(nextState.selectedDashboardLayoutId, nextState.dashboardLayouts),
     switcherImportPreview: normalizeSwitcherImportPreview(nextState.switcherImportPreview),
     switcherImportRollback: normalizeSwitcherImportRollback(nextState.switcherImportRollback),
+    importHistory: normalizeImportHistory(nextState.importHistory),
     portableImportPreview: nextState.portableImportPreview && typeof nextState.portableImportPreview === "object" ? nextState.portableImportPreview : null,
     templateImportPreview: nextState.templateImportPreview && typeof nextState.templateImportPreview === "object" ? nextState.templateImportPreview : null,
     automationPackImportPreview: nextState.automationPackImportPreview && typeof nextState.automationPackImportPreview === "object" ? nextState.automationPackImportPreview : null,
@@ -2382,6 +2384,8 @@ function normalizeSwitcherImportRollback(rollback = null) {
   return {
     id: rollback.id,
     source: String(rollback.source || "Import").slice(0, 48),
+    sourceSystem: String(rollback.sourceSystem || switcherSourceId(rollback.source || "Import")).slice(0, 48),
+    importBatchId: String(rollback.importBatchId || rollback.id || "").slice(0, 120),
     createdAt: rollback.createdAt || new Date().toISOString(),
     summary: rollback.summary || "Last import can be rolled back.",
     backupId: rollback.backupId || "",
@@ -2391,6 +2395,32 @@ function normalizeSwitcherImportRollback(rollback = null) {
     },
     snapshot: rollback.snapshot
   };
+}
+
+function normalizeImportHistory(history = []) {
+  if (!Array.isArray(history)) return [];
+  return history
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry) => ({
+      id: entry.id || uid("import-history"),
+      status: ["applied", "rolled-back"].includes(entry.status) ? entry.status : "applied",
+      source: String(entry.source || "Import").slice(0, 48),
+      sourceSystem: String(entry.sourceSystem || switcherSourceId(entry.source || "Import")).slice(0, 48),
+      importBatchId: String(entry.importBatchId || entry.id || "").slice(0, 120),
+      mode: ["merge", "new-workspace", "rollback"].includes(entry.mode) ? entry.mode : "merge",
+      createdAt: entry.createdAt || new Date().toISOString(),
+      backupId: String(entry.backupId || "").slice(0, 120),
+      reversible: entry.status === "rolled-back" ? false : Boolean(entry.reversible),
+      stats: {
+        projects: Number(entry.stats?.projects || 0),
+        tasks: Number(entry.stats?.tasks || 0),
+        skipped: Number(entry.stats?.skipped || 0),
+        confidence: Math.max(0, Math.min(100, Number(entry.stats?.confidence || 0)))
+      },
+      warnings: Array.isArray(entry.warnings) ? entry.warnings.map((warning) => String(warning || "").trim()).filter(Boolean).slice(0, 5) : []
+    }))
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 20);
 }
 
 function defaultNotificationSettings() {
@@ -16807,6 +16837,7 @@ function renderDataManagement() {
         </div>
         ${renderSwitcherImportPreview()}
         ${renderSwitcherImportRollback()}
+        ${renderSwitcherImportHistory()}
       </section>
 
       <section class="panel">
@@ -16916,6 +16947,7 @@ function renderSwitcherImportPreview() {
         ${metric("Traceable", preview.tasks.filter((task) => task.customFields?.sourceId).length)}
       </div>
       ${renderSwitcherImportReport(preview)}
+      ${renderSwitcherApplyChecklist(preview)}
       <div class="switcher-mapping-panel">
         <div>
           <span class="status-pill inbox-${confidenceTone}">${preview.stats.confidence >= 80 ? "Strong mapping" : preview.stats.confidence >= 55 ? "Review mapping" : "Low confidence"}</span>
@@ -16940,6 +16972,35 @@ function renderSwitcherImportPreview() {
         <button class="button button-primary" type="button" id="switcher-apply-preview">Apply Import</button>
         <button class="button button-secondary" type="button" id="switcher-clear-preview">Clear Preview</button>
       </div>
+    </div>
+  `;
+}
+
+function renderSwitcherApplyChecklist(preview) {
+  const tracedTasks = preview.tasks.filter((task) => task.customFields?.sourceId).length;
+  const modeLabel = preview.mode === "new-workspace" ? "Separate workspace" : "Merge workspace";
+  return `
+    <div class="switcher-report-grid">
+      <article>
+        <span>Backup</span>
+        <strong>Created first</strong>
+        <small>A local snapshot is saved before Agora applies this preview.</small>
+      </article>
+      <article>
+        <span>Destination</span>
+        <strong>${escapeHtml(modeLabel)}</strong>
+        <small>${preview.mode === "new-workspace" ? "Imported work opens in a new workspace." : "Only missing ids are added to the current workspace."}</small>
+      </article>
+      <article>
+        <span>Traceability</span>
+        <strong>${tracedTasks} tasks</strong>
+        <small>Source ids are preserved for future dedupe and rollback review.</small>
+      </article>
+      <article>
+        <span>Recovery</span>
+        <strong>One-click</strong>
+        <small>The last merge import can be restored from this Data screen.</small>
+      </article>
     </div>
   `;
 }
@@ -16971,6 +17032,32 @@ function renderSwitcherImportReport(preview) {
         <strong>${preview.tasks.filter((task) => task.customFields?.sourceId).length} tasks</strong>
         <small>${escapeHtml(preview.importBatchId || "Import batch will be created on apply.")}</small>
       </article>
+    </div>
+  `;
+}
+
+function renderSwitcherImportHistory() {
+  const history = normalizeImportHistory(state.importHistory).slice(0, 5);
+  if (!history.length) return "";
+
+  return `
+    <div class="switcher-preview-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Trace</p>
+          <h3>Import history</h3>
+        </div>
+        <span class="status-pill inbox-neutral">${history.length} recent</span>
+      </div>
+      <div class="switcher-preview-list">
+        ${history.map((entry) => `
+          <article>
+            <strong>${escapeHtml(entry.source)} ${entry.status === "rolled-back" ? "rolled back" : "applied"}</strong>
+            <span>${escapeHtml(formatTimestamp(entry.createdAt))} / ${escapeHtml(entry.mode)} / ${entry.stats.tasks} tasks / ${entry.stats.projects} projects${entry.stats.skipped ? ` / ${entry.stats.skipped} skipped` : ""}</span>
+            <small>${escapeHtml(entry.importBatchId || entry.backupId || "No batch id")}</small>
+          </article>
+        `).join("")}
+      </div>
     </div>
   `;
 }
@@ -21483,6 +21570,43 @@ function switcherSourceId(source) {
   return String(source || "generic-csv").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "generic-csv";
 }
 
+function switcherImportHistoryEntry(preview, result = {}) {
+  return normalizeImportHistory([{
+    id: uid("import-history"),
+    status: "applied",
+    source: preview.source,
+    sourceSystem: preview.sourceSystem || switcherSourceId(preview.source),
+    importBatchId: preview.importBatchId || preview.id,
+    mode: result.mode || preview.mode,
+    createdAt: new Date().toISOString(),
+    backupId: result.backupId || "",
+    reversible: result.mode !== "new-workspace",
+    stats: {
+      projects: Number(result.projects ?? preview.stats?.projects ?? 0),
+      tasks: Number(result.tasks ?? preview.stats?.tasks ?? 0),
+      skipped: Number(preview.stats?.skipped || 0),
+      confidence: Number(preview.stats?.confidence || 0)
+    },
+    warnings: preview.warnings || []
+  }])[0];
+}
+
+function switcherRollbackHistoryEntry(rollback) {
+  return normalizeImportHistory([{
+    id: uid("import-history"),
+    status: "rolled-back",
+    source: rollback.source,
+    sourceSystem: rollback.sourceSystem || switcherSourceId(rollback.source),
+    importBatchId: rollback.importBatchId || rollback.id,
+    mode: "rollback",
+    createdAt: new Date().toISOString(),
+    backupId: rollback.backupId,
+    reversible: false,
+    stats: rollback.stats,
+    warnings: []
+  }])[0];
+}
+
 function applySwitcherRows(rows, source) {
   const preview = prepareSwitcherImport(rows, source);
   return applySwitcherPreview(preview);
@@ -21516,6 +21640,8 @@ function applySwitcherPreview(preview) {
   state.switcherImportRollback = {
     id: uid("switcher-rollback"),
     source: preview.source,
+    sourceSystem: preview.sourceSystem || switcherSourceId(preview.source),
+    importBatchId: preview.importBatchId || preview.id,
     createdAt: new Date().toISOString(),
     summary: `Restore workspace to before the ${preview.source} import.`,
     backupId: backup.id,
@@ -21525,6 +21651,15 @@ function applySwitcherPreview(preview) {
     },
     snapshot: rollbackSnapshot
   };
+  state.importHistory = normalizeImportHistory([
+    switcherImportHistoryEntry(preview, {
+      backupId: backup.id,
+      projects: projects.length,
+      tasks: tasks.length,
+      mode: preview.mode
+    }),
+    ...state.importHistory
+  ]);
   state.onboarding = {
     ...state.onboarding,
     sampleMode: "import",
@@ -21541,6 +21676,8 @@ function applySwitcherPreview(preview) {
     metadata: {
       mode: preview.mode,
       backupId: backup.id,
+      importBatchId: preview.importBatchId || preview.id,
+      sourceSystem: preview.sourceSystem || switcherSourceId(preview.source),
       projects: projects.length,
       tasks: tasks.length
     }
@@ -21609,6 +21746,14 @@ function applySwitcherPreviewAsWorkspace(preview, backup) {
     timeEntries: [],
     switcherImportPreview: null,
     switcherImportRollback: null,
+    importHistory: [
+      switcherImportHistoryEntry(preview, {
+        backupId: backup.id,
+        projects: projects.length,
+        tasks: tasks.length,
+        mode: "new-workspace"
+      })
+    ],
     onboarding: {
       ...base.onboarding,
       dismissed: false,
@@ -21629,6 +21774,8 @@ function applySwitcherPreviewAsWorkspace(preview, backup) {
         restoreHint: "Switch workspaces or restore the source workspace backup if needed.",
         metadata: {
           backupId: backup.id,
+          importBatchId: preview.importBatchId || preview.id,
+          sourceSystem: preview.sourceSystem || switcherSourceId(preview.source),
           projects: projects.length,
           tasks: tasks.length
         },
@@ -21648,10 +21795,15 @@ function rollbackLastSwitcherImport() {
     showToast("No import rollback is available", "info");
     return;
   }
+  const previousHistory = normalizeImportHistory(state.importHistory);
   state = normalizeState({
     ...rollback.snapshot,
     switcherImportRollback: null,
-    switcherImportPreview: null
+    switcherImportPreview: null,
+    importHistory: normalizeImportHistory([
+      switcherRollbackHistoryEntry(rollback),
+      ...previousHistory
+    ])
   });
   addAuditEvent({
     action: "switcher_import_rollback",
@@ -21662,6 +21814,8 @@ function rollbackLastSwitcherImport() {
     reversible: false,
     restoreHint: "The workspace was restored to the pre-import snapshot.",
     metadata: {
+      importBatchId: rollback.importBatchId || rollback.id,
+      backupId: rollback.backupId,
       projects: rollback.stats.projects,
       tasks: rollback.stats.tasks
     }
