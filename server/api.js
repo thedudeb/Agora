@@ -795,6 +795,13 @@ async function buildBackendHealth(storage, session) {
   const bucket = supabaseStorageBucket();
   const wantsSupabaseStorage = storageDriver === "supabase";
   const wantsSupabaseAuth = authDriver === "supabase";
+  const productionTarget = wantsSupabaseStorage || wantsSupabaseAuth;
+  const configuredAllowedOrigins = allowedOrigins();
+  const passwordResetDelivery = cleanString(process.env.AGORA_PASSWORD_RESET_DELIVERY || "").toLowerCase();
+  const exposesResetToken = envFlag("AGORA_PASSWORD_RESET_RETURN_TOKEN", false) || passwordResetDelivery === "manual";
+  const demoAuthEnabled = envFlag("AGORA_DEMO_AUTH", false);
+  const passwordlessAuthEnabled = envFlag("AGORA_PASSWORDLESS_AUTH", false);
+  const trustProxy = envFlag("AGORA_TRUST_PROXY", false);
   const snapshotDocument = await storage.loadWorkspace();
   const snapshot = snapshotDocument?.snapshot || {};
   const collectionReports = await Promise.all(Object.entries(recordCollections).map(async ([key, config]) => {
@@ -824,6 +831,44 @@ async function buildBackendHealth(storage, session) {
     key,
     Array.isArray(snapshot[key]) ? snapshot[key].length : 0
   ]));
+  const productionGates = [
+    {
+      id: "allowed-origins",
+      label: "Allowed origins",
+      done: !productionTarget || configuredAllowedOrigins.size > 0,
+      detail: configuredAllowedOrigins.size
+        ? `${configuredAllowedOrigins.size} browser origin${configuredAllowedOrigins.size === 1 ? "" : "s"} allowed`
+        : productionTarget ? "No production browser origins configured" : "Localhost origins are allowed for development",
+      fix: "Set AGORA_ALLOWED_ORIGINS to the exact hosted app origin before exposing the API."
+    },
+    {
+      id: "auth-entrypoints",
+      label: "Auth entrypoints",
+      done: !demoAuthEnabled && !passwordlessAuthEnabled,
+      detail: demoAuthEnabled || passwordlessAuthEnabled
+        ? "Demo or passwordless auth is enabled"
+        : "Demo and passwordless auth are disabled",
+      fix: "Keep AGORA_DEMO_AUTH=false and AGORA_PASSWORDLESS_AUTH=false outside trusted demos."
+    },
+    {
+      id: "password-reset-delivery",
+      label: "Password reset delivery",
+      done: !productionTarget || ((passwordResetDelivery === "smtp" || passwordResetDelivery === "webhook") && !exposesResetToken),
+      detail: passwordResetDelivery
+        ? `${passwordResetDelivery} delivery${exposesResetToken ? " with browser token return" : ""}`
+        : productionTarget ? "No reset delivery configured" : "Manual reset delivery is acceptable for local development",
+      fix: "Use AGORA_PASSWORD_RESET_DELIVERY=smtp or webhook and keep AGORA_PASSWORD_RESET_RETURN_TOKEN=false for hosted production."
+    },
+    {
+      id: "proxy-rate-limit-source",
+      label: "Rate-limit IP source",
+      done: true,
+      detail: trustProxy
+        ? "Trusted proxy mode reads X-Forwarded-For"
+        : "Rate limits use the direct socket address",
+      fix: "Only set AGORA_TRUST_PROXY=true behind a proxy that overwrites untrusted X-Forwarded-For headers."
+    }
+  ];
   const readiness = [
     {
       id: "storage-driver",
@@ -900,6 +945,7 @@ async function buildBackendHealth(storage, session) {
         : "Scheduler endpoints are available for cron or manual runs",
       fix: "Use AGORA_SCHEDULER_ENABLED=true for the API worker, or call the scheduler endpoint from trusted cron."
     },
+    ...productionGates,
     {
       id: "production-mode",
       label: "Production mode",
@@ -931,6 +977,7 @@ async function buildBackendHealth(storage, session) {
     membership: session.membership,
     permissions: session.permissions,
     productionMode: storageDriver === "supabase" && authDriver === "supabase",
+    productionGates,
     snapshot: {
       exists: Boolean(snapshotDocument?.snapshot),
       metadata: snapshotDocument?.metadata || null,

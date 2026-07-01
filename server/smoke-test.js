@@ -40,6 +40,8 @@ async function run() {
     assert(backendHealth.auth === "local", "backend health did not expose auth driver");
     assert(backendHealth.records.some((record) => record.key === "comments"), "backend health did not report record collections");
     assert(backendHealth.readiness.some((item) => item.id === "structured-records"), "backend health did not include readiness items");
+    assert(backendHealth.productionGates.some((item) => item.id === "allowed-origins"), "backend health did not include production gates");
+    assert(backendHealth.readiness.some((item) => item.id === "password-reset-delivery"), "backend readiness did not include reset delivery gate");
 
     const aiOperator = await request(`${baseUrl}/api/ai/operator`, {
       method: "POST",

@@ -3994,6 +3994,8 @@ function renderThemeOption(theme) {
 function productionReadinessItems() {
   const hasApi = Boolean(apiSession);
   const health = backendHealth || apiSession?.backendHealth || {};
+  const productionGates = Array.isArray(health.productionGates) ? health.productionGates : [];
+  const failedProductionGates = productionGates.filter((gate) => !gate.done);
   return [
     {
       label: "Supabase or API connected",
@@ -4004,6 +4006,15 @@ function productionReadinessItems() {
       label: "Backend health checked",
       done: Boolean(health.generatedAt || apiSession?.lastBackendCheckedAt),
       detail: health.generatedAt ? `Last checked ${formatTimestamp(health.generatedAt)}` : "Run Backend Health after connecting."
+    },
+    {
+      label: "Hosted launch gates",
+      done: productionGates.length > 0 && failedProductionGates.length === 0,
+      detail: productionGates.length
+        ? failedProductionGates.length
+          ? `${failedProductionGates.length} gate${failedProductionGates.length === 1 ? "" : "s"} need attention`
+          : `${productionGates.length} gates passing`
+        : "Refresh Backend Health to inspect CORS, auth, reset, and proxy gates."
     },
     {
       label: "Auth driver selected",
