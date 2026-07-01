@@ -12,6 +12,7 @@ const checkFiles = [
   "server/static.js",
   "server/env.js",
   "server/smoke-test.js",
+  "server/mcp-integration-test.js",
   "server/supabase-verify.js",
   "server/portable-fixtures-test.js",
   "scripts/recovery-stress-test.js",
@@ -47,6 +48,10 @@ const commands = {
   api: {
     summary: "Run the dependency-free API smoke test",
     run: async () => runStep("API smoke test", [process.execPath, [path.join(ROOT, "server", "smoke-test.js")]])
+  },
+  mcp: {
+    summary: "Run the MCP server integration test",
+    run: async () => runStep("MCP integration test", [process.execPath, [path.join(ROOT, "server", "mcp-integration-test.js")]])
   },
   supabase: {
     summary: "Verify a real Supabase project from .env",
@@ -103,6 +108,8 @@ const commands = {
       await commands.recovery.run([]);
       if (includeApi) await commands.api.run([]);
       else console.log("Skipping API smoke test because --quick was passed.");
+      if (includeApi) await commands.mcp.run([]);
+      else console.log("Skipping MCP integration test because --quick was passed.");
       if (includeSupabase) await commands.supabase.run([]);
       else console.log("Skipping Supabase verification. Pass --supabase to include it.");
     }
@@ -175,6 +182,7 @@ Commands:
   fixtures                      Validate portable fixtures
   recovery                      Stress-test backup/import/restore semantics
   api                           Run API smoke test
+  mcp                           Run MCP integration test
   supabase                      Verify real Supabase setup from .env
   screenshots                   Refresh launch screenshots
   golden                        Run onboarding/golden-path browser QA
