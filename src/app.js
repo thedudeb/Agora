@@ -3882,8 +3882,8 @@ function goldenPathItems() {
         ? `${installedMarketplaceTemplates.length} marketplace template${installedMarketplaceTemplates.length === 1 ? "" : "s"} installed`
         : `${state.projectTemplates.length} starter template${state.projectTemplates.length === 1 ? "" : "s"} ready`,
       done: activeProjects().length > 0 && state.projectTemplates.length > 0,
-      commandId: "route:templates",
-      actionLabel: "Open Templates"
+      commandId: "template:recommended",
+      actionLabel: "Start With Client Onboarding"
     },
     {
       id: "automation-pack",
@@ -6458,6 +6458,13 @@ function commandPaletteBaseItems() {
       keywords: "first run setup onboarding wizard launch"
     },
     {
+      id: "template:recommended",
+      title: "Start with Client Onboarding",
+      detail: "Open the recommended first template for a complete client project flow",
+      group: "Golden path",
+      keywords: "template client onboarding first project recommended"
+    },
+    {
       id: "shortcuts:open",
       title: "Open keyboard shortcuts",
       detail: "View command, create, backup, search, and navigation keys",
@@ -6834,6 +6841,11 @@ function executeCommand(commandId) {
 
   if (commandId === "onboarding:wizard") {
     openOnboardingWizard();
+    return;
+  }
+
+  if (commandId === "template:recommended") {
+    openRecommendedTemplateFlow();
     return;
   }
 
@@ -12877,6 +12889,55 @@ function selectedProjectTemplate(templates = filteredProjectTemplates()) {
   return templates.find((template) => template.id === selectedId) || templates[0] || state.projectTemplates[0] || null;
 }
 
+function recommendedFirstTemplate() {
+  return byId(state.projectTemplates, "template-client-onboarding") || state.projectTemplates[0] || null;
+}
+
+function openRecommendedTemplateFlow() {
+  const template = recommendedFirstTemplate();
+  if (!template) {
+    setRoute("templates");
+    return;
+  }
+  state.templateLibrary = {
+    ...(state.templateLibrary || {}),
+    category: template.category || "all",
+    query: "",
+    selectedProjectTemplateId: template.id
+  };
+  state.selectedRoute = "templates";
+  openSidebarGroupForRoute("templates");
+  saveState();
+  render();
+  showToast(`${template.name} is ready to customize`, "success");
+}
+
+function renderRecommendedTemplatePanel(template) {
+  if (!template) return "";
+  return `
+    <section class="panel recommended-template-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Recommended first template</p>
+          <h2>${escapeHtml(template.name)}</h2>
+        </div>
+        <span class="status-pill inbox-green">Golden path</span>
+      </div>
+      <p class="panel-note">Start here when you want to prove Agora with real client work: kickoff, discovery, delivery planning, handoff, docs, intake, and milestones in one project.</p>
+      <div class="recommended-template-grid">
+        <span><strong>${template.tasks.length}</strong><small>Tasks</small></span>
+        <span><strong>${template.milestones.length}</strong><small>Milestones</small></span>
+        <span><strong>${template.docs.length}</strong><small>Docs</small></span>
+        <span><strong>${template.durationDays}</strong><small>Days</small></span>
+      </div>
+      <div class="marketplace-actions">
+        <button class="button button-secondary" type="button" data-preview-project-template="${template.id}">Preview Tasks</button>
+        <button class="button button-primary" type="button" data-use-project-template="${template.id}">Create Client Project</button>
+      </div>
+    </section>
+  `;
+}
+
 function marketplaceHubStats() {
   const installedMarketplaceTemplates = marketplaceProjectTemplates.filter((template) => state.projectTemplates.some((item) => item.id === template.id || item.name.toLowerCase() === template.name.toLowerCase()));
   const installedAutomationPacks = automationMarketplacePacks.filter(automationMarketplaceInstalled);
@@ -12994,6 +13055,7 @@ function renderTemplates() {
   const projectTemplateDocCount = state.projectTemplates.reduce((total, template) => total + template.docs.length, 0);
   const templates = filteredProjectTemplates();
   const selectedTemplate = selectedProjectTemplate(templates);
+  const recommendedTemplate = recommendedFirstTemplate();
   if (selectedTemplate && state.templateLibrary.selectedProjectTemplateId !== selectedTemplate.id) {
     state.templateLibrary.selectedProjectTemplateId = selectedTemplate.id;
   }
@@ -13006,6 +13068,8 @@ function renderTemplates() {
       ${metric("Template tasks", projectTemplateTaskCount)}
       ${metric("Template docs", projectTemplateDocCount)}
     </div>
+
+    ${renderRecommendedTemplatePanel(recommendedTemplate)}
 
     <div class="templates-grid">
       <section class="panel template-library-panel">

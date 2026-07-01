@@ -2941,6 +2941,42 @@ body[data-tutorial-target="view"] #app-view {
   color: var(--muted);
 }
 
+.recommended-template-panel {
+  margin-bottom: 16px;
+}
+
+.recommended-template-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.recommended-template-grid span {
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.recommended-template-grid strong,
+.recommended-template-grid small {
+  display: block;
+}
+
+.recommended-template-grid strong {
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.recommended-template-grid small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
 .template-preview-badges {
   display: flex;
   flex-wrap: wrap;
@@ -6471,6 +6507,7 @@ body[data-density="compact"] .main-content {
   .automation-grid,
   .marketplace-hub-grid,
   .marketplace-command-grid,
+  .recommended-template-grid,
   .team-launch-list,
   .command-center-grid,
   .operator-center-grid,
@@ -6810,6 +6847,7 @@ body[data-density="compact"] .main-content {
   .template-controls,
   .template-preview-form,
   .template-preview-grid,
+  .recommended-template-grid,
   .automation-composer,
   .settings-form,
   .settings-section-account .api-sync-form,

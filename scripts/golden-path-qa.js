@@ -74,7 +74,7 @@ const checks = [
     required: [
       "First 5 minutes",
       "Prove the core loop",
-      "Open Templates",
+      "Start With Client Onboarding",
       "Open Marketplace",
       "Open Data"
     ]
