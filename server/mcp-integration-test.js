@@ -113,7 +113,8 @@ async function run() {
     writeClient = await McpClient.start({
       AGORA_API_URL: baseUrl,
       AGORA_API_TOKEN: login.token,
-      AGORA_MCP_ALLOW_WRITES: "true"
+      AGORA_MCP_ALLOW_WRITES: "true",
+      AGORA_MCP_CLIENT_NAME: "MCP integration test"
     });
     await writeClient.call("initialize", { protocolVersion: "2025-06-18" });
 
@@ -126,6 +127,7 @@ async function run() {
     });
     assert(created.task?.id, "mcp create_task did not return task");
     assert(created.task.title === "Created through MCP", "mcp create_task returned wrong title");
+    assert(created.mcpAudit?.recorded === true, "mcp create_task did not record activity");
 
     const comment = await writeClient.tool("add_task_comment", {
       taskId: created.task.id,
@@ -133,12 +135,14 @@ async function run() {
       body: "MCP integration comment"
     });
     assert(comment.comment?.id, "mcp add_task_comment did not return comment");
+    assert(comment.mcpAudit?.recorded === true, "mcp add_task_comment did not record activity");
 
     const updated = await writeClient.tool("update_task_status", {
       taskId: created.task.id,
       status: "done"
     });
     assert(updated.task?.status === "done", "mcp update_task_status did not update task");
+    assert(updated.mcpAudit?.recorded === true, "mcp update_task_status did not record activity");
 
     const apiTasks = await request(`${baseUrl}/api/tasks?projectId=mcp-project`, {
       token: login.token
@@ -150,6 +154,13 @@ async function run() {
       token: login.token
     });
     assert(apiComments.comments.some((item) => item.body === "MCP integration comment"), "API did not persist MCP comment");
+
+    const apiActivities = await request(`${baseUrl}/api/activities?projectId=mcp-project`, {
+      token: login.token
+    });
+    const mcpActivities = apiActivities.activities.filter((item) => item.type === "mcp_tool" && item.taskId === created.task.id);
+    assert(mcpActivities.length >= 3, "API did not persist MCP activity records");
+    assert(mcpActivities.some((item) => item.message.includes("MCP integration test")), "MCP activity did not include client name");
 
     console.log("MCP integration test passed.");
   } finally {
@@ -282,4 +293,3 @@ run().catch((error) => {
   console.error(error.stack || error.message || error);
   process.exitCode = 1;
 });
-

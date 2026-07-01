@@ -13,7 +13,8 @@ const WRITE_ENV = "AGORA_MCP_ALLOW_WRITES";
 const config = {
   apiUrl: cleanUrl(process.env.AGORA_API_URL || DEFAULT_API_URL),
   apiToken: cleanString(process.env.AGORA_API_TOKEN),
-  allowWrites: envFlag(WRITE_ENV, false)
+  allowWrites: envFlag(WRITE_ENV, false),
+  clientName: cleanString(process.env.AGORA_MCP_CLIENT_NAME) || "MCP client"
 };
 
 const tools = [
@@ -469,7 +470,13 @@ async function createTask(args = {}) {
     updatedAt: new Date().toISOString()
   };
 
-  return apiRequest("POST", "/api/tasks", { body: { task } });
+  const result = await apiRequest("POST", "/api/tasks", { body: { task } });
+  result.mcpAudit = await recordMcpActivity("create_task", {
+    projectId,
+    taskId: result.task?.id || task.id,
+    message: `${config.clientName} created task "${title}" through MCP.`
+  });
+  return result;
 }
 
 async function updateTaskStatus(args = {}) {
@@ -483,24 +490,69 @@ async function updateTaskStatus(args = {}) {
     updatedAt: new Date().toISOString()
   };
 
-  return apiRequest("PUT", `/api/tasks/${encodeURIComponent(taskId)}`, { body: { task } });
+  const result = await apiRequest("PUT", `/api/tasks/${encodeURIComponent(taskId)}`, { body: { task } });
+  result.mcpAudit = await recordMcpActivity("update_task_status", {
+    projectId: result.task?.projectId || task.projectId,
+    taskId,
+    message: `${config.clientName} changed task "${result.task?.title || task.title || taskId}" to ${status} through MCP.`
+  });
+  return result;
 }
 
 async function addTaskComment(args = {}) {
   assertWritesAllowed();
   const taskId = requireString(args.taskId, "taskId");
   const body = requireString(args.body, "body");
+  const taskResponse = cleanString(args.projectId) ? null : await getTask({ taskId }).catch(() => null);
+  const projectId = cleanString(args.projectId) || cleanString(taskResponse?.task?.projectId);
   const comment = {
     id: `comment-${crypto.randomUUID()}`,
     taskId,
-    projectId: cleanString(args.projectId),
+    projectId,
     body,
     kind: cleanString(args.kind) || "mcp",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
 
-  return apiRequest("POST", "/api/comments", { body: { comment } });
+  const result = await apiRequest("POST", "/api/comments", { body: { comment } });
+  result.mcpAudit = await recordMcpActivity("add_task_comment", {
+    projectId: result.comment?.projectId || comment.projectId,
+    taskId,
+    message: `${config.clientName} added a task comment through MCP.`
+  });
+  return result;
+}
+
+async function recordMcpActivity(toolName, details = {}) {
+  const projectId = cleanString(details.projectId);
+  if (!projectId) {
+    return {
+      recorded: false,
+      reason: "No projectId was available for the MCP activity record."
+    };
+  }
+
+  try {
+    const activity = {
+      id: `activity-mcp-${crypto.randomUUID()}`,
+      projectId,
+      taskId: cleanString(details.taskId),
+      type: "mcp_tool",
+      message: `${details.message || `${config.clientName} used ${toolName} through MCP.`} Tool: ${toolName}.`,
+      createdAt: new Date().toISOString()
+    };
+    const response = await apiRequest("POST", "/api/activities", { body: { activity } });
+    return {
+      recorded: true,
+      activity: response.activity
+    };
+  } catch (error) {
+    return {
+      recorded: false,
+      error: error.message
+    };
+  }
 }
 
 async function workspaceSummary() {

@@ -37,6 +37,7 @@ Use the returned `token` as `AGORA_API_TOKEN`.
 ```sh
 AGORA_API_URL=http://127.0.0.1:8787 \
 AGORA_API_TOKEN=replace-with-session-token \
+AGORA_MCP_CLIENT_NAME="Local MCP client" \
 npm run mcp
 ```
 
@@ -46,6 +47,7 @@ For trusted local automation that should be allowed to create tasks, update task
 AGORA_API_URL=http://127.0.0.1:8787 \
 AGORA_API_TOKEN=replace-with-session-token \
 AGORA_MCP_ALLOW_WRITES=true \
+AGORA_MCP_CLIENT_NAME="Local MCP client" \
 npm run mcp
 ```
 
@@ -64,7 +66,8 @@ Use an absolute path for the script in desktop MCP clients:
       "env": {
         "AGORA_API_URL": "http://127.0.0.1:8787",
         "AGORA_API_TOKEN": "paste-session-token",
-        "AGORA_MCP_ALLOW_WRITES": "false"
+        "AGORA_MCP_ALLOW_WRITES": "false",
+        "AGORA_MCP_CLIENT_NAME": "Local MCP client"
       }
     }
   }
@@ -82,7 +85,8 @@ For a hosted API:
       "env": {
         "AGORA_API_URL": "https://api.example.com",
         "AGORA_API_TOKEN": "paste-session-token",
-        "AGORA_MCP_ALLOW_WRITES": "false"
+        "AGORA_MCP_ALLOW_WRITES": "false",
+        "AGORA_MCP_CLIENT_NAME": "Local MCP client"
       }
     }
   }
@@ -111,6 +115,8 @@ Guarded write tools:
 
 The write tools fail closed unless `AGORA_MCP_ALLOW_WRITES=true`. Agora still enforces server-side permissions, so a member or client token cannot use MCP to bypass the API.
 
+Successful write tools also attempt to create an `mcp_tool` activity record on the affected project/task. If the write succeeds but the activity record cannot be created, the tool still returns the write result with `mcpAudit.recorded=false`.
+
 ## Resources
 
 - `agora://workspace/summary`
@@ -137,4 +143,3 @@ References:
 - [MCP specification](https://modelcontextprotocol.io/specification/2025-06-18)
 - [MCP transports](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports)
 - [MCP tools](https://modelcontextprotocol.io/specification/2025-06-18/server/tools)
-

@@ -11,7 +11,7 @@ Scope:
 
 ## Summary
 
-The Agora MCP server is acceptable for a local v0 power-user release. It uses the existing Agora API as the trust boundary, requires a normal bearer token for API-backed tools and resources, keeps write tools disabled by default, and does not log protocol or token data to stdout.
+The Agora MCP server is acceptable for a local v0 power-user release. It uses the existing Agora API as the trust boundary, requires a normal bearer token for API-backed tools and resources, keeps write tools disabled by default, records MCP write activity when possible, and does not log protocol or token data to stdout.
 
 ## Findings
 
@@ -21,6 +21,7 @@ Resolved during this pass:
 
 - Protocol negotiation no longer echoes arbitrary client-requested protocol strings; it returns Agora's supported MCP protocol version.
 - The MCP process now loads `.env` through the existing server env loader while preserving explicit MCP-client environment overrides.
+- Successful MCP write tools now attempt to create a project/task activity record with type `mcp_tool`.
 
 Residual risks:
 
@@ -36,6 +37,7 @@ Residual risks:
 - Uses existing API role checks and company scoping.
 - Defaults `AGORA_MCP_ALLOW_WRITES` to false.
 - Requires explicit env opt-in for write tools.
+- Records successful MCP write tools as `mcp_tool` activity when the authenticated user has activity write permission.
 - Avoids stdout logs; stdout is reserved for newline-delimited JSON-RPC responses.
 - Keeps implementation dependency-free, reducing supply-chain surface for the v0 server.
 - Adds syntax coverage to `npm run check` and the power-user CLI check path.
@@ -46,5 +48,4 @@ Residual risks:
 - Add token creation and revocation UX for short-lived automation tokens.
 - Add optional per-tool allowlists, for example `AGORA_MCP_TOOLS=list_tasks,get_task`.
 - Add a remote MCP design only after OAuth, origin checks, rate limits, and audit logging are specified.
-- Add audit entries for MCP write tool calls with client name, tool name, target id, and rationale when available.
-
+- Add deeper server-side audit entries for MCP write tool calls with client name, tool name, target id, and rationale when available.
