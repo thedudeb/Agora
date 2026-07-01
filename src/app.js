@@ -722,6 +722,7 @@ const routes = {
   fields: "Custom Fields",
   audit: "Audit Log",
   permissions: "Permissions",
+  readiness: "Readiness",
   data: "Data",
   settings: "Settings",
   companies: "Companies",
@@ -3166,6 +3167,7 @@ function canAccessRoute(route) {
   const routePermissions = {
     audit: "audit:read",
     permissions: "audit:read",
+    readiness: "workspace:read",
     data: "workspace:import",
     settings: "workspace:read",
     reports: "workspace:read",
@@ -6525,6 +6527,13 @@ function commandPaletteBaseItems() {
       keywords: "launch first client workspace guided flow onboarding"
     },
     {
+      id: "readiness:open",
+      title: "Open readiness audit",
+      detail: "Review launch, backend, recovery, permissions, and production gates",
+      group: "Admin",
+      keywords: "production readiness audit launch gates security recovery"
+    },
+    {
       id: "template:recommended",
       title: "Start with Client Onboarding",
       detail: "Open the recommended first template for a complete client project flow",
@@ -6927,6 +6936,11 @@ function executeCommand(commandId) {
 
   if (commandId === "launch:workspace") {
     openLaunchWorkspaceFlow();
+    return;
+  }
+
+  if (commandId === "readiness:open") {
+    setRoute("readiness");
     return;
   }
 
@@ -9376,6 +9390,7 @@ function render() {
     fields: renderCustomFields,
     audit: renderAuditLog,
     permissions: renderPermissionsAudit,
+    readiness: renderProductionReadinessAudit,
     data: renderDataManagement,
     settings: renderSettings,
     companies: renderCompanies,
@@ -9405,7 +9420,7 @@ function sidebarGroupForRoute(route) {
   if (["landing", "dashboard", "launch", "portal", "daily", "inbox"].includes(route)) return "home";
   if (["board", "list", "calendar", "my-work", "time", "operator", "collaboration"].includes(route)) return "work";
   if (["reports", "goals", "marketplace", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
-  if (["audit", "permissions", "data", "settings"].includes(route)) return "admin";
+  if (["audit", "permissions", "readiness", "data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
   if (route === "invite") return "";
   return "";
@@ -10191,6 +10206,224 @@ function renderLaunchWorkspaceFlow() {
         </div>
       </section>
     ` : ""}
+  `;
+}
+
+function readinessScore(items) {
+  return {
+    done: items.filter((item) => item.done).length,
+    total: items.length
+  };
+}
+
+function readinessTone(score) {
+  if (score.done === score.total) return "green";
+  if (score.done / Math.max(score.total, 1) >= 0.65) return "amber";
+  return "red";
+}
+
+function productionAuditRecoveryItems() {
+  const recovery = portableRecoveryStatus();
+  const hasExport = state.auditEvents.some((event) => event.action === "workspace_export");
+  return [
+    {
+      label: "Portable bundle",
+      done: recovery.files.some((file) => file.path === "workspace.json") && recovery.files.some((file) => file.path === "README.md"),
+      detail: `${recovery.files.length} files available in the generated bundle`
+    },
+    {
+      label: "Local backup",
+      done: recovery.backups.length > 0,
+      detail: recovery.backups.length ? `${recovery.backups.length} backup${recovery.backups.length === 1 ? "" : "s"} saved` : "Create a backup before imports, restores, or launch changes"
+    },
+    {
+      label: "Export evidence",
+      done: hasExport || recovery.backups.length > 0,
+      detail: hasExport ? "Workspace export appears in the audit trail" : "Download a bundle or create a backup to leave evidence"
+    },
+    {
+      label: "Restore preview",
+      done: Boolean(state.portableImportPreview || state.switcherImportPreview),
+      detail: state.portableImportPreview || state.switcherImportPreview ? "An import preview has been reviewed" : "Preview a restore before replacing live workspace data"
+    }
+  ];
+}
+
+function productionAuditAccessItems() {
+  const activeMemberships = state.memberships.filter((membership) => membership.status !== "revoked");
+  const admins = activeMemberships.filter((membership) => membership.role === "admin");
+  const pendingInvites = state.invitations.filter((invitation) => invitation.status === "pending");
+  const operatorSummary = operatorPermissionSummary();
+  return [
+    {
+      label: "Admin owner",
+      done: admins.length > 0,
+      detail: admins.length ? `${admins.length} admin${admins.length === 1 ? "" : "s"} configured` : "At least one admin should own billing, exports, and access"
+    },
+    {
+      label: "Team access",
+      done: activeMemberships.length > 1 || pendingInvites.length > 0,
+      detail: `${activeMemberships.length} active member${activeMemberships.length === 1 ? "" : "s"}, ${pendingInvites.length} pending invite${pendingInvites.length === 1 ? "" : "s"}`
+    },
+    {
+      label: "Default role",
+      done: Boolean(state.workspace.defaultRole && state.workspace.defaultRole !== "admin"),
+      detail: `Default role: ${state.workspace.defaultRole || "not set"}`
+    },
+    {
+      label: "Operator guardrails",
+      done: Boolean(operatorSummary),
+      detail: `AI/operator permissions: ${operatorSummary}`
+    },
+    {
+      label: "Audit trail",
+      done: state.auditEvents.length > 0 || auditEvents.length > 0,
+      detail: `${state.auditEvents.length + auditEvents.length} local/server event${state.auditEvents.length + auditEvents.length === 1 ? "" : "s"} visible`
+    }
+  ];
+}
+
+function productionAuditSections() {
+  return [
+    {
+      id: "launch",
+      eyebrow: "Launch",
+      title: "First client workspace",
+      items: launchWorkspaceItems(),
+      actions: [{ label: "Open Launch Flow", commandId: "launch:workspace" }]
+    },
+    {
+      id: "production",
+      eyebrow: "Production",
+      title: "Hosted launch gates",
+      items: productionReadinessItems(),
+      actions: [{ label: "Open Settings", route: "settings" }]
+    },
+    {
+      id: "backend",
+      eyebrow: "Backend",
+      title: "API and sync health",
+      items: backendReadinessItems(),
+      actions: [
+        { label: "Refresh Health", id: "backend-health-refresh", disabled: !apiSession },
+        { label: "Open Sync", commandId: "settings:sync" }
+      ]
+    },
+    {
+      id: "recovery",
+      eyebrow: "Recovery",
+      title: "Portable restore path",
+      items: productionAuditRecoveryItems(),
+      actions: [
+        { label: "Create Backup", commandId: "backup:create" },
+        { label: "Open Recovery Plan", commandId: "recovery:plan" }
+      ]
+    },
+    {
+      id: "access",
+      eyebrow: "Security",
+      title: "Access and audit controls",
+      items: productionAuditAccessItems(),
+      actions: [
+        { label: "Open Permissions", route: "permissions" },
+        { label: "Open Audit", route: "audit" }
+      ]
+    }
+  ];
+}
+
+function renderProductionAuditSection(section) {
+  const score = readinessScore(section.items);
+  const tone = readinessTone(score);
+  return `
+    <section class="panel readiness-audit-section readiness-audit-${section.id}">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">${escapeHtml(section.eyebrow)}</p>
+          <h2>${escapeHtml(section.title)}</h2>
+        </div>
+        <span class="status-pill inbox-${tone}">${score.done}/${score.total}</span>
+      </div>
+      <div class="readiness-audit-list">
+        ${section.items.map((item) => `
+          <article class="readiness-audit-item ${item.done ? "is-done" : "is-open"}">
+            <span>${item.done ? "OK" : "Next"}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail || "")}</p>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+      <div class="readiness-audit-actions">
+        ${section.actions.map((action) => `
+          <button
+            class="button ${action.primary ? "button-primary" : "button-secondary"} compact-button"
+            type="button"
+            ${action.commandId ? `data-command-id="${escapeHtml(action.commandId)}"` : ""}
+            ${action.route ? `data-route="${escapeHtml(action.route)}"` : ""}
+            ${action.id ? `id="${escapeHtml(action.id)}"` : ""}
+            ${action.disabled ? "disabled" : ""}
+          >${escapeHtml(action.label)}</button>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderReadinessCliPanel() {
+  return `
+    <section class="panel readiness-cli-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">CLI</p>
+          <h2>Power-user checks</h2>
+        </div>
+        <span class="status-pill inbox-blue">scriptable</span>
+      </div>
+      <div class="readiness-command-list">
+        <code>npm run agora -- launch check &lt;bundle.json&gt;</code>
+        <code>npm run agora -- launch check &lt;bundle.json&gt; --strict</code>
+        <code>npm run agora -- bundle inspect &lt;bundle.json&gt; --json</code>
+        <code>npm run launch:check</code>
+      </div>
+    </section>
+  `;
+}
+
+function renderProductionReadinessAudit() {
+  const sections = productionAuditSections();
+  const allItems = sections.flatMap((section) => section.items);
+  const score = readinessScore(allItems);
+  const tone = readinessTone(score);
+  const recovery = portableRecoveryStatus();
+  const health = backendHealth || apiSession?.backendHealth || {};
+  els.appView.innerHTML = `
+    ${renderRouteHeader({
+      eyebrow: "Readiness",
+      title: "Production readiness audit",
+      description: "A single operational view for launch flow, hosted gates, backend sync, recovery, permissions, and audit confidence.",
+      actions: [
+        { label: "Open Launch Flow", commandId: "launch:workspace", primary: true },
+        { label: "Create Backup", commandId: "backup:create" }
+      ]
+    })}
+
+    <div class="metric-grid">
+      ${metric("Overall", `${score.done}/${score.total}`)}
+      ${metric("Status", tone === "green" ? "Ready" : tone === "amber" ? "Close" : "Needs work")}
+      ${metric("Backend", health.productionMode ? "Production" : apiSession ? "Connected" : "Local")}
+      ${metric("Backups", recovery.backups.length)}
+      ${metric("Audit events", state.auditEvents.length + auditEvents.length)}
+      ${metric("Failed syncs", apiSyncQueue.length)}
+    </div>
+
+    ${renderWorkspaceTrustStrip()}
+
+    <div class="readiness-audit-grid">
+      ${sections.map(renderProductionAuditSection).join("")}
+      ${renderReadinessCliPanel()}
+    </div>
   `;
 }
 

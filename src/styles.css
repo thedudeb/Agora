@@ -1694,6 +1694,85 @@ body[data-tutorial-target="view"] #app-view {
   align-items: center;
 }
 
+.readiness-audit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.readiness-audit-section,
+.readiness-cli-panel {
+  align-content: start;
+}
+
+.readiness-audit-list,
+.readiness-command-list {
+  display: grid;
+  gap: 8px;
+}
+
+.readiness-audit-item {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.readiness-audit-item > span {
+  display: inline-grid;
+  min-height: 28px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-align: center;
+  background: var(--surface);
+  border-radius: 999px;
+}
+
+.readiness-audit-item.is-done > span {
+  color: #ffffff;
+  background: var(--green);
+}
+
+.readiness-audit-item strong,
+.readiness-audit-item p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.readiness-audit-item p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.readiness-audit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.readiness-cli-panel {
+  grid-column: 1 / -1;
+}
+
+.readiness-command-list code {
+  display: block;
+  min-width: 0;
+  padding: 10px;
+  overflow-x: auto;
+  color: var(--text);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
 .golden-path-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -6768,6 +6847,7 @@ body[data-density="compact"] .main-content {
   .launch-step-grid,
   .launch-flow-grid,
   .launch-complete-panel,
+  .readiness-audit-grid,
   .dashboard-support-grid {
     grid-template-columns: 1fr;
   }
@@ -7010,6 +7090,11 @@ body[data-density="compact"] .main-content {
   }
 
   .launch-action-row .button {
+    width: 100%;
+  }
+
+  .readiness-audit-actions,
+  .readiness-audit-actions .button {
     width: 100%;
   }
 
