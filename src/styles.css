@@ -2770,7 +2770,8 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .automation-marketplace-panel,
-.portable-workspace-panel {
+.portable-workspace-panel,
+.automation-author-panel {
   grid-column: 1 / -1;
 }
 
@@ -2816,7 +2817,8 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .automation-pack-rules,
-.operator-source-list {
+.operator-source-list,
+.operator-permission-list {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -2833,6 +2835,57 @@ body[data-tutorial-target="view"] #app-view {
   border-radius: 999px;
   font-size: 0.74rem;
   font-weight: 800;
+}
+
+.automation-pack-author-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.automation-pack-author-form .wide-field {
+  grid-column: 1 / -1;
+}
+
+.automation-pack-selection {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.automation-pack-select-row,
+.operator-permission-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.automation-pack-select-row strong,
+.automation-pack-select-row small,
+.operator-permission-row strong,
+.operator-permission-row small {
+  display: block;
+}
+
+.automation-pack-select-row small,
+.operator-permission-row small {
+  margin-top: 2px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.operator-permission-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 10px;
 }
 
 .template-import-panel {
@@ -6034,6 +6087,9 @@ body[data-density="compact"] .main-content {
   .trust-grid,
   .mobile-roadmap-list,
   .automation-pack-list,
+  .automation-pack-author-form,
+  .automation-pack-selection,
+  .operator-permission-list,
   .onboarding-grid,
   .project-hero {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6354,6 +6410,9 @@ body[data-density="compact"] .main-content {
   .operator-trust-grid,
   .portable-file-grid,
   .automation-pack-list,
+  .automation-pack-author-form,
+  .automation-pack-selection,
+  .operator-permission-list,
   .onboarding-grid,
   .project-command-grid,
   .mobile-roadmap-list,

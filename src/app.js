@@ -383,6 +383,24 @@ const automationActionOptions = [
   { id: "notify_channel", label: "Notify integration channel" }
 ];
 
+const aiPermissionDefaults = {
+  createTasks: true,
+  planToday: true,
+  editDocs: true,
+  manageApprovals: true,
+  readClientData: true,
+  integrationEvents: true
+};
+
+const aiPermissionOptions = [
+  { id: "createTasks", label: "Create tasks", description: "Operator can add recovery, unblock, and approval follow-up tasks." },
+  { id: "planToday", label: "Plan Today", description: "Operator can move work into the Today plan and leave planning notes." },
+  { id: "editDocs", label: "Draft docs", description: "Operator can create client updates and generated workspace docs." },
+  { id: "manageApprovals", label: "Approvals", description: "Operator can request approvals and chase pending approvals." },
+  { id: "readClientData", label: "Client data", description: "Operator can use client companies, portals, approvals, docs, and files as context." },
+  { id: "integrationEvents", label: "Integration events", description: "Operator can trigger adapter health and integration digest checks." }
+];
+
 const automationMarketplacePacks = [
   {
     id: "automation-pack-agency-handoff",
@@ -836,7 +854,8 @@ const seedData = {
       keySource: "Server environment",
       dataPolicy: "Workspace only",
       promptTemplate: "Transparent project operator",
-      auditMode: "Preview, rationale, undo"
+      auditMode: "Preview, rationale, undo",
+      permissions: { ...aiPermissionDefaults }
     },
     integrations: {
       defaultOwner: "mara",
@@ -2062,7 +2081,8 @@ function normalizeState(nextState) {
       theme: normalizeWorkspaceTheme((nextState.workspace || {}).theme),
       ai: {
         ...seedData.workspace.ai,
-        ...((nextState.workspace || {}).ai || {})
+        ...((nextState.workspace || {}).ai || {}),
+        permissions: normalizeAiPermissions((nextState.workspace || {}).ai?.permissions)
       },
       integrations: normalizeWorkspaceIntegrations((nextState.workspace || {}).integrations),
       capacity: normalizeWorkspaceCapacity((nextState.workspace || {}).capacity),
@@ -2080,6 +2100,7 @@ function normalizeState(nextState) {
     selectedDashboardLayoutId: normalizeSelectedDashboardLayoutId(nextState.selectedDashboardLayoutId, nextState.dashboardLayouts),
     switcherImportPreview: normalizeSwitcherImportPreview(nextState.switcherImportPreview),
     switcherImportRollback: normalizeSwitcherImportRollback(nextState.switcherImportRollback),
+    portableImportPreview: nextState.portableImportPreview && typeof nextState.portableImportPreview === "object" ? nextState.portableImportPreview : null,
     inboxRead: Array.isArray(nextState.inboxRead) ? nextState.inboxRead : [],
     inboxArchived: Array.isArray(nextState.inboxArchived) ? nextState.inboxArchived : [],
     inboxSnoozed: normalizeInboxSnoozed(nextState.inboxSnoozed),
@@ -2382,6 +2403,17 @@ function normalizeAutomationRule(automation = {}) {
 function normalizeAutomations(automations = []) {
   const source = Array.isArray(automations) ? automations : seedData.automations;
   return source.map(normalizeAutomationRule).filter((automation) => automation.name).slice(0, 50);
+}
+
+function normalizeAiPermissions(permissions = {}) {
+  return Object.fromEntries(
+    aiPermissionOptions.map((option) => [
+      option.id,
+      Object.prototype.hasOwnProperty.call(permissions, option.id)
+        ? Boolean(permissions[option.id])
+        : aiPermissionDefaults[option.id]
+    ])
+  );
 }
 
 function triggerKindFromText(value = "") {
@@ -4530,9 +4562,13 @@ function notificationStatusLabel() {
 }
 
 function aiSettings() {
-  return {
+  const settings = {
     ...seedData.workspace.ai,
     ...(state.workspace.ai || {})
+  };
+  return {
+    ...settings,
+    permissions: normalizeAiPermissions(settings.permissions)
   };
 }
 
@@ -4553,6 +4589,26 @@ function aiConnectionSummary() {
   return "Server adapter ready";
 }
 
+function operatorPermissions() {
+  return aiSettings().permissions;
+}
+
+function operatorPermissionSummary() {
+  const permissions = operatorPermissions();
+  const allowed = aiPermissionOptions.filter((option) => permissions[option.id]);
+  return `${allowed.length}/${aiPermissionOptions.length} allowed`;
+}
+
+function canOperatorApplyType(type) {
+  const permissions = operatorPermissions();
+  if (type === "task" || type === "approval_chase") return permissions.createTasks;
+  if (type === "approval_request") return permissions.manageApprovals;
+  if (type === "client_update") return permissions.editDocs && permissions.readClientData;
+  if (type === "plan") return permissions.planToday;
+  if (type === "integration_digest" || type === "command_integration-digest") return permissions.integrationEvents;
+  return true;
+}
+
 function aiOperatorTrustState() {
   const settings = aiSettings();
   return {
@@ -4567,12 +4623,15 @@ function aiOperatorTrustState() {
     connection: aiConnectionSummary(),
     externalProvider: aiProviderNeedsApi(),
     serverSideSecretsOnly: settings.provider === "local" || settings.keySource !== "Browser",
-    actionLedgerEntries: recentOperatorActions(50).length
+    actionLedgerEntries: recentOperatorActions(50).length,
+    permissions: normalizeAiPermissions(settings.permissions),
+    permissionSummary: operatorPermissionSummary()
   };
 }
 
 function operatorContextBundle() {
   const context = workspaceAiContext();
+  const permissions = operatorPermissions();
   return {
     type: "agora.ai-operator-context",
     exportVersion: 1,
@@ -4587,9 +4646,9 @@ function operatorContextBundle() {
     visibleContext: {
       brief: context.brief,
       tasks: context.tasks,
-      approvals: context.approvals,
+      approvals: permissions.manageApprovals && permissions.readClientData ? context.approvals : [],
       activities: context.activities,
-      documents: context.documents
+      documents: permissions.editDocs ? context.documents.filter((document) => permissions.readClientData || projectCompany(document.projectId)?.type !== "Client") : []
     },
     actionLedger: recentOperatorActions(50),
     generatedDocs: recentOperatorDocuments(12)
@@ -4621,6 +4680,27 @@ function enableLocalOperatorMode() {
   saveState();
   render();
   showToast("Local operator mode enabled", "success");
+}
+
+function saveOperatorPermissions() {
+  const permissions = { ...operatorPermissions() };
+  document.querySelectorAll("[data-operator-permission]").forEach((input) => {
+    permissions[input.dataset.operatorPermission] = Boolean(input.checked);
+  });
+  state.workspace = {
+    ...state.workspace,
+    ai: {
+      ...aiSettings(),
+      permissions: normalizeAiPermissions(permissions)
+    }
+  };
+  addAuditEvent({
+    action: "ai_operator_permissions_update",
+    detail: `Updated Operator permissions: ${operatorPermissionSummary()}`
+  });
+  saveState();
+  render();
+  showToast("Operator permissions saved", "success");
 }
 
 function paymentSettings() {
@@ -5461,10 +5541,56 @@ function downloadPortableWorkspaceManifest() {
   showToast("Portable manifest downloaded", "success");
 }
 
-function importWorkspaceJson(rawJson, options = {}) {
+function parsePortableWorkspaceInput(rawJson) {
   const parsed = JSON.parse(rawJson);
+  if (parsed?.type === "agora.portable-workspace" && Array.isArray(parsed.files)) {
+    const workspaceFile = parsed.files.find((file) => file.path === "workspace.json" && file.kind === "json");
+    if (!workspaceFile?.content) throw new Error("Portable bundle is missing workspace.json");
+    const snapshot = JSON.parse(workspaceFile.content);
+    return {
+      snapshot,
+      sourceType: "portable-bundle",
+      manifest: parsed.manifest || parsed,
+      fileCount: parsed.files.length,
+      files: parsed.files.map((file) => ({ path: file.path, kind: file.kind, size: file.size || String(file.content || "").length }))
+    };
+  }
+
+  return {
+    snapshot: parsed.snapshot && parsed.snapshot.workspace ? parsed.snapshot : parsed,
+    sourceType: "workspace-json",
+    manifest: parsed.manifest || null,
+    fileCount: 1,
+    files: []
+  };
+}
+
+function portableImportPreview(rawJson) {
+  const parsed = parsePortableWorkspaceInput(rawJson);
+  const snapshot = parsed.snapshot || {};
+  return {
+    id: uid("portable-preview"),
+    sourceType: parsed.sourceType,
+    workspaceName: snapshot.workspace?.name || parsed.manifest?.workspace?.name || "Imported workspace",
+    exportedAt: snapshot.exportedAt || parsed.manifest?.exportedAt || "",
+    fileCount: parsed.fileCount,
+    counts: {
+      companies: Array.isArray(snapshot.companies) ? snapshot.companies.length : 0,
+      projects: Array.isArray(snapshot.projects) ? snapshot.projects.length : 0,
+      tasks: Array.isArray(snapshot.tasks) ? snapshot.tasks.length : 0,
+      automations: Array.isArray(snapshot.automations) ? snapshot.automations.length : 0,
+      templates: Array.isArray(snapshot.projectTemplates) ? snapshot.projectTemplates.length : 0,
+      operatorActions: Array.isArray(snapshot.operatorActions) ? snapshot.operatorActions.length : 0
+    },
+    files: parsed.files.slice(0, 8),
+    createdAt: new Date().toISOString()
+  };
+}
+
+function importWorkspaceJson(rawJson, options = {}) {
+  const parsed = parsePortableWorkspaceInput(rawJson);
   if (options.backupLabel) saveWorkspaceBackups([workspaceBackupRecord(options.backupLabel), ...loadWorkspaceBackups()]);
-  applyWorkspaceSnapshot(parsed);
+  applyWorkspaceSnapshot(parsed.snapshot);
 }
 
 function normalizeWorkspaceBackup(backup) {
@@ -9565,11 +9691,28 @@ function renderOperatorTrustPanel() {
           <strong>${escapeHtml(trust.auditMode)}</strong>
           <small>${trust.actionLedgerEntries} ledger entries</small>
         </article>
+        <article>
+          <span>Permissions</span>
+          <strong>${escapeHtml(trust.permissionSummary)}</strong>
+          <small>Admin-governed operator scope</small>
+        </article>
       </div>
       <div class="operator-source-list">
         ${operatorDataSourcesFor("workspace_brief integration").map((source) => `<span>${escapeHtml(source)}</span>`).join("")}
       </div>
+      <div class="operator-permission-list">
+        ${aiPermissionOptions.map((option) => `
+          <label class="operator-permission-row">
+            <input type="checkbox" data-operator-permission="${option.id}" ${trust.permissions[option.id] ? "checked" : ""}>
+            <span>
+              <strong>${escapeHtml(option.label)}</strong>
+              <small>${escapeHtml(option.description)}</small>
+            </span>
+          </label>
+        `).join("")}
+      </div>
       <div class="operator-command-actions">
+        <button class="button button-primary" type="button" id="operator-permissions-save">Save Permissions</button>
         <button class="button button-primary" type="button" id="operator-context-export">Export Context</button>
         <button class="button button-secondary" type="button" id="operator-local-mode">Use Local Mode</button>
         <button class="button button-secondary" type="button" data-route="settings">AI Settings</button>
@@ -9579,16 +9722,17 @@ function renderOperatorTrustPanel() {
 }
 
 function renderOperatorActionSuggestion(action) {
+  const allowed = canOperatorApplyType(action.type);
   return `
     <article class="operator-action-card">
       <div>
-        <span class="status-pill inbox-${action.health < 45 ? "red" : action.health < 70 ? "amber" : "green"}">${escapeHtml(action.impact)}</span>
+        <span class="status-pill inbox-${allowed ? action.health < 45 ? "red" : action.health < 70 ? "amber" : "green" : "neutral"}">${allowed ? escapeHtml(action.impact) : "Permission blocked"}</span>
         <h3>${escapeHtml(action.title)}</h3>
         <p>${escapeHtml(action.summary)}</p>
         <small>${escapeHtml(action.projectName)}</small>
       </div>
       <div class="operator-action-row">
-        <button class="button button-primary compact-button" type="button" data-operator-apply="${action.type}" data-operator-project="${action.projectId}" data-operator-task="${action.sourceTaskId}" data-operator-approval="${action.approvalId}" data-operator-company="${action.companyId}">${escapeHtml(action.confirmLabel)}</button>
+        <button class="button button-primary compact-button" type="button" data-operator-apply="${action.type}" data-operator-project="${action.projectId}" data-operator-task="${action.sourceTaskId}" data-operator-approval="${action.approvalId}" data-operator-company="${action.companyId}" ${allowed ? "" : "disabled"}>${escapeHtml(action.confirmLabel)}</button>
         <button class="button button-secondary compact-button" type="button" data-project-id="${action.projectId}">Open Project</button>
       </div>
     </article>
@@ -12774,6 +12918,59 @@ function renderAutomationMarketplacePanel() {
   `;
 }
 
+function renderAutomationPackAuthorPanel() {
+  return `
+    <section class="panel automation-author-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Pack authoring</p>
+          <h2>Share your automations</h2>
+        </div>
+        <span class="status-pill inbox-blue">${state.automations.length} available</span>
+      </div>
+      <p class="panel-note">Turn selected workspace rules into an open JSON pack with creator, category, and license metadata.</p>
+      <div class="automation-pack-author-form">
+        <label>
+          <span>Pack name</span>
+          <input id="automation-pack-name" placeholder="Client delivery safeguards">
+        </label>
+        <label>
+          <span>Category</span>
+          <input id="automation-pack-category" placeholder="Agency, Operations, Software">
+        </label>
+        <label>
+          <span>Creator</span>
+          <input id="automation-pack-creator" value="${escapeHtml(memberName(activeMemberId()) || state.workspace.name)}">
+        </label>
+        <label>
+          <span>License</span>
+          <input id="automation-pack-license" value="MIT-style workflow pack">
+        </label>
+        <label class="wide-field">
+          <span>Description</span>
+          <textarea id="automation-pack-description" rows="3" placeholder="What problem does this pack solve?"></textarea>
+        </label>
+      </div>
+      <div class="automation-pack-selection">
+        ${state.automations.length ? state.automations.map((automation) => `
+          <label class="automation-pack-select-row">
+            <input type="checkbox" data-author-automation="${automation.id}" checked>
+            <span>
+              <strong>${escapeHtml(automation.name)}</strong>
+              <small>${escapeHtml(automation.trigger)} -> ${escapeHtml(automation.action)}</small>
+            </span>
+          </label>
+        `).join("") : emptyState("Create an automation rule before exporting a pack.")}
+      </div>
+      <div class="marketplace-actions">
+        <button class="button button-secondary" type="button" id="automation-pack-select-all" ${state.automations.length ? "" : "disabled"}>Select All</button>
+        <button class="button button-secondary" type="button" id="automation-pack-clear-selection" ${state.automations.length ? "" : "disabled"}>Clear</button>
+        <button class="button button-primary" type="button" id="automation-pack-export" ${state.automations.length ? "" : "disabled"}>Export Pack</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderAutomations() {
   const enabled = state.automations.filter((automation) => automation.enabled);
   const recentHistory = state.automationHistory.slice(0, 8);
@@ -12852,6 +13049,8 @@ function renderAutomations() {
           ${recentHistory.length ? recentHistory.map(renderAutomationHistory).join("") : emptyState("Automations have not run yet.")}
         </div>
       </section>
+
+      ${renderAutomationPackAuthorPanel()}
 
       <section class="panel automation-suggestion-panel">
         <div class="panel-header">
@@ -13456,6 +13655,25 @@ function renderDataManagement() {
         </div>
       </section>
 
+      <section class="panel portable-workspace-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Portable restore</p>
+            <h2>Import bundle</h2>
+          </div>
+          <span class="status-pill inbox-blue">Bundle or workspace.json</span>
+        </div>
+        <div class="import-panel">
+          <textarea id="portable-import-payload" rows="10" placeholder="Paste an Agora portable bundle JSON or the workspace.json file from a bundle"></textarea>
+          ${renderPortableImportPreview()}
+          <div class="data-actions import-actions">
+            <button class="button button-secondary" type="button" id="portable-import-preview">Preview Bundle</button>
+            <button class="button button-secondary" type="button" id="portable-import-new">Import as New Workspace</button>
+            <button class="button button-primary" type="button" id="portable-import-replace">Replace Current Workspace</button>
+          </div>
+        </div>
+      </section>
+
       <section class="panel switcher-import-panel">
         <div class="panel-header">
           <div>
@@ -13519,6 +13737,48 @@ function renderDataManagement() {
         </div>
         ${renderBackendChecklist()}
       </section>
+    </div>
+  `;
+}
+
+function renderPortableImportPreview() {
+  const preview = state.portableImportPreview;
+  if (!preview) {
+    return `
+      <div class="switcher-preview-empty">
+        <strong>No portable import preview yet</strong>
+        <span>Preview first to confirm workspace counts before restoring.</span>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="switcher-preview-panel portable-import-preview">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Review</p>
+          <h3>${escapeHtml(preview.workspaceName)}</h3>
+        </div>
+        <span class="status-pill inbox-neutral">${preview.sourceType === "portable-bundle" ? "Portable bundle" : "Workspace JSON"}</span>
+      </div>
+      <div class="metric-grid compact-metrics">
+        ${metric("Files", preview.fileCount)}
+        ${metric("Projects", preview.counts.projects)}
+        ${metric("Tasks", preview.counts.tasks)}
+        ${metric("Automations", preview.counts.automations)}
+        ${metric("Templates", preview.counts.templates)}
+        ${metric("Operator actions", preview.counts.operatorActions)}
+      </div>
+      ${preview.files?.length ? `
+        <div class="portable-file-grid">
+          ${preview.files.map((file) => `
+            <article>
+              <strong>${escapeHtml(file.path)}</strong>
+              <span>${escapeHtml(file.kind)} / ${Number(file.size || 0).toLocaleString()} chars</span>
+            </article>
+          `).join("")}
+        </div>
+      ` : ""}
     </div>
   `;
 }
@@ -15594,6 +15854,69 @@ function exportAutomationMarketplacePack(packId) {
   showToast("Automation pack exported", "success");
 }
 
+function selectedAutomationPackRuleIds() {
+  return [...document.querySelectorAll("[data-author-automation]:checked")]
+    .map((input) => input.dataset.authorAutomation)
+    .filter(Boolean);
+}
+
+function automationRuleForPack(rule, pack) {
+  return normalizeAutomationRule({
+    ...rule,
+    id: `${slugFromName(pack.name)}-${slugFromName(rule.name)}`,
+    marketplacePackId: slugFromName(pack.name),
+    source: "community",
+    creatorName: pack.creatorName,
+    installedAt: "",
+    license: pack.license,
+    lastRun: "",
+    runCount: 0
+  });
+}
+
+function exportAuthoredAutomationPack() {
+  const name = document.querySelector("#automation-pack-name")?.value.trim() || "";
+  const category = document.querySelector("#automation-pack-category")?.value.trim() || "Community";
+  const creatorName = document.querySelector("#automation-pack-creator")?.value.trim() || memberName(activeMemberId()) || state.workspace.name;
+  const license = document.querySelector("#automation-pack-license")?.value.trim() || "MIT-style workflow pack";
+  const description = document.querySelector("#automation-pack-description")?.value.trim() || "";
+  const selectedIds = selectedAutomationPackRuleIds();
+  if (!name) {
+    showToast("Add a pack name first", "info");
+    return;
+  }
+  if (!selectedIds.length) {
+    showToast("Select at least one automation rule", "info");
+    return;
+  }
+
+  const pack = {
+    id: `automation-pack-${slugFromName(name)}`,
+    name,
+    category,
+    creatorName,
+    license,
+    description: description || `Community automation pack for ${name}.`,
+    rules: selectedIds
+      .map((id) => byId(state.automations, id))
+      .filter(Boolean)
+      .map((rule) => automationRuleForPack(rule, { name, creatorName, license }))
+  };
+  downloadJsonFile(`${slugFromName(name)}-automation-pack.json`, JSON.stringify({
+    type: "agora.automation-pack",
+    exportVersion: 1,
+    exportedAt: new Date().toISOString(),
+    pack
+  }, null, 2));
+  showToast("Automation pack exported", "success");
+}
+
+function setAutomationPackAuthorSelection(checked) {
+  document.querySelectorAll("[data-author-automation]").forEach((input) => {
+    input.checked = checked;
+  });
+}
+
 function saveAutomationRule() {
   const id = document.querySelector("#automation-id")?.value || uid("automation");
   const existing = byId(state.automations, id);
@@ -15906,17 +16229,21 @@ function draftOperatorClientUpdate(companyId) {
 function runOperatorCommand(command) {
   let changedCount = 0;
   if (command === "triage") {
-    operatorActionSuggestions(3).forEach((action) => {
+    operatorActionSuggestions(3).filter((action) => canOperatorApplyType(action.type)).forEach((action) => {
       applyOperatorSuggestion(action.type, action.projectId, action.sourceTaskId, action.approvalId, action.companyId);
       changedCount += 1;
     });
   } else if (command === "approval-packet") {
-    const candidate = operatorActionSuggestions(6).find((action) => action.type === "approval_request" || action.type === "approval_chase");
+    const candidate = operatorActionSuggestions(6).find((action) => (action.type === "approval_request" || action.type === "approval_chase") && canOperatorApplyType(action.type));
     if (candidate) {
       applyOperatorSuggestion(candidate.type, candidate.projectId, candidate.sourceTaskId, candidate.approvalId, candidate.companyId);
       changedCount += 1;
     }
   } else if (command === "portal-updates") {
+    if (!canOperatorApplyType("client_update")) {
+      showToast("Operator is not allowed to draft client updates", "info");
+      return;
+    }
     state.companies
       .filter((company) => company.type === "Client")
       .slice(0, 3)
@@ -15924,6 +16251,10 @@ function runOperatorCommand(command) {
         if (draftOperatorClientUpdate(company.id)) changedCount += 1;
       });
   } else if (command === "integration-digest") {
+    if (!operatorPermissions().integrationEvents) {
+      showToast("Operator is not allowed to run integration events", "info");
+      return;
+    }
     recordIntegrationTestEvent();
     logOperatorAction({
       type: "integration_digest",
@@ -15983,6 +16314,11 @@ function undoOperatorAction(actionId) {
 }
 
 function applyOperatorSuggestion(type, projectId, taskId = "", approvalId = "", companyId = "") {
+  if (!canOperatorApplyType(type)) {
+    showToast("Operator permission blocks that action", "info");
+    return;
+  }
+
   const project = byId(state.projects, projectId);
   if (!project) return;
 
@@ -16360,7 +16696,8 @@ function saveAiSettings() {
       keySource,
       dataPolicy,
       promptTemplate,
-      auditMode
+      auditMode,
+      permissions: operatorPermissions()
     }
   };
   saveState();
@@ -16721,8 +17058,12 @@ function importWorkspaceAsNewFromTextarea() {
   const rawJson = textarea?.value.trim();
   if (!rawJson) return;
 
+  importWorkspaceAsNewFromPayload(rawJson);
+}
+
+function importWorkspaceAsNewFromPayload(rawJson) {
   try {
-    const parsed = JSON.parse(rawJson);
+    const parsed = parsePortableWorkspaceInput(rawJson).snapshot;
     const sourceWorkspace = parsed.workspace || {};
     const workspaceName = `${sourceWorkspace.name || "Imported Workspace"} Import`;
     const workspaceId = uniqueWorkspaceId(workspaceName);
@@ -16771,6 +17112,50 @@ function importWorkspaceAsNewFromTextarea() {
     showToast(`Imported ${workspaceName}`, "success");
   } catch {
     showToast("Import failed: check the JSON format", "info");
+  }
+}
+
+function previewPortableImportPayload() {
+  const textarea = document.querySelector("#portable-import-payload");
+  const rawJson = textarea?.value.trim();
+  if (!rawJson) {
+    showToast("Paste a portable bundle or workspace JSON first", "info");
+    return;
+  }
+
+  try {
+    state.portableImportPreview = portableImportPreview(rawJson);
+    saveState();
+    renderDataManagement();
+    const nextTextarea = document.querySelector("#portable-import-payload");
+    if (nextTextarea) nextTextarea.value = rawJson;
+    showToast("Portable import preview ready", "success");
+  } catch (error) {
+    showToast(`Portable import failed: ${error.message}`, "info");
+  }
+}
+
+function importPortablePayload(mode = "new-workspace") {
+  const textarea = document.querySelector("#portable-import-payload");
+  const rawJson = textarea?.value.trim();
+  if (!rawJson) {
+    showToast("Paste a portable bundle or workspace JSON first", "info");
+    return;
+  }
+
+  try {
+    if (mode === "replace") {
+      importWorkspaceJson(rawJson, { backupLabel: "Before portable import" });
+      state.portableImportPreview = null;
+      saveState();
+      render();
+      showToast("Portable workspace imported", "success");
+      return;
+    }
+    state.portableImportPreview = null;
+    importWorkspaceAsNewFromPayload(rawJson);
+  } catch (error) {
+    showToast(`Portable import failed: ${error.message}`, "info");
   }
 }
 
@@ -18439,6 +18824,24 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const automationPackSelectAllButton = event.target.closest("#automation-pack-select-all");
+  if (automationPackSelectAllButton) {
+    setAutomationPackAuthorSelection(true);
+    return;
+  }
+
+  const automationPackClearButton = event.target.closest("#automation-pack-clear-selection");
+  if (automationPackClearButton) {
+    setAutomationPackAuthorSelection(false);
+    return;
+  }
+
+  const automationPackExportButton = event.target.closest("#automation-pack-export");
+  if (automationPackExportButton) {
+    exportAuthoredAutomationPack();
+    return;
+  }
+
   const saveAutomationButton = event.target.closest("#automation-create");
   if (saveAutomationButton) {
     saveAutomationRule();
@@ -18548,6 +18951,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const operatorPermissionsSaveButton = event.target.closest("#operator-permissions-save");
+  if (operatorPermissionsSaveButton) {
+    saveOperatorPermissions();
+    return;
+  }
+
   const integrationsSaveButton = event.target.closest("#integrations-save");
   if (integrationsSaveButton) {
     saveIntegrationSettings();
@@ -18622,6 +19031,24 @@ document.addEventListener("click", (event) => {
 
   const importJsonNewWorkspaceButton = event.target.closest("#import-json-new-workspace");
   if (importJsonNewWorkspaceButton) importWorkspaceAsNewFromTextarea();
+
+  const portableImportPreviewButton = event.target.closest("#portable-import-preview");
+  if (portableImportPreviewButton) {
+    previewPortableImportPayload();
+    return;
+  }
+
+  const portableImportNewButton = event.target.closest("#portable-import-new");
+  if (portableImportNewButton) {
+    importPortablePayload("new-workspace");
+    return;
+  }
+
+  const portableImportReplaceButton = event.target.closest("#portable-import-replace");
+  if (portableImportReplaceButton) {
+    importPortablePayload("replace");
+    return;
+  }
 
   const switcherImportButton = event.target.closest("#switcher-import-button");
   if (switcherImportButton) {
