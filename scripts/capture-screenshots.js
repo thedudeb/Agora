@@ -15,9 +15,15 @@ const ROUTE_WAIT_MS = Number(process.env.AGORA_SCREENSHOT_WAIT_MS || 5000);
 const captures = [
   { route: "landing", file: "agora-landing.png", width: 1265, height: 712 },
   { route: "dashboard", file: "agora-dashboard.png", width: 1265, height: 712 },
+  { route: "launch", file: "agora-launch-flow.png", width: 1265, height: 712 },
+  { route: "readiness", file: "agora-readiness.png", width: 1265, height: 712 },
   { route: "board", file: "agora-board.png", width: 1265, height: 712 },
   { route: "inbox", file: "agora-inbox.png", width: 1265, height: 712 },
   { route: "marketplace", file: "agora-marketplace.png", width: 1265, height: 712 },
+  { route: "data", file: "agora-data.png", width: 1265, height: 712 },
+  { route: "settings", file: "agora-settings.png", width: 1265, height: 712 },
+  { route: "launch", file: "agora-mobile-launch.png", width: 500, height: 844 },
+  { route: "readiness", file: "agora-mobile-readiness.png", width: 500, height: 844 },
   { route: "daily", file: "agora-mobile-today.png", width: 500, height: 844 }
 ];
 
@@ -106,8 +112,11 @@ function assertRouteRendered(capture, dom) {
 
 function routeTitle(route) {
   const titles = {
+    data: "Data",
     daily: "Today",
-    landing: "Agora"
+    landing: "Agora",
+    launch: "Launch Flow",
+    readiness: "Readiness"
   };
   return titles[route] || route.charAt(0).toUpperCase() + route.slice(1);
 }

@@ -28,6 +28,35 @@ const checks = [
     ]
   },
   {
+    name: "Guided launch flow",
+    route: "launch",
+    width: 1265,
+    height: 712,
+    required: [
+      "Launch the first client workspace",
+      "Launch progress",
+      "Create the client workspace",
+      "Install the handoff workflow",
+      "Prove recovery",
+      "Invite the first teammate"
+    ]
+  },
+  {
+    name: "Production readiness audit",
+    route: "readiness",
+    width: 1265,
+    height: 712,
+    required: [
+      "Production readiness audit",
+      "First client workspace",
+      "Hosted launch gates",
+      "API and sync health",
+      "Portable restore path",
+      "Access and audit controls",
+      "Power-user checks"
+    ]
+  },
+  {
     name: "Template to project path",
     route: "templates",
     width: 1265,
@@ -74,6 +103,22 @@ const checks = [
       "Create Backup",
       "Import bundle",
       "Preview Bundle"
+    ]
+  },
+  {
+    name: "Settings production controls",
+    route: "settings",
+    width: 1265,
+    height: 712,
+    required: [
+      "Settings",
+      "Open Members",
+      "Open Sync",
+      "Account",
+      "Workspace",
+      "Members",
+      "Sync",
+      "Trust"
     ]
   },
   {
