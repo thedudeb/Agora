@@ -225,6 +225,14 @@ const statuses = [
   { id: "done", label: "Done" }
 ];
 
+const featureRequestStatuses = [
+  { id: "new", label: "New" },
+  { id: "reviewing", label: "Reviewing" },
+  { id: "planned", label: "Planned" },
+  { id: "shipped", label: "Shipped" },
+  { id: "declined", label: "Declined" }
+];
+
 const priorities = [
   { id: "urgent", label: "Urgent" },
   { id: "high", label: "High" },
@@ -249,6 +257,7 @@ const workspaceRoles = [
 const settingsTabs = [
   { id: "account", label: "Account" },
   { id: "workspace", label: "Workspace" },
+  { id: "feedback", label: "Feedback" },
   { id: "trust", label: "Trust" },
   { id: "members", label: "Members" },
   { id: "integrations", label: "Integrations" },
@@ -719,6 +728,7 @@ const routes = {
   automations: "Automations",
   docs: "Docs & Files",
   intake: "Intake",
+  "feature-requests": "Feature Requests",
   fields: "Custom Fields",
   audit: "Audit Log",
   permissions: "Permissions",
@@ -728,7 +738,8 @@ const routes = {
   companies: "Companies",
   company: "Company",
   project: "Project",
-  invite: "Accept Invite"
+  invite: "Accept Invite",
+  feedback: "Feedback"
 };
 
 const tutorialSteps = [
@@ -1930,6 +1941,8 @@ let sidebarState = loadSidebarState();
 let invitePreview = null;
 let invitePreviewToken = "";
 let invitePreviewLoading = false;
+let publicFeatureConfig = null;
+let publicFeatureConfigLoading = false;
 let pwaInstallPrompt = null;
 let pwaInstallReady = false;
 let notificationPermissionState = typeof Notification === "undefined" ? "unsupported" : Notification.permission;
@@ -3160,7 +3173,7 @@ function clientCompanyId() {
 }
 
 function clientAllowedRoutes() {
-  return new Set(["portal", "invite"]);
+  return new Set(["portal", "invite", "feedback"]);
 }
 
 function canAccessRoute(route) {
@@ -9173,6 +9186,20 @@ function routeInviteFromLocation({ shouldRender = false } = {}) {
   return true;
 }
 
+function routeFeedbackFromLocation({ shouldRender = false } = {}) {
+  const route = new URLSearchParams(window.location.search).get("route");
+  const hash = window.location.hash.replace(/^#\/?/, "").trim();
+  if (route !== "feedback" && hash !== "feedback") return false;
+
+  state.selectedRoute = "feedback";
+  state.selectedInviteToken = "";
+  state.selectedProject = "all";
+  state.selectedCompany = "all";
+  saveState();
+  if (shouldRender) render();
+  return true;
+}
+
 function routeFromLocation({ shouldRender = false } = {}) {
   const route = new URLSearchParams(window.location.search).get("route");
   if (!route) return false;
@@ -9402,6 +9429,7 @@ function render() {
     automations: renderAutomations,
     docs: renderDocsAndFiles,
     intake: renderIntake,
+    "feature-requests": renderFeatureRequests,
     fields: renderCustomFields,
     audit: renderAuditLog,
     permissions: renderPermissionsAudit,
@@ -9410,6 +9438,7 @@ function render() {
     settings: renderSettings,
     companies: renderCompanies,
     invite: renderInviteAcceptance,
+    feedback: renderPublicFeedbackForm,
     dashboard: renderDashboard
   };
 
@@ -14794,6 +14823,29 @@ function renderSettings() {
       </section>
       ` : ""}
 
+      ${activeSettingsTab === "feedback" ? `
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Feedback loop</p>
+            <h2>Feature request intake</h2>
+          </div>
+          <button class="button button-secondary" type="button" id="copy-feature-request-link">Copy Public Link</button>
+        </div>
+        <div class="settings-form">
+          <label>
+            <span>Public submit link</span>
+            <input value="${escapeHtml(featureRequestPublicLink())}" readonly>
+          </label>
+          <p class="settings-help">Public submissions save as feature-request tasks through the API. Owner emails use AGORA_FEATURE_REQUEST_EMAIL and the existing SMTP settings.</p>
+          <div class="settings-actions">
+            <button class="button button-secondary" type="button" data-route="feature-requests">Open Feature Requests</button>
+            <button class="button button-primary" type="button" id="feature-request-button-inline">Submit Internal Request</button>
+          </div>
+        </div>
+      </section>
+      ` : ""}
+
       ${activeSettingsTab === "trust" ? `
       ${renderTrustCenterPanel()}
       ` : ""}
@@ -14997,6 +15049,77 @@ function renderInvitationRow(invitation, roleById) {
         ` : ""}
       </div>
     </article>
+  `;
+}
+
+async function loadPublicFeatureRequestConfig() {
+  if (publicFeatureConfigLoading) return;
+  publicFeatureConfigLoading = true;
+  try {
+    const result = await apiRequest("/api/public/feature-requests");
+    publicFeatureConfig = result;
+  } catch (error) {
+    publicFeatureConfig = { error: error.message, workspace: state.workspace, projects: [] };
+  } finally {
+    publicFeatureConfigLoading = false;
+    if (state.selectedRoute === "feedback") render();
+  }
+}
+
+function renderPublicFeedbackForm() {
+  if (!publicFeatureConfig && !publicFeatureConfigLoading) {
+    loadPublicFeatureRequestConfig();
+  }
+  const projects = publicFeatureConfig?.projects || [];
+  const hasProjects = projects.length > 0;
+  const disabled = !hasProjects || publicFeatureConfigLoading;
+  els.appView.innerHTML = `
+    <section class="panel public-feedback-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Product feedback</p>
+          <h2>Request a feature for ${escapeHtml(publicFeatureConfig?.workspace?.name || state.workspace.name)}</h2>
+        </div>
+        <span class="status-pill ${hasProjects ? "inbox-green" : "inbox-amber"}">${publicFeatureConfigLoading ? "Loading" : hasProjects ? "Open" : "API needed"}</span>
+      </div>
+      <form class="settings-form" id="public-feature-request-form">
+        <label>
+          <span>Feature title</span>
+          <input id="public-feature-title" required maxlength="120" placeholder="Add client approval reminders" ${disabled ? "disabled" : ""}>
+        </label>
+        <label>
+          <span>Details</span>
+          <textarea id="public-feature-details" rows="5" placeholder="What problem would this solve?" ${disabled ? "disabled" : ""}></textarea>
+        </label>
+        <div class="form-grid">
+          <label>
+            <span>Project</span>
+            <select id="public-feature-project" required ${disabled ? "disabled" : ""}>
+              ${projects.map((project) => `<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Impact</span>
+            <select id="public-feature-impact" required ${disabled ? "disabled" : ""}>
+              <option value="nice-to-have">Nice to have</option>
+              <option value="workflow-blocker">Workflow blocker</option>
+              <option value="revenue-risk">Revenue risk</option>
+              <option value="bug-regression">Bug or regression</option>
+            </select>
+          </label>
+          <label>
+            <span>Your name</span>
+            <input id="public-feature-requester" maxlength="80" placeholder="Jordan Lee" ${disabled ? "disabled" : ""}>
+          </label>
+          <label>
+            <span>Your email</span>
+            <input id="public-feature-email" type="email" maxlength="120" placeholder="jordan@example.com" ${disabled ? "disabled" : ""}>
+          </label>
+        </div>
+        ${publicFeatureConfig?.error ? `<p class="settings-help is-overdue">${escapeHtml(publicFeatureConfig.error)}</p>` : ""}
+        <button class="button button-primary" type="submit" ${disabled ? "disabled" : ""}>Send Feature Request</button>
+      </form>
+    </section>
   `;
 }
 
@@ -16497,6 +16620,95 @@ function renderTaskRow(task) {
   `;
 }
 
+function featureRequestTasks() {
+  const order = new Map(featureRequestStatuses.map((status, index) => [status.id, index]));
+  return activeTasks()
+    .filter(isFeatureRequestTask)
+    .sort((a, b) => {
+      const statusSort = (order.get(featureRequestStatus(a)) ?? 0) - (order.get(featureRequestStatus(b)) ?? 0);
+      if (statusSort !== 0) return statusSort;
+      return new Date(b.createdAt || b.updatedAt || 0) - new Date(a.createdAt || a.updatedAt || 0);
+    });
+}
+
+function featureRequestPublicLink() {
+  return `${window.location.origin}${window.location.pathname}#feedback`;
+}
+
+function renderFeatureRequests() {
+  const requests = featureRequestTasks();
+  const counts = featureRequestStatuses.map((status) => ({
+    ...status,
+    count: requests.filter((task) => featureRequestStatus(task) === status.id).length
+  }));
+
+  els.appView.innerHTML = `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Feedback triage</p>
+          <h2>${requests.length} feature ${requests.length === 1 ? "request" : "requests"}</h2>
+        </div>
+        <div class="portal-actions">
+          <button class="button button-secondary" type="button" id="copy-feature-request-link">Copy Public Link</button>
+          <button class="button button-primary" type="button" id="feature-request-button-inline">New Request</button>
+        </div>
+      </div>
+      <div class="metric-grid">
+        ${counts.map((status) => metric(status.label, status.count)).join("")}
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Pipeline</p>
+          <h2>Request queue</h2>
+        </div>
+        <span class="status-pill inbox-blue">${escapeHtml(featureRequestPublicLink())}</span>
+      </div>
+      <div class="feature-request-list">
+        ${requests.length ? requests.map(renderFeatureRequestRow).join("") : emptyState("No feature requests yet.", { label: "Open Request Form", commandId: "create:feature-request" })}
+      </div>
+    </section>
+  `;
+}
+
+function renderFeatureRequestRow(task) {
+  const requester = task.customFields?.requester || "Unknown";
+  const requesterEmail = task.customFields?.requesterEmail || "";
+  const impact = task.customFields?.impact || "Nice to have";
+  const status = featureRequestStatus(task);
+  const lastUpdate = task.customFields?.lastRequesterUpdateAt || "";
+  return `
+    <article class="feature-request-row">
+      <div>
+        <span class="status-pill inbox-neutral">${escapeHtml(impact)}</span>
+        <h3>${escapeHtml(task.title.replace(/^Feature request:\s*/i, ""))}</h3>
+        <p>${escapeHtml(task.description.split("\n").slice(-1)[0] || task.description)}</p>
+        <small>${escapeHtml(projectName(task.projectId))} - ${escapeHtml(requester)}${requesterEmail ? ` - ${escapeHtml(requesterEmail)}` : ""}</small>
+        ${lastUpdate ? `<small>Last requester update ${escapeHtml(formatTimestamp(lastUpdate))}</small>` : ""}
+      </div>
+      <div class="feature-request-controls">
+        <label>
+          <span>Pipeline</span>
+          <select data-feature-status-task="${escapeHtml(task.id)}">
+            ${featureRequestStatuses.map((option) => `<option value="${option.id}" ${option.id === status ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Requester update</span>
+          <textarea rows="2" data-feature-update-note="${escapeHtml(task.id)}" placeholder="Short update to email the requester"></textarea>
+        </label>
+        <div class="feature-request-actions">
+          <button class="button button-secondary compact-button" type="button" data-edit-task="${escapeHtml(task.id)}">Open Task</button>
+          <button class="button button-primary compact-button" type="button" data-feature-email-update="${escapeHtml(task.id)}" ${requesterEmail ? "" : "disabled"}>Email Update</button>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
 function renderTaskDependencyChips(task) {
   const dependencies = taskDependencies(task);
   const openDependencies = dependencies.filter((dependency) => dependency.status !== "done");
@@ -16618,6 +16830,19 @@ function featureRequestPriority(impact) {
   return "normal";
 }
 
+function isFeatureRequestTask(task) {
+  return task?.customFields?.requestType === "feature-request" || task?.tags?.includes("feature-request");
+}
+
+function featureRequestStatus(task) {
+  const status = task?.customFields?.featureStatus || "new";
+  return featureRequestStatuses.some((item) => item.id === status) ? status : "new";
+}
+
+function featureRequestStatusLabel(status) {
+  return featureRequestStatuses.find((item) => item.id === status)?.label || "New";
+}
+
 function featureRequestImpactLabel(impact) {
   return {
     "nice-to-have": "Nice to have",
@@ -16654,6 +16879,8 @@ function createFeatureRequestTask(payload) {
     subtasks: [],
     customFields: {
       requestType: "feature-request",
+      featureStatus: "new",
+      source: payload.source || "in-app",
       requester: payload.requester,
       requesterEmail: payload.email,
       impact: featureRequestImpactLabel(payload.impact)
@@ -20402,6 +20629,85 @@ async function syncFeatureRequestToApi(task, request) {
   }
 }
 
+function updateFeatureRequestStatus(taskId, featureStatus) {
+  const task = byId(state.tasks, taskId);
+  if (!task || !isFeatureRequestTask(task)) return;
+  updateTask(taskId, {
+    customFields: {
+      ...(task.customFields || {}),
+      featureStatus
+    }
+  });
+}
+
+async function sendFeatureRequestUpdate(taskId) {
+  const task = byId(state.tasks, taskId);
+  if (!task || !isFeatureRequestTask(task)) return;
+  const requesterEmail = task.customFields?.requesterEmail || "";
+  if (!requesterEmail) {
+    showToast("This request does not have a requester email", "info");
+    return;
+  }
+  if (!apiSession) {
+    showToast("Connect the API before emailing requester updates", "info");
+    return;
+  }
+
+  const note = Array.from(document.querySelectorAll("[data-feature-update-note]"))
+    .find((input) => input.dataset.featureUpdateNote === taskId)
+    ?.value.trim() || "";
+  const featureStatus = featureRequestStatus(task);
+  try {
+    const result = await apiRequest(`/api/feature-requests/${encodeURIComponent(taskId)}/updates`, {
+      method: "POST",
+      body: { featureStatus, note }
+    });
+    if (result.task && mergeCoreRecordsFromApi({ tasks: [result.task] })) {
+      saveState();
+      render();
+    }
+    showToast(result.email?.delivered ? "Requester update emailed" : "Requester update saved. Email delivery is not configured.", result.email?.delivered ? "success" : "info");
+  } catch (error) {
+    showToast(`Requester update failed: ${error.message}`, "info");
+  }
+}
+
+async function copyFeatureRequestLink() {
+  if (!navigator.clipboard?.writeText) {
+    showToast("Clipboard is not available in this browser", "info");
+    return;
+  }
+  await navigator.clipboard.writeText(featureRequestPublicLink());
+  showToast("Feature request link copied", "success");
+}
+
+async function submitPublicFeatureRequest() {
+  const title = document.querySelector("#public-feature-title")?.value.trim() || "";
+  const projectId = document.querySelector("#public-feature-project")?.value || "";
+  if (!title || !projectId) {
+    showToast("Feature requests need a title and project", "info");
+    return;
+  }
+
+  try {
+    const result = await apiRequest("/api/public/feature-requests", {
+      method: "POST",
+      body: {
+        title,
+        projectId,
+        details: document.querySelector("#public-feature-details")?.value.trim() || "",
+        requester: document.querySelector("#public-feature-requester")?.value.trim() || "",
+        email: document.querySelector("#public-feature-email")?.value.trim() || "",
+        impact: document.querySelector("#public-feature-impact")?.value || "nice-to-have"
+      }
+    });
+    document.querySelector("#public-feature-request-form")?.reset();
+    showToast(result.email?.delivered ? "Feature request sent" : "Feature request sent to the board", "success");
+  } catch (error) {
+    showToast(`Feature request failed: ${error.message}`, "info");
+  }
+}
+
 async function syncTaskArchiveToApi(taskId) {
   if (!apiSession) return;
 
@@ -20851,6 +21157,24 @@ document.addEventListener("click", (event) => {
 
   const submitIntakeButton = event.target.closest("[data-submit-intake]");
   if (submitIntakeButton) submitIntakeRequest(submitIntakeButton.dataset.submitIntake);
+
+  const copyFeatureLinkButton = event.target.closest("#copy-feature-request-link");
+  if (copyFeatureLinkButton) {
+    copyFeatureRequestLink();
+    return;
+  }
+
+  const inlineFeatureButton = event.target.closest("#feature-request-button-inline");
+  if (inlineFeatureButton) {
+    openFeatureRequestDialog();
+    return;
+  }
+
+  const featureUpdateButton = event.target.closest("[data-feature-email-update]");
+  if (featureUpdateButton) {
+    sendFeatureRequestUpdate(featureUpdateButton.dataset.featureEmailUpdate);
+    return;
+  }
 
   const convertSubmissionButton = event.target.closest("[data-convert-submission]");
   if (convertSubmissionButton) convertSubmissionToTask(convertSubmissionButton.dataset.convertSubmission);
@@ -21864,6 +22188,12 @@ els.appView.addEventListener("change", (event) => {
     return;
   }
 
+  const featureStatusSelect = event.target.closest("[data-feature-status-task]");
+  if (featureStatusSelect) {
+    updateFeatureRequestStatus(featureStatusSelect.dataset.featureStatusTask, featureStatusSelect.value);
+    return;
+  }
+
   const taskDateInput = event.target.closest("[data-task-date]");
   if (taskDateInput) {
     updateTask(taskDateInput.dataset.taskDate, { dueDate: taskDateInput.value });
@@ -21931,6 +22261,13 @@ els.appView.addEventListener("drop", (event) => {
   if (!dropZone) return;
   event.preventDefault();
   updateTask(event.dataTransfer.getData("text/plain"), { status: dropZone.dataset.dropStatus });
+});
+
+els.appView.addEventListener("submit", (event) => {
+  if (event.target.closest("#public-feature-request-form")) {
+    event.preventDefault();
+    submitPublicFeatureRequest();
+  }
 });
 
 els.taskForm.addEventListener("submit", (event) => {
@@ -22097,7 +22434,9 @@ els.companyForm.addEventListener("submit", (event) => {
 });
 
 window.addEventListener("hashchange", () => {
-  routeInviteFromLocation({ shouldRender: true });
+  if (!routeInviteFromLocation({ shouldRender: true })) {
+    routeFeedbackFromLocation({ shouldRender: true });
+  }
 });
 
 window.addEventListener("pointermove", handlePointerPresence, { passive: true });
@@ -22146,7 +22485,7 @@ window.setInterval(() => {
   refreshLiveCollaborationFromApi();
 }, 15000);
 
-if (!routeInviteFromLocation() && !routeFromLocation()) {
+if (!routeInviteFromLocation() && !routeFeedbackFromLocation() && !routeFromLocation()) {
   openSidebarGroupForRoute(state.selectedRoute);
 }
 render();

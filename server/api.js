@@ -239,6 +239,20 @@ function createServer(options = {}) {
         return;
       }
 
+      if (request.method === "GET" && url.pathname === "/api/public/feature-requests") {
+        const config = await publicFeatureRequestConfig(storage);
+        sendJson(response, 200, config);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/public/feature-requests") {
+        assertRateLimit(request, "public-feature-request", 12);
+        const body = await readJsonBody(request);
+        const result = await createPublicFeatureRequest(storage, body);
+        sendJson(response, 201, result);
+        return;
+      }
+
       const session = await requireSession(request, response, storage);
       if (!session) return;
 
@@ -593,6 +607,18 @@ function createServer(options = {}) {
         const task = await upsertTask(storage, body.task || body, session, "feature_request");
         const email = await deliverFeatureRequest({ task, request: body.request || {}, session });
         sendJson(response, 201, { task, email });
+        return;
+      }
+
+      const featureRequestUpdateMatch = url.pathname.match(/^\/api\/feature-requests\/([^/]+)\/updates$/);
+      if (featureRequestUpdateMatch && request.method === "POST") {
+        if (!hasPermission(session, "tasks:write")) {
+          sendError(response, 403, "Missing tasks write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const result = await updateFeatureRequestStatus(storage, decodeURIComponent(featureRequestUpdateMatch[1]), body, session);
+        sendJson(response, 200, result);
         return;
       }
 
@@ -1932,6 +1958,28 @@ async function deliverFeatureRequest({ task, request, session }) {
   }
 }
 
+async function deliverFeatureRequestUpdate({ task, note, session }) {
+  const to = cleanString(task.customFields?.requesterEmail);
+  if (!to) {
+    return { mode: "not-configured", delivered: false, reason: "Requester email is missing." };
+  }
+  if (!isValidEmailAddress(to)) {
+    return { mode: "not-configured", delivered: false, reason: "Requester email is invalid." };
+  }
+
+  const smtpHost = cleanString(process.env.AGORA_SMTP_HOST || process.env.SMTP_HOST);
+  if (!smtpHost) {
+    return { mode: "not-configured", delivered: false, reason: "Set AGORA_SMTP_HOST to send requester update emails." };
+  }
+
+  try {
+    await sendSmtpMail(featureRequestUpdatePayload({ task, note, session, to }));
+    return { mode: "smtp", delivered: true, to };
+  } catch (error) {
+    return { mode: "smtp", delivered: false, to, error: error.message };
+  }
+}
+
 function featureRequestPayload({ task, request, session, to }) {
   const projectName = cleanString(request.projectName || "");
   const requester = cleanString(request.requester || session.user.name || session.user.email);
@@ -1958,6 +2006,185 @@ function featureRequestPayload({ task, request, session, to }) {
       "The request was also saved as a task on the board."
     ].join("\n")
   };
+}
+
+function featureRequestUpdatePayload({ task, note, session, to }) {
+  const status = cleanString(task.customFields?.featureStatusLabel || task.customFields?.featureStatus || "updated");
+  const requester = cleanString(task.customFields?.requester || to);
+  return {
+    to,
+    from: cleanString(process.env.AGORA_EMAIL_FROM || process.env.SMTP_FROM || "Agora <no-reply@localhost>"),
+    subject: smtpHeader(`Update on your Agora request: ${task.title.replace(/^Feature request:\s*/i, "")}`),
+    text: [
+      `Hi ${requester},`,
+      "",
+      `Your feature request is now ${status}.`,
+      "",
+      cleanString(note) || "No additional note was included.",
+      "",
+      `Request: ${task.title}`,
+      `Updated by: ${session.user.name || session.user.email}`,
+      "",
+      "Thanks for helping improve Agora."
+    ].join("\n")
+  };
+}
+
+async function publicFeatureRequestConfig(storage) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const companies = Array.isArray(snapshot.companies) ? snapshot.companies : [];
+  const projects = (Array.isArray(snapshot.projects) ? snapshot.projects : [])
+    .filter((project) => !project.archivedAt)
+    .map((project) => ({
+      id: String(project.id),
+      name: String(project.name || "Untitled project"),
+      companyName: companies.find((company) => company.id === project.companyId)?.name || ""
+    }));
+  return {
+    workspace: { id: workspace.id, name: workspace.name, slug: workspace.slug },
+    projects
+  };
+}
+
+async function createPublicFeatureRequest(storage, body) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const projects = (Array.isArray(snapshot.projects) ? snapshot.projects : []).filter((project) => !project.archivedAt);
+  if (!projects.length) publicError(503, "No active projects are available for feature requests.");
+  const project = projects.find((item) => item.id === cleanString(body.projectId)) || projects[0];
+  const title = cleanString(body.title).slice(0, 120);
+  if (!title) publicError(400, "Feature request title is required");
+  const requesterEmail = optionalEmail(body.email);
+  const impact = normalizeFeatureImpact(body.impact);
+  const now = new Date().toISOString();
+  const request = {
+    projectId: project.id,
+    projectName: project.name,
+    title,
+    details: cleanString(body.details).slice(0, 4000),
+    requester: cleanString(body.requester).slice(0, 80),
+    email: requesterEmail,
+    impact,
+    impactLabel: featureImpactLabel(impact)
+  };
+  const task = await upsertTask(storage, {
+    id: `feature-public-${crypto.randomUUID()}`,
+    projectId: project.id,
+    title: `Feature request: ${title}`,
+    description: featureRequestDescriptionText(request),
+    assignee: project.owner || "",
+    status: "todo",
+    priority: featureImpactPriority(impact),
+    startDate: now.slice(0, 10),
+    tags: ["feature-request", "feedback", "public", ...(impact === "bug-regression" ? ["bug"] : [])],
+    customFields: {
+      requestType: "feature-request",
+      featureStatus: "new",
+      featureStatusLabel: "New",
+      source: "public",
+      requester: request.requester,
+      requesterEmail,
+      impact: request.impactLabel
+    },
+    createdAt: now,
+    updatedAt: now
+  }, featureRequestSystemSession(), "public_feature_request");
+  const email = await deliverFeatureRequest({ task, request, session: featureRequestSystemSession() });
+  return { task, email };
+}
+
+async function updateFeatureRequestStatus(storage, taskId, body, session) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const task = (Array.isArray(snapshot.tasks) ? snapshot.tasks : []).find((item) => item.id === taskId);
+  if (!task) publicError(404, "Feature request not found");
+  if (!isFeatureRequestTaskRecord(task)) publicError(400, "Task is not a feature request");
+  const project = (Array.isArray(snapshot.projects) ? snapshot.projects : []).find((item) => item.id === task.projectId);
+  if (!project) publicError(400, "Feature request project is not in this workspace");
+  assertProjectCompanyScope(project, session);
+
+  const featureStatus = normalizeFeatureStatus(body.featureStatus || body.status);
+  const now = new Date().toISOString();
+  const nextTask = await upsertTask(storage, {
+    ...task,
+    customFields: {
+      ...(task.customFields || {}),
+      featureStatus,
+      featureStatusLabel: featureStatusLabel(featureStatus),
+      lastRequesterUpdate: cleanString(body.note).slice(0, 4000),
+      lastRequesterUpdateAt: now
+    },
+    updatedAt: now
+  }, session, "feature_request_update");
+  const email = await deliverFeatureRequestUpdate({ task: nextTask, note: body.note, session });
+  return { task: nextTask, email };
+}
+
+function featureRequestSystemSession() {
+  return {
+    user: { id: "public-feedback", name: "Public Feedback", email: "" },
+    workspace,
+    membership: { memberId: "public-feedback", role: "manager", status: "active" },
+    permissions: rolePermissions.manager,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + SESSION_TTL_MS).toISOString()
+  };
+}
+
+function isFeatureRequestTaskRecord(task) {
+  return task?.customFields?.requestType === "feature-request" || (Array.isArray(task?.tags) && task.tags.includes("feature-request"));
+}
+
+function normalizeFeatureStatus(value) {
+  const status = cleanString(value).toLowerCase();
+  return ["new", "reviewing", "planned", "shipped", "declined"].includes(status) ? status : "new";
+}
+
+function featureStatusLabel(status) {
+  return {
+    new: "New",
+    reviewing: "Reviewing",
+    planned: "Planned",
+    shipped: "Shipped",
+    declined: "Declined"
+  }[normalizeFeatureStatus(status)];
+}
+
+function normalizeFeatureImpact(value) {
+  const impact = cleanString(value).toLowerCase();
+  return ["nice-to-have", "workflow-blocker", "revenue-risk", "bug-regression"].includes(impact) ? impact : "nice-to-have";
+}
+
+function optionalEmail(value) {
+  const email = cleanString(value);
+  return isValidEmailAddress(email) ? email : "";
+}
+
+function isValidEmailAddress(value) {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(cleanString(value));
+}
+
+function featureImpactLabel(impact) {
+  return {
+    "nice-to-have": "Nice to have",
+    "workflow-blocker": "Workflow blocker",
+    "revenue-risk": "Revenue risk",
+    "bug-regression": "Bug or regression"
+  }[normalizeFeatureImpact(impact)];
+}
+
+function featureImpactPriority(impact) {
+  if (impact === "workflow-blocker" || impact === "bug-regression") return "urgent";
+  if (impact === "revenue-risk") return "high";
+  return "normal";
+}
+
+function featureRequestDescriptionText(request) {
+  return [
+    `Requester: ${request.requester || "Unknown"}`,
+    `Email: ${request.email || "Not provided"}`,
+    `Impact: ${featureImpactLabel(request.impact)}`,
+    "",
+    request.details || "No additional details provided."
+  ].join("\n");
 }
 
 function passwordResetPayload(user, token, expiresAt) {

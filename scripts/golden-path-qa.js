@@ -133,6 +133,30 @@ const checks = [
       "Review Agency Handoff Pack",
       "Open Recovery Plan"
     ]
+  },
+  {
+    name: "Feature request triage",
+    route: "feature-requests",
+    width: 1265,
+    height: 712,
+    required: [
+      "Feedback triage",
+      "Feature Requests",
+      "Request queue",
+      "Copy Public Link"
+    ]
+  },
+  {
+    name: "Public feedback form",
+    route: "feedback",
+    width: 390,
+    height: 760,
+    required: [
+      "Product feedback",
+      "Feature title",
+      "Your email",
+      "Send Feature Request"
+    ]
   }
 ];
 

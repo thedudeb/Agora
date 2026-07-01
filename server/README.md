@@ -147,6 +147,8 @@ The verifier starts a temporary Agora API server with Supabase storage, uses a u
 - `DELETE /api/invitations/:id`: revokes a pending invitation for admins.
 - `GET /api/invitations/:token`: returns public invitation details for an invite acceptance screen.
 - `POST /api/invitations/:token/accept`: accepts an invitation and creates a session. Body: `{ "name": "Jordan Lee", "password": "optional 8+ characters" }`.
+- `GET /api/public/feature-requests`: returns the public feature request form configuration.
+- `POST /api/public/feature-requests`: creates a public feature-request task and sends an owner email when feature-request SMTP is configured.
 - `GET /api/records`: returns structured collections from the active storage adapter. When no structured rows exist yet, the response includes `snapshotFallback` for bootstrap compatibility.
 - `GET /api/records/:collection`: returns a structured collection such as `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, `presence`, `chatMessages`, `whiteboards`, `notificationSettings`, `notificationReminders`, `notificationHistory`, `inboxState`, or `integrationSettings`. Supports filters like `?projectId=...`, `?taskId=...`, `?companyId=...`, and `?memberId=...`.
 - `POST /api/records/:collection`: creates or updates one structured record for supported collections. Writes are checked server-side against the authenticated session scope, project, task, company relationships, and member-owned fields. Clients can respond to existing approvals but cannot create new approval records.
@@ -161,6 +163,7 @@ The verifier starts a temporary Agora API server with Supabase storage, uses a u
 - `GET /api/tasks`: lists the current session's canonical tasks for API-connected clients. Supports `?projectId=...`.
 - `POST /api/tasks`: creates a task for admin/project-manager roles.
 - `POST /api/feature-requests`: creates a feature-request task and sends an owner email when `AGORA_FEATURE_REQUEST_EMAIL` and SMTP are configured.
+- `POST /api/feature-requests/:id/updates`: updates the feature-request pipeline state and emails the requester when SMTP and requester email are available.
 - `PUT /api/tasks/:id`: updates a task for admin/project-manager roles.
 - `DELETE /api/tasks/:id`: archives a task for admin/project-manager roles.
 - `POST /api/tasks/:id/restore`: restores an archived task for admin/project-manager roles.

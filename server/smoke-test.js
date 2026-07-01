@@ -379,6 +379,34 @@ async function run() {
     assert(featureRequest.task.id === "feature-request-smoke", "feature request task failed");
     assert(featureRequest.email.delivered === false, "feature request email should be skipped without SMTP");
 
+    const featureUpdate = await request(`${baseUrl}/api/feature-requests/feature-request-smoke/updates`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        featureStatus: "planned",
+        note: "Planned for the smoke milestone."
+      }
+    });
+    assert(featureUpdate.task.customFields.featureStatus === "planned", "feature request status update failed");
+    assert(featureUpdate.email.delivered === false, "feature update email should be skipped without SMTP");
+
+    const publicFeatureConfig = await request(`${baseUrl}/api/public/feature-requests`);
+    assert(publicFeatureConfig.projects.some((project) => project.id === "project-smoke"), "public feature request config missing project");
+
+    const publicFeatureRequest = await request(`${baseUrl}/api/public/feature-requests`, {
+      method: "POST",
+      body: {
+        projectId: "project-smoke",
+        title: "Public smoke feedback",
+        details: "Public request should become a task.",
+        requester: "Public Tester",
+        email: "public@example.test",
+        impact: "workflow-blocker"
+      }
+    });
+    assert(publicFeatureRequest.task.tags.includes("public"), "public feature request task failed");
+    assert(publicFeatureRequest.email.delivered === false, "public feature request email should be skipped without SMTP");
+
     const scopedInvitation = await request(`${baseUrl}/api/invitations`, {
       method: "POST",
       token: login.token,
