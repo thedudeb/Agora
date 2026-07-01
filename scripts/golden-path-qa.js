@@ -19,11 +19,11 @@ const checks = [
     width: 1265,
     height: 712,
     required: [
-      "First 5 minutes",
-      "Prove the core loop",
-      "Create a client project from a template",
-      "Install marketplace workflows",
-      "Export a recovery bundle",
+      "First client workspace",
+      "Launch a real client workspace",
+      "Create the client onboarding project",
+      "Install the agency handoff workflow",
+      "Export the recovery bundle",
       "Workspace setup"
     ]
   },
@@ -82,8 +82,8 @@ const checks = [
     width: 500,
     height: 844,
     required: [
-      "First 5 minutes",
-      "Prove the core loop",
+      "First client workspace",
+      "Launch a real client workspace",
       "Start With Client Onboarding",
       "Review Agency Handoff Pack",
       "Open Recovery Plan"

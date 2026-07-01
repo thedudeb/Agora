@@ -3876,33 +3876,33 @@ function goldenPathItems() {
   return [
     {
       id: "template-project",
-      eyebrow: "Golden path 1",
-      title: "Create a client project from a template",
+      eyebrow: "Step 1",
+      title: "Create the client onboarding project",
       detail: installedMarketplaceTemplates.length
         ? `${installedMarketplaceTemplates.length} marketplace template${installedMarketplaceTemplates.length === 1 ? "" : "s"} installed`
-        : `${state.projectTemplates.length} starter template${state.projectTemplates.length === 1 ? "" : "s"} ready`,
+        : "Use the Client Onboarding template to create the first real workspace",
       done: activeProjects().length > 0 && state.projectTemplates.length > 0,
       commandId: "template:recommended",
       actionLabel: "Start With Client Onboarding"
     },
     {
       id: "automation-pack",
-      eyebrow: "Golden path 2",
-      title: "Install marketplace workflows",
+      eyebrow: "Step 2",
+      title: "Install the agency handoff workflow",
       detail: installedAutomationPacks.length
         ? `${installedAutomationPacks.length} automation pack${installedAutomationPacks.length === 1 ? "" : "s"} installed`
-        : `${automationMarketplacePacks.length} workflow pack${automationMarketplacePacks.length === 1 ? "" : "s"} available`,
+        : "Add approval follow-ups and weekly client-update drafting",
       done: installedAutomationPacks.length > 0 || state.automations.some((automation) => automation.source === "marketplace" || automation.source === "imported"),
       commandId: "automation:recommended",
       actionLabel: "Review Agency Handoff Pack"
     },
     {
       id: "portable-recovery",
-      eyebrow: "Golden path 3",
-      title: "Export a recovery bundle",
+      eyebrow: "Step 3",
+      title: "Export the recovery bundle",
       detail: hasPortableEvidence
         ? "Portable recovery has local evidence"
-        : "Download a portable bundle before serious imports or team rollout",
+        : "Prove the workspace can leave, restore, and survive a handoff",
       done: hasPortableEvidence,
       commandId: "recovery:plan",
       actionLabel: "Open Recovery Plan"
@@ -3917,11 +3917,12 @@ function renderGoldenPathPanel() {
     <section class="panel golden-path-panel">
       <div class="panel-header">
         <div>
-          <p class="eyebrow">First 5 minutes</p>
-          <h2>Prove the core loop</h2>
+          <p class="eyebrow">First client workspace</p>
+          <h2>Launch a real client workspace</h2>
         </div>
-        <span class="status-pill ${doneCount === items.length ? "inbox-green" : "inbox-amber"}">${doneCount}/${items.length}</span>
+        <span class="status-pill ${doneCount === items.length ? "inbox-green" : "inbox-amber"}">${doneCount}/${items.length} ready</span>
       </div>
+      <p class="panel-note">Agora’s first product spine is simple: create a client onboarding project, install the agency handoff workflow, then export a recovery bundle so the workspace is useful and portable on day one.</p>
       <div class="golden-path-grid">
         ${items.map((item) => `
           <article class="golden-path-card ${item.done ? "is-done" : "is-open"}">
