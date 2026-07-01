@@ -14,10 +14,22 @@ Use this plan to create consistent launch assets for GitHub, Product Hunt, socia
 - Start the app with `npm run dev`.
 - Start the API with `npm run dev:api` when capturing sync, marketplace, permissions, or backend health.
 - Use the seeded Acme Studio workspace unless a specific clean workspace is needed.
+- Use stable route query URLs such as `http://127.0.0.1:5174/?route=dashboard` instead of hash links.
 - Use a desktop viewport around `1440 x 1000`.
 - Also capture mobile widths around `390 x 844` and tablet widths around `834 x 1194`.
 - Hide browser chrome if creating marketing screenshots.
 - Keep the sidebar visible for desktop captures unless the screen is about mobile navigation.
+
+## Current Launch Set
+
+These checked-in screenshots are ready for README, landing-page proof, and launch planning:
+
+- `assets/screenshots/agora-landing.png`
+- `assets/screenshots/agora-dashboard.png`
+- `assets/screenshots/agora-board.png`
+- `assets/screenshots/agora-inbox.png`
+- `assets/screenshots/agora-marketplace.png`
+- `assets/screenshots/agora-mobile-today.png`
 
 ## Required Screenshots
 
@@ -25,7 +37,7 @@ Use this plan to create consistent launch assets for GitHub, Product Hunt, socia
 
 Purpose: public first impression.
 
-Route: `#landing`
+Route: `?route=landing`
 
 Show:
 
@@ -43,7 +55,7 @@ Use for:
 
 Purpose: prove the app is an operational command center.
 
-Route: `#dashboard`
+Route: `?route=dashboard`
 
 Show:
 
@@ -61,7 +73,7 @@ Use for:
 
 Purpose: show daily planning and practical work focus.
 
-Route: `#daily`
+Route: `?route=daily`
 
 Show:
 
@@ -78,7 +90,7 @@ Use for:
 
 Purpose: show familiar project management.
 
-Route: `#board`
+Route: `?route=board`
 
 Show:
 
@@ -95,7 +107,7 @@ Use for:
 
 Purpose: show multi-company/client-ready workflow.
 
-Route: `#portal`
+Route: `?route=portal`
 
 Show:
 
@@ -111,7 +123,7 @@ Use for:
 
 Purpose: show templates, automations, and extensibility.
 
-Route: `#marketplace`
+Route: `?route=marketplace`
 
 Show:
 
@@ -129,7 +141,7 @@ Use for:
 
 Purpose: prove portability.
 
-Route: `#data`
+Route: `?route=data`
 
 Show:
 
@@ -146,7 +158,7 @@ Use for:
 
 Purpose: prove trust and governance.
 
-Route: `#permissions`
+Route: `?route=permissions`
 
 Show:
 
@@ -164,7 +176,7 @@ Use for:
 
 Purpose: show AI without mystery.
 
-Route: `#operator`
+Route: `?route=operator`
 
 Show:
 
@@ -181,7 +193,7 @@ Use for:
 
 Purpose: show iPhone/iPad care.
 
-Routes: `#dashboard`, `#today`, `#marketplace`
+Routes: `?route=dashboard`, `?route=daily`, `?route=marketplace`
 
 Show:
 
@@ -212,12 +224,12 @@ Target length: 75 to 120 seconds.
 
 Use predictable names:
 
-- `assets/screenshots/landing-hero-desktop.png`
-- `assets/screenshots/dashboard-desktop.png`
-- `assets/screenshots/today-mobile.png`
-- `assets/screenshots/board-desktop.png`
-- `assets/screenshots/client-portal-desktop.png`
-- `assets/screenshots/marketplace-desktop.png`
+- `assets/screenshots/agora-landing.png`
+- `assets/screenshots/agora-dashboard.png`
+- `assets/screenshots/agora-mobile-today.png`
+- `assets/screenshots/agora-board.png`
+- `assets/screenshots/agora-client-portal.png`
+- `assets/screenshots/agora-marketplace.png`
 - `assets/screenshots/data-export-desktop.png`
 - `assets/screenshots/permissions-audit-desktop.png`
 - `assets/screenshots/operator-trust-desktop.png`

@@ -30,9 +30,9 @@ Agora currently includes:
 
 These are the highest-priority areas before a broader public launch.
 
-- Capture screenshot and demo assets for README, landing page, Product Hunt, and social posts.
-- Tighten the landing page proof sections around no ads, self-hosting, portable exports, client work, and auditable AI.
-- Improve README scanning with screenshots, quick feature blocks, and a clearer "who this is for" section.
+- Use the captured screenshot set across Product Hunt, social posts, and the next demo video pass.
+- Keep tightening landing-page proof around no ads, self-hosting, portable exports, client work, and auditable AI.
+- Keep README scanning sharp with refreshed screenshots, quick feature blocks, and a clear "who this is for" section.
 - Keep local setup boring: `cp .env.example .env`, `npm run dev`, `npm run dev:api`, `npm run check`, `npm run test:api`.
 - Make Supabase setup easier to validate from docs and Backend Health.
 - Add issue templates for bug reports, feature proposals, templates, automations, and docs improvements.

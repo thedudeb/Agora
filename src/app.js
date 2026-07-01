@@ -9405,6 +9405,23 @@ function renderLandingPage() {
         </div>
       </section>
 
+      <section class="landing-section landing-product-proof">
+        <div class="landing-product-copy">
+          <p class="eyebrow">Product proof</p>
+          <h2>The launch story is already visible in the app.</h2>
+          <p>Dashboard readiness, board work, inbox signals, marketplace packs, mobile planning, and portable exports all live in the same dependency-free prototype.</p>
+        </div>
+        <div class="landing-product-frame">
+          <img src="./assets/screenshots/agora-dashboard.png" alt="Agora dashboard showing workspace setup and launch readiness.">
+        </div>
+        <div class="landing-proof-metrics" aria-label="Launch proof points">
+          <article><strong>Browser local first</strong><span>Run the app without trackers or external services.</span></article>
+          <article><strong>Self-hosting path</strong><span>Connect the dependency-free API and optional Supabase storage.</span></article>
+          <article><strong>Portable workspace</strong><span>Export JSON, CSV, Markdown, templates, automations, audit, and operator context.</span></article>
+          <article><strong>Permissioned AI</strong><span>Preview Operator actions with rationale, audit logs, and undo paths.</span></article>
+        </div>
+      </section>
+
       <section class="landing-section landing-choice">
         <div>
           <p class="eyebrow">Why teams choose Agora</p>
