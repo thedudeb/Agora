@@ -115,11 +115,15 @@ npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json --json
 npm run agora -- launch check tests/fixtures/portable-workspace-bundle.json
 npm run agora -- marketplace validate templates/marketplace.json
+npm run agora -- migrate preview tests/fixtures/trello-board.json --source trello-json
+npm run agora -- migrate apply tasks.csv --source generic-csv --workspace tests/fixtures/workspace.json --out imported-workspace.json
 ```
 
 To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`. Add browser origins to `AGORA_ALLOWED_ORIGINS` when hosting the app somewhere other than localhost.
 
 For MCP clients, set `AGORA_API_URL`, `AGORA_API_TOKEN`, and optionally `AGORA_MCP_ALLOW_WRITES=true`, then run `npm run mcp`. See [`docs/mcp-server.md`](./docs/mcp-server.md) for client config examples, tools, resources, and security notes.
+
+For migration work, the CLI can preview and apply Trello JSON or generic CSV exports before you touch a real workspace. See [`docs/migration-tool.md`](./docs/migration-tool.md) for the adapter contract, safety model, mapping tables, and examples.
 
 For power users and self-hosters, the lightweight CLI wraps common project operations:
 
@@ -136,6 +140,8 @@ npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json --
 npm run agora -- launch check tests/fixtures/portable-workspace-bundle.json
 npm run agora -- launch check tests/fixtures/portable-workspace-bundle.json --strict
 npm run agora -- marketplace validate templates/marketplace.json
+npm run agora -- migrate preview tests/fixtures/trello-board.json --source trello-json
+npm run agora -- migrate preview tasks.csv --source generic-csv --json
 ```
 
 ## Launch Preflight
@@ -163,7 +169,7 @@ Demo auth and passwordless email login are disabled by default. For trusted demo
 
 For automation clients, native shells, and future agent integrations, see the [Agora API agent contract](./docs/api-agent-contract.md). It documents the authenticated API boundary, role permissions, scoped reads, write confirmations, and token-handling expectations.
 
-For the public product direction, see [`ROADMAP.md`](./ROADMAP.md) and [`CONTRIBUTING.md`](./CONTRIBUTING.md). For security reporting and deployment hardening, see [`SECURITY.md`](./SECURITY.md). For deployment details, hosted launch cutover, Vercel static hosting, Supabase setup, SMTP/webhook password reset delivery, desktop app packaging, and release checks, see [`docs/deployment.md`](./docs/deployment.md), [`docs/hosted-launch-runbook.md`](./docs/hosted-launch-runbook.md), [`docs/supabase-setup.md`](./docs/supabase-setup.md), and [`docs/desktop-app.md`](./docs/desktop-app.md). For marketing positioning, launch copy, and screenshot planning, see [`docs/marketing-strategy.md`](./docs/marketing-strategy.md), [`docs/launch-kit.md`](./docs/launch-kit.md), and [`docs/screenshot-demo-plan.md`](./docs/screenshot-demo-plan.md). For beta handoff, see [`docs/beta-test-script.md`](./docs/beta-test-script.md), [`docs/beta-notes.md`](./docs/beta-notes.md), and [`docs/release-checklist.md`](./docs/release-checklist.md). For portable bundle structure and restore details, see [`docs/portable-workspace.md`](./docs/portable-workspace.md).
+For the public product direction, see [`ROADMAP.md`](./ROADMAP.md) and [`CONTRIBUTING.md`](./CONTRIBUTING.md). For security reporting and deployment hardening, see [`SECURITY.md`](./SECURITY.md). For deployment details, hosted launch cutover, Vercel static hosting, Supabase setup, SMTP/webhook password reset delivery, desktop app packaging, and release checks, see [`docs/deployment.md`](./docs/deployment.md), [`docs/hosted-launch-runbook.md`](./docs/hosted-launch-runbook.md), [`docs/supabase-setup.md`](./docs/supabase-setup.md), and [`docs/desktop-app.md`](./docs/desktop-app.md). For marketing positioning, launch copy, and screenshot planning, see [`docs/marketing-strategy.md`](./docs/marketing-strategy.md), [`docs/launch-kit.md`](./docs/launch-kit.md), and [`docs/screenshot-demo-plan.md`](./docs/screenshot-demo-plan.md). For beta handoff, see [`docs/beta-test-script.md`](./docs/beta-test-script.md), [`docs/beta-notes.md`](./docs/beta-notes.md), and [`docs/release-checklist.md`](./docs/release-checklist.md). For portable bundle structure, restore details, and migration tooling, see [`docs/portable-workspace.md`](./docs/portable-workspace.md) and [`docs/migration-tool.md`](./docs/migration-tool.md).
 
 ## Supabase Storage
 

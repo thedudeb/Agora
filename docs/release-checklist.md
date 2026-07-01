@@ -46,11 +46,12 @@ For quicker iteration or debugging, the underlying commands are:
 ```sh
 npm run check
 npm run test:fixtures
+npm run test:importers
 npm run test:golden
 npm run test:api
 ```
 
-Fix any failure before releasing. `launch:check` runs quick verification plus browser golden-path QA. `test:golden` browser-checks the first-run dashboard, template-to-project path, marketplace automation path, and portable recovery path. `test:api` covers auth, permissions, structured records, payments, marketplace publishing, scheduler behavior, audit logs, and API persistence.
+Fix any failure before releasing. `launch:check` runs quick verification plus browser golden-path QA. `test:importers` checks generic CSV and Trello JSON migration planning/apply behavior. `test:golden` browser-checks the first-run dashboard, template-to-project path, marketplace automation path, and portable recovery path. `test:api` covers auth, permissions, structured records, payments, marketplace publishing, scheduler behavior, audit logs, and API persistence.
 
 ## 5. Security Gate
 
@@ -59,6 +60,7 @@ Fix any failure before releasing. `launch:check` runs quick verification plus br
 - Confirm `AGORA_ALLOWED_ORIGINS` only includes expected app origins.
 - Review Admin > Permissions for excess admins, workspace import access, and Operator client-data access.
 - If enabling MCP, review `docs/mcp-server.md` and `docs/mcp-security-audit.md`, keep `AGORA_MCP_ALLOW_WRITES=false` by default, and use a least-privilege user token.
+- For customer migrations, run `npm run agora -- migrate preview` first, review warnings/confidence/source metadata, and export a recovery bundle before applying the imported workspace.
 - Export a recovery bundle before importing data, changing auth settings, or switching storage drivers.
 
 ## 6. Deploy

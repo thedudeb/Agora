@@ -67,9 +67,10 @@ npm run agora -- screenshots
 npm run agora -- golden
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
 npm run agora -- marketplace validate templates/marketplace.json
+npm run agora -- migrate preview tests/fixtures/trello-board.json --source trello-json
 ```
 
-`verify` runs syntax checks, fixture validation, recovery stress checks, and the API smoke test. `--quick` skips the API smoke test, and `--supabase` includes the real Supabase verifier from `.env`. `golden` browser-checks onboarding and core product paths. `bundle inspect` summarizes portable workspace exports, and `marketplace validate` checks project-template and automation-pack JSON before sharing it.
+`verify` runs syntax checks, fixture validation, recovery stress checks, migration importer checks, and the API smoke test. `--quick` skips the API smoke test, and `--supabase` includes the real Supabase verifier from `.env`. `golden` browser-checks onboarding and core product paths. `bundle inspect` summarizes portable workspace exports, `marketplace validate` checks project-template and automation-pack JSON before sharing it, and `migrate preview/apply` prepares Trello JSON or generic CSV exports for safer switching.
 
 The package scripts expose the same preflight path:
 
