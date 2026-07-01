@@ -1,0 +1,83 @@
+{
+  "id": "board-trello-fixture",
+  "name": "Trello Fixture Board",
+  "desc": "Board export used to validate Agora migration planning.",
+  "closed": false,
+  "lists": [
+    {
+      "id": "list-todo",
+      "name": "To Do",
+      "closed": false
+    },
+    {
+      "id": "list-doing",
+      "name": "Doing",
+      "closed": false
+    },
+    {
+      "id": "list-done",
+      "name": "Done",
+      "closed": false
+    }
+  ],
+  "labels": [
+    {
+      "id": "label-client",
+      "name": "client"
+    },
+    {
+      "id": "label-urgent",
+      "name": "urgent"
+    }
+  ],
+  "members": [
+    {
+      "id": "member-mara",
+      "username": "mara",
+      "fullName": "Mara Ortiz"
+    }
+  ],
+  "cards": [
+    {
+      "id": "card-brief",
+      "shortLink": "brief1",
+      "name": "Approve launch brief",
+      "desc": "Client needs to approve the final brief.",
+      "idList": "list-doing",
+      "idLabels": ["label-client", "label-urgent"],
+      "idMembers": ["member-mara"],
+      "due": "2026-07-21T12:00:00.000Z",
+      "dueComplete": false,
+      "closed": false,
+      "pos": 1024,
+      "url": "https://trello.example/card/brief"
+    },
+    {
+      "id": "card-archive",
+      "name": "Archived Trello card",
+      "desc": "Closed cards should not import as tasks.",
+      "idList": "list-done",
+      "idLabels": [],
+      "idMembers": [],
+      "closed": true,
+      "pos": 2048
+    }
+  ],
+  "actions": [
+    {
+      "id": "action-comment-1",
+      "type": "commentCard",
+      "date": "2026-07-01T10:00:00.000Z",
+      "data": {
+        "card": {
+          "id": "card-brief"
+        },
+        "text": "Client approved the direction; waiting on final asset."
+      },
+      "memberCreator": {
+        "username": "mara",
+        "fullName": "Mara Ortiz"
+      }
+    }
+  ]
+}

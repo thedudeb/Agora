@@ -2,6 +2,7 @@
 const fs = require("node:fs");
 const { spawn } = require("node:child_process");
 const path = require("node:path");
+const { applyMigrationPlan, createMigrationPlan } = require("../server/migration-importer");
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -104,6 +105,17 @@ const commands = {
       validateMarketplaceFile(filePath, options);
     }
   },
+  migrate: {
+    summary: "Preview or apply project migrations from CSV or Trello JSON",
+    run: async (args) => {
+      const { positional, options } = parseOptions(args);
+      const [subcommand, filePath] = positional;
+      if (!["preview", "apply"].includes(subcommand) || !filePath) {
+        throw new Error("Usage: npm run agora -- migrate preview <file> [--source generic-csv|trello-json] [--workspace workspace.json] [--mode merge|new-workspace] [--json]\n       npm run agora -- migrate apply <file> --workspace workspace.json --out imported-workspace.json [--source generic-csv|trello-json] [--mode merge|new-workspace]");
+      }
+      runMigrationCommand(subcommand, filePath, options);
+    }
+  },
   verify: {
     summary: "Run the standard power-user verification suite",
     run: async (args) => {
@@ -197,6 +209,8 @@ Commands:
   bundle inspect <file> [--json] Inspect a portable workspace bundle
   launch check <bundle>         Check first-client launch readiness
   marketplace validate <file>   Validate marketplace/template/automation JSON
+  migrate preview <file>        Preview a migration plan from CSV or Trello JSON
+  migrate apply <file>          Apply a migration plan to a workspace JSON file
   help                          Show this help
 
 Options:
@@ -216,16 +230,92 @@ Examples:
   npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json --json
   npm run agora -- launch check tests/fixtures/portable-workspace-bundle.json --strict
   npm run agora -- marketplace validate templates/marketplace.json
+  npm run agora -- migrate preview tests/fixtures/trello-board.json --source trello-json
+  npm run agora -- migrate preview tasks.csv --source generic-csv --json
 `);
 }
 
 function parseOptions(args) {
   return args.reduce((result, arg) => {
-    if (arg === "--json") result.options.json = true;
+    const pendingKey = result.pendingKey;
+    if (pendingKey) {
+      result.options[pendingKey] = arg;
+      result.pendingKey = "";
+    } else if (arg === "--json") result.options.json = true;
     else if (arg === "--strict") result.options.strict = true;
-    else result.positional.push(arg);
+    else if (arg.startsWith("--") && arg.includes("=")) {
+      const [key, ...valueParts] = arg.slice(2).split("=");
+      result.options[optionKey(key)] = valueParts.join("=");
+    } else if (["--source", "--workspace", "--out", "--mode", "--workspace-name"].includes(arg)) {
+      result.pendingKey = optionKey(arg.slice(2));
+    } else result.positional.push(arg);
     return result;
-  }, { positional: [], options: { json: false, strict: false } });
+  }, { positional: [], options: { json: false, strict: false }, pendingKey: "" });
+}
+
+function optionKey(key) {
+  return String(key || "").replace(/-([a-z])/g, (_, char) => char.toUpperCase());
+}
+
+function runMigrationCommand(subcommand, filePath, options = {}) {
+  const payloadPath = path.resolve(ROOT, filePath);
+  const payload = fs.readFileSync(payloadPath, "utf8");
+  const workspace = options.workspace ? readJsonFile(options.workspace) : {};
+  const plan = createMigrationPlan({
+    payload,
+    fileName: payloadPath,
+    source: options.source,
+    mode: options.mode,
+    workspaceName: options.workspaceName,
+    existingSnapshot: workspace
+  });
+
+  if (subcommand === "preview") {
+    if (options.json) printJson({ plan });
+    else printMigrationPlan(plan);
+    return;
+  }
+
+  if (!options.workspace) throw new Error("migrate apply requires --workspace <workspace.json>");
+  if (!options.out) throw new Error("migrate apply requires --out <imported-workspace.json>");
+  const result = applyMigrationPlan(workspace, plan, { mode: options.mode || plan.mode });
+  fs.writeFileSync(path.resolve(ROOT, options.out), `${JSON.stringify(result.snapshot, null, 2)}\n`);
+  if (options.json) printJson({ plan, applied: result.applied, out: options.out });
+  else {
+    printMigrationPlan(plan);
+    console.log("");
+    console.log("Applied Migration");
+    console.log(`Mode: ${result.applied.mode}`);
+    console.log(`Projects: ${result.applied.projects}`);
+    console.log(`Tasks: ${result.applied.tasks}`);
+    console.log(`Comments: ${result.applied.comments}`);
+    console.log(`Wrote: ${options.out}`);
+  }
+}
+
+function printMigrationPlan(plan) {
+  console.log("Migration Preview");
+  console.log(`Source: ${plan.sourceLabel} (${plan.source})`);
+  console.log(`Mode: ${plan.mode}`);
+  console.log(`Confidence: ${plan.confidence}%`);
+  console.log(`Import batch: ${plan.importBatchId}`);
+  console.log("");
+  console.log("Counts:");
+  Object.entries(plan.counts).forEach(([key, value]) => console.log(`- ${key}: ${value}`));
+  if (plan.mappedFields.length) {
+    console.log("");
+    console.log(`Mapped fields: ${plan.mappedFields.join(", ")}`);
+  }
+  if (plan.warnings.length) {
+    console.log("");
+    console.log("Warnings:");
+    plan.warnings.forEach((warning) => console.log(`- ${warning}`));
+  }
+  if (plan.samples.length) {
+    console.log("");
+    console.log("Samples:");
+    plan.samples.forEach((sample) => console.log(`- ${sample.title} (${sample.status}, ${sample.priority})`));
+  }
 }
 
 function inspectPortableBundle(filePath, options = {}) {

@@ -55,6 +55,23 @@ function run() {
   assert(newWorkspace.snapshot.workspace.name === "Legacy Import", "new workspace name mismatch");
   assert(newWorkspace.snapshot.tasks.length === 2, "new workspace should only include imported tasks");
 
+  const trelloPayload = fs.readFileSync(path.join(ROOT, "tests/fixtures/trello-board.json"), "utf8");
+  assert(detectMigrationSource(trelloPayload, "trello-board.json") === "trello-json", "Trello detection failed");
+  const trelloPlan = createMigrationPlan({
+    source: "trello-json",
+    payload: trelloPayload,
+    existingSnapshot: workspace
+  });
+  validateMigrationPlan(trelloPlan);
+  assert(trelloPlan.source === "trello-json", "Trello plan source mismatch");
+  assert(trelloPlan.counts.projects === 1, "Trello board should become one project");
+  assert(trelloPlan.counts.tasks === 1, "Trello closed cards should be skipped");
+  assert(trelloPlan.counts.comments === 1, "Trello comments should be preserved");
+  assert(trelloPlan.tasks[0].title === "Approve launch brief", "Trello card title was not imported");
+  assert(trelloPlan.tasks[0].status === "doing", "Trello list status was not mapped");
+  assert(trelloPlan.tasks[0].customFields.sourceUrl.includes("trello.example"), "Trello source URL metadata missing");
+  assert(trelloPlan.comments[0].body.includes("Client approved"), "Trello card comment missing");
+
   console.log("Migration importer test passed.");
 }
 
@@ -67,4 +84,3 @@ function assert(condition, message) {
 }
 
 run();
-
