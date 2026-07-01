@@ -4078,6 +4078,10 @@ body[data-tutorial-target="view"] #app-view {
   gap: 10px;
 }
 
+.workspace-governance-panel {
+  grid-column: 1 / -1;
+}
+
 .switcher-import-panel {
   grid-column: 1 / -1;
 }

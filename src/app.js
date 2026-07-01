@@ -13921,6 +13921,76 @@ function renderAutomationSuggestion(suggestion) {
   `;
 }
 
+function workspaceGovernanceItems() {
+  const roleMap = rolePermissionMap();
+  const activeMemberships = state.memberships.filter((membership) => membership.status !== "revoked");
+  const admins = activeMemberships.filter((membership) => membership.role === "admin");
+  const inviteRoles = workspaceRoles
+    .filter((role) => (roleMap[role.id] || []).includes("members:write"))
+    .map((role) => role.label);
+  const clientMemberships = activeMemberships.filter((membership) => membership.role === "client");
+  const scopedClients = clientMemberships.filter((membership) => membership.companyId);
+  const pendingInvites = state.invitations.filter((invitation) => invitation.status === "pending");
+  const revokedCount = state.memberships.filter((membership) => membership.status === "revoked").length;
+  return [
+    {
+      label: "Workspace owner",
+      done: admins.length > 0,
+      detail: admins.length ? `${admins.length} admin${admins.length === 1 ? "" : "s"} can own billing, exports, and member access.` : "Add or confirm at least one admin before launch."
+    },
+    {
+      label: "Invite authority",
+      done: inviteRoles.length > 0,
+      detail: inviteRoles.length ? `${inviteRoles.join(", ")} can invite and manage roles.` : "No role can manage invitations yet."
+    },
+    {
+      label: "Client visibility",
+      done: clientMemberships.length === 0 || scopedClients.length === clientMemberships.length,
+      detail: clientMemberships.length
+        ? `${scopedClients.length}/${clientMemberships.length} client member${clientMemberships.length === 1 ? "" : "s"} scoped to a company.`
+        : "Client roles are available and should be company-scoped when invited."
+    },
+    {
+      label: "Open invitations",
+      done: pendingInvites.length === 0,
+      detail: pendingInvites.length ? `${pendingInvites.length} pending invitation${pendingInvites.length === 1 ? "" : "s"} need follow-up.` : "No pending invitations are waiting."
+    },
+    {
+      label: "Offboarding path",
+      done: true,
+      detail: revokedCount ? `${revokedCount} revoked membership${revokedCount === 1 ? "" : "s"} retained in the audit trail.` : "Revoke access, keep audit history, and restore from backup if a change was wrong."
+    }
+  ];
+}
+
+function renderWorkspaceGovernancePanel() {
+  const items = workspaceGovernanceItems();
+  const doneCount = items.filter((item) => item.done).length;
+  return `
+    <section class="panel workspace-governance-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Workspace governance</p>
+          <h2>Ownership and access model</h2>
+        </div>
+        <span class="status-pill ${doneCount === items.length ? "inbox-green" : "inbox-amber"}">${doneCount}/${items.length}</span>
+      </div>
+      <p class="panel-note">Before this becomes a team system, Agora needs a crisp answer for who owns the workspace, who can invite people, what clients can see, and how access changes are recovered.</p>
+      <div class="readiness-list governance-list">
+        ${items.map((item) => `
+          <article class="readiness-item ${item.done ? "is-done" : "is-pending"}">
+            <span>${item.done ? "OK" : "Next"}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail)}</p>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderSettings() {
   const roleById = Object.fromEntries(workspaceRoles.map((role) => [role.id, role]));
   const teamMembers = workspaceMembers();
@@ -14106,6 +14176,8 @@ function renderSettings() {
       ` : ""}
 
       ${activeSettingsTab === "members" ? `
+      ${renderWorkspaceGovernancePanel()}
+
       <section class="panel">
         <div class="panel-header">
           <div>
