@@ -48,6 +48,7 @@ Before inviting a real team:
 - Run the Supabase migrations before enabling Supabase storage/auth.
 - Confirm Supabase RLS policies with `npm run test:supabase`.
 - Review Admin > Permissions for excess admins, workspace import access, and Operator client-data access.
+- Review automation clients against `docs/api-agent-contract.md`; keep them read-only by default and require confirmation before destructive, external, payment, scheduler, import, or membership actions.
 - Export a recovery bundle before major imports, migrations, or auth changes.
 
 ## AI And Data Handling

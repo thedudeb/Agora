@@ -188,6 +188,8 @@ Authenticated routes expect:
 Authorization: Bearer <token>
 ```
 
+Automation clients should follow the API agent contract in [`../docs/api-agent-contract.md`](../docs/api-agent-contract.md). The short version: authenticate as a normal user, inspect `GET /api/session`, respect returned role permissions and company scope, use canonical project/task and structured-record endpoints before whole-workspace snapshots, keep tokens out of logs and exports, and require confirmation before destructive, external, payment, scheduler, import, or membership actions.
+
 ## Roles
 
 - `admin`: read/write/import workspace data, read audit log, manage members, respond to approvals, manage notifications/integrations/payments, and run the server scheduler.
