@@ -93,10 +93,23 @@ function createJsonStorage(options = {}) {
     return nextEvent;
   }
 
+  async function loadBackgroundJobs() {
+    return readJson("background-jobs.json", []);
+  }
+
+  async function saveBackgroundJobs(jobs = []) {
+    return writeJson("background-jobs.json", Array.isArray(jobs) ? jobs.slice(0, 100) : []);
+  }
+
   async function loadRecords(collectionKey, filters = {}) {
     const snapshot = await loadWorkspaceSnapshot();
     const records = Array.isArray(snapshot[collectionKey]) ? snapshot[collectionKey] : [];
     return filterRecords(records, filters);
+  }
+
+  async function loadRecordPage(collectionKey, filters = {}) {
+    const records = await loadRecords(collectionKey, filters);
+    return paginateRecords(records, filters);
   }
 
   async function upsertRecord(collectionKey, record, metadata = {}) {
@@ -122,7 +135,10 @@ function createJsonStorage(options = {}) {
     saveWorkspaceSnapshot,
     loadAuditLog,
     appendAuditEvent,
+    loadBackgroundJobs,
+    saveBackgroundJobs,
     loadRecords,
+    loadRecordPage,
     upsertRecord,
     upsertAuthMembership: async (membership) => membership
   };
@@ -158,6 +174,13 @@ function createSupabaseStorage(options = {}) {
     if (!response.ok) {
       const message = body?.message || body?.error || `Supabase request failed with ${response.status}`;
       throw new Error(message);
+    }
+    if (requestOptions.returnResponse) {
+      return {
+        body,
+        headers: response.headers,
+        status: response.status
+      };
     }
     return body;
   }
@@ -241,6 +264,27 @@ function createSupabaseStorage(options = {}) {
     return fromSupabaseAuditEvent(Array.isArray(rows) ? rows[0] : nextEvent);
   }
 
+  async function loadBackgroundJobs() {
+    const rows = await request(
+      "agora_background_jobs",
+      `?workspace_id=eq.${encodeURIComponent(workspaceId)}&select=*&order=updated_at.desc&limit=100`
+    );
+    return Array.isArray(rows) ? rows.map(fromSupabaseBackgroundJobRow).filter(Boolean) : [];
+  }
+
+  async function saveBackgroundJobs(jobs = []) {
+    const body = (Array.isArray(jobs) ? jobs.slice(0, 100) : []).map((job) => toSupabaseBackgroundJobRow(workspaceId, job));
+    if (!body.length) return [];
+    const rows = await request("agora_background_jobs", "", {
+      method: "POST",
+      headers: {
+        Prefer: "resolution=merge-duplicates,return=representation"
+      },
+      body
+    });
+    return Array.isArray(rows) ? rows.map(fromSupabaseBackgroundJobRow).filter(Boolean) : [];
+  }
+
   async function loadRecords(collectionKey, filters = {}) {
     const table = recordTables[collectionKey];
     if (!table) throw new Error(`Unsupported record collection: ${collectionKey}`);
@@ -248,6 +292,26 @@ function createSupabaseStorage(options = {}) {
     const query = recordQuery(workspaceId, filters);
     const rows = await request(table, query);
     return Array.isArray(rows) ? rows.map(fromSupabaseRecordRow).filter(Boolean) : [];
+  }
+
+  async function loadRecordPage(collectionKey, filters = {}) {
+    const table = recordTables[collectionKey];
+    if (!table) throw new Error(`Unsupported record collection: ${collectionKey}`);
+
+    const pageOptions = recordPageOptions(filters);
+    const query = recordQuery(workspaceId, { ...filters, ...pageOptions });
+    const result = await request(table, query, {
+      headers: {
+        Prefer: "count=exact"
+      },
+      returnResponse: true
+    });
+    const records = Array.isArray(result.body) ? result.body.map(fromSupabaseRecordRow).filter(Boolean) : [];
+    const total = parseContentRangeTotal(result.headers?.get("content-range")) ?? pageOptions.offset + records.length;
+    return {
+      records,
+      page: pageSummary(total, records.length, pageOptions.limit, pageOptions.offset)
+    };
   }
 
   async function upsertRecord(collectionKey, record, metadata = {}) {
@@ -286,7 +350,10 @@ function createSupabaseStorage(options = {}) {
     saveWorkspaceSnapshot,
     loadAuditLog,
     appendAuditEvent,
+    loadBackgroundJobs,
+    saveBackgroundJobs,
     loadRecords,
+    loadRecordPage,
     upsertRecord,
     upsertAuthMembership
   };
@@ -301,6 +368,35 @@ function filterRecords(records, filters = {}) {
   ));
 }
 
+function paginateRecords(records = [], filters = {}) {
+  const pageOptions = recordPageOptions(filters);
+  const total = records.length;
+  const pageRecords = records.slice(pageOptions.offset, pageOptions.offset + pageOptions.limit);
+  return {
+    records: pageRecords,
+    page: pageSummary(total, pageRecords.length, pageOptions.limit, pageOptions.offset)
+  };
+}
+
+function recordPageOptions(filters = {}) {
+  return {
+    limit: clampInteger(filters.limit, 1, 500, 100),
+    offset: clampInteger(filters.offset, 0, Number.MAX_SAFE_INTEGER, 0)
+  };
+}
+
+function pageSummary(total, count, limit, offset) {
+  const nextOffset = offset + count;
+  return {
+    limit,
+    offset,
+    total,
+    count,
+    hasMore: nextOffset < total,
+    nextOffset: nextOffset < total ? nextOffset : null
+  };
+}
+
 function recordQuery(workspaceId, filters = {}) {
   const params = new URLSearchParams();
   params.set("workspace_id", `eq.${workspaceId}`);
@@ -310,7 +406,23 @@ function recordQuery(workspaceId, filters = {}) {
   if (filters.taskId) params.set("task_id", `eq.${filters.taskId}`);
   if (filters.companyId) params.set("company_id", `eq.${filters.companyId}`);
   if (filters.memberId) params.set("member_id", `eq.${filters.memberId}`);
+  if (filters.limit) params.set("limit", String(filters.limit));
+  if (filters.offset) params.set("offset", String(filters.offset));
   return `?${params.toString()}`;
+}
+
+function clampInteger(value, min, max, fallback) {
+  if (value === null || value === undefined || value === "") return fallback;
+  const parsed = Math.round(Number(value));
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function parseContentRangeTotal(value) {
+  const match = String(value || "").match(/\/(\d+)$/);
+  if (!match) return null;
+  const total = Number(match[1]);
+  return Number.isFinite(total) ? total : null;
 }
 
 function toSupabaseRecordRow(workspaceId, collectionKey, record, metadata = {}) {
@@ -334,6 +446,42 @@ function toSupabaseRecordRow(workspaceId, collectionKey, record, metadata = {}) 
 function fromSupabaseRecordRow(row = {}) {
   if (!row) return null;
   return row.record || {};
+}
+
+function toSupabaseBackgroundJobRow(workspaceId, job = {}) {
+  return {
+    id: job.id,
+    workspace_id: workspaceId,
+    type: job.type || "",
+    status: job.status || "queued",
+    attempts: Number(job.attempts || 0),
+    max_attempts: Number(job.maxAttempts || 3),
+    metadata: job.metadata || {},
+    payload: job.payload || {},
+    error: job.error || "",
+    next_run_at: job.nextRunAt || null,
+    finished_at: job.finishedAt || null,
+    created_at: job.createdAt || new Date().toISOString(),
+    updated_at: job.updatedAt || new Date().toISOString()
+  };
+}
+
+function fromSupabaseBackgroundJobRow(row = {}) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    type: row.type || "",
+    status: row.status || "queued",
+    attempts: Number(row.attempts || 0),
+    maxAttempts: Number(row.max_attempts || row.maxAttempts || 3),
+    metadata: row.metadata || {},
+    payload: row.payload || {},
+    error: row.error || "",
+    nextRunAt: row.next_run_at || row.nextRunAt || "",
+    finishedAt: row.finished_at || row.finishedAt || "",
+    createdAt: row.created_at || row.createdAt || "",
+    updatedAt: row.updated_at || row.updatedAt || ""
+  };
 }
 
 function normalizeAuditEvent(event) {

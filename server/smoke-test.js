@@ -6,8 +6,9 @@ const { createStorage, createSupabaseStorage } = require("./storage");
 
 async function run() {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-api-"));
+  const storage = createStorage({ dataDir, driver: "json" });
   const server = createServer({
-    storage: createStorage({ dataDir, driver: "json" }),
+    storage,
     allowDemoAuth: true,
     allowPasswordlessAuth: true
   });
@@ -45,6 +46,19 @@ async function run() {
     assert(backendHealth.readiness.some((item) => item.id === "password-reset-delivery"), "backend readiness did not include reset delivery gate");
     assert(backendHealth.observability && Number.isFinite(backendHealth.observability.total), "backend health did not include observability metrics");
     assert(backendHealth.jobs && Array.isArray(backendHealth.jobs.recent), "backend health did not include job metrics");
+    await storage.saveBackgroundJobs([{
+      id: "job-json-smoke",
+      type: "feature-request-email",
+      status: "queued",
+      attempts: 0,
+      maxAttempts: 3,
+      metadata: { taskId: "task-smoke" },
+      payload: { to: "owner@example.test", subject: "Feature request", text: "Smoke" },
+      createdAt: "2026-06-28T12:00:00.000Z",
+      updatedAt: "2026-06-28T12:00:00.000Z"
+    }]);
+    const storedJobs = await storage.loadBackgroundJobs();
+    assert(storedJobs.some((job) => job.id === "job-json-smoke" && job.payload.to === "owner@example.test"), "json background job persistence failed");
 
     const aiOperator = await request(`${baseUrl}/api/ai/operator`, {
       method: "POST",
@@ -1293,6 +1307,7 @@ async function testSupabaseStorageAdapter() {
   const originalFetch = global.fetch;
   const snapshots = new Map();
   const records = new Map();
+  const backgroundJobs = new Map();
   const auditEvents = [];
 
   global.fetch = async (url, options = {}) => {
@@ -1327,13 +1342,34 @@ async function testSupabaseStorageAdapter() {
       return mockResponse([body]);
     }
 
+    if (table === "agora_background_jobs" && (!options.method || options.method === "GET")) {
+      const workspaceId = parsed.searchParams.get("workspace_id")?.replace(/^eq\./, "");
+      const rows = [...backgroundJobs.values()].filter((row) => !workspaceId || row.workspace_id === workspaceId);
+      return mockResponse(rows);
+    }
+
+    if (table === "agora_background_jobs" && options.method === "POST") {
+      const rows = Array.isArray(body) ? body : [body];
+      rows.forEach((row) => backgroundJobs.set(row.id, {
+        created_at: row.created_at || "2026-06-28T00:00:00.000Z",
+        updated_at: row.updated_at || "2026-06-28T00:00:00.000Z",
+        ...row
+      }));
+      return mockResponse(rows.map((row) => backgroundJobs.get(row.id)));
+    }
+
     if (table.startsWith("agora_") && table !== "agora_workspace_snapshots" && table !== "agora_audit_events" && (!options.method || options.method === "GET")) {
       const workspaceId = parsed.searchParams.get("workspace_id")?.replace(/^eq\./, "");
       const projectId = parsed.searchParams.get("project_id")?.replace(/^eq\./, "");
+      const limit = Number(parsed.searchParams.get("limit") || 0);
+      const offset = Number(parsed.searchParams.get("offset") || 0);
       const rows = [...(records.get(table)?.values() || [])]
         .filter((row) => !workspaceId || row.workspace_id === workspaceId)
         .filter((row) => !projectId || row.project_id === projectId);
-      return mockResponse(rows);
+      const pageRows = limit ? rows.slice(offset, offset + limit) : rows;
+      return mockResponse(pageRows, true, 200, {
+        "content-range": `${offset}-${offset + pageRows.length - 1}/${rows.length}`
+      });
     }
 
     if (table.startsWith("agora_") && table !== "agora_workspace_snapshots" && table !== "agora_audit_events" && options.method === "POST") {
@@ -1393,6 +1429,33 @@ async function testSupabaseStorageAdapter() {
 
     const loadedRecords = await storage.loadRecords("comments", { projectId: "project-supabase" });
     assert(loadedRecords.length === 1 && loadedRecords[0].id === "comment-supabase", "supabase record load failed");
+    await storage.upsertRecord("comments", {
+      id: "comment-supabase-2",
+      taskId: "task-supabase",
+      projectId: "project-supabase",
+      author: "mara",
+      body: "Second Supabase record",
+      createdAt: "2026-06-28T12:05:00.000Z"
+    }, {
+      action: "comment_create"
+    });
+    const recordPage = await storage.loadRecordPage("comments", { projectId: "project-supabase", limit: 1, offset: 0 });
+    assert(recordPage.records.length === 1, "supabase record page did not apply limit");
+    assert(recordPage.page.total === 2 && recordPage.page.hasMore, "supabase record page did not report total count");
+
+    await storage.saveBackgroundJobs([{
+      id: "job-supabase",
+      type: "feature-request-email",
+      status: "queued",
+      attempts: 1,
+      maxAttempts: 3,
+      metadata: { taskId: "task-supabase" },
+      payload: { to: "owner@example.test", subject: "Feature request", text: "Ship it" },
+      createdAt: "2026-06-28T12:00:00.000Z",
+      updatedAt: "2026-06-28T12:00:00.000Z"
+    }]);
+    const persistedJobs = await storage.loadBackgroundJobs();
+    assert(persistedJobs.some((job) => job.id === "job-supabase" && job.payload.to === "owner@example.test"), "supabase background job persistence failed");
 
     const savedMembership = await storage.upsertAuthMembership({
       workspaceId: "workspace-smoke",
@@ -1408,10 +1471,13 @@ async function testSupabaseStorageAdapter() {
   }
 }
 
-function mockResponse(body, ok = true, status = 200) {
+function mockResponse(body, ok = true, status = 200, headers = {}) {
   return {
     ok,
     status,
+    headers: {
+      get: (name) => headers[String(name || "").toLowerCase()] || null
+    },
     json: async () => body,
     text: async () => JSON.stringify(body)
   };

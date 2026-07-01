@@ -88,7 +88,7 @@ Agora can use Supabase Postgres for API persistence without adding a Node depend
 For the full setup and verification runbook, see [`../docs/supabase-setup.md`](../docs/supabase-setup.md).
 
 1. Create a Supabase project.
-2. Run [`migrations/001_supabase_storage.sql`](./migrations/001_supabase_storage.sql) and [`migrations/002_supabase_auth_rls.sql`](./migrations/002_supabase_auth_rls.sql) in the Supabase SQL editor.
+2. Run [`migrations/001_supabase_storage.sql`](./migrations/001_supabase_storage.sql), [`migrations/002_supabase_auth_rls.sql`](./migrations/002_supabase_auth_rls.sql), and [`migrations/003_background_jobs.sql`](./migrations/003_background_jobs.sql) in the Supabase SQL editor.
 3. Set these values in `.env`:
 
 ```sh
@@ -110,7 +110,7 @@ npm run dev:api
 
 Keep `SUPABASE_SERVICE_ROLE_KEY` on the server only. `SUPABASE_ANON_KEY` is used by the API to validate Supabase Auth access tokens.
 
-The first migration creates the snapshot/audit tables plus structured record tables for work records, collaboration records, first-class notification records, inbox state, and integration settings. The second migration creates `agora_workspace_memberships`, RLS helper functions, and policies for Supabase Auth users. The JSON driver stores records inside the workspace snapshot for local development; the Supabase driver writes them to dedicated `agora_*` tables through the same `/api/records/:collection` API. File objects are stored locally under `server/data/uploads/` with the JSON driver, or in the private Supabase Storage bucket configured by `AGORA_SUPABASE_STORAGE_BUCKET`.
+The first migration creates the snapshot/audit tables plus structured record tables for work records, collaboration records, first-class notification records, inbox state, and integration settings. The second migration creates `agora_workspace_memberships`, RLS helper functions, and policies for Supabase Auth users. The third migration creates `agora_background_jobs` for retryable email/worker job state. The JSON driver stores records inside the workspace snapshot for local development; the Supabase driver writes them to dedicated `agora_*` tables through the same `/api/records/:collection` API, with `limit` and `offset` pushed down to PostgREST for bounded reads. File objects are stored locally under `server/data/uploads/` with the JSON driver, or in the private Supabase Storage bucket configured by `AGORA_SUPABASE_STORAGE_BUCKET`.
 
 To verify a real Supabase project end to end, run:
 
@@ -150,7 +150,7 @@ The verifier starts a temporary Agora API server with Supabase storage, uses a u
 - `GET /api/public/feature-requests`: returns the public feature request form configuration.
 - `POST /api/public/feature-requests`: creates a public feature-request task and sends an owner email when feature-request SMTP is configured.
 - `GET /api/records`: returns structured collections from the active storage adapter. When no structured rows exist yet, the response includes `snapshotFallback` for bootstrap compatibility.
-- `GET /api/records/:collection`: returns a structured collection such as `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, `presence`, `chatMessages`, `whiteboards`, `notificationSettings`, `notificationReminders`, `notificationHistory`, `inboxState`, or `integrationSettings`. Supports filters like `?projectId=...`, `?taskId=...`, `?companyId=...`, and `?memberId=...`.
+- `GET /api/records/:collection`: returns a structured collection such as `companies`, `approvals`, `timeEntries`, `comments`, `activities`, `documents`, `files`, `presence`, `chatMessages`, `whiteboards`, `notificationSettings`, `notificationReminders`, `notificationHistory`, `inboxState`, or `integrationSettings`. Supports `?limit=...`, `?offset=...`, and filters like `?projectId=...`, `?taskId=...`, `?companyId=...`, and `?memberId=...`.
 - `POST /api/records/:collection`: creates or updates one structured record for supported collections. Writes are checked server-side against the authenticated session scope, project, task, company relationships, and member-owned fields. Clients can respond to existing approvals but cannot create new approval records.
 - `GET /api/workspace`: returns the latest saved workspace snapshot.
 - `PUT /api/workspace`: saves a workspace snapshot for workspace-wide admin/project-manager roles. Company-scoped sessions must use project, task, and structured record endpoints.
@@ -198,4 +198,4 @@ Sensitive operational actions use dedicated permissions in addition to role chec
 
 ## Database Target
 
-`schema.sql` is the normalized PostgreSQL target for the self-hosted backend. `migrations/001_supabase_storage.sql` stores the current workspace snapshot, audit log, structured work records, first-class notification records, inbox state, and integration settings in Postgres. `migrations/002_supabase_auth_rls.sql` adds the Supabase Auth membership/RLS layer. The JSON storage adapter remains the low-friction local default while Supabase provides the production-ready persistence path.
+`schema.sql` is the normalized PostgreSQL target for the self-hosted backend. `migrations/001_supabase_storage.sql` stores the current workspace snapshot, audit log, structured work records, first-class notification records, inbox state, and integration settings in Postgres. `migrations/002_supabase_auth_rls.sql` adds the Supabase Auth membership/RLS layer. `migrations/003_background_jobs.sql` persists retryable worker/email job state. The JSON storage adapter remains the low-friction local default while Supabase provides the production-ready persistence path.

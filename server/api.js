@@ -77,6 +77,8 @@ const backgroundJobHistory = [];
 let backgroundJobRunning = false;
 let backgroundJobDrainTimer = null;
 let backgroundJobDrainAt = 0;
+let backgroundJobStorage = null;
+let backgroundJobHydration = null;
 const requestMetrics = {
   startedAt: new Date().toISOString(),
   total: 0,
@@ -124,7 +126,7 @@ function assertRateLimit(request, scope, limit = AUTH_RATE_LIMIT_ATTEMPTS, windo
   }
 }
 
-function enqueueBackgroundJob(type, handler, metadata = {}) {
+function enqueueBackgroundJob(type, handler, metadata = {}, payload = {}) {
   const job = {
     id: `job-${crypto.randomUUID()}`,
     type,
@@ -132,6 +134,7 @@ function enqueueBackgroundJob(type, handler, metadata = {}) {
     attempts: 0,
     maxAttempts: 3,
     metadata,
+    payload,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -141,12 +144,122 @@ function enqueueBackgroundJob(type, handler, metadata = {}) {
     job.status = "rejected";
     job.error = "Background job queue is full";
     job.finishedAt = job.updatedAt;
+    persistBackgroundJobs();
     return job;
   }
 
   backgroundJobs.push({ job, handler, runAt: Date.now() });
+  persistBackgroundJobs();
   scheduleBackgroundDrain();
   return job;
+}
+
+function initializeBackgroundJobs(storage) {
+  if (!storage || typeof storage.loadBackgroundJobs !== "function") return;
+  backgroundJobStorage = storage;
+  backgroundJobHydration = storage.loadBackgroundJobs()
+    .then((jobs) => {
+      const persistedJobs = (Array.isArray(jobs) ? jobs : [])
+        .map(normalizeBackgroundJob)
+        .filter(Boolean)
+        .slice(0, 100);
+      const currentQueued = backgroundJobs.slice();
+      const currentJobs = backgroundJobHistory.map(normalizeBackgroundJob).filter(Boolean);
+      const mergedById = new Map();
+      [...persistedJobs, ...currentJobs].forEach((job) => mergedById.set(job.id, job));
+      const mergedJobs = Array.from(mergedById.values())
+        .sort((a, b) => cleanString(b.updatedAt || b.createdAt).localeCompare(cleanString(a.updatedAt || a.createdAt)))
+        .slice(0, 100);
+      backgroundJobHistory.splice(0, backgroundJobHistory.length, ...mergedJobs);
+      const queuedById = new Map(currentQueued.map((queued) => [queued.job.id, queued]));
+      persistedJobs
+        .filter((job) => shouldRequeuePersistedJob(job))
+        .forEach((job) => {
+          if (queuedById.has(job.id)) return;
+          const queuedJob = {
+            ...job,
+            status: "queued",
+            updatedAt: new Date().toISOString()
+          };
+          const nextRunAt = Date.parse(job.nextRunAt || "");
+          queuedJob.nextRunAt = Number.isFinite(nextRunAt) ? new Date(nextRunAt).toISOString() : "";
+          queuedById.set(job.id, {
+            job: queuedJob,
+            handler: null,
+            runAt: Number.isFinite(nextRunAt) ? nextRunAt : Date.now()
+          });
+        });
+      backgroundJobs.splice(0, backgroundJobs.length, ...queuedById.values());
+      if (backgroundJobs.length) {
+        persistBackgroundJobs();
+        scheduleNextBackgroundJobDrain();
+      }
+    })
+    .catch((error) => {
+      console.error("Failed to load persisted background jobs:", error.message);
+    });
+}
+
+function shouldRequeuePersistedJob(job) {
+  return ["queued", "running"].includes(job.status) &&
+    job.attempts < job.maxAttempts &&
+    Boolean(backgroundJobHandler(job));
+}
+
+function persistBackgroundJobs() {
+  if (!backgroundJobStorage || typeof backgroundJobStorage.saveBackgroundJobs !== "function") return;
+  const jobs = backgroundJobHistory.map(serializeBackgroundJob).slice(0, 100);
+  Promise.resolve(backgroundJobHydration)
+    .catch(() => {})
+    .then(() => backgroundJobStorage.saveBackgroundJobs(jobs))
+    .catch((error) => {
+      console.error("Failed to persist background jobs:", error.message);
+    });
+}
+
+function serializeBackgroundJob(job = {}) {
+  return {
+    id: job.id,
+    type: job.type,
+    status: job.status,
+    attempts: job.attempts,
+    maxAttempts: job.maxAttempts,
+    metadata: job.metadata || {},
+    payload: job.payload || {},
+    error: job.error || "",
+    createdAt: job.createdAt || "",
+    updatedAt: job.updatedAt || "",
+    nextRunAt: job.nextRunAt || "",
+    finishedAt: job.finishedAt || ""
+  };
+}
+
+function normalizeBackgroundJob(job = {}) {
+  if (!job.id || !job.type) return null;
+  const status = ["queued", "running", "succeeded", "failed", "rejected"].includes(job.status) ? job.status : "queued";
+  const createdAt = cleanString(job.createdAt) || new Date().toISOString();
+  return {
+    id: cleanString(job.id),
+    type: cleanString(job.type),
+    status,
+    attempts: Math.max(0, Number(job.attempts || 0)),
+    maxAttempts: Math.max(1, Number(job.maxAttempts || 3)),
+    metadata: job.metadata && typeof job.metadata === "object" && !Array.isArray(job.metadata) ? job.metadata : {},
+    payload: job.payload && typeof job.payload === "object" && !Array.isArray(job.payload) ? job.payload : {},
+    error: cleanString(job.error),
+    createdAt,
+    updatedAt: cleanString(job.updatedAt) || createdAt,
+    nextRunAt: cleanString(job.nextRunAt),
+    finishedAt: cleanString(job.finishedAt)
+  };
+}
+
+function backgroundJobHandler(job, fallbackHandler = null) {
+  if (fallbackHandler) return fallbackHandler;
+  if (["feature-request-email", "feature-request-update-email"].includes(job.type)) {
+    return () => sendSmtpMail(job.payload || {});
+  }
+  return null;
 }
 
 function scheduleBackgroundDrain(delayMs = 0) {
@@ -178,15 +291,26 @@ function drainBackgroundJobs() {
         if (nextIndex === -1) break;
         const [queued] = backgroundJobs.splice(nextIndex, 1);
         const { job, handler } = queued;
+        const activeHandler = backgroundJobHandler(job, handler);
+        if (!activeHandler) {
+          job.status = "failed";
+          job.error = `No background job handler registered for ${job.type}`;
+          job.updatedAt = new Date().toISOString();
+          job.finishedAt = job.updatedAt;
+          persistBackgroundJobs();
+          continue;
+        }
         job.status = "running";
         job.attempts += 1;
         job.nextRunAt = "";
         job.updatedAt = new Date().toISOString();
+        persistBackgroundJobs();
         try {
-          await handler();
+          await activeHandler();
           job.status = "succeeded";
           job.finishedAt = new Date().toISOString();
           job.updatedAt = job.finishedAt;
+          persistBackgroundJobs();
         } catch (error) {
           job.status = job.attempts < job.maxAttempts ? "queued" : "failed";
           job.error = error.message;
@@ -199,6 +323,7 @@ function drainBackgroundJobs() {
             job.finishedAt = job.updatedAt;
             job.nextRunAt = "";
           }
+          persistBackgroundJobs();
         }
       }
     } finally {
@@ -301,6 +426,7 @@ function backgroundJobSnapshot() {
 
 function createServer(options = {}) {
   const storage = options.storage || createStorage();
+  initializeBackgroundJobs(storage);
   const allowDemoAuth = options.allowDemoAuth ?? envFlag("AGORA_DEMO_AUTH", false);
   const allowPasswordlessAuth = options.allowPasswordlessAuth ?? envFlag("AGORA_PASSWORDLESS_AUTH", false);
 
@@ -710,9 +836,20 @@ function createServer(options = {}) {
           sendError(response, 404, "Record collection not found");
           return;
         }
-        const records = await storage.loadRecords(collectionKey, scopedRecordFilters(session, recordFiltersFromUrl(url)));
-        const page = paginateItems(records, url.searchParams);
-        sendJson(response, 200, { collection: collectionKey, records: page.items, page: page.page });
+        const filters = scopedRecordFilters(session, recordFiltersFromUrl(url));
+        const pageFilters = {
+          ...filters,
+          limit: clampInteger(url.searchParams.get("limit"), 1, 500, 100),
+          offset: clampInteger(url.searchParams.get("offset"), 0, Number.MAX_SAFE_INTEGER, 0)
+        };
+        const result = typeof storage.loadRecordPage === "function"
+          ? await storage.loadRecordPage(collectionKey, pageFilters)
+          : paginateItems(await storage.loadRecords(collectionKey, filters), url.searchParams);
+        sendJson(response, 200, {
+          collection: collectionKey,
+          records: result.records || result.items || [],
+          page: result.page
+        });
         return;
       }
 
@@ -2266,10 +2403,11 @@ async function deliverFeatureRequest({ task, request, session }) {
     return { mode: "not-configured", delivered: false, reason: "Set AGORA_SMTP_HOST to send feature request emails." };
   }
 
-  const job = enqueueBackgroundJob("feature-request-email", () => sendSmtpMail(featureRequestPayload({ task, request, session, to })), {
+  const payload = featureRequestPayload({ task, request, session, to });
+  const job = enqueueBackgroundJob("feature-request-email", () => sendSmtpMail(payload), {
     to,
     taskId: task.id
-  });
+  }, payload);
   if (job.status === "rejected") return { mode: "smtp", delivered: false, queued: false, jobId: job.id, reason: job.error, to };
   return { mode: "smtp", delivered: false, queued: true, jobId: job.id, to };
 }
@@ -2288,10 +2426,11 @@ async function deliverFeatureRequestUpdate({ task, note, session }) {
     return { mode: "not-configured", delivered: false, reason: "Set AGORA_SMTP_HOST to send requester update emails." };
   }
 
-  const job = enqueueBackgroundJob("feature-request-update-email", () => sendSmtpMail(featureRequestUpdatePayload({ task, note, session, to })), {
+  const payload = featureRequestUpdatePayload({ task, note, session, to });
+  const job = enqueueBackgroundJob("feature-request-update-email", () => sendSmtpMail(payload), {
     to,
     taskId: task.id
-  });
+  }, payload);
   if (job.status === "rejected") return { mode: "smtp", delivered: false, queued: false, jobId: job.id, reason: job.error, to };
   return { mode: "smtp", delivered: false, queued: true, jobId: job.id, to };
 }

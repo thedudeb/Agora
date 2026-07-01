@@ -44,8 +44,9 @@ For the dedicated setup guide, troubleshooting table, and pre-launch gate, see [
 1. Create a Supabase project.
 2. Run `server/migrations/001_supabase_storage.sql`.
 3. Run `server/migrations/002_supabase_auth_rls.sql`.
-4. Create a private Storage bucket named `agora-files`.
-5. Set:
+4. Run `server/migrations/003_background_jobs.sql`.
+5. Create a private Storage bucket named `agora-files`.
+6. Set:
 
 ```sh
 AGORA_STORAGE_DRIVER=supabase
@@ -104,6 +105,14 @@ Only sessions with `scheduler:run` can process due reminders. Keep cron credenti
 Agora supports reset-token creation and confirmation through the API. Production deployments should deliver reset tokens through SMTP or a webhook-backed email workflow.
 
 Feature requests use the same SMTP settings. Set `AGORA_FEATURE_REQUEST_EMAIL` to receive an email whenever the in-app or public feature request form saves a task. The shareable public form lives at `#feedback` on your deployed app URL. Set `AGORA_PUBLIC_FEATURE_REQUESTS=false` to turn the public form API off, and tune public abuse limits with `AGORA_PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS` and `AGORA_PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS`.
+
+Feature request emails are queued through persisted background job state. JSON deployments store this in `background-jobs.json`; Supabase deployments store it in `agora_background_jobs` after migration `003_background_jobs.sql`. Tune queue pressure and retry timing with:
+
+```sh
+AGORA_BACKGROUND_JOB_MAX_QUEUE=100
+AGORA_BACKGROUND_JOB_BASE_RETRY_MS=5000
+AGORA_BACKGROUND_JOB_MAX_RETRY_MS=60000
+```
 
 SMTP:
 

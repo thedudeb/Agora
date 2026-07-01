@@ -167,7 +167,7 @@ Agora works out of the box with local JSON API storage. To use Supabase for API 
 For the full step-by-step path, troubleshooting table, and pre-launch gate, see [`docs/supabase-setup.md`](./docs/supabase-setup.md).
 
 1. Create a Supabase project.
-2. Run `server/migrations/001_supabase_storage.sql` and `server/migrations/002_supabase_auth_rls.sql` in the Supabase SQL editor.
+2. Run `server/migrations/001_supabase_storage.sql`, `server/migrations/002_supabase_auth_rls.sql`, and `server/migrations/003_background_jobs.sql` in the Supabase SQL editor.
 3. Create a private Supabase Storage bucket named `agora-files`.
 4. Set these values in `.env`:
 
@@ -184,7 +184,7 @@ AGORA_SUPABASE_STORAGE_BUCKET=agora-files
 
 Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Do not paste it into browser settings or client code. `SUPABASE_ANON_KEY` is safe for browser-based Supabase Auth clients, but Agora's API still reads it from the server environment when validating access tokens.
 
-`002_supabase_auth_rls.sql` adds `public.agora_workspace_memberships`, helper functions around `auth.uid()`, and RLS policies for snapshots, audit events, and structured record tables. The API can sign users up or in with Supabase email/password auth from Settings, exchange a Supabase Auth `access_token`, or accept that token directly as a Bearer token when `AGORA_AUTH_DRIVER=supabase`.
+`002_supabase_auth_rls.sql` adds `public.agora_workspace_memberships`, helper functions around `auth.uid()`, and RLS policies for snapshots, audit events, and structured record tables. `003_background_jobs.sql` persists retryable email and worker job state. The API can sign users up or in with Supabase email/password auth from Settings, exchange a Supabase Auth `access_token`, or accept that token directly as a Bearer token when `AGORA_AUTH_DRIVER=supabase`.
 
 Invitations and memberships can be assigned to a company. Scoped users only receive the company workspace records they are allowed to see, and whole-workspace snapshot saves stay limited to workspace-wide admin sessions.
 

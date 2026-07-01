@@ -156,6 +156,22 @@ create table notifications (
   created_at timestamptz not null default now()
 );
 
+create table background_jobs (
+  id text primary key,
+  workspace_id text not null references workspaces(id) on delete cascade,
+  type text not null,
+  status text not null default 'queued',
+  attempts integer not null default 0,
+  max_attempts integer not null default 3,
+  metadata jsonb not null default '{}'::jsonb,
+  payload jsonb not null default '{}'::jsonb,
+  error text not null default '',
+  next_run_at timestamptz,
+  finished_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table presence (
   id text primary key,
   workspace_id text not null references workspaces(id) on delete cascade,
