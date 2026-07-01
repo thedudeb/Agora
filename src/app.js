@@ -5201,6 +5201,144 @@ function productionReadinessScore() {
   };
 }
 
+function hostedOnboardingItems() {
+  const health = backendHealth || apiSession?.backendHealth || {};
+  const email = health.email || {};
+  const recovery = portableRecoveryStatus();
+  const requests = featureRequestTasks();
+  const pendingInvitations = state.invitations.filter((invitation) => invitation.status === "pending");
+  return [
+    {
+      label: "Owner account",
+      done: Boolean(apiSession),
+      detail: apiSession ? `${apiSession.user.name || apiSession.user.email} is signed in.` : "Create the first owner account or sign in from Account.",
+      commandId: "settings:account"
+    },
+    {
+      label: "API sync",
+      done: Boolean(apiSession?.lastSyncedAt || health.snapshot?.metadata?.updatedAt),
+      detail: apiSession?.lastSyncedAt ? `Last saved ${formatTimestamp(apiSession.lastSyncedAt)}.` : "Save or load the workspace through Settings > Sync.",
+      commandId: "settings:sync"
+    },
+    {
+      label: "Invite path",
+      done: pendingInvitations.length > 0 || state.memberships.length > 1,
+      detail: pendingInvitations.length ? `${pendingInvitations.length} pending invitation${pendingInvitations.length === 1 ? "" : "s"}.` : "Invite one teammate or client before beta.",
+      commandId: "settings:members"
+    },
+    {
+      label: "Email delivery",
+      done: Boolean(email.smtp?.configured && email.from?.configured),
+      detail: email.smtp?.configured ? "SMTP is configured for team email." : "Configure SMTP for invites, resets, and requester updates.",
+      commandId: "settings:feedback"
+    },
+    {
+      label: "Feedback loop",
+      done: requests.length > 0 || Boolean(email.featureRequests?.configured),
+      detail: requests.length ? `${requests.length} feature request${requests.length === 1 ? "" : "s"} on the board.` : "Share the public form and route owner emails.",
+      commandId: "settings:feedback"
+    },
+    {
+      label: "Recovery proof",
+      done: recovery.score >= Math.max(3, recovery.total - 1),
+      detail: `${recovery.score}/${recovery.total} recovery checks ready.`,
+      commandId: "route:data"
+    }
+  ];
+}
+
+function renderHostedOnboardingPanel() {
+  const items = hostedOnboardingItems();
+  const score = readinessScore(items);
+  const tone = readinessTone(score);
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Hosted onboarding</p>
+          <h2>First real team path</h2>
+        </div>
+        <span class="status-pill inbox-${tone}">${score.done}/${score.total}</span>
+      </div>
+      <div class="readiness-list compact-readiness">
+        ${items.map((item) => `
+          <article class="readiness-item ${item.done ? "is-done" : "is-pending"}">
+            <span>${item.done ? "OK" : "Next"}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail)}</p>
+            </div>
+            <button class="button button-secondary compact-button" type="button" data-command-id="${escapeHtml(item.commandId || "settings:account")}">${item.done ? "Review" : "Do This"}</button>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function emailDiagnosticsItems() {
+  const email = (backendHealth || apiSession?.backendHealth || {}).email || {};
+  return [
+    {
+      label: "SMTP",
+      done: Boolean(email.smtp?.configured),
+      detail: email.smtp?.configured ? `${email.smtp.host}:${email.smtp.port} / auth ${email.smtp.auth}` : "Set AGORA_SMTP_HOST and AGORA_SMTP_PORT."
+    },
+    {
+      label: "From address",
+      done: Boolean(email.from?.configured),
+      detail: email.from?.configured ? "Sender is configured server-side." : "Set AGORA_EMAIL_FROM or SMTP_FROM."
+    },
+    {
+      label: "Invitations",
+      done: Boolean(email.invitations?.configured),
+      detail: email.invitations?.detail || "Refresh Backend Health after configuring SMTP."
+    },
+    {
+      label: "Feature request owner",
+      done: Boolean(email.featureRequests?.configured),
+      detail: email.featureRequests?.detail || "Set AGORA_FEATURE_REQUEST_EMAIL for owner notifications."
+    },
+    {
+      label: "Password reset",
+      done: Boolean(email.passwordReset?.configured),
+      detail: email.passwordReset?.detail || "Set AGORA_PASSWORD_RESET_DELIVERY=smtp or webhook."
+    }
+  ];
+}
+
+function renderEmailDiagnosticsPanel() {
+  const items = emailDiagnosticsItems();
+  const score = readinessScore(items);
+  const tone = readinessTone(score);
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Email diagnostics</p>
+          <h2>Invites, resets, and requester updates</h2>
+        </div>
+        <span class="status-pill inbox-${tone}">${score.done}/${score.total}</span>
+      </div>
+      <div class="readiness-list compact-readiness">
+        ${items.map((item) => `
+          <article class="readiness-item ${item.done ? "is-done" : "is-pending"}">
+            <span>${item.done ? "OK" : "Next"}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail)}</p>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+      <div class="data-actions">
+        <button class="button button-secondary" type="button" id="backend-health-refresh" ${apiSession ? "" : "disabled"}>Refresh Health</button>
+        <button class="button button-primary" type="button" data-copy-feature-request-link>Copy Public Link</button>
+      </div>
+    </section>
+  `;
+}
+
 function hostedLaunchRunbookItems() {
   const health = backendHealth || apiSession?.backendHealth || {};
   const productionGates = Array.isArray(health.productionGates) ? health.productionGates : [];
@@ -16666,6 +16804,7 @@ function renderSettings() {
 
     <div class="settings-grid settings-section settings-section-${activeSettingsTab}">
       ${activeSettingsTab === "account" ? `
+      ${renderHostedOnboardingPanel()}
       ${renderApiAccountPanel()}
       ` : ""}
 
@@ -16752,13 +16891,14 @@ function renderSettings() {
       ` : ""}
 
       ${activeSettingsTab === "feedback" ? `
+      ${renderEmailDiagnosticsPanel()}
       <section class="panel">
         <div class="panel-header">
           <div>
             <p class="eyebrow">Feedback loop</p>
             <h2>Feature request intake</h2>
           </div>
-          <button class="button button-secondary" type="button" id="copy-feature-request-link">Copy Public Link</button>
+          <button class="button button-secondary" type="button" data-copy-feature-request-link>Copy Public Link</button>
         </div>
         <div class="settings-form">
           <label>
@@ -18065,6 +18205,7 @@ function renderBackendChecklist() {
       <button class="button button-secondary compact-button" type="button" id="api-sync-retry" ${apiSession && apiSyncQueue.length ? "" : "disabled"}>Retry Failed Syncs</button>
     </div>
     ${renderBackendObservabilityPanel()}
+    ${renderEmailDiagnosticsPanel()}
     <div class="backend-checklist">
       ${backendReadinessItems().map((item) => `
         <article class="backend-item ${item.done ? "is-done" : "is-pending"}">
@@ -18886,7 +19027,7 @@ function renderFeatureRequests() {
           <h2>${requests.length} feature ${requests.length === 1 ? "request" : "requests"}</h2>
         </div>
         <div class="portal-actions">
-          <button class="button button-secondary" type="button" id="copy-feature-request-link">Copy Public Link</button>
+          <button class="button button-secondary" type="button" data-copy-feature-request-link>Copy Public Link</button>
           <button class="button button-primary" type="button" id="feature-request-button-inline">New Request</button>
         </div>
       </div>
@@ -22905,7 +23046,7 @@ async function inviteWorkspaceMember() {
     });
     saveState();
     render();
-    showToast(`Invite created for ${invitation.email}`, "success");
+    showToast(result.email?.queued || result.email?.delivered ? `Invite email queued for ${invitation.email}` : `Invite created for ${invitation.email}. Email is not configured.`, result.email?.queued || result.email?.delivered ? "success" : "info");
   } catch (error) {
     showToast(`Invite failed: ${error.message}`, "info");
   }
@@ -22932,7 +23073,7 @@ async function resendWorkspaceInvite(invitationId) {
     });
     saveState();
     render();
-    showToast(`Invite refreshed for ${invitation.email}`, "success");
+    showToast(result.email?.queued || result.email?.delivered ? `Invite email queued for ${invitation.email}` : `Invite refreshed for ${invitation.email}. Email is not configured.`, result.email?.queued || result.email?.delivered ? "success" : "info");
   } catch (error) {
     showToast(`Invite resend failed: ${error.message}`, "info");
   }
@@ -23759,7 +23900,7 @@ document.addEventListener("click", (event) => {
   const submitIntakeButton = event.target.closest("[data-submit-intake]");
   if (submitIntakeButton) submitIntakeRequest(submitIntakeButton.dataset.submitIntake);
 
-  const copyFeatureLinkButton = event.target.closest("#copy-feature-request-link");
+  const copyFeatureLinkButton = event.target.closest("[data-copy-feature-request-link]");
   if (copyFeatureLinkButton) {
     copyFeatureRequestLink();
     return;

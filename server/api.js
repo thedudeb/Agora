@@ -258,7 +258,7 @@ function normalizeBackgroundJob(job = {}) {
 
 function backgroundJobHandler(job, fallbackHandler = null) {
   if (fallbackHandler) return fallbackHandler;
-  if (["feature-request-email", "feature-request-update-email"].includes(job.type)) {
+  if (["feature-request-email", "feature-request-update-email", "invitation-email"].includes(job.type)) {
     return () => sendSmtpMail(job.payload || {});
   }
   return null;
@@ -862,8 +862,8 @@ function createServer(options = {}) {
           return;
         }
         const body = await readJsonBody(request);
-        const invitation = await createInvitation(storage, body, session);
-        sendJson(response, 201, { invitation });
+        const result = await createInvitation(storage, body, session);
+        sendJson(response, 201, result);
         return;
       }
 
@@ -873,8 +873,8 @@ function createServer(options = {}) {
           sendError(response, 403, "Missing members write permission");
           return;
         }
-        const invitation = await resendInvitation(storage, decodeURIComponent(invitationResendMatch[1]), session);
-        sendJson(response, 200, { invitation });
+        const result = await resendInvitation(storage, decodeURIComponent(invitationResendMatch[1]), session);
+        sendJson(response, 200, result);
         return;
       }
 
@@ -1284,6 +1284,7 @@ async function buildBackendHealth(storage, session) {
   const publicAppUrl = cleanString(process.env.AGORA_PUBLIC_APP_URL || process.env.AGORA_APP_URL);
   const publicAppUrlHosted = /^https:\/\//i.test(publicAppUrl) && !/localhost|127\.0\.0\.1|\[::1\]/i.test(publicAppUrl);
   const publicFeatureBodyLimitKb = Math.round(PUBLIC_FEATURE_BODY_LIMIT_BYTES / 1024);
+  const email = emailDeliveryDiagnostics();
   const snapshotDocument = await storage.loadWorkspace();
   const snapshot = snapshotDocument?.snapshot || {};
   const collectionReports = await Promise.all(Object.entries(recordCollections).map(async ([key, config]) => {
@@ -1349,6 +1350,15 @@ async function buildBackendHealth(storage, session) {
         ? `${passwordResetDelivery} delivery${exposesResetToken ? " with browser token return" : ""}`
         : productionTarget ? "No reset delivery configured" : "Manual reset delivery is acceptable for local development",
       fix: "Use AGORA_PASSWORD_RESET_DELIVERY=smtp or webhook and keep AGORA_PASSWORD_RESET_RETURN_TOKEN=false for hosted production."
+    },
+    {
+      id: "email-delivery",
+      label: "Team email delivery",
+      done: !productionTarget || (email.smtp.configured && email.from.configured && email.invitations.configured && email.featureRequests.configured),
+      detail: email.smtp.configured
+        ? `SMTP configured for invites and feedback${email.featureRequests.configured ? "" : "; feature owner recipient missing"}`
+        : productionTarget ? "SMTP is not configured for invites or feature request emails" : "SMTP is optional for local development",
+      fix: "Set AGORA_SMTP_HOST, AGORA_EMAIL_FROM, and AGORA_FEATURE_REQUEST_EMAIL before inviting a real team."
     },
     {
       id: "public-feature-abuse",
@@ -1459,6 +1469,13 @@ async function buildBackendHealth(storage, session) {
       detail: `${backgroundJobs.length}/${BACKGROUND_JOB_MAX_QUEUE} queued, ${backgroundJobHistory.filter((job) => job.status === "failed").length} recent failed`,
       fix: "If queued jobs keep growing, move the in-process queue to a durable worker."
     },
+    {
+      id: "team-email",
+      label: "Team email",
+      done: email.smtp.configured && email.from.configured,
+      detail: email.smtp.configured ? "SMTP can queue invite, feature request, and requester update emails" : "SMTP is not configured yet",
+      fix: "Set AGORA_SMTP_HOST, AGORA_SMTP_PORT, AGORA_EMAIL_FROM, and SMTP credentials when your provider requires auth."
+    },
     ...productionGates,
     {
       id: "production-mode",
@@ -1499,6 +1516,7 @@ async function buildBackendHealth(storage, session) {
     },
     records: collectionReports,
     readiness,
+    email,
     observability: requestMetricsSnapshot(),
     jobs: backgroundJobSnapshot(),
     generatedAt: new Date().toISOString()
@@ -2625,6 +2643,71 @@ async function deliverFeatureRequestUpdate({ task, note, session }) {
   return { mode: "smtp", delivered: false, queued: true, jobId: job.id, to };
 }
 
+async function deliverInvitationEmail({ invitation, session }) {
+  if (!invitation?.email) {
+    return { mode: "not-configured", delivered: false, reason: "Invitation email is missing." };
+  }
+
+  const smtpHost = cleanString(process.env.AGORA_SMTP_HOST || process.env.SMTP_HOST);
+  if (!smtpHost) {
+    return { mode: "not-configured", delivered: false, reason: "Set AGORA_SMTP_HOST to send invitation emails." };
+  }
+
+  const payload = invitationEmailPayload({ invitation, session });
+  const job = enqueueBackgroundJob("invitation-email", () => sendSmtpMail(payload), {
+    to: invitation.email,
+    invitationId: invitation.id
+  }, payload);
+  if (job.status === "rejected") return { mode: "smtp", delivered: false, queued: false, jobId: job.id, reason: job.error, to: invitation.email };
+  return { mode: "smtp", delivered: false, queued: true, jobId: job.id, to: invitation.email };
+}
+
+function emailDeliveryDiagnostics() {
+  const smtpHost = cleanString(process.env.AGORA_SMTP_HOST || process.env.SMTP_HOST);
+  const smtpPort = positiveNumber(process.env.AGORA_SMTP_PORT || process.env.SMTP_PORT, envFlag("AGORA_SMTP_SECURE", false) ? 465 : 587);
+  const smtpUser = cleanString(process.env.AGORA_SMTP_USER || process.env.SMTP_USER);
+  const from = cleanString(process.env.AGORA_EMAIL_FROM || process.env.SMTP_FROM);
+  const featureRecipient = cleanString(process.env.AGORA_FEATURE_REQUEST_EMAIL || process.env.AGORA_OWNER_EMAIL);
+  const resetDelivery = cleanString(process.env.AGORA_PASSWORD_RESET_DELIVERY || "").toLowerCase();
+  const resetWebhook = cleanString(process.env.AGORA_PASSWORD_RESET_WEBHOOK_URL);
+  const exposesResetToken = envFlag("AGORA_PASSWORD_RESET_RETURN_TOKEN", false) || resetDelivery === "manual";
+  const smtpConfigured = Boolean(smtpHost);
+  return {
+    smtp: {
+      configured: smtpConfigured,
+      host: smtpConfigured ? smtpHost : "",
+      port: smtpPort,
+      secure: envFlag("AGORA_SMTP_SECURE", smtpPort === 465),
+      startTls: envFlag("AGORA_SMTP_STARTTLS", smtpPort !== 465),
+      auth: smtpUser ? "configured" : "none"
+    },
+    from: {
+      configured: Boolean(from),
+      address: from ? "configured" : ""
+    },
+    invitations: {
+      configured: smtpConfigured,
+      mode: smtpConfigured ? "smtp" : "not-configured",
+      detail: smtpConfigured ? "Workspace invitations queue SMTP email." : "Invitation links are created in-app but email is not configured."
+    },
+    featureRequests: {
+      configured: smtpConfigured && Boolean(featureRecipient),
+      mode: smtpConfigured && featureRecipient ? "smtp" : "not-configured",
+      ownerRecipient: featureRecipient ? "configured" : "",
+      detail: featureRecipient ? "Feature request owner email is set." : "Set AGORA_FEATURE_REQUEST_EMAIL for owner notifications."
+    },
+    passwordReset: {
+      configured: resetDelivery === "smtp" ? smtpConfigured : resetDelivery === "webhook" ? Boolean(resetWebhook) : false,
+      mode: resetDelivery || "not-configured",
+      exposesResetToken,
+      detail: resetDelivery
+        ? `${resetDelivery} delivery${exposesResetToken ? " with browser token return" : ""}`
+        : "Password reset delivery is not configured."
+    },
+    jobs: backgroundJobSnapshot()
+  };
+}
+
 function featureRequestPayload({ task, request, session, to }) {
   const projectName = cleanString(request.projectName || "");
   const requester = cleanString(request.requester || session.user.name || session.user.email);
@@ -2649,6 +2732,30 @@ function featureRequestPayload({ task, request, session, to }) {
       details,
       "",
       "The request was also saved as a task on the board."
+    ].join("\n")
+  };
+}
+
+function invitationEmailPayload({ invitation, session }) {
+  const appUrl = publicAppBaseUrl();
+  const acceptUrl = `${appUrl}/#invite/${encodeURIComponent(invitation.token)}`;
+  const invitedBy = session.user.name || session.user.email || "A workspace admin";
+  const invitedName = invitation.name || invitation.email;
+  return {
+    to: invitation.email,
+    from: cleanString(process.env.AGORA_EMAIL_FROM || process.env.SMTP_FROM || "Agora <no-reply@localhost>"),
+    subject: smtpHeader(`Join ${workspace.name} on Agora`),
+    text: [
+      `Hi ${invitedName},`,
+      "",
+      `${invitedBy} invited you to ${workspace.name} on Agora.`,
+      "",
+      `Role: ${invitation.role}`,
+      invitation.companyId ? `Company scope: ${invitation.companyId}` : "Company scope: Workspace-wide",
+      `Accept invite: ${acceptUrl}`,
+      `Expires: ${invitation.expiresAt || "No expiry set"}`,
+      "",
+      "If you were not expecting this invitation, you can ignore this email."
     ].join("\n")
   };
 }
@@ -2841,7 +2948,7 @@ function featureRequestDescriptionText(request) {
 }
 
 function passwordResetPayload(user, token, expiresAt) {
-  const appUrl = cleanString(process.env.AGORA_PUBLIC_APP_URL || process.env.AGORA_APP_URL || "http://127.0.0.1:5174").replace(/\/+$/, "");
+  const appUrl = publicAppBaseUrl();
   const resetUrl = `${appUrl}/#settings?resetToken=${encodeURIComponent(token)}&email=${encodeURIComponent(user.email)}`;
   return {
     to: user.email,
@@ -2863,6 +2970,10 @@ function passwordResetPayload(user, token, expiresAt) {
     resetUrl,
     expiresAt
   };
+}
+
+function publicAppBaseUrl() {
+  return cleanString(process.env.AGORA_PUBLIC_APP_URL || process.env.AGORA_APP_URL || "http://127.0.0.1:5174").replace(/\/+$/, "");
 }
 
 async function sendPasswordResetWebhook(payload) {
@@ -3374,7 +3485,9 @@ async function createInvitation(storage, body, session) {
     workspaceId: workspace.id,
     detail: `${session.user.name} invited ${nextInvitation.email}`
   });
-  return publicInvitation(nextInvitation);
+  const publicInvite = publicInvitation(nextInvitation);
+  const emailDelivery = await deliverInvitationEmail({ invitation: publicInvite, session });
+  return { invitation: publicInvite, email: emailDelivery };
 }
 
 async function resendInvitation(storage, invitationId, session) {
@@ -3409,7 +3522,9 @@ async function resendInvitation(storage, invitationId, session) {
     workspaceId: workspace.id,
     detail: `${session.user.name} resent an invitation to ${nextInvitation.email}`
   });
-  return publicInvitation(nextInvitation);
+  const publicInvite = publicInvitation(nextInvitation);
+  const emailDelivery = await deliverInvitationEmail({ invitation: publicInvite, session });
+  return { invitation: publicInvite, email: emailDelivery };
 }
 
 async function revokeInvitation(storage, invitationId, session) {

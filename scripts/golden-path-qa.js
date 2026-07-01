@@ -154,6 +154,8 @@ const routeChecks = [
     height: 712,
     required: [
       "Settings",
+      "Hosted onboarding",
+      "First real team path",
       "Open Members",
       "Open Sync",
       "Account",
@@ -204,6 +206,8 @@ const routeChecks = [
     width: 1265,
     height: 712,
     required: [
+      "Email diagnostics",
+      "Invites, resets, and requester updates",
       "Feature request intake",
       "Public submit link",
       "Open Feature Requests",
