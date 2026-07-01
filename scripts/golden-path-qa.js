@@ -76,7 +76,7 @@ const checks = [
       "Prove the core loop",
       "Start With Client Onboarding",
       "Review Agency Handoff Pack",
-      "Open Data"
+      "Open Recovery Plan"
     ]
   }
 ];

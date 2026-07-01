@@ -3121,6 +3121,49 @@ body[data-tutorial-target="view"] #app-view {
   grid-column: 1 / -1;
 }
 
+.recovery-confidence-panel {
+  margin: 0 0 16px;
+}
+
+.recovery-confidence-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.recovery-confidence-grid article {
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.recovery-confidence-grid span,
+.recovery-confidence-grid small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.recovery-confidence-grid span {
+  text-transform: uppercase;
+}
+
+.recovery-confidence-grid strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.recovery-confidence-grid small {
+  margin-top: 3px;
+  line-height: 1.35;
+}
+
 .automation-pack-list,
 .portable-file-grid,
 .operator-trust-grid {
@@ -6530,6 +6573,7 @@ body[data-density="compact"] .main-content {
   .marketplace-command-grid,
   .recommended-automation-grid,
   .recommended-template-grid,
+  .recovery-confidence-grid,
   .team-launch-list,
   .command-center-grid,
   .operator-center-grid,
@@ -6871,6 +6915,7 @@ body[data-density="compact"] .main-content {
   .template-preview-grid,
   .recommended-automation-grid,
   .recommended-template-grid,
+  .recovery-confidence-grid,
   .automation-composer,
   .settings-form,
   .settings-section-account .api-sync-form,

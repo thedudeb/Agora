@@ -3904,8 +3904,8 @@ function goldenPathItems() {
         ? "Portable recovery has local evidence"
         : "Download a portable bundle before serious imports or team rollout",
       done: hasPortableEvidence,
-      commandId: "route:data",
-      actionLabel: "Open Data"
+      commandId: "recovery:plan",
+      actionLabel: "Open Recovery Plan"
     }
   ];
 }
@@ -6472,6 +6472,13 @@ function commandPaletteBaseItems() {
       keywords: "automation marketplace workflow pack agency handoff client approvals"
     },
     {
+      id: "recovery:plan",
+      title: "Open Recovery Plan",
+      detail: "Review portable bundle contents, backups, and restore readiness",
+      group: "Golden path",
+      keywords: "portable recovery bundle backup restore export inspect"
+    },
+    {
       id: "shortcuts:open",
       title: "Open keyboard shortcuts",
       detail: "View command, create, backup, search, and navigation keys",
@@ -6858,6 +6865,11 @@ function executeCommand(commandId) {
 
   if (commandId === "automation:recommended") {
     openRecommendedAutomationFlow();
+    return;
+  }
+
+  if (commandId === "recovery:plan") {
+    openRecoveryPlanFlow();
     return;
   }
 
@@ -14351,6 +14363,78 @@ function renderWorkspaceBackupList(backups) {
   `;
 }
 
+function portableRecoveryStatus() {
+  const backups = loadWorkspaceBackups();
+  const manifest = portableWorkspaceManifest();
+  const files = portableWorkspaceFiles();
+  const hasExport = state.auditEvents.some((event) => event.action === "workspace_export");
+  return {
+    backups,
+    manifest,
+    files,
+    latestBackup: backups[0] || null,
+    score: [
+      files.some((file) => file.path === "workspace.json"),
+      files.some((file) => file.path === "README.md"),
+      files.some((file) => file.path === "audit-log.md"),
+      backups.length > 0 || hasExport
+    ].filter(Boolean).length
+  };
+}
+
+function openRecoveryPlanFlow() {
+  state.selectedRoute = "data";
+  openSidebarGroupForRoute("data");
+  saveState();
+  render();
+  showToast("Recovery plan is ready to review", "success");
+}
+
+function renderPortableRecoveryConfidencePanel() {
+  const status = portableRecoveryStatus();
+  const counts = status.manifest.counts;
+  const latestBackup = status.latestBackup ? formatTimestamp(status.latestBackup.createdAt) : "No local backup yet";
+  return `
+    <section class="panel recovery-confidence-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Recovery confidence</p>
+          <h2>Know you can leave and restore</h2>
+        </div>
+        <span class="status-pill ${status.score >= 3 ? "inbox-green" : "inbox-amber"}">${status.score}/4 ready</span>
+      </div>
+      <p class="panel-note">The portable bundle includes workspace JSON, Markdown, CSV, automations, templates, audit history, and operator context. Use the CLI inspect path before imports or handoffs.</p>
+      <div class="recovery-confidence-grid">
+        <article>
+          <span>Bundle files</span>
+          <strong>${status.files.length}</strong>
+          <small>${counts.projects} projects / ${counts.tasks} tasks</small>
+        </article>
+        <article>
+          <span>Local backups</span>
+          <strong>${status.backups.length}</strong>
+          <small>${escapeHtml(latestBackup)}</small>
+        </article>
+        <article>
+          <span>Restore path</span>
+          <strong>Preview first</strong>
+          <small>Import bundle, then choose new workspace or replace</small>
+        </article>
+        <article>
+          <span>CLI inspect</span>
+          <strong>Available</strong>
+          <small>npm run agora -- bundle inspect &lt;bundle.json&gt;</small>
+        </article>
+      </div>
+      <div class="data-actions">
+        <button class="button button-primary" type="button" data-recovery-action="download-bundle">Download Bundle</button>
+        <button class="button button-secondary" type="button" data-recovery-action="create-backup">Create Backup</button>
+        <button class="button button-secondary" type="button" data-recovery-action="download-manifest">Download Manifest</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderDataManagement() {
   const taskCsv = exportTasksCsv();
   const timeCsv = exportTimeCsv();
@@ -14363,6 +14447,8 @@ function renderDataManagement() {
       ${metric("Time entries", state.timeEntries.length)}
       ${metric("Backups", backups.length)}
     </div>
+
+    ${renderPortableRecoveryConfidencePanel()}
 
     <div class="data-grid">
       <section class="panel">
@@ -20297,6 +20383,14 @@ document.addEventListener("click", (event) => {
   const downloadPortableBundleButton = event.target.closest("#download-portable-bundle");
   if (downloadPortableBundleButton) {
     downloadPortableWorkspaceBundle();
+    return;
+  }
+
+  const recoveryActionButton = event.target.closest("[data-recovery-action]");
+  if (recoveryActionButton) {
+    if (recoveryActionButton.dataset.recoveryAction === "download-bundle") downloadPortableWorkspaceBundle();
+    if (recoveryActionButton.dataset.recoveryAction === "create-backup") createWorkspaceBackup("Recovery plan checkpoint");
+    if (recoveryActionButton.dataset.recoveryAction === "download-manifest") downloadPortableWorkspaceManifest();
     return;
   }
 
