@@ -4136,7 +4136,9 @@ function normalizeProject(project) {
     dueDate: project.dueDate ? String(project.dueDate) : "",
     archivedAt: project.archivedAt ? String(project.archivedAt) : "",
     archivedBy: project.archivedBy ? String(project.archivedBy) : "",
-    restoredAt: project.restoredAt ? String(project.restoredAt) : ""
+    restoredAt: project.restoredAt ? String(project.restoredAt) : "",
+    createdAt: project.createdAt ? String(project.createdAt) : new Date().toISOString(),
+    updatedAt: project.updatedAt ? String(project.updatedAt) : project.createdAt ? String(project.createdAt) : new Date().toISOString()
   };
 }
 

@@ -2853,8 +2853,9 @@ function saveApiSyncQueue() {
   apiSyncQueueStore.save(apiSyncQueue);
 }
 
-function queueApiSyncFailure({ label, path, method = "POST", body = {}, error = "" }) {
+function queueApiSyncFailure({ label, path, method = "POST", body = {}, error = "", baseRevision = "", status = "", conflict = null }) {
   const id = `${method}:${path}:${body?.project?.id || body?.task?.id || body?.record?.id || JSON.stringify(body).slice(0, 80)}`;
+  const existing = apiSyncQueue.find((entry) => entry.id === id);
   const item = {
     id,
     label,
@@ -2862,8 +2863,11 @@ function queueApiSyncFailure({ label, path, method = "POST", body = {}, error = 
     method,
     body,
     error: String(error || "API sync failed"),
+    baseRevision: baseRevision || existing?.baseRevision || body?.task?.createdAt || body?.project?.createdAt || "",
+    status: status || existing?.status || "pending",
+    conflict: conflict || existing?.conflict || null,
     offline: !canAttemptApiRequest(),
-    attempts: (apiSyncQueue.find((entry) => entry.id === id)?.attempts || 0) + 1,
+    attempts: (existing?.attempts || 0) + 1,
     updatedAt: new Date().toISOString()
   };
   apiSyncQueue = [item, ...apiSyncQueue.filter((entry) => entry.id !== id)].slice(0, 50);
@@ -2872,6 +2876,66 @@ function queueApiSyncFailure({ label, path, method = "POST", body = {}, error = 
 
 function clearApiSyncQueueItem(id) {
   apiSyncQueue = apiSyncQueue.filter((item) => item.id !== id);
+  saveApiSyncQueue();
+}
+
+function queuedSyncRecord(item) {
+  if (item?.body?.task) return { collection: "tasks", key: "task", record: item.body.task };
+  if (item?.body?.project) return { collection: "projects", key: "project", record: item.body.project };
+  return null;
+}
+
+function recordRevisionValue(record = {}) {
+  return record.updatedAt || record.createdAt || record.restoredAt || record.archivedAt || "";
+}
+
+function revisionIsAfter(a = "", b = "") {
+  const left = Date.parse(a || "");
+  const right = Date.parse(b || "");
+  return Number.isFinite(left) && Number.isFinite(right) && left > right;
+}
+
+async function fetchRemoteQueuedRecord(item) {
+  const queued = queuedSyncRecord(item);
+  if (!queued?.record?.id) return null;
+  const path = queued.collection === "tasks" ? "/api/tasks" : "/api/projects";
+  const key = queued.collection;
+  const records = await fetchApiCollectionPages(path, key);
+  return records.find((record) => record.id === queued.record.id) || null;
+}
+
+async function detectQueuedSyncConflict(item) {
+  const queued = queuedSyncRecord(item);
+  if (!queued || item.status === "conflict") return null;
+  if (item.method === "POST" && !item.baseRevision) return null;
+  const remote = await fetchRemoteQueuedRecord(item);
+  if (!remote) return null;
+  const remoteRevision = recordRevisionValue(remote);
+  const localRevision = recordRevisionValue(queued.record);
+  const baseRevision = item.baseRevision || localRevision;
+  if (!remoteRevision || !baseRevision) return null;
+  if (!revisionIsAfter(remoteRevision, baseRevision) || remoteRevision === localRevision) return null;
+  return {
+    collection: queued.collection,
+    local: queued.record,
+    remote,
+    baseRevision,
+    localRevision,
+    remoteRevision,
+    detectedAt: new Date().toISOString()
+  };
+}
+
+function markApiSyncQueueConflict(item, conflict) {
+  apiSyncQueue = apiSyncQueue.map((entry) => entry.id === item.id
+    ? {
+        ...entry,
+        status: "conflict",
+        conflict,
+        error: "Server record changed while this local update was queued.",
+        updatedAt: new Date().toISOString()
+      }
+    : entry);
   saveApiSyncQueue();
 }
 
@@ -2993,6 +3057,11 @@ async function retryApiSyncQueue() {
   let synced = 0;
   for (const item of queue) {
     try {
+      const conflict = await detectQueuedSyncConflict(item);
+      if (conflict) {
+        markApiSyncQueueConflict(item, conflict);
+        continue;
+      }
       const result = await apiRequest(item.path, {
         method: item.method,
         body: item.body
@@ -3009,7 +3078,55 @@ async function retryApiSyncQueue() {
   await refreshBackendHealth({ silent: true });
   if (synced) saveState();
   render();
-  showToast(synced ? `Retried ${synced} API sync${synced === 1 ? "" : "s"}` : "API sync retry still blocked", synced ? "success" : "info");
+  const conflictCount = apiSyncQueue.filter((item) => item.status === "conflict").length;
+  showToast(
+    conflictCount
+      ? `${conflictCount} queued sync${conflictCount === 1 ? "" : "s"} need conflict review`
+      : synced ? `Retried ${synced} API sync${synced === 1 ? "" : "s"}` : "API sync retry still blocked",
+    synced && !conflictCount ? "success" : "info"
+  );
+}
+
+async function resolveApiSyncConflict(itemId, resolution) {
+  const item = apiSyncQueue.find((entry) => entry.id === itemId);
+  if (!item) return;
+  const queued = queuedSyncRecord(item);
+  if (resolution === "drop") {
+    clearApiSyncQueueItem(item.id);
+    render();
+    showToast("Queued sync dropped", "success");
+    return;
+  }
+  if (resolution === "server") {
+    const remote = item.conflict?.remote || await fetchRemoteQueuedRecord(item);
+    if (remote && queued?.collection) {
+      if (queued.collection === "tasks") mergeCoreRecordsFromApi({ tasks: [remote] });
+      if (queued.collection === "projects") mergeCoreRecordsFromApi({ projects: [remote] });
+      saveState();
+    }
+    clearApiSyncQueueItem(item.id);
+    render();
+    showToast("Server version kept", "success");
+    return;
+  }
+  if (resolution === "local") {
+    try {
+      const result = await apiRequest(item.path, {
+        method: item.method,
+        body: item.body
+      });
+      if (result.project) mergeCoreRecordsFromApi({ projects: [result.project] });
+      if (result.task) mergeCoreRecordsFromApi({ tasks: [result.task] });
+      clearApiSyncQueueItem(item.id);
+      saveState();
+      render();
+      showToast("Local version synced", "success");
+    } catch (error) {
+      queueApiSyncFailure({ ...item, status: "conflict", error: error.message });
+      render();
+      showToast(`Local sync still blocked: ${error.message}`, "info");
+    }
+  }
 }
 
 function notificationSettingsRecord() {
@@ -3165,7 +3282,8 @@ function normalizeProjectRecord(project = {}) {
     archivedAt: "",
     archivedBy: "",
     restoredAt: "",
-    ...project
+    ...project,
+    updatedAt: project.updatedAt || project.createdAt || new Date().toISOString()
   };
 }
 
@@ -4877,6 +4995,30 @@ function renderApiStatePanel() {
   `;
 }
 
+function renderApiSyncQueueItem(item) {
+  const queued = queuedSyncRecord(item);
+  const conflict = item.status === "conflict" && item.conflict;
+  return `
+    <article class="${conflict ? "is-conflict" : ""}">
+      <div>
+        <strong>${escapeHtml(item.label || item.path)}</strong>
+        <p>${escapeHtml(item.error)} - ${escapeHtml(formatTimestamp(item.updatedAt))}</p>
+        ${queued?.record ? `<small>${escapeHtml(queued.collection)} / ${escapeHtml(queued.record.title || queued.record.name || queued.record.id)}</small>` : ""}
+        ${conflict ? `
+          <small>Local ${escapeHtml(formatTimestamp(conflict.localRevision || recordRevisionValue(conflict.local)))} / Server ${escapeHtml(formatTimestamp(conflict.remoteRevision || recordRevisionValue(conflict.remote)))}</small>
+        ` : ""}
+      </div>
+      ${conflict ? `
+        <div class="sync-conflict-actions">
+          <button class="button button-secondary compact-button" type="button" data-sync-conflict="local" data-sync-id="${escapeHtml(item.id)}">Keep Local</button>
+          <button class="button button-secondary compact-button" type="button" data-sync-conflict="server" data-sync-id="${escapeHtml(item.id)}">Use Server</button>
+          <button class="button button-secondary compact-button" type="button" data-sync-conflict="drop" data-sync-id="${escapeHtml(item.id)}">Drop</button>
+        </div>
+      ` : ""}
+    </article>
+  `;
+}
+
 function renderApiSyncPanel() {
   return `
     <section class="panel">
@@ -4902,12 +5044,7 @@ function renderApiSyncPanel() {
       </div>
       ${apiSyncQueue.length ? `
         <div class="sync-queue-list">
-          ${apiSyncQueue.slice(0, 5).map((item) => `
-            <article>
-              <strong>${escapeHtml(item.label || item.path)}</strong>
-              <p>${escapeHtml(item.error)} - ${escapeHtml(formatTimestamp(item.updatedAt))}</p>
-            </article>
-          `).join("")}
+          ${apiSyncQueue.slice(0, 5).map(renderApiSyncQueueItem).join("")}
         </div>
       ` : ""}
     </section>
@@ -9867,7 +10004,7 @@ function updateTask(id, updates) {
   saveState();
   render();
   showToast(`${next.title} updated`, "success");
-  syncTaskToApi(next, "Task synced to API");
+  syncTaskToApi(next, "Task synced to API", false, recordRevisionValue(previous));
 }
 
 function planTaskToday(taskId) {
@@ -9904,7 +10041,7 @@ function updateProjectDate(id, field, date) {
   const project = byId(state.projects, id);
   if (!project || project[field] === date) return;
 
-  state.projects = state.projects.map((item) => item.id === id ? { ...item, [field]: date } : item);
+  state.projects = state.projects.map((item) => item.id === id ? { ...item, [field]: date, updatedAt: new Date().toISOString() } : item);
   const nextProject = byId(state.projects, id);
   addActivity({
     projectId: id,
@@ -9914,7 +10051,7 @@ function updateProjectDate(id, field, date) {
   saveState();
   render();
   showToast("Project date updated", "success");
-  syncProjectToApi(nextProject, "Project synced to API");
+  syncProjectToApi(nextProject, "Project synced to API", false, recordRevisionValue(project));
 }
 
 function recordTaskChanges(previous, next) {
@@ -16959,12 +17096,7 @@ function renderBackendChecklist() {
     ` : ""}
     ${apiSyncQueue.length ? `
       <div class="sync-queue-list">
-        ${apiSyncQueue.slice(0, 5).map((item) => `
-          <article>
-            <strong>${escapeHtml(item.label || item.path)}</strong>
-            <p>${escapeHtml(item.error)} - ${escapeHtml(formatTimestamp(item.updatedAt))}</p>
-          </article>
-        `).join("")}
+        ${apiSyncQueue.slice(0, 5).map(renderApiSyncQueueItem).join("")}
       </div>
     ` : ""}
   `;
@@ -21817,7 +21949,7 @@ async function importWorkspaceToApi() {
   }
 }
 
-async function syncProjectToApi(project, action = "Project synced", isNew = false) {
+async function syncProjectToApi(project, action = "Project synced", isNew = false, baseRevision = "") {
   if (!apiSession) return;
 
   try {
@@ -21836,13 +21968,14 @@ async function syncProjectToApi(project, action = "Project synced", isNew = fals
       path: isNew ? "/api/projects" : `/api/projects/${encodeURIComponent(project.id)}`,
       method: isNew ? "POST" : "PUT",
       body: { project },
+      baseRevision,
       error: error.message
     });
     showToast(`Local change saved. API project sync failed: ${error.message}`, "info");
   }
 }
 
-async function syncTaskToApi(task, action = "Task synced", isNew = false) {
+async function syncTaskToApi(task, action = "Task synced", isNew = false, baseRevision = "") {
   if (!apiSession) return;
 
   try {
@@ -21861,6 +21994,7 @@ async function syncTaskToApi(task, action = "Task synced", isNew = false) {
       path: isNew ? "/api/tasks" : `/api/tasks/${encodeURIComponent(task.id)}`,
       method: isNew ? "POST" : "PUT",
       body: { task },
+      baseRevision,
       error: error.message
     });
     showToast(`Local change saved. API task sync failed: ${error.message}`, "info");
@@ -23026,6 +23160,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const syncConflictButton = event.target.closest("[data-sync-conflict]");
+  if (syncConflictButton) {
+    resolveApiSyncConflict(syncConflictButton.dataset.syncId, syncConflictButton.dataset.syncConflict);
+    return;
+  }
+
   const inviteMemberButton = event.target.closest("#invite-member");
   if (inviteMemberButton) inviteWorkspaceMember();
 
@@ -23665,7 +23805,7 @@ els.taskForm.addEventListener("submit", (event) => {
   closeDialog(els.taskDialog);
   render();
   showToast(existingTask ? "Task updated" : "Task created", "success");
-  syncTaskToApi(task, existingTask ? "Task synced to API" : "Task created in API", !existingTask);
+  syncTaskToApi(task, existingTask ? "Task synced to API" : "Task created in API", !existingTask, taskEditSnapshots.get(id) || recordRevisionValue(existingTask));
 });
 
 els.featureRequestForm.addEventListener("submit", (event) => {
@@ -23702,6 +23842,7 @@ els.projectForm.addEventListener("submit", (event) => {
   }
   const id = document.querySelector("#project-id").value || uid("project");
   const existingProject = byId(state.projects, id);
+  const now = new Date().toISOString();
   const project = {
     id,
     name: document.querySelector("#project-name").value.trim(),
@@ -23710,6 +23851,8 @@ els.projectForm.addEventListener("submit", (event) => {
     owner: document.querySelector("#project-owner").value,
     startDate: document.querySelector("#project-start-date").value,
     dueDate: document.querySelector("#project-due-date").value,
+    createdAt: existingProject?.createdAt || now,
+    updatedAt: now,
     archivedAt: existingProject?.archivedAt || "",
     archivedBy: existingProject?.archivedBy || ""
   };
@@ -23736,7 +23879,7 @@ els.projectForm.addEventListener("submit", (event) => {
   closeDialog(els.projectDialog);
   render();
   showToast(existingProject ? "Project updated" : "Project created", "success");
-  syncProjectToApi(project, existingProject ? "Project synced to API" : "Project created in API", !existingProject);
+  syncProjectToApi(project, existingProject ? "Project synced to API" : "Project created in API", !existingProject, recordRevisionValue(existingProject));
 });
 
 els.companyForm.addEventListener("submit", (event) => {

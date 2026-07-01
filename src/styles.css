@@ -5440,6 +5440,26 @@ body[data-tutorial-target="view"] #app-view {
   justify-content: stretch;
 }
 
+.sync-queue-list article.is-conflict {
+  border-color: #dfc38e;
+  background: #f8edd9;
+}
+
+.sync-queue-list small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.sync-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
 .export-textarea {
   min-height: 180px;
   color: var(--text);
