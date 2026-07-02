@@ -847,6 +847,7 @@ const seedData = {
   selectedRoute: "landing",
   selectedProject: "all",
   selectedCompany: "all",
+  clientPortalPreviewCompanyId: "",
   selectedInviteToken: "",
   selectedProjectTab: "overview",
   selectedSettingsTab: "account",
@@ -2420,6 +2421,7 @@ function normalizeState(nextState) {
     users: Array.isArray(nextState.users) ? nextState.users : [],
     invitations: Array.isArray(nextState.invitations) ? nextState.invitations : [],
     auditEvents: Array.isArray(nextState.auditEvents) ? nextState.auditEvents : seedData.auditEvents,
+    clientPortalPreviewCompanyId: byId(companies, nextState.clientPortalPreviewCompanyId) ? nextState.clientPortalPreviewCompanyId : "",
     savedViews: normalizeSavedViews(nextState.savedViews),
     dailyNotes: Object.prototype.hasOwnProperty.call(nextState, "dailyNotes") ? nextState.dailyNotes || {} : seedData.dailyNotes,
     dailyPlans: Object.prototype.hasOwnProperty.call(nextState, "dailyPlans") ? nextState.dailyPlans || {} : seedData.dailyPlans,
@@ -4117,6 +4119,7 @@ function isClientSession() {
 }
 
 function clientCompanyId() {
+  if (!isClientSession() && byId(state.companies, state.clientPortalPreviewCompanyId)) return state.clientPortalPreviewCompanyId;
   return apiSession?.membership?.companyId || apiSession?.user?.companyId || state.companies.find((company) => company.type === "Client")?.id || state.companies[0]?.id || "";
 }
 
@@ -10701,6 +10704,7 @@ function clientVisibilityReviewData() {
       const projectIds = new Set(projects.map((project) => project.id));
       const tasks = getCompanyTasks(company.id).map((task) => ({
         kind: "task",
+        collection: "tasks",
         id: task.id,
         title: task.title,
         detail: `${projectName(task.projectId)} / ${statusLabel(task.status)} / owner ${memberName(task.assignee)}`,
@@ -10713,6 +10717,7 @@ function clientVisibilityReviewData() {
         .filter((document) => projectIds.has(document.projectId))
         .map((document) => ({
           kind: "document",
+          collection: "documents",
           id: document.id,
           title: document.title,
           detail: `${projectName(document.projectId)} / ${document.type || "Document"}`,
@@ -10725,6 +10730,7 @@ function clientVisibilityReviewData() {
         .filter((file) => projectIds.has(file.projectId))
         .map((file) => ({
           kind: "file",
+          collection: "files",
           id: file.id,
           title: file.title,
           detail: `${projectName(file.projectId)} / ${file.kind || "File"}`,
@@ -10735,6 +10741,7 @@ function clientVisibilityReviewData() {
         }));
       const approvals = getCompanyApprovals(company.id).map((approval) => ({
         kind: "approval",
+        collection: "approvals",
         id: approval.id,
         title: approval.title,
         detail: `${projectName(approval.projectId)} / ${approvalStatusLabel(approval.status)} / reviewer ${approval.reviewer || "Unassigned"}`,
@@ -10747,6 +10754,7 @@ function clientVisibilityReviewData() {
         .filter((decision) => projectIds.has(decision.projectId) || decision.companyId === company.id)
         .map((decision) => ({
           kind: "decision",
+          collection: "raidItems",
           id: decision.id,
           title: decision.title,
           detail: `${projectName(decision.projectId)} / ${decisionVisibilityLabel(decision.visibility)} / owner ${memberName(decision.owner)}`,
@@ -11611,6 +11619,7 @@ function setRoute(route) {
   if (route !== "invite") state.selectedInviteToken = "";
   if (route !== "project") state.selectedProjectTab = "overview";
   if (state.selectedRoute === "settings") state.selectedSettingsTab = settingsTabFallback(state.selectedSettingsTab);
+  if (state.selectedRoute !== "portal") state.clientPortalPreviewCompanyId = "";
   if (route !== "company") state.selectedCompany = "all";
   openSidebarGroupForRoute(state.selectedRoute);
   saveState();
@@ -12524,6 +12533,105 @@ function updateTask(id, updates) {
   render();
   showToast(`${next.title} updated`, "success");
   syncTaskToApi(next, "Task synced to API", false, recordRevisionValue(previous));
+}
+
+function selectedVisibilityReviewCompanyId() {
+  if (state.selectedCompany !== "all" && byId(state.companies, state.selectedCompany)) return state.selectedCompany;
+  if (state.filters.company !== "all" && byId(state.companies, state.filters.company)) return state.filters.company;
+  return clientVisibilityReviewData().companies[0]?.company.id || "";
+}
+
+function startClientPortalPreview(companyId = selectedVisibilityReviewCompanyId()) {
+  const company = byId(state.companies, companyId);
+  if (!company || isClientSession()) return;
+  state.clientPortalPreviewCompanyId = company.id;
+  state.selectedRoute = "portal";
+  state.selectedCompany = "all";
+  openSidebarGroupForRoute("portal");
+  saveState();
+  render();
+  showToast(`Previewing ${company.name} as a client`, "success");
+}
+
+function exitClientPortalPreview() {
+  if (!state.clientPortalPreviewCompanyId) return;
+  state.clientPortalPreviewCompanyId = "";
+  state.selectedRoute = "visibility";
+  openSidebarGroupForRoute("visibility");
+  saveState();
+  render();
+  showToast("Client preview closed", "info");
+}
+
+function updateClientVisibility(kind, id, value) {
+  const visibility = visibilityValue(value);
+  const collectionByKind = {
+    task: "tasks",
+    document: "documents",
+    file: "files",
+    approval: "approvals",
+    decision: "raidItems"
+  };
+  const permissionByKind = {
+    task: "tasks:write",
+    document: "attachments:write",
+    file: "attachments:write",
+    approval: "approvals:write",
+    decision: "projects:write"
+  };
+  const collection = collectionByKind[kind];
+  const canEdit = canWrite(permissionByKind[kind] || "projects:write");
+  if (!collection || !canEdit) {
+    showToast("Your role cannot change client visibility", "info");
+    render();
+    return;
+  }
+
+  const record = byId(state[collection] || [], id);
+  if (!record) return;
+  const previousVisibility = recordVisibility(record, kind);
+  if (previousVisibility === visibility) return;
+
+  const updated = {
+    ...record,
+    visibility,
+    updatedAt: new Date().toISOString()
+  };
+  if (kind === "task") {
+    updated.customFields = {
+      ...(record.customFields || {}),
+      clientVisibility: visibilityLabel(visibility)
+    };
+  }
+
+  state[collection] = state[collection].map((item) => item.id === id ? updated : item);
+  const projectId = updated.projectId || "";
+  const companyId = updated.companyId || byId(state.projects, projectId)?.companyId || "";
+  addAuditEvent({
+    action: "client_visibility_change",
+    detail: `${updated.title || "Item"} changed from ${visibilityLabel(previousVisibility)} to ${visibilityLabel(visibility)}`,
+    targetType: kind,
+    targetId: id,
+    impact: visibility === "client" || previousVisibility === "client" ? "medium" : "low",
+    restoreHint: "Change the item visibility back from Client Visibility review.",
+    metadata: {
+      kind,
+      companyId,
+      projectId,
+      from: previousVisibility,
+      to: visibility
+    }
+  });
+
+  saveState();
+  render();
+  showToast(`${updated.title || "Item"} visibility updated`, "success");
+
+  if (kind === "task") {
+    syncTaskToApi(updated, "Task visibility synced", false, recordRevisionValue(record));
+    return;
+  }
+  syncRecordToApi(collection, updated, "Visibility synced", false);
 }
 
 function planTaskToday(taskId) {
@@ -14182,10 +14290,11 @@ function renderPmClientPromiseRow(row) {
 
 function renderClientVisibilityReview() {
   const review = clientVisibilityReviewData();
-  const selectedCompanyId = state.selectedCompany !== "all" ? state.selectedCompany : review.companies[0]?.company.id || "";
+  const selectedCompanyId = selectedVisibilityReviewCompanyId();
   const selected = review.companies.find((row) => row.company.id === selectedCompanyId) || review.companies[0] || null;
-  const visiblePacket = selected ? selected.visibleItems : review.visibleItems;
+  const visiblePacket = selected ? selected.items : review.items;
   const warnings = selected ? selected.warnings : review.warnings;
+  const auditRows = clientVisibilityAuditEvents(selected?.company.id);
 
   els.appView.innerHTML = `
     ${renderRouteHeader({
@@ -14193,7 +14302,7 @@ function renderClientVisibilityReview() {
       title: "Preview what clients can see",
       description: "Review every shared or client-visible task, approval, asset, decision, and request before it appears in the portal packet.",
       actions: [
-        { label: "Open Portal", route: "portal", primary: true },
+        { label: "Preview as Client", id: "client-visibility-preview", primary: true, disabled: !selected },
         { label: "Open Command Center", route: "command-center" }
       ]
     })}
@@ -14226,10 +14335,15 @@ function renderClientVisibilityReview() {
             <p class="eyebrow">Visible packet</p>
             <h2>${escapeHtml(selected?.company.name || "All companies")}</h2>
           </div>
-          ${selected ? `<button class="button button-secondary compact-button" type="button" data-company-id="${escapeHtml(selected.company.id)}">Open Company</button>` : ""}
+          ${selected ? `
+            <div class="portal-actions">
+              <button class="button button-secondary compact-button" type="button" data-company-id="${escapeHtml(selected.company.id)}">Open Company</button>
+              <button class="button button-primary compact-button" type="button" data-preview-client-company="${escapeHtml(selected.company.id)}">Preview as Client</button>
+            </div>
+          ` : ""}
         </div>
         <div class="readiness-list compact-readiness">
-          ${visiblePacket.length ? visiblePacket.map(renderClientVisibilityItemRow).join("") : emptyState("Nothing is shared with this client yet.")}
+          ${visiblePacket.length ? visiblePacket.map(renderClientVisibilityItemRow).join("") : emptyState("No visibility-controlled items are available yet.")}
         </div>
       </section>
 
@@ -14243,6 +14357,19 @@ function renderClientVisibilityReview() {
         </div>
         <div class="readiness-list compact-readiness">
           ${warnings.length ? warnings.map(renderClientVisibilityWarningRow).join("") : emptyState("This packet has no owner, due-date, reviewer, or approval warnings.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Visibility audit trail</p>
+            <h2>Exposure changes</h2>
+          </div>
+          <button class="button button-secondary compact-button" type="button" data-route="audit">Open Audit</button>
+        </div>
+        <div class="readiness-list compact-readiness">
+          ${auditRows.length ? auditRows.map(renderClientVisibilityAuditRow).join("") : emptyState("No visibility changes have been recorded for this packet yet.")}
         </div>
       </section>
     </div>
@@ -14266,6 +14393,14 @@ function renderClientVisibilityCompanyRow(row) {
 }
 
 function renderClientVisibilityItemRow(item) {
+  const permissionByKind = {
+    task: "tasks:write",
+    document: "attachments:write",
+    file: "attachments:write",
+    approval: "approvals:write",
+    decision: "projects:write"
+  };
+  const editable = ["task", "document", "file", "approval", "decision"].includes(item.kind) && canWrite(permissionByKind[item.kind] || "projects:write");
   return `
     <article class="readiness-item ${item.visibility === "internal" ? "is-pending" : "is-done"}">
       <span>${escapeHtml(item.kind)}</span>
@@ -14274,7 +14409,12 @@ function renderClientVisibilityItemRow(item) {
         <p>${escapeHtml(item.detail)}</p>
         <small>${escapeHtml(companyName(item.companyId))} / ${escapeHtml(visibilityLabel(item.visibility))}</small>
       </div>
-      <span class="status-pill inbox-${visibilityTone(item.visibility)}">${escapeHtml(visibilityLabel(item.visibility))}</span>
+      <label>
+        <span>Visibility</span>
+        <select data-client-visibility-kind="${escapeHtml(item.kind)}" data-client-visibility-id="${escapeHtml(item.id)}" ${editable ? "" : "disabled"}>
+          ${["internal", "shared", "client"].map((value) => `<option value="${value}" ${item.visibility === value ? "selected" : ""}>${escapeHtml(visibilityLabel(value))}</option>`).join("")}
+        </select>
+      </label>
     </article>
   `;
 }
@@ -14292,6 +14432,28 @@ function renderClientVisibilityWarningRow(item) {
         ${item.kind === "task" ? `<button class="button button-secondary compact-button" type="button" data-edit-task="${escapeHtml(item.id)}">Open Task</button>` : ""}
         ${item.projectId ? `<button class="button button-secondary compact-button" type="button" data-project-id="${escapeHtml(item.projectId)}">Project</button>` : ""}
       </div>
+    </article>
+  `;
+}
+
+function clientVisibilityAuditEvents(companyId = "") {
+  return (state.auditEvents || [])
+    .filter((event) => event.action === "client_visibility_change")
+    .filter((event) => !companyId || event.metadata?.companyId === companyId)
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 8);
+}
+
+function renderClientVisibilityAuditRow(event) {
+  return `
+    <article class="readiness-item is-done">
+      <span>Log</span>
+      <div>
+        <strong>${escapeHtml(event.detail || "Visibility changed")}</strong>
+        <p>${escapeHtml(memberName(event.actorId))} / ${escapeHtml(formatTimestamp(event.createdAt))}</p>
+        <small>${escapeHtml(visibilityLabel(event.metadata?.from))} to ${escapeHtml(visibilityLabel(event.metadata?.to))} / ${escapeHtml(event.metadata?.kind || "item")}</small>
+      </div>
+      <span class="status-pill inbox-${visibilityTone(event.metadata?.to)}">${escapeHtml(visibilityLabel(event.metadata?.to))}</span>
     </article>
   `;
 }
@@ -15558,6 +15720,7 @@ function renderCompanyPortal(company) {
 function renderClientPortal() {
   const companyId = clientCompanyId();
   const company = byId(state.companies, companyId);
+  const previewing = !isClientSession() && Boolean(state.clientPortalPreviewCompanyId);
   if (!company) {
     els.appView.innerHTML = `
       <section class="panel">
@@ -15582,6 +15745,18 @@ function renderClientPortal() {
   const recentUpdates = portal.updates.slice(0, 5);
 
   els.appView.innerHTML = `
+    ${previewing ? `
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Preview as client</p>
+            <h2>You are seeing exactly what ${escapeHtml(company.name)} can see</h2>
+          </div>
+          <button class="button button-secondary" type="button" data-client-preview-exit>Exit Preview</button>
+        </div>
+      </section>
+    ` : ""}
+
     <section class="project-hero portal-hero">
       <div>
         <p class="eyebrow">Client portal</p>
@@ -15597,7 +15772,7 @@ function renderClientPortal() {
         <span>Portal status</span>
         <strong>${portal.pendingApprovals.length ? "Needs review" : "On track"}</strong>
         <span>${portal.updatedAt ? `Updated ${formatTimestamp(portal.updatedAt)}` : "No recent updates"}</span>
-        <button class="button button-secondary" type="button" id="api-disconnect">Sign Out</button>
+        <button class="button button-secondary" type="button" ${previewing ? "data-client-preview-exit" : "id=\"api-disconnect\""}>${previewing ? "Exit Preview" : "Sign Out"}</button>
       </div>
     </section>
 
@@ -26619,6 +26794,18 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const clientVisibilityPreviewButton = event.target.closest("#client-visibility-preview, [data-preview-client-company]");
+  if (clientVisibilityPreviewButton) {
+    startClientPortalPreview(clientVisibilityPreviewButton.dataset.previewClientCompany || selectedVisibilityReviewCompanyId());
+    return;
+  }
+
+  const clientPreviewExitButton = event.target.closest("[data-client-preview-exit]");
+  if (clientPreviewExitButton) {
+    exitClientPortalPreview();
+    return;
+  }
+
   const apiSyncRetryButton = event.target.closest("#api-sync-retry");
   if (apiSyncRetryButton) {
     retryApiSyncQueue();
@@ -27116,6 +27303,12 @@ els.appView.addEventListener("change", (event) => {
   const select = event.target.closest("[data-inline-field]");
   if (select) {
     updateTask(select.dataset.taskId, { [select.dataset.inlineField]: select.value });
+    return;
+  }
+
+  const clientVisibilitySelect = event.target.closest("[data-client-visibility-kind]");
+  if (clientVisibilitySelect) {
+    updateClientVisibility(clientVisibilitySelect.dataset.clientVisibilityKind, clientVisibilitySelect.dataset.clientVisibilityId, clientVisibilitySelect.value);
     return;
   }
 

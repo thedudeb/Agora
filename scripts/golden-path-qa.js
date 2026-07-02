@@ -121,8 +121,11 @@ const routeChecks = [
     required: [
       "Client visibility review",
       "Preview what clients can see",
+      "Preview as Client",
       "Visible packet",
       "Visibility warnings",
+      "Visibility audit trail",
+      "Exposure changes",
       "Client-visible",
       "Shared",
       "Internal"
