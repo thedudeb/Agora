@@ -406,6 +406,21 @@ const routeChecks = [
     ]
   },
   {
+    name: "Project backlog pipeline",
+    suite: "workspace",
+    route: "project-backlog",
+    width: 1265,
+    height: 712,
+    required: [
+      "Capture future work",
+      "Backlog projects",
+      "Project intake",
+      "Pipeline",
+      "Approved",
+      "Promote"
+    ]
+  },
+  {
     name: "Mobile dashboard golden paths",
     suite: "mobile",
     route: "dashboard",

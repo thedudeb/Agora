@@ -229,6 +229,15 @@ const statuses = [
   { id: "done", label: "Done" }
 ];
 
+const projectBacklogStatuses = [
+  { id: "idea", label: "Idea" },
+  { id: "scoping", label: "Scoping" },
+  { id: "approved", label: "Approved" },
+  { id: "active", label: "Promoted" },
+  { id: "parked", label: "Parked" },
+  { id: "rejected", label: "Rejected" }
+];
+
 const boardWorkflowTemplates = [
   {
     id: "default",
@@ -864,6 +873,7 @@ const routes = {
   templates: "Templates",
   automations: "Automations",
   docs: "Docs & Files",
+  "project-backlog": "Project Backlog",
   intake: "Intake",
   "feature-requests": "Feature Requests",
   fields: "Custom Fields",
@@ -1761,6 +1771,62 @@ const seedData = {
       updatedAt: "2026-07-05T11:35:00.000Z"
     }
   ],
+  projectBacklog: [
+    {
+      id: "project-backlog-mobile-offline",
+      title: "Offline mobile companion",
+      description: "Package core project review, inbox, and field updates into an offline-first mobile experience.",
+      companyId: "acme-studio",
+      owner: "mara",
+      requestedBy: "Field team",
+      status: "scoping",
+      targetWindow: "Q3 2026",
+      impact: 5,
+      confidence: 3,
+      urgency: 4,
+      source: "Product strategy",
+      decisionNotes: "High value for distributed teams; confirm sync conflict rules before approval.",
+      promotedProjectId: "",
+      createdAt: "2026-07-01T09:00:00.000Z",
+      updatedAt: "2026-07-01T09:00:00.000Z"
+    },
+    {
+      id: "project-backlog-enterprise-migration",
+      title: "Enterprise migration concierge",
+      description: "Guided importer templates, validation reports, and handoff support for teams moving from legacy tools.",
+      companyId: "northstar",
+      owner: "sam",
+      requestedBy: "Sales",
+      status: "approved",
+      targetWindow: "Q3 2026",
+      impact: 5,
+      confidence: 4,
+      urgency: 5,
+      source: "Customer request",
+      decisionNotes: "Approved once importer QA has repeatable fixtures.",
+      promotedProjectId: "",
+      createdAt: "2026-07-02T11:30:00.000Z",
+      updatedAt: "2026-07-02T11:30:00.000Z"
+    },
+    {
+      id: "project-backlog-public-roadmap",
+      title: "Public roadmap portal",
+      description: "Let clients and requesters follow approved feature themes without exposing internal delivery details.",
+      companyId: "acme-studio",
+      owner: "nina",
+      requestedBy: "Client success",
+      status: "idea",
+      targetWindow: "Later",
+      impact: 4,
+      confidence: 2,
+      urgency: 3,
+      source: "Feature requests",
+      decisionNotes: "Needs privacy review and portal permission model.",
+      promotedProjectId: "",
+      createdAt: "2026-07-03T14:20:00.000Z",
+      updatedAt: "2026-07-03T14:20:00.000Z"
+    }
+  ],
   intakeForms: [
     {
       id: "form-client-request",
@@ -2578,6 +2644,7 @@ function normalizeState(nextState) {
     customFields: Array.isArray(nextState.customFields) ? nextState.customFields : seedData.customFields,
     documents: Array.isArray(nextState.documents) ? nextState.documents : seedData.documents,
     files: Array.isArray(nextState.files) ? nextState.files : seedData.files,
+    projectBacklog: normalizeProjectBacklog(Array.isArray(nextState.projectBacklog) ? nextState.projectBacklog : seedData.projectBacklog),
     intakeForms: Array.isArray(nextState.intakeForms) ? nextState.intakeForms : seedData.intakeForms,
     intakeSubmissions: Array.isArray(nextState.intakeSubmissions) ? nextState.intakeSubmissions : seedData.intakeSubmissions,
     projectTemplates: normalizeProjectTemplates(nextState.projectTemplates, nextState.deletedProjectTemplateIds),
@@ -3987,6 +4054,54 @@ function normalizeProjectRecord(project = {}) {
   };
 }
 
+function normalizeProjectBacklogStatus(status) {
+  const value = String(status || "").trim().toLowerCase();
+  return projectBacklogStatuses.some((item) => item.id === value) ? value : "idea";
+}
+
+function projectBacklogScore(item = {}) {
+  const impact = clamp(Math.round(Number(item.impact) || 1), 1, 5);
+  const confidence = clamp(Math.round(Number(item.confidence) || 1), 1, 5);
+  const urgency = clamp(Math.round(Number(item.urgency) || 1), 1, 5);
+  return impact * 4 + urgency * 3 + confidence * 2;
+}
+
+function normalizeProjectBacklog(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .filter((item) => item && typeof item === "object")
+    .map((item) => {
+      const now = new Date().toISOString();
+      const normalized = {
+        id: item.id || uid("project-backlog"),
+        title: String(item.title || item.name || "Untitled project idea").trim().slice(0, 140),
+        description: String(item.description || item.details || "").trim().slice(0, 2000),
+        companyId: String(item.companyId || "all"),
+        owner: String(item.owner || activeMemberId()),
+        requestedBy: String(item.requestedBy || item.requester || "").trim().slice(0, 120),
+        status: normalizeProjectBacklogStatus(item.status),
+        targetWindow: String(item.targetWindow || item.targetQuarter || "Later").trim().slice(0, 80),
+        impact: clamp(Math.round(Number(item.impact) || 3), 1, 5),
+        confidence: clamp(Math.round(Number(item.confidence) || 3), 1, 5),
+        urgency: clamp(Math.round(Number(item.urgency) || 3), 1, 5),
+        source: String(item.source || "Manual").trim().slice(0, 120),
+        decisionNotes: String(item.decisionNotes || item.notes || "").trim().slice(0, 2000),
+        promotedProjectId: String(item.promotedProjectId || ""),
+        createdAt: item.createdAt || now,
+        updatedAt: item.updatedAt || item.createdAt || now
+      };
+      return {
+        ...normalized,
+        score: projectBacklogScore(normalized)
+      };
+    })
+    .sort((a, b) => {
+      if (a.status === "active" && b.status !== "active") return 1;
+      if (a.status !== "active" && b.status === "active") return -1;
+      return b.score - a.score || String(b.updatedAt).localeCompare(String(a.updatedAt));
+    })
+    .slice(0, 200);
+}
+
 function normalizeTaskRecord(task = {}) {
   const customFields = task.customFields && typeof task.customFields === "object" ? task.customFields : {};
   const boardOrder = Number(task.boardOrder ?? task.sortOrder ?? customFields.boardOrder);
@@ -4440,6 +4555,7 @@ function canAccessRoute(route) {
     fields: "projects:write",
     companies: "projects:write",
     company: "projects:write",
+    "project-backlog": "projects:write",
     intake: "projects:write",
     operator: "workspace:read",
     collaboration: "workspace:read"
@@ -4611,6 +4727,7 @@ function createBlankWorkspaceState(options = {}) {
     activities: [],
     documents: [],
     files: [],
+    projectBacklog: [],
     timeEntries: [],
     intakeForms: [],
     intakeSubmissions: [],
@@ -8634,6 +8751,7 @@ function offlineStorageContract() {
       "activities",
       "documents",
       "files",
+      "projectBacklog",
       "approvals",
       "timeEntries",
       "automations",
@@ -14484,6 +14602,7 @@ function render() {
     templates: renderTemplates,
     automations: renderAutomations,
     docs: renderDocsAndFiles,
+    "project-backlog": renderProjectBacklog,
     intake: renderIntake,
     "feature-requests": renderFeatureRequests,
     "command-center": renderPmCommandCenter,
@@ -14522,7 +14641,7 @@ function sidebarGroupForRoute(route) {
   if (["landing", "dashboard", "command-center", "launch", "daily", "inbox"].includes(route)) return "home";
   if (["board", "list", "calendar", "my-work", "time", "collaboration"].includes(route)) return "work";
   if (["reports", "decisions", "goals", "operator", "automations"].includes(route)) return "control";
-  if (["visibility", "portal", "intake", "feature-requests", "companies", "company"].includes(route)) return "clients";
+  if (["visibility", "portal", "project-backlog", "intake", "feature-requests", "companies", "company"].includes(route)) return "clients";
   if (["marketplace", "templates", "docs", "fields"].includes(route)) return "library";
   if (["audit", "permissions", "beta", "readiness", "data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
@@ -24021,6 +24140,162 @@ function renderProjectDocs(project) {
   `;
 }
 
+function projectBacklogStatusLabel(status) {
+  return projectBacklogStatuses.find((item) => item.id === status)?.label || "Idea";
+}
+
+function projectBacklogStatusTone(status) {
+  return {
+    idea: "inbox-neutral",
+    scoping: "inbox-blue",
+    approved: "inbox-green",
+    active: "inbox-green",
+    parked: "inbox-amber",
+    rejected: "inbox-red"
+  }[status] || "inbox-neutral";
+}
+
+function renderProjectBacklog() {
+  const items = normalizeProjectBacklog(state.projectBacklog);
+  const activeIdeas = items.filter((item) => !["active", "rejected"].includes(item.status));
+  const approved = items.filter((item) => item.status === "approved");
+  const promoted = items.filter((item) => item.promotedProjectId);
+  const averageScore = activeIdeas.length ? Math.round(activeIdeas.reduce((sum, item) => sum + projectBacklogScore(item), 0) / activeIdeas.length) : 0;
+  const canManageProjects = canWrite("projects:write");
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Pipeline", activeIdeas.length)}
+      ${metric("Approved", approved.length)}
+      ${metric("Avg score", averageScore)}
+      ${metric("Promoted", promoted.length)}
+    </div>
+
+    <div class="project-backlog-grid">
+      <section class="panel project-backlog-capture">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Project intake</p>
+            <h2>Capture future work</h2>
+          </div>
+        </div>
+        <form class="project-backlog-form" data-project-backlog-create>
+          <label>
+            <span>Project idea</span>
+            <input name="title" placeholder="New client launch, migration, roadmap bet" ${canManageProjects ? "" : "disabled"}>
+          </label>
+          <label>
+            <span>Company / area</span>
+            <select name="companyId" ${canManageProjects ? "" : "disabled"}>
+              <option value="all">Workspace</option>
+              ${state.companies.map((company) => `<option value="${company.id}">${escapeHtml(company.name)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Owner</span>
+            <select name="owner" ${canManageProjects ? "" : "disabled"}>
+              ${workspaceMembers().map((member) => `<option value="${member.id}" ${member.id === activeMemberId() ? "selected" : ""}>${escapeHtml(member.name)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Status</span>
+            <select name="status" ${canManageProjects ? "" : "disabled"}>
+              ${projectBacklogStatuses.filter((status) => status.id !== "active").map((status) => `<option value="${status.id}" ${status.id === "idea" ? "selected" : ""}>${escapeHtml(status.label)}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Target</span>
+            <input name="targetWindow" placeholder="Q3 2026, Later, Next sprint" ${canManageProjects ? "" : "disabled"}>
+          </label>
+          <label>
+            <span>Requested by</span>
+            <input name="requestedBy" placeholder="Client, sales, team, exec" ${canManageProjects ? "" : "disabled"}>
+          </label>
+          <label>
+            <span>Impact</span>
+            <select name="impact" ${canManageProjects ? "" : "disabled"}>
+              ${[1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${value === 3 ? "selected" : ""}>${value}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Confidence</span>
+            <select name="confidence" ${canManageProjects ? "" : "disabled"}>
+              ${[1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${value === 3 ? "selected" : ""}>${value}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Urgency</span>
+            <select name="urgency" ${canManageProjects ? "" : "disabled"}>
+              ${[1, 2, 3, 4, 5].map((value) => `<option value="${value}" ${value === 3 ? "selected" : ""}>${value}</option>`).join("")}
+            </select>
+          </label>
+          <label class="wide-field">
+            <span>Why it matters</span>
+            <textarea name="description" rows="3" placeholder="Outcome, risk, user pain, or opportunity" ${canManageProjects ? "" : "disabled"}></textarea>
+          </label>
+          <label class="wide-field">
+            <span>Decision notes</span>
+            <textarea name="decisionNotes" rows="2" placeholder="Approval criteria, dependencies, or parking reason" ${canManageProjects ? "" : "disabled"}></textarea>
+          </label>
+          <button class="button button-primary" type="submit" ${canManageProjects ? "" : "disabled"}>Add to Backlog</button>
+        </form>
+      </section>
+
+      <section class="panel project-backlog-pipeline">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Pipeline</p>
+            <h2>Backlog projects</h2>
+          </div>
+          <span class="status-pill inbox-neutral">${items.length} total</span>
+        </div>
+        <div class="project-backlog-list">
+          ${items.length ? items.map(renderProjectBacklogCard).join("") : emptyState("No project ideas yet. Capture future work before it becomes an active project.")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderProjectBacklogCard(item) {
+  const promotedProject = item.promotedProjectId ? byId(state.projects, item.promotedProjectId) : null;
+  const canManageProjects = canWrite("projects:write");
+  return `
+    <article class="project-backlog-card">
+      <div class="project-backlog-card-main">
+        <div>
+          <span class="status-pill ${projectBacklogStatusTone(item.status)}">${escapeHtml(projectBacklogStatusLabel(item.status))}</span>
+          <h3>${escapeHtml(item.title)}</h3>
+          <p>${escapeHtml(item.description || "No project brief yet.")}</p>
+        </div>
+        <strong class="project-backlog-score">${projectBacklogScore(item)}</strong>
+      </div>
+      <div class="project-backlog-meta">
+        <span>${escapeHtml(item.companyId === "all" ? "Workspace" : companyName(item.companyId))}</span>
+        <span>${escapeHtml(memberName(item.owner))}</span>
+        <span>${escapeHtml(item.targetWindow || "Later")}</span>
+        <span>${escapeHtml(item.requestedBy || item.source || "Manual")}</span>
+      </div>
+      <div class="project-backlog-factors">
+        <span>Impact ${item.impact}</span>
+        <span>Confidence ${item.confidence}</span>
+        <span>Urgency ${item.urgency}</span>
+      </div>
+      ${item.decisionNotes ? `<p class="project-backlog-notes">${escapeHtml(item.decisionNotes)}</p>` : ""}
+      <div class="project-backlog-actions">
+        <select data-project-backlog-status="${item.id}" ${canManageProjects ? "" : "disabled"}>
+          ${projectBacklogStatuses.map((status) => `<option value="${status.id}" ${status.id === item.status ? "selected" : ""} ${status.id === "active" && !item.promotedProjectId ? "disabled" : ""}>${escapeHtml(status.label)}</option>`).join("")}
+        </select>
+        ${promotedProject ? `
+          <button class="button button-secondary compact-button" type="button" data-open-project="${promotedProject.id}">Open Project</button>
+        ` : `
+          <button class="button button-primary compact-button" type="button" data-promote-project-backlog="${item.id}" ${canManageProjects && item.status !== "rejected" ? "" : "disabled"}>Promote</button>
+        `}
+      </div>
+    </article>
+  `;
+}
+
 function renderIntake() {
   const submissions = getVisibleIntakeSubmissions();
   const openSubmissions = submissions.filter((submission) => !submission.taskId);
@@ -25555,6 +25830,148 @@ function importProjectTemplateFromTextarea() {
   } catch (error) {
     showToast(`Template import failed: ${error.message}`, "info");
   }
+}
+
+function createProjectBacklogItem(form) {
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot manage project backlog", "info");
+    return;
+  }
+  const title = form.elements.title?.value.trim() || "";
+  if (!title) {
+    showToast("Add a project idea title first", "info");
+    return;
+  }
+  const now = new Date().toISOString();
+  const item = normalizeProjectBacklog([{
+    id: uid("project-backlog"),
+    title,
+    description: form.elements.description?.value.trim() || "",
+    companyId: form.elements.companyId?.value || "all",
+    owner: form.elements.owner?.value || activeMemberId(),
+    requestedBy: form.elements.requestedBy?.value.trim() || "",
+    status: form.elements.status?.value || "idea",
+    targetWindow: form.elements.targetWindow?.value.trim() || "Later",
+    impact: form.elements.impact?.value || 3,
+    confidence: form.elements.confidence?.value || 3,
+    urgency: form.elements.urgency?.value || 3,
+    source: "Manual",
+    decisionNotes: form.elements.decisionNotes?.value.trim() || "",
+    createdAt: now,
+    updatedAt: now
+  }])[0];
+  state.projectBacklog = normalizeProjectBacklog([item, ...state.projectBacklog]);
+  addAuditEvent({
+    action: "project_backlog_create",
+    detail: `Captured project backlog item ${item.title}`,
+    targetType: "projectBacklog",
+    targetId: item.id,
+    impact: "low",
+    reversible: true
+  });
+  saveState();
+  render();
+  showToast("Project idea added to backlog", "success");
+}
+
+function updateProjectBacklogStatus(itemId, status) {
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot manage project backlog", "info");
+    render();
+    return;
+  }
+  const normalizedStatus = normalizeProjectBacklogStatus(status);
+  const item = state.projectBacklog.find((entry) => entry.id === itemId);
+  if (!item || normalizedStatus === "active" && !item.promotedProjectId) {
+    render();
+    return;
+  }
+  state.projectBacklog = normalizeProjectBacklog(state.projectBacklog.map((entry) => entry.id === itemId ? {
+    ...entry,
+    status: normalizedStatus,
+    updatedAt: new Date().toISOString()
+  } : entry));
+  addAuditEvent({
+    action: "project_backlog_status",
+    detail: `Moved ${item.title} to ${projectBacklogStatusLabel(normalizedStatus)}`,
+    targetType: "projectBacklog",
+    targetId: item.id,
+    impact: "low",
+    reversible: true
+  });
+  saveState();
+  render();
+  showToast("Project backlog status updated", "success");
+}
+
+function promoteProjectBacklogItem(itemId) {
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot promote project backlog", "info");
+    return;
+  }
+  const item = state.projectBacklog.find((entry) => entry.id === itemId);
+  if (!item) return;
+  if (item.promotedProjectId) {
+    openProjectFromBacklog(item.promotedProjectId);
+    return;
+  }
+  const now = new Date().toISOString();
+  const project = normalizeProjectRecord({
+    id: uid("project"),
+    name: item.title,
+    companyId: item.companyId === "all" ? state.companies[0]?.id || "" : item.companyId,
+    description: item.description || item.decisionNotes || "Promoted from the project backlog.",
+    owner: item.owner || activeMemberId(),
+    startDate: todayKey(),
+    dueDate: "",
+    createdAt: now,
+    updatedAt: now,
+    customFields: {
+      source: "project-backlog",
+      projectBacklogId: item.id,
+      projectBacklogScore: projectBacklogScore(item),
+      requestedBy: item.requestedBy,
+      targetWindow: item.targetWindow
+    }
+  });
+  state.projects = [project, ...state.projects];
+  state.projectBacklog = normalizeProjectBacklog(state.projectBacklog.map((entry) => entry.id === item.id ? {
+    ...entry,
+    status: "active",
+    promotedProjectId: project.id,
+    updatedAt: now
+  } : entry));
+  addActivity({
+    projectId: project.id,
+    type: "project_create",
+    message: `promoted backlog project ${item.title}`
+  });
+  addAuditEvent({
+    action: "project_backlog_promote",
+    detail: `Promoted ${item.title} to an active project`,
+    targetType: "project",
+    targetId: project.id,
+    impact: "medium",
+    reversible: true,
+    metadata: { projectBacklogId: item.id, score: projectBacklogScore(item) }
+  });
+  state.selectedProject = project.id;
+  state.selectedRoute = "project";
+  state.selectedProjectTab = "overview";
+  saveState();
+  render();
+  showToast("Project promoted from backlog", "success");
+  syncProjectToApi(project, "Project promoted from backlog in API", true);
+}
+
+function openProjectFromBacklog(projectId) {
+  if (!byId(state.projects, projectId)) return;
+  state.selectedProject = projectId;
+  state.selectedRoute = "project";
+  state.selectedProjectTab = "overview";
+  openSidebarGroupForRoute("project");
+  saveState();
+  render();
 }
 
 function createTaskFromSubmissionRecord(submission, form) {
@@ -29623,6 +30040,18 @@ document.addEventListener("click", (event) => {
   const routeButton = event.target.closest("[data-route]");
   if (routeButton) setRoute(routeButton.dataset.route);
 
+  const projectBacklogPromoteButton = event.target.closest("[data-promote-project-backlog]");
+  if (projectBacklogPromoteButton) {
+    promoteProjectBacklogItem(projectBacklogPromoteButton.dataset.promoteProjectBacklog);
+    return;
+  }
+
+  const openProjectButton = event.target.closest("[data-open-project]");
+  if (openProjectButton) {
+    openProjectFromBacklog(openProjectButton.dataset.openProject);
+    return;
+  }
+
   const createDocButton = event.target.closest("#doc-create");
   if (createDocButton) createDocument();
 
@@ -30987,6 +31416,12 @@ els.appView.addEventListener("change", (event) => {
     return;
   }
 
+  const projectBacklogStatusSelect = event.target.closest("[data-project-backlog-status]");
+  if (projectBacklogStatusSelect) {
+    updateProjectBacklogStatus(projectBacklogStatusSelect.dataset.projectBacklogStatus, projectBacklogStatusSelect.value);
+    return;
+  }
+
   const boardSwimlaneSelect = event.target.closest("#board-swimlane");
   if (boardSwimlaneSelect) {
     updateBoardSetting({ swimlane: boardSwimlaneSelect.value });
@@ -31183,6 +31618,13 @@ els.appView.addEventListener("submit", (event) => {
   if (boardBacklogForm) {
     event.preventDefault();
     createBoardBacklogTask(boardBacklogForm.elements.title?.value || "");
+    return;
+  }
+
+  const projectBacklogForm = event.target.closest("[data-project-backlog-create]");
+  if (projectBacklogForm) {
+    event.preventDefault();
+    createProjectBacklogItem(projectBacklogForm);
     return;
   }
 

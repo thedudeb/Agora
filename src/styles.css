@@ -2815,6 +2815,7 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .docs-grid,
+.project-backlog-grid,
 .intake-grid,
 .fields-grid {
   display: grid;
@@ -2824,6 +2825,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .doc-composer,
 .file-composer,
+.project-backlog-form,
 .field-composer,
 .intake-field-grid,
 .custom-field-grid {
@@ -2839,6 +2841,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .doc-list,
 .file-list,
+.project-backlog-list,
 .intake-form-list,
 .submission-list,
 .field-list {
@@ -2848,6 +2851,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .doc-card,
 .file-card,
+.project-backlog-card,
 .intake-form-card,
 .submission-card,
 .field-card {
@@ -2859,6 +2863,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .doc-card h3,
 .file-card h3,
+.project-backlog-card h3,
 .intake-form-card h3,
 .submission-card h3,
 .field-card h3 {
@@ -2866,11 +2871,85 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .doc-card p,
+.project-backlog-card p,
 .intake-form-card p,
 .submission-card p,
 .field-card p {
   margin: 0 0 10px;
   color: var(--muted);
+}
+
+.project-backlog-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.project-backlog-capture,
+.project-backlog-pipeline {
+  align-content: start;
+}
+
+.project-backlog-card {
+  display: grid;
+  gap: 10px;
+}
+
+.project-backlog-card-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  gap: 12px;
+  align-items: start;
+}
+
+.project-backlog-score {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 1.1rem;
+}
+
+.project-backlog-meta,
+.project-backlog-factors,
+.project-backlog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.project-backlog-meta span,
+.project-backlog-factors span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.project-backlog-factors span {
+  padding: 4px 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.project-backlog-notes {
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.project-backlog-actions {
+  justify-content: space-between;
+}
+
+.project-backlog-actions select {
+  min-width: 145px;
 }
 
 .file-card {
@@ -8367,6 +8446,7 @@ body[data-density="compact"] .main-content {
   .settings-grid,
   .data-grid,
   .docs-grid,
+  .project-backlog-grid,
   .intake-grid,
   .fields-grid,
   .company-grid,
@@ -8816,6 +8896,7 @@ body[data-density="compact"] .main-content {
   .time-entry-form,
   .doc-composer,
   .file-composer,
+  .project-backlog-form,
   .field-composer,
   .template-composer,
   .template-library-panel .template-composer,
