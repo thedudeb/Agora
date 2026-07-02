@@ -10793,6 +10793,34 @@ function clientVisibilityReviewData() {
   };
 }
 
+function clientVisibilityReviewForCompany(companyId) {
+  return clientVisibilityReviewData().companies.find((row) => row.company.id === companyId) || null;
+}
+
+function clientShareReadiness(companyId) {
+  const row = clientVisibilityReviewForCompany(companyId);
+  const visibleItems = row?.visibleItems || [];
+  const warnings = row?.warnings || [];
+  const blockers = [
+    ...warnings.map((item) => `${item.warning}: ${item.title}`),
+    ...(!visibleItems.length ? ["No shared or client-visible items are in the packet."] : [])
+  ];
+  return {
+    row,
+    visibleItems,
+    warnings,
+    blockers,
+    ready: blockers.length === 0
+  };
+}
+
+function clientShareEmailDraft(companyId) {
+  const company = byId(state.companies, companyId);
+  if (!company) return "";
+  const subject = `${company.name} project update`;
+  return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(portalSharePacket(companyId))}`;
+}
+
 function portalDecisionItems(companyId) {
   const portal = companyPortalSnapshot(companyId);
   return portal.pendingApprovals.slice(0, 5).map((approval) => {
@@ -14315,6 +14343,8 @@ function renderClientVisibilityReview() {
       ${metric("Companies", review.companies.length)}
     </div>
 
+    ${selected ? `<section class="panel">${renderClientShareComposer(selected.company.id)}</section>` : ""}
+
     <section class="panel">
       <div class="panel-header">
         <div>
@@ -15652,6 +15682,7 @@ function renderCompanyCard(company) {
 
 function renderCompanyPortal(company) {
   const portal = companyPortalSnapshot(company.id);
+  const readiness = clientShareReadiness(company.id);
   const latestApprovals = portal.approvals.slice(0, 4);
   const sharedAssets = [...portal.documents, ...portal.files]
     .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
@@ -15666,11 +15697,13 @@ function renderCompanyPortal(company) {
           <h2>${escapeHtml(company.name)} portal</h2>
         </div>
         <div class="portal-actions">
-          <button class="button button-secondary" type="button" data-copy-portal-packet="${company.id}">Copy Share Packet</button>
+          <button class="button button-secondary" type="button" data-copy-portal-packet="${company.id}" ${readiness.ready ? "" : "disabled"}>Copy Share Packet</button>
+          <button class="button button-secondary" type="button" data-email-portal-packet="${company.id}" ${readiness.ready ? "" : "disabled"}>Email Draft</button>
           <button class="button button-secondary" type="button" data-route="visibility">Review Visibility</button>
           <button class="button button-primary" type="button" data-company-update="${company.id}">Draft Update</button>
         </div>
       </div>
+      ${renderClientShareComposer(company.id)}
       <div class="portal-grid">
         <article class="portal-status-card">
           <span class="status-pill inbox-${portal.pendingApprovals.length ? "amber" : "green"}">${portal.pendingApprovals.length ? "Needs client" : "Clear"}</span>
@@ -15714,6 +15747,70 @@ function renderCompanyPortal(company) {
         </div>
       </div>
     </section>
+  `;
+}
+
+function renderClientShareComposer(companyId) {
+  const company = byId(state.companies, companyId);
+  const portal = companyPortalSnapshot(companyId);
+  const readiness = clientShareReadiness(companyId);
+  const nextApprovals = portal.pendingApprovals.slice(0, 3);
+  const nextTasks = portal.openTasks.slice(0, 3);
+  const assets = [...portal.documents, ...portal.files]
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+    .slice(0, 3);
+
+  return `
+    <div class="share-packet-composer">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Share packet composer</p>
+          <h2>${escapeHtml(company?.name || "Client")} update packet</h2>
+        </div>
+        <span class="status-pill ${readiness.ready ? "inbox-green" : "inbox-amber"}">${readiness.ready ? "Ready to send" : "Fix before sending"}</span>
+      </div>
+      <div class="dashboard-grid">
+        <article class="portal-status-card">
+          <span class="status-pill ${readiness.ready ? "inbox-green" : "inbox-amber"}">${readiness.ready ? "Ready to send" : `${readiness.blockers.length} blocker${readiness.blockers.length === 1 ? "" : "s"}`}</span>
+          <h3>Ready to send checklist</h3>
+          <p>${readiness.ready ? "Visibility warnings are clear and the packet can be copied or emailed." : "Resolve the packet blockers before sending this client update."}</p>
+          <div class="readiness-list compact-readiness">
+            ${readiness.ready ? `
+              <article class="readiness-item is-done">
+                <span>OK</span>
+                <div>
+                  <strong>Packet is ready</strong>
+                  <p>${readiness.visibleItems.length} shared/client-visible items are included.</p>
+                </div>
+              </article>
+            ` : readiness.blockers.slice(0, 4).map((blocker) => `
+              <article class="readiness-item is-pending">
+                <span>Fix</span>
+                <div>
+                  <strong>${escapeHtml(blocker)}</strong>
+                  <p>Open Client Visibility review to update owners, dates, reviewers, approval state, or visibility.</p>
+                </div>
+              </article>
+            `).join("")}
+          </div>
+        </article>
+
+        <article class="portal-status-card">
+          <span class="status-pill inbox-blue">Composer</span>
+          <h3>Client-ready summary</h3>
+          <p>${portal.progress}% complete / ${portal.openTasks.length} open work / ${portal.pendingApprovals.length} pending approvals / ${portal.documents.length + portal.files.length} assets.</p>
+          <div class="portal-actions">
+            <button class="button button-secondary compact-button" type="button" data-copy-portal-packet="${escapeHtml(companyId)}" ${readiness.ready ? "" : "disabled"}>Copy Packet</button>
+            <button class="button button-primary compact-button" type="button" data-email-portal-packet="${escapeHtml(companyId)}" ${readiness.ready ? "" : "disabled"}>Email Draft</button>
+          </div>
+        </article>
+      </div>
+      <div class="project-summary-meta">
+        <span>Approvals: ${nextApprovals.length ? nextApprovals.map((approval) => escapeHtml(approval.title)).join(", ") : "none pending"}</span>
+        <span>Next work: ${nextTasks.length ? nextTasks.map((task) => escapeHtml(task.title)).join(", ") : "none visible"}</span>
+        <span>Assets: ${assets.length ? assets.map((asset) => escapeHtml(asset.title)).join(", ") : "none shared"}</span>
+      </div>
+    </div>
   `;
 }
 
@@ -17580,6 +17677,7 @@ function portalSharePacket(companyId) {
   const company = byId(state.companies, companyId);
   if (!company) return "";
   const portal = companyPortalSnapshot(companyId);
+  const readiness = clientShareReadiness(companyId);
   const openTasks = portal.openTasks.slice(0, 6);
   const approvals = portal.pendingApprovals.slice(0, 6);
   const decisions = portalDecisionItems(companyId).slice(0, 6);
@@ -17589,8 +17687,14 @@ function portalSharePacket(companyId) {
   return [
     `# ${company.name} Portal Update`,
     "",
+    readiness.ready ? "Send status: Ready to send." : `Send status: Not ready (${readiness.blockers.length} blocker${readiness.blockers.length === 1 ? "" : "s"}).`,
+    "",
     `Progress: ${portal.progress}% complete across ${portal.projects.length} ${portal.projects.length === 1 ? "project" : "projects"}.`,
     `Open work: ${portal.openTasks.length}. Pending approvals: ${portal.pendingApprovals.length}. Shared assets: ${portal.documents.length + portal.files.length}.`,
+    `Visible packet: ${readiness.visibleItems.length} shared/client-visible items.`,
+    "",
+    "## Ready to Send Checklist",
+    ...(readiness.ready ? ["- Ready to send: visibility warnings are clear."] : readiness.blockers.map((blocker) => `- Fix before sending: ${blocker}`)),
     "",
     "## Approvals",
     ...(approvals.length ? approvals.map((approval) => `- ${approval.title}: ${approvalStatusLabel(approval.status)} by ${formatDate(approval.dueDate)}. ${approval.summary || ""}`.trim()) : ["- No approvals are pending."]),
@@ -17607,14 +17711,51 @@ function portalSharePacket(companyId) {
 }
 
 async function copyPortalSharePacket(companyId) {
+  const readiness = clientShareReadiness(companyId);
+  if (!readiness.ready) {
+    showToast("Fix visibility warnings before sending this packet", "info");
+    return;
+  }
   const packet = portalSharePacket(companyId);
   if (!packet) return;
   try {
     await navigator.clipboard.writeText(packet);
+    addAuditEvent({
+      action: "client_share_packet_copy",
+      detail: `Copied client share packet for ${companyName(companyId)}`,
+      targetType: "company",
+      targetId: companyId,
+      impact: "medium",
+      restoreHint: "No workspace data changed; this records that a client packet was prepared.",
+      metadata: { companyId, itemCount: readiness.visibleItems.length }
+    });
+    saveState();
     showToast("Portal share packet copied", "success");
   } catch {
     showToast("Portal packet ready in the generated client update flow", "info");
   }
+}
+
+function emailPortalSharePacket(companyId) {
+  const readiness = clientShareReadiness(companyId);
+  if (!readiness.ready) {
+    showToast("Fix visibility warnings before emailing this packet", "info");
+    return;
+  }
+  const href = clientShareEmailDraft(companyId);
+  if (!href) return;
+  addAuditEvent({
+    action: "client_share_email_draft",
+    detail: `Opened email draft for ${companyName(companyId)} client packet`,
+    targetType: "company",
+    targetId: companyId,
+    impact: "medium",
+    restoreHint: "No workspace data changed; this records that a client email draft was opened.",
+    metadata: { companyId, itemCount: readiness.visibleItems.length }
+  });
+  saveState();
+  window.location.href = href;
+  showToast("Email draft opened", "success");
 }
 
 function renderCompanyReportRow(row) {
@@ -23207,14 +23348,7 @@ function draftCompanyUpdate(companyId) {
   if (!company) return;
 
   const portal = companyPortalSnapshot(companyId);
-  const briefs = portal.projects.map(operatorBriefForProject);
-  const body = [
-    `${company.name} update`,
-    `Progress: ${portal.progress}% complete across ${portal.projects.length} projects.`,
-    `Open work: ${portal.openTasks.length} tasks. Pending approvals: ${portal.pendingApprovals.length}.`,
-    "",
-    ...briefs.map((brief) => `- ${brief.project.name}: ${brief.summary} Next action: ${brief.nextAction}.`)
-  ].join("\n");
+  const body = portalSharePacket(companyId);
   const projectId = portal.projects[0]?.id || activeProjects()[0]?.id;
   if (!projectId) return;
 
@@ -23224,6 +23358,7 @@ function draftCompanyUpdate(companyId) {
     title: `${company.name} client update`,
     type: "Client Update",
     owner: currentMemberId,
+    visibility: "internal",
     updatedAt: new Date().toISOString(),
     body
   };
@@ -26231,6 +26366,12 @@ document.addEventListener("click", (event) => {
   const copyPortalPacketButton = event.target.closest("[data-copy-portal-packet]");
   if (copyPortalPacketButton) {
     copyPortalSharePacket(copyPortalPacketButton.dataset.copyPortalPacket);
+    return;
+  }
+
+  const emailPortalPacketButton = event.target.closest("[data-email-portal-packet]");
+  if (emailPortalPacketButton) {
+    emailPortalSharePacket(emailPortalPacketButton.dataset.emailPortalPacket);
     return;
   }
 

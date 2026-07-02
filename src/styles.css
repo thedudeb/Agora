@@ -5601,6 +5601,16 @@ body[data-tutorial-target="view"] #app-view {
   justify-content: flex-end;
 }
 
+.share-packet-composer {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.share-packet-composer .dashboard-grid {
+  margin: 0;
+}
+
 .portal-hero {
   background: linear-gradient(135deg, rgba(36, 90, 88, 0.1), rgba(247, 246, 241, 0.95));
 }
