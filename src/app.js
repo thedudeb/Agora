@@ -451,6 +451,9 @@ const integrationEventOptions = ["task.updated", "approval.requested", "comment.
 const automationTriggerOptions = [
   { id: "task_due_soon", label: "Task due soon" },
   { id: "task_blocked", label: "Task is blocked" },
+  { id: "board_card_moved", label: "Board card moved" },
+  { id: "board_card_added", label: "Board card added" },
+  { id: "board_review_ready", label: "Card enters review" },
   { id: "intake_high", label: "High urgency intake" },
   { id: "approval_pending", label: "Approval pending" },
   { id: "milestone_due", label: "Milestone due soon" },
@@ -466,13 +469,16 @@ const automationConditionOptions = [
   { id: "assignee", label: "Specific assignee" },
   { id: "company", label: "Specific company" },
   { id: "priority", label: "Specific priority" },
-  { id: "tag", label: "Specific tag" }
+  { id: "tag", label: "Specific tag" },
+  { id: "status", label: "Specific board status" }
 ];
 
 const automationActionOptions = [
   { id: "create_task", label: "Create follow-up task" },
   { id: "set_risk", label: "Set risk field" },
   { id: "set_priority", label: "Set priority" },
+  { id: "assign_owner", label: "Assign owner" },
+  { id: "add_tag", label: "Add tag" },
   { id: "add_activity", label: "Record activity" },
   { id: "draft_update", label: "Draft client update" },
   { id: "notify_channel", label: "Notify integration channel" },
@@ -3067,6 +3073,9 @@ function triggerKindFromText(value = "") {
   if (text.includes("portal") && text.includes("approval")) return "portal_approval";
   if (text.includes("portal") && text.includes("comment")) return "portal_comment";
   if (text.includes("import")) return "import_completed";
+  if (text.includes("board") && text.includes("added")) return "board_card_added";
+  if (text.includes("review")) return "board_review_ready";
+  if (text.includes("board") || text.includes("moved")) return "board_card_moved";
   if (text.includes("intake")) return "intake_high";
   if (text.includes("blocked") || text.includes("dependencies")) return "task_blocked";
   if (text.includes("approval")) return "approval_pending";
@@ -3076,6 +3085,8 @@ function triggerKindFromText(value = "") {
 
 function actionKindFromText(value = "") {
   const text = String(value).toLowerCase();
+  if (text.includes("assign")) return "assign_owner";
+  if (text.includes("tag") || text.includes("label")) return "add_tag";
   if (text.includes("priority")) return "set_priority";
   if (text.includes("risk")) return "set_risk";
   if (text.includes("reminder")) return "schedule_reminder";
@@ -13067,6 +13078,8 @@ function moveTaskOnBoard(taskId, targetStatus, beforeTaskId = "") {
     targetId: movedTask.id,
     metadata: { from: previous.status, to: targetStatus, beforeTaskId }
   });
+  const boardAutomationRuns = runBoardAutomationEvent("board_card_moved", movedTask, { from: previous.status, to: targetStatus });
+  if (targetStatus === "review") runBoardAutomationEvent("board_review_ready", movedTask, { from: previous.status, to: targetStatus });
   setBoardUndo({
     type: "move",
     label: `Move ${movedTask.title}`,
@@ -13075,7 +13088,7 @@ function moveTaskOnBoard(taskId, targetStatus, beforeTaskId = "") {
   });
   saveState();
   render();
-  showToast(`${movedTask.title} moved to ${boardColumnLabel(targetStatus)}`, "success");
+  showToast(`${movedTask.title} moved to ${boardColumnLabel(targetStatus)}${boardAutomationRuns ? `; ${boardAutomationRuns} automation ${boardAutomationRuns === 1 ? "ran" : "ran"}` : ""}`, "success");
   syncTaskToApi(movedTask, "Board move synced to API", false, recordRevisionValue(previous));
 }
 
@@ -13325,6 +13338,45 @@ function deleteBoardViewFromControls(viewId) {
   showToast(`Forgot ${view.name}`, "success");
 }
 
+function saveBoardAutomationRuleFromControls(preset = "") {
+  const triggerKind = preset === "quick-add" ? "board_card_added" : document.querySelector("#board-automation-trigger")?.value || "board_card_moved";
+  const conditionKind = preset === "review" ? "status" : document.querySelector("#board-automation-condition")?.value || "any";
+  const conditionValue = preset === "review" ? "review" : document.querySelector("#board-automation-condition-value")?.value.trim() || "";
+  const actionKind = preset === "review" ? "assign_owner" : preset === "quick-add" ? "add_tag" : document.querySelector("#board-automation-action")?.value || "assign_owner";
+  const actionTarget = preset === "review" ? activeMemberId() : preset === "quick-add" ? "triage" : document.querySelector("#board-automation-target")?.value.trim() || "";
+  const name = preset === "review"
+    ? "Board: assign review cards"
+    : preset === "quick-add"
+      ? "Board: tag quick-add cards"
+      : `Board: ${automationTriggerLabel(triggerKind)} -> ${automationActionLabel(actionKind)}`;
+  const existing = state.automations.find((automation) => automation.name.toLowerCase() === name.toLowerCase());
+  const rule = normalizeAutomationRule({
+    id: existing?.id || uid("automation"),
+    name,
+    trigger: automationTriggerLabel(triggerKind),
+    action: automationActionLabel(actionKind),
+    triggerKind,
+    conditionKind,
+    conditionValue,
+    actionKind,
+    actionTarget,
+    enabled: true,
+    lastRun: existing?.lastRun || "",
+    runCount: Number(existing?.runCount || 0),
+    source: "board-builder",
+    creatorName: existing?.creatorName || memberName(activeMemberId()),
+    installedAt: existing?.installedAt || new Date().toISOString(),
+    license: existing?.license || "Workspace rule"
+  });
+  state.automations = existing
+    ? state.automations.map((automation) => automation.id === rule.id ? rule : automation)
+    : [rule, ...state.automations].slice(0, 50);
+  saveState();
+  render();
+  showToast(existing ? "Board automation updated" : "Board automation created", "success");
+  syncAutomationRuleToApi(rule, existing ? "Board automation updated in API" : "Board automation created in API", false);
+}
+
 function boardQuickAddProjectId() {
   if (state.selectedProject !== "all" && byId(state.projects, state.selectedProject)) return state.selectedProject;
   if (state.filters.project !== "all" && byId(state.projects, state.filters.project)) return state.filters.project;
@@ -13380,9 +13432,10 @@ function createBoardTask(status, title) {
     type: "task_create",
     message: `created ${task.title}`
   });
+  const boardAutomationRuns = runBoardAutomationEvent("board_card_added", task, { to: status });
   saveState();
   render();
-  showToast(`Added ${task.title} to ${boardColumnLabel(status)}`, "success");
+  showToast(`Added ${task.title} to ${boardColumnLabel(status)}${boardAutomationRuns ? `; ${boardAutomationRuns} automation ${boardAutomationRuns === 1 ? "ran" : "ran"}` : ""}`, "success");
   syncTaskToApi(task, "Task created in API", true);
 }
 
@@ -18043,6 +18096,47 @@ function renderBoardColumnMenu(column) {
   `;
 }
 
+function renderBoardAutomationBuilder() {
+  const boardAutomations = state.automations.filter((automation) => ["board_card_moved", "board_card_added", "board_review_ready"].includes(automation.triggerKind));
+  return `
+    <div class="board-automation-builder">
+      <div>
+        <p class="eyebrow">Board automation builder</p>
+        <strong>${boardAutomations.length} board rule${boardAutomations.length === 1 ? "" : "s"}</strong>
+      </div>
+      <label>
+        <span>When</span>
+        <select id="board-automation-trigger">
+          ${["board_card_moved", "board_review_ready", "board_card_added"].map((id) => `<option value="${id}">${escapeHtml(automationTriggerLabel(id))}</option>`).join("")}
+        </select>
+      </label>
+      <label>
+        <span>Filter</span>
+        <select id="board-automation-condition">
+          ${["any", "status", "project", "assignee", "company", "priority", "tag"].map((id) => `<option value="${id}">${escapeHtml(automationConditionOptions.find((option) => option.id === id)?.label || id)}</option>`).join("")}
+        </select>
+      </label>
+      <label>
+        <span>Value</span>
+        <input id="board-automation-condition-value" placeholder="Review, Acme, high, launch">
+      </label>
+      <label>
+        <span>Then</span>
+        <select id="board-automation-action">
+          ${["assign_owner", "set_priority", "add_tag", "create_task", "schedule_reminder", "notify_channel", "draft_update"].map((id) => `<option value="${id}">${escapeHtml(automationActionLabel(id))}</option>`).join("")}
+        </select>
+      </label>
+      <label>
+        <span>Target</span>
+        <input id="board-automation-target" placeholder="Nina, high, client-ready">
+      </label>
+      <button class="button button-primary compact-button" type="button" data-board-automation-save>Save Rule</button>
+      <button class="button button-secondary compact-button" type="button" data-board-automation-preset="review">Review preset</button>
+      <button class="button button-secondary compact-button" type="button" data-board-automation-preset="quick-add">Quick-add preset</button>
+    </div>
+  `;
+}
+
 function renderBoardControls() {
   const board = normalizeWorkspaceBoard(state.workspace.board);
   const boardViews = state.savedViews.filter((view) => view.route === "board");
@@ -18056,6 +18150,7 @@ function renderBoardControls() {
         </div>
         <span class="status-pill inbox-blue">${board.columns.filter((column) => column.wipLimit).length} WIP limits</span>
       </div>
+      ${renderBoardAutomationBuilder()}
       <div class="board-view-row">
         <label>
           <span>Saved board views</span>
@@ -22491,6 +22586,14 @@ function automationPreview(automation) {
       detail: `Would ${automationActionLabel(rule.actionKind).toLowerCase()} for due-soon work.`
     };
   }
+  if (["board_card_moved", "board_card_added", "board_review_ready"].includes(rule.triggerKind)) {
+    const tasks = matchingAutomationTasks(rule).filter((task) => rule.triggerKind !== "board_review_ready" || task.status === "review");
+    return {
+      label: "Board preview",
+      value: `${tasks.length} cards`,
+      detail: `Would ${automationActionLabel(rule.actionKind).toLowerCase()} when board cards match this rule.`
+    };
+  }
   if (rule.triggerKind === "milestone_due") {
     const milestones = state.milestones.filter((milestone) => milestone.status !== "completed" && daysBetween(todayKey(), milestone.dueDate) <= 14);
     return {
@@ -24612,6 +24715,14 @@ function runAutomation(ruleId) {
       });
   }
 
+  if (["board_card_moved", "board_card_added", "board_review_ready"].includes(automation.triggerKind)) {
+    matchingAutomationTasks(automation)
+      .filter((task) => automation.triggerKind !== "board_review_ready" || task.status === "review")
+      .forEach((task) => {
+        changedCount += applyAutomationAction(automation, task);
+      });
+  }
+
   if (automation.triggerKind === "milestone_due") {
     const today = todayKey();
     const limit = shiftDate(today, 14);
@@ -24645,6 +24756,29 @@ function runAutomation(ruleId) {
   return changedCount;
 }
 
+function runBoardAutomationEvent(triggerKind, task, context = {}) {
+  if (!task) return 0;
+  let changedCount = 0;
+  state.automations
+    .map(normalizeAutomationRule)
+    .filter((automation) => automation.enabled && automation.triggerKind === triggerKind)
+    .filter((automation) => taskMatchesAutomationCondition(task, automation))
+    .filter((automation) => automation.triggerKind !== "board_review_ready" || task.status === "review")
+    .forEach((automation) => {
+      const beforeCount = changedCount;
+      changedCount += applyAutomationAction(automation, task);
+      updateAutomationRun(automation.id, changedCount - beforeCount, null);
+      addAuditEvent({
+        action: "board_automation_run",
+        detail: `Ran ${automation.name} for ${task.title}`,
+        targetType: "task",
+        targetId: task.id,
+        metadata: { triggerKind, from: context.from || "", to: context.to || task.status }
+      });
+    });
+  return changedCount;
+}
+
 function rollbackAutomationRun(runId) {
   const run = state.automationHistory.find((item) => item.id === runId);
   if (!run?.rollbackState || run.status === "rolled-back") {
@@ -24666,21 +24800,63 @@ function rollbackAutomationRun(runId) {
   showToast("Automation run rolled back", "success");
 }
 
+function taskMatchesAutomationCondition(task, automation) {
+  if (!task) return false;
+  const value = String(automation.conditionValue || "").toLowerCase();
+  if (automation.conditionKind === "project") return projectName(task.projectId).toLowerCase().includes(value) || task.projectId === automation.conditionValue;
+  if (automation.conditionKind === "assignee") return memberName(task.assignee).toLowerCase().includes(value) || task.assignee === automation.conditionValue;
+  if (automation.conditionKind === "company") return projectCompany(task.projectId).name.toLowerCase().includes(value) || projectCompany(task.projectId).id === automation.conditionValue;
+  if (automation.conditionKind === "priority") return task.priority === value || priorityLabel(task.priority).toLowerCase() === value;
+  if (automation.conditionKind === "tag") return Array.isArray(task.tags) && task.tags.some((tag) => tag.toLowerCase() === value);
+  if (automation.conditionKind === "status") return task.status === value || boardColumnLabel(task.status).toLowerCase() === value;
+  return true;
+}
+
 function matchingAutomationTasks(automation) {
   return activeTasks().filter((task) => {
     if (task.status === "done") return false;
-    const value = automation.conditionValue.toLowerCase();
-    if (automation.conditionKind === "project") return projectName(task.projectId).toLowerCase().includes(value) || task.projectId === automation.conditionValue;
-    if (automation.conditionKind === "assignee") return memberName(task.assignee).toLowerCase().includes(value) || task.assignee === automation.conditionValue;
-    if (automation.conditionKind === "company") return projectCompany(task.projectId).name.toLowerCase().includes(value) || projectCompany(task.projectId).id === automation.conditionValue;
-    if (automation.conditionKind === "priority") return task.priority === value || priorityLabel(task.priority).toLowerCase() === value;
-    if (automation.conditionKind === "tag") return Array.isArray(task.tags) && task.tags.some((tag) => tag.toLowerCase() === value);
-    return true;
+    return taskMatchesAutomationCondition(task, automation);
   });
 }
 
 function applyAutomationAction(automation, task, approval = null) {
   if (!task) return 0;
+  if (automation.actionKind === "assign_owner") {
+    const target = String(automation.actionTarget || "").trim().toLowerCase();
+    const member = workspaceMembers().find((item) => item.id.toLowerCase() === target || item.name.toLowerCase().includes(target)) || workspaceMembers()[0];
+    if (!member) return 0;
+    state.tasks = state.tasks.map((item) => item.id === task.id ? {
+      ...item,
+      assignee: member.id,
+      updatedAt: new Date().toISOString()
+    } : item);
+    addActivity({
+      projectId: task.projectId,
+      taskId: task.id,
+      memberId: member.id,
+      type: "automation_assign",
+      message: `assigned ${task.title} to ${member.name}`
+    });
+    syncTaskToApi({ ...task, assignee: member.id }, "Task assignee synced", false);
+    return 1;
+  }
+  if (automation.actionKind === "add_tag") {
+    const tag = String(automation.actionTarget || "automation").trim().slice(0, 32) || "automation";
+    const tags = Array.from(new Set([...(task.tags || []), tag]));
+    state.tasks = state.tasks.map((item) => item.id === task.id ? {
+      ...item,
+      tags,
+      updatedAt: new Date().toISOString()
+    } : item);
+    addActivity({
+      projectId: task.projectId,
+      taskId: task.id,
+      type: "automation_tag",
+      message: `tagged ${task.title} with ${tag}`
+    });
+    syncTaskToApi({ ...task, tags }, "Task tags synced", false);
+    return 1;
+  }
   if (automation.actionKind === "set_risk") {
     state.tasks = state.tasks.map((item) => item.id === task.id ? {
       ...item,
@@ -29048,6 +29224,18 @@ document.addEventListener("click", (event) => {
   const boardDeleteViewButton = event.target.closest("[data-board-delete-view]");
   if (boardDeleteViewButton) {
     deleteBoardViewFromControls(boardDeleteViewButton.dataset.boardDeleteView);
+    return;
+  }
+
+  const boardAutomationSaveButton = event.target.closest("[data-board-automation-save]");
+  if (boardAutomationSaveButton) {
+    saveBoardAutomationRuleFromControls();
+    return;
+  }
+
+  const boardAutomationPresetButton = event.target.closest("[data-board-automation-preset]");
+  if (boardAutomationPresetButton) {
+    saveBoardAutomationRuleFromControls(boardAutomationPresetButton.dataset.boardAutomationPreset);
     return;
   }
 

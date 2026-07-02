@@ -6381,6 +6381,26 @@ body[data-tutorial-target="view"] #app-view {
   margin-bottom: 12px;
 }
 
+.board-automation-builder {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) repeat(5, minmax(120px, 1fr)) auto auto auto;
+  align-items: end;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.board-automation-builder strong {
+  display: block;
+}
+
+.board-automation-builder label {
+  min-width: 0;
+}
+
 .board-view-row label {
   min-width: min(220px, 100%);
   flex: 1 1 220px;
@@ -8228,6 +8248,7 @@ body[data-density="compact"] .main-content {
   .recommended-template-grid,
   .recovery-confidence-grid,
   .automation-composer,
+  .board-automation-builder,
   .settings-form,
   .settings-section-account .api-sync-form,
   .entitlement-grant-form,

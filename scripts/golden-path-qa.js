@@ -106,6 +106,7 @@ const routeChecks = [
     required: [
       "Kanban controls",
       "Board system",
+      "Board automation builder",
       "Workflow",
       "Swimlanes",
       "Manual order",
