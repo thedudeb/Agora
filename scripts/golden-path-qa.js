@@ -129,6 +129,28 @@ const routeChecks = [
     ]
   },
   {
+    name: "Project Gantt timeline",
+    suite: "workspace",
+    route: "project",
+    query: { project: "launch", tab: "timeline" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Timeline",
+      "Gantt",
+      "Schedule and dependencies",
+      "Week",
+      "Month",
+      "Quarter",
+      "Critical path",
+      "Slipped path",
+      "Workload warnings",
+      "Export Markdown",
+      "Export JSON",
+      "Add Milestone"
+    ]
+  },
+  {
     name: "Decision log",
     suite: "workspace",
     route: "decisions",

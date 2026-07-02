@@ -13021,7 +13021,14 @@ function routeFromLocation({ shouldRender = false } = {}) {
     const requestedSettingsTab = params.get("settingsTab") || params.get("tab");
     if (requestedSettingsTab) state.selectedSettingsTab = settingsTabFallback(requestedSettingsTab.trim());
   }
-  if (nextRoute !== "project") state.selectedProjectTab = "overview";
+  if (nextRoute === "project") {
+    const projectId = params.get("project") || params.get("projectId");
+    if (projectId && byId(state.projects, projectId)) state.selectedProject = projectId;
+    const requestedProjectTab = params.get("projectTab") || params.get("tab");
+    if (requestedProjectTab) state.selectedProjectTab = ["overview", "tasks", "board", "timeline", "milestones", "docs"].includes(requestedProjectTab) ? requestedProjectTab : "overview";
+  } else {
+    state.selectedProjectTab = "overview";
+  }
   openSidebarGroupForRoute(nextRoute);
   saveState();
   if (shouldRender) render();
@@ -14095,6 +14102,91 @@ function createTimelineMilestone(form) {
   render();
   showToast("Milestone added to timeline", "success");
   syncRecordToApi("milestones", milestone, "Milestone synced", false);
+}
+
+function timelineWorkloadWarnings(tasks = []) {
+  const scheduledOpenTasks = tasks.filter((task) => task.status !== "done" && task.dueDate);
+  return workspaceMembers().map((member) => {
+    const memberTasks = scheduledOpenTasks.filter((task) => task.assignee === member.id);
+    const dueSoon = memberTasks.filter((task) => daysBetween(todayKey(), task.dueDate) <= 14);
+    const overlapping = memberTasks.filter((task) => {
+      const start = taskStartDate(task);
+      const end = task.dueDate || start;
+      return memberTasks.some((other) => other.id !== task.id && taskStartDate(other) <= end && (other.dueDate || taskStartDate(other)) >= start);
+    });
+    return {
+      member,
+      dueSoon,
+      overlapping,
+      overloaded: dueSoon.length >= 4 || overlapping.length >= 3
+    };
+  }).filter((item) => item.overloaded || item.dueSoon.length || item.overlapping.length).slice(0, 4);
+}
+
+function renderTimelineWorkloadWarnings(project, tasks = []) {
+  const warnings = timelineWorkloadWarnings(tasks);
+  return `
+    <section class="timeline-workload-panel" aria-label="Workload warnings">
+      <div>
+        <p class="eyebrow">Workload warnings</p>
+        <strong>${warnings.filter((warning) => warning.overloaded).length} overload ${warnings.filter((warning) => warning.overloaded).length === 1 ? "risk" : "risks"}</strong>
+        <span>${escapeHtml(project.name)} schedule pressure</span>
+      </div>
+      ${warnings.length ? warnings.map((warning) => `
+        <article class="${warning.overloaded ? "is-overloaded" : ""}">
+          <strong>${escapeHtml(warning.member.name)}</strong>
+          <span>${warning.dueSoon.length} due soon / ${warning.overlapping.length} overlapping</span>
+        </article>
+      `).join("") : "<article><strong>No overload detected</strong><span>Scheduled work is balanced for now.</span></article>"}
+    </section>
+  `;
+}
+
+function projectTimelineExport(projectId) {
+  const project = byId(state.projects, projectId);
+  if (!project) return null;
+  const tasks = getProjectTasks(project.id, false).filter((task) => task.dueDate);
+  const milestones = getProjectMilestones(project.id).filter((milestone) => milestone.dueDate);
+  return {
+    project,
+    tasks,
+    milestones,
+    generatedAt: new Date().toISOString(),
+    workloadWarnings: timelineWorkloadWarnings(tasks)
+  };
+}
+
+function projectTimelineMarkdown(projectId) {
+  const data = projectTimelineExport(projectId);
+  if (!data) return "";
+  return [
+    `# ${data.project.name} Timeline`,
+    "",
+    `Project: ${data.project.startDate || "No start"} to ${data.project.dueDate || "No due date"}`,
+    `Generated: ${formatTimestamp(data.generatedAt)}`,
+    "",
+    "## Milestones",
+    ...(data.milestones.length ? data.milestones.map((milestone) => `- ${milestone.dueDate}: ${milestone.title} (${milestone.status})`) : ["- No dated milestones"]),
+    "",
+    "## Scheduled Tasks",
+    ...(data.tasks.length ? data.tasks.map((task) => `- ${taskStartDate(task)} to ${task.dueDate}: ${task.title} / ${memberName(task.assignee)} / ${statusLabel(task.status)}`) : ["- No dated tasks"]),
+    "",
+    "## Workload Warnings",
+    ...(data.workloadWarnings.length ? data.workloadWarnings.map((warning) => `- ${warning.member.name}: ${warning.dueSoon.length} due soon, ${warning.overlapping.length} overlapping`) : ["- No overload detected"])
+  ].join("\n");
+}
+
+function exportProjectTimeline(projectId, format) {
+  const data = projectTimelineExport(projectId);
+  if (!data) return;
+  const base = `${slugFromName(data.project.name)}-timeline-${todayKey()}`;
+  if (format === "json") {
+    downloadJsonFile(`${base}.json`, JSON.stringify(data, null, 2));
+    showToast("Timeline JSON exported", "success");
+    return;
+  }
+  downloadTextFile(`${base}.md`, projectTimelineMarkdown(projectId), "text/markdown");
+  showToast("Timeline Markdown exported", "success");
 }
 
 function recordTaskChanges(previous, next) {
@@ -18876,6 +18968,10 @@ function renderProjectTimeline(project, tasks, milestones) {
           <p class="eyebrow">Plan</p>
           <h2>Timeline</h2>
         </div>
+        <div class="panel-actions">
+          <button class="button button-secondary compact-button" type="button" data-export-timeline="markdown" data-project-id="${project.id}">Export Markdown</button>
+          <button class="button button-secondary compact-button" type="button" data-export-timeline="json" data-project-id="${project.id}">Export JSON</button>
+        </div>
       </div>
 
       <div class="timeline-controls">
@@ -18907,6 +19003,7 @@ function renderProjectTimeline(project, tasks, milestones) {
         <button class="button button-secondary compact-button" type="submit">Add Milestone</button>
       </form>
 
+      ${renderTimelineWorkloadWarnings(project, tasks)}
       ${gantt}
 
       <div class="timeline-list">
@@ -29948,6 +30045,12 @@ document.addEventListener("click", (event) => {
   const ganttBaselineButton = event.target.closest("[data-gantt-baseline]");
   if (ganttBaselineButton) {
     setGanttTaskBaseline(ganttBaselineButton.dataset.ganttBaseline);
+    return;
+  }
+
+  const exportTimelineButton = event.target.closest("[data-export-timeline]");
+  if (exportTimelineButton) {
+    exportProjectTimeline(exportTimelineButton.dataset.projectId, exportTimelineButton.dataset.exportTimeline);
     return;
   }
 

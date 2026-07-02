@@ -6126,6 +6126,35 @@ body[data-tutorial-target="view"] #app-view {
   border-radius: 8px;
 }
 
+.timeline-workload-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) repeat(4, minmax(140px, 0.7fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.timeline-workload-panel > div,
+.timeline-workload-panel article {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-height: 76px;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.timeline-workload-panel article.is-overloaded {
+  border-color: var(--red);
+  box-shadow: inset 3px 0 0 var(--red);
+}
+
+.timeline-workload-panel span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .timeline-list {
   display: grid;
   gap: 0;
@@ -8768,6 +8797,7 @@ body[data-density="compact"] .main-content {
   .timeline-card,
   .undated-task,
   .timeline-milestone-composer,
+  .timeline-workload-panel,
   .portfolio-gantt-row,
   .invitation-row,
   .member-role-row {
