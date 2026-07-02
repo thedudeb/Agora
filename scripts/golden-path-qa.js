@@ -92,6 +92,22 @@ const routeChecks = [
     ]
   },
   {
+    name: "Beta launch handoff",
+    suite: "release",
+    route: "beta",
+    width: 1265,
+    height: 712,
+    required: [
+      "Beta launch",
+      "Can we send Agora to an outside team?",
+      "Beta packet",
+      "Hosted onboarding",
+      "Email diagnostics",
+      "Copy Feedback Link",
+      "Download Bundle"
+    ]
+  },
+  {
     name: "Template to project path",
     suite: "workspace",
     route: "templates",

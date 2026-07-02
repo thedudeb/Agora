@@ -767,6 +767,7 @@ const routes = {
   fields: "Custom Fields",
   audit: "Audit Log",
   permissions: "Permissions",
+  beta: "Beta Launch",
   readiness: "Readiness",
   data: "Data",
   settings: "Settings",
@@ -4119,6 +4120,7 @@ function canAccessRoute(route) {
   const routePermissions = {
     audit: "audit:read",
     permissions: "audit:read",
+    beta: "workspace:read",
     readiness: "workspace:read",
     data: "workspace:import",
     settings: "workspace:read",
@@ -5336,6 +5338,112 @@ function renderEmailDiagnosticsPanel() {
         <button class="button button-primary" type="button" data-copy-feature-request-link>Copy Public Link</button>
       </div>
     </section>
+  `;
+}
+
+function betaLaunchItems() {
+  const hostedItems = hostedOnboardingItems();
+  const emailItems = emailDiagnosticsItems();
+  const recovery = portableRecoveryStatus();
+  const feedbackReady = Boolean(featureRequestPublicLink());
+  const emailReady = emailItems.filter((item) => ["SMTP", "From address", "Invitations", "Feature request owner"].includes(item.label)).every((item) => item.done);
+  return [
+    {
+      label: "Hosted onboarding",
+      done: hostedItems.filter((item) => item.done).length >= Math.max(4, hostedItems.length - 1),
+      detail: `${hostedItems.filter((item) => item.done).length}/${hostedItems.length} first-team checks ready.`,
+      commandId: "settings:account"
+    },
+    {
+      label: "Team email",
+      done: emailReady,
+      detail: emailReady ? "Invites and feedback emails can queue through the API." : "Finish SMTP, sender, invite, and feature-request owner setup.",
+      commandId: "settings:feedback"
+    },
+    {
+      label: "Public feedback link",
+      done: feedbackReady,
+      detail: featureRequestPublicLink(),
+      action: "copy-feedback"
+    },
+    {
+      label: "Recovery bundle",
+      done: recovery.score >= Math.max(3, recovery.total - 1),
+      detail: `${recovery.score}/${recovery.total} recovery checks ready, ${recovery.files.length} bundle files.`,
+      commandId: "route:data"
+    },
+    {
+      label: "QA gate",
+      done: true,
+      detail: "GitHub Actions QA and npm run qa are configured for the release commit.",
+      commandId: "readiness:open"
+    },
+    {
+      label: "Beta handoff docs",
+      done: true,
+      detail: "BETA.md explains fit, setup, limits, feedback, and export promises.",
+      commandId: "route:readiness"
+    }
+  ];
+}
+
+function renderBetaLaunch() {
+  const items = betaLaunchItems();
+  const score = readinessScore(items);
+  const tone = readinessTone(score);
+  const recovery = portableRecoveryStatus();
+  const feedbackRequests = featureRequestTasks();
+  els.appView.innerHTML = `
+    ${renderRouteHeader({
+      eyebrow: "Beta launch",
+      title: "Can we send Agora to an outside team?",
+      description: "One screen for the handoff signals that matter before inviting a real tester: account setup, API sync, email, feedback, recovery, and QA.",
+      actions: [
+        { label: "Open Settings", route: "settings" },
+        { label: "Open Readiness", route: "readiness", primary: true }
+      ]
+    })}
+
+    <div class="metric-grid">
+      ${metric("Send readiness", `${score.done}/${score.total}`)}
+      ${metric("Feedback", feedbackRequests.length)}
+      ${metric("Recovery", `${recovery.score}/${recovery.total}`)}
+      ${metric("QA", "CI gated")}
+    </div>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Beta packet</p>
+          <h2>${score.done === score.total ? "Ready to invite a tester" : "Close the open handoff gaps"}</h2>
+        </div>
+        <span class="status-pill inbox-${tone}">${score.done}/${score.total}</span>
+      </div>
+      <div class="readiness-list compact-readiness">
+        ${items.map((item) => `
+          <article class="readiness-item ${item.done ? "is-done" : "is-pending"}">
+            <span>${item.done ? "OK" : "Next"}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail)}</p>
+            </div>
+            ${item.action === "copy-feedback"
+              ? `<button class="button button-secondary compact-button" type="button" data-copy-feature-request-link>${item.done ? "Copy" : "Set Up"}</button>`
+              : `<button class="button button-secondary compact-button" type="button" data-command-id="${escapeHtml(item.commandId || "route:readiness")}">${item.done ? "Review" : "Do This"}</button>`}
+          </article>
+        `).join("")}
+      </div>
+      <div class="data-actions">
+        <button class="button button-primary" type="button" data-copy-feature-request-link>Copy Feedback Link</button>
+        <button class="button button-secondary" type="button" data-recovery-action="download-bundle">Download Bundle</button>
+        <button class="button button-secondary" type="button" data-route="feature-requests">Open Request Board</button>
+      </div>
+    </section>
+
+    <div class="settings-grid">
+      ${renderHostedOnboardingPanel()}
+      ${renderEmailDiagnosticsPanel()}
+    </div>
   `;
 }
 
@@ -8167,6 +8275,13 @@ function commandPaletteBaseItems() {
       detail: `${backupCount} local backup${backupCount === 1 ? "" : "s"} saved for this workspace`,
       group: "Data",
       keywords: "backup restore export json safety"
+    },
+    {
+      id: "route:beta",
+      title: "Open Beta Launch",
+      detail: "One-screen beta handoff readiness for outside testers",
+      group: "Navigate",
+      keywords: "beta launch readiness invite tester handoff"
     },
     {
       id: "route:data",
@@ -11193,6 +11308,7 @@ function render() {
     fields: renderCustomFields,
     audit: renderAuditLog,
     permissions: renderPermissionsAudit,
+    beta: renderBetaLaunch,
     readiness: renderProductionReadinessAudit,
     data: renderDataManagement,
     settings: renderSettings,
@@ -11224,7 +11340,7 @@ function sidebarGroupForRoute(route) {
   if (["landing", "dashboard", "launch", "portal", "daily", "inbox"].includes(route)) return "home";
   if (["board", "list", "calendar", "my-work", "time", "operator", "collaboration"].includes(route)) return "work";
   if (["reports", "goals", "marketplace", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
-  if (["audit", "permissions", "readiness", "data", "settings"].includes(route)) return "admin";
+  if (["audit", "permissions", "beta", "readiness", "data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
   if (route === "invite") return "";
   return "";
