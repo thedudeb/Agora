@@ -5702,6 +5702,57 @@ body[data-tutorial-target="view"] #app-view {
   margin: 0;
 }
 
+.client-handoff-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.client-handoff-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.client-handoff-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 100%;
+  padding: 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.client-handoff-card .readiness-item {
+  grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+}
+
+.client-handoff-story h3 {
+  font-size: 2.25rem;
+}
+
+.client-packet-preview {
+  display: grid;
+  gap: 8px;
+}
+
+.client-packet-preview span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.client-packet-preview textarea {
+  width: 100%;
+  min-height: 240px;
+  resize: vertical;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .portal-hero {
   background: linear-gradient(135deg, rgba(36, 90, 88, 0.1), rgba(247, 246, 241, 0.95));
 }
@@ -8232,6 +8283,7 @@ body[data-density="compact"] .main-content {
   .company-detail-grid,
   .portal-grid,
   .client-portal-grid,
+  .client-handoff-grid,
   .project-command-grid,
   .real-project-grid,
   .integration-grid,
@@ -8650,6 +8702,7 @@ body[data-density="compact"] .main-content {
   .company-detail-grid,
   .portal-grid,
   .client-portal-grid,
+  .client-handoff-grid,
   .project-hero,
   .form-grid,
   .collaboration-grid,

@@ -15873,6 +15873,7 @@ function renderClientVisibilityReview() {
     </div>
 
     ${selected ? `<section class="panel">${renderClientShareComposer(selected.company.id)}</section>` : ""}
+    ${selected ? renderClientHandoffBrief(selected.company.id) : ""}
 
     <section class="panel">
       <div class="panel-header">
@@ -15948,6 +15949,108 @@ function renderClientVisibilityCompanyRow(row) {
         <span>${row.warnings.length} visibility warnings</span>
       </div>
     </article>
+  `;
+}
+
+function renderClientHandoffBrief(companyId) {
+  const company = byId(state.companies, companyId);
+  const portal = companyPortalSnapshot(companyId);
+  const readiness = clientShareReadiness(companyId);
+  const link = activeClientPortalLink(companyId);
+  const decisions = portalDecisionItems(companyId).slice(0, 3);
+  const nextApprovals = portal.pendingApprovals.slice(0, 3);
+  const nextTasks = portal.openTasks.slice(0, 4);
+  const latestUpdate = portal.updatedAt ? formatTimestamp(portal.updatedAt) : "No recent update";
+  const handoffActions = [
+    ...(!readiness.ready ? readiness.blockers.slice(0, 3).map((blocker) => ({ tone: "amber", label: "Fix visibility", detail: blocker })) : []),
+    ...(!link && readiness.ready ? [{ tone: "blue", label: "Generate link", detail: "Create a client-scoped portal link before sending the packet." }] : []),
+    ...(nextApprovals.length ? [{ tone: "amber", label: "Client review", detail: `${nextApprovals.length} approval${nextApprovals.length === 1 ? "" : "s"} need a response.` }] : []),
+    ...(!portal.updatedAt ? [{ tone: "neutral", label: "Draft update", detail: "Add a recent status note before the client review." }] : [])
+  ];
+
+  return `
+    <section class="panel client-handoff-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Client handoff brief</p>
+          <h2>${escapeHtml(company?.name || "Client")} send review</h2>
+        </div>
+        <div class="portal-actions">
+          <button class="button button-secondary compact-button" type="button" data-preview-client-company="${escapeHtml(companyId)}">Preview as Client</button>
+          <button class="button button-secondary compact-button" type="button" data-copy-portal-packet="${escapeHtml(companyId)}" ${readiness.ready ? "" : "disabled"}>Copy Packet</button>
+          <button class="button button-primary compact-button" type="button" data-email-portal-packet="${escapeHtml(companyId)}" ${readiness.ready ? "" : "disabled"}>Email Draft</button>
+        </div>
+      </div>
+
+      <div class="client-handoff-grid">
+        <article class="portal-status-card client-handoff-story">
+          <span class="status-pill ${readiness.ready ? "inbox-green" : "inbox-amber"}">${readiness.ready ? "Client-ready" : "Needs PM review"}</span>
+          <h3>${portal.progress}% complete</h3>
+          <p>${portal.projects.length} ${portal.projects.length === 1 ? "project" : "projects"}, ${portal.openTasks.length} open ${portal.openTasks.length === 1 ? "task" : "tasks"}, ${portal.pendingApprovals.length} pending ${portal.pendingApprovals.length === 1 ? "approval" : "approvals"}.</p>
+          <small>Latest client-visible activity: ${escapeHtml(latestUpdate)}</small>
+        </article>
+
+        <article class="client-handoff-card">
+          <div class="portal-list-header">
+            <h3>Client next actions</h3>
+            <span>${nextApprovals.length + decisions.length}</span>
+          </div>
+          <div class="readiness-list compact-readiness">
+            ${nextApprovals.length || decisions.length ? `
+              ${nextApprovals.map((approval) => `
+                <article class="readiness-item is-pending">
+                  <span>Approve</span>
+                  <div>
+                    <strong>${escapeHtml(approval.title)}</strong>
+                    <p>${escapeHtml(projectName(approval.projectId))} / due ${escapeHtml(formatDate(approval.dueDate))}</p>
+                  </div>
+                </article>
+              `).join("")}
+              ${decisions.map((item) => `
+                <article class="readiness-item is-pending">
+                  <span>Decide</span>
+                  <div>
+                    <strong>${escapeHtml(item.approval.title)}</strong>
+                    <p>${escapeHtml(item.assets.length ? `${item.assets.length} supporting asset${item.assets.length === 1 ? "" : "s"}` : "No shared assets attached")}</p>
+                  </div>
+                </article>
+              `).join("")}
+            ` : emptyState("No approval or decision is waiting on the client.")}
+          </div>
+        </article>
+
+        <article class="client-handoff-card">
+          <div class="portal-list-header">
+            <h3>PM send checklist</h3>
+            <span>${handoffActions.length || "Ready"}</span>
+          </div>
+          <div class="readiness-list compact-readiness">
+            ${handoffActions.length ? handoffActions.map((action) => `
+              <article class="readiness-item ${action.tone === "blue" ? "is-done" : "is-pending"}">
+                <span>${escapeHtml(action.label)}</span>
+                <div>
+                  <strong>${escapeHtml(action.detail)}</strong>
+                  <p>${link ? `Portal link active until ${escapeHtml(formatFullDate(link.expiresAt))}.` : "No active portal link is attached yet."}</p>
+                </div>
+              </article>
+            `).join("") : `
+              <article class="readiness-item is-done">
+                <span>Ready</span>
+                <div>
+                  <strong>Packet is clear to send</strong>
+                  <p>${link ? `Active portal link expires ${escapeHtml(formatFullDate(link.expiresAt))}.` : "Generate a portal link if you want a live client view."}</p>
+                </div>
+              </article>
+            `}
+          </div>
+        </article>
+      </div>
+
+      <label class="client-packet-preview">
+        <span>Packet preview</span>
+        <textarea readonly rows="12">${escapeHtml(portalSharePacket(companyId))}</textarea>
+      </label>
+    </section>
   `;
 }
 
