@@ -178,6 +178,7 @@ const routeChecks = [
       "Beta sprint",
       "Sprint timeline",
       "Stories across Beta sprint",
+      "peak",
       "Burndown",
       "Standup queue",
       "Readiness checks",

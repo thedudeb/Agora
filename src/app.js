@@ -20711,6 +20711,56 @@ function sprintTimelineLanes(tasks) {
   })).sort((a, b) => memberName(a.memberId).localeCompare(memberName(b.memberId)));
 }
 
+function sprintTimelineCapacity(laneTasks, scrum, days) {
+  const loads = days.map((day) => {
+    const points = laneTasks.reduce((sum, task) => {
+      const schedule = sprintTimelineSchedule(task, scrum);
+      if (day < schedule.start || day > schedule.end) return sum;
+      return sum + taskStoryPoints(task) / Math.max(1, daysBetween(schedule.start, schedule.end) + 1);
+    }, 0);
+    return {
+      day,
+      points,
+      status: points >= 8 ? "overloaded" : points >= 5 ? "tight" : points > 0 ? "planned" : "open"
+    };
+  });
+  const maxPoints = loads.length ? Math.max(...loads.map((load) => load.points)) : 0;
+  return {
+    loads,
+    maxPoints,
+    status: maxPoints >= 8 ? "overloaded" : maxPoints >= 5 ? "tight" : "steady"
+  };
+}
+
+function renderSprintCapacityStrip(capacity) {
+  return `
+    <div class="sprint-capacity-strip" aria-label="Daily capacity overlay">
+      ${capacity.loads.map((load) => `
+        <span class="is-${load.status}" title="${escapeHtml(`${formatDate(load.day)}: ${load.points.toFixed(1)} pts`)}"></span>
+      `).join("")}
+    </div>
+  `;
+}
+
+function rescheduleSprintTimelineTask(taskId, targetStart, assignee = "") {
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot reschedule sprint work", "info");
+    return;
+  }
+  const task = byId(state.tasks, taskId);
+  if (!task) return;
+  const currentStart = taskStartDate(task);
+  const currentEnd = task.dueDate || currentStart;
+  const duration = Math.max(0, daysBetween(currentStart, currentEnd));
+  const patch = {
+    startDate: targetStart,
+    dueDate: shiftDate(targetStart, duration)
+  };
+  if (assignee && assignee !== "unassigned") patch.assignee = assignee;
+  updateTask(taskId, patch);
+  showToast("Sprint story rescheduled", "success");
+}
+
 function renderSprintTimeline(tasks, scrum, metrics) {
   const scheduledTasks = tasks.filter((task) => task.startDate || task.dueDate || task.createdAt);
   const lanes = sprintTimelineLanes(scheduledTasks);
@@ -20741,17 +20791,21 @@ function renderSprintTimeline(tasks, scrum, metrics) {
       </div>
       <div class="sprint-timeline-lanes">
         ${lanes.length ? lanes.map((lane) => `
-          <article class="sprint-timeline-lane">
+          ${(() => {
+            const capacity = sprintTimelineCapacity(lane.tasks, scrum, metrics.days);
+            return `
+          <article class="sprint-timeline-lane is-${capacity.status}">
             <div class="sprint-timeline-owner">
               <strong>${escapeHtml(memberName(lane.memberId))}</strong>
-              <span>${lane.tasks.length} ${lane.tasks.length === 1 ? "story" : "stories"}</span>
+              <span>${lane.tasks.length} ${lane.tasks.length === 1 ? "story" : "stories"} / peak ${capacity.maxPoints.toFixed(1)} pts</span>
             </div>
-            <div class="sprint-timeline-track">
+            <div class="sprint-timeline-track" data-sprint-timeline-track data-sprint-lane="${escapeHtml(lane.memberId)}" data-sprint-start="${scrum.startDate}" data-sprint-total-days="${metrics.days.length}">
+              ${renderSprintCapacityStrip(capacity)}
               ${lane.tasks.map((task) => {
                 const schedule = sprintTimelineSchedule(task, scrum);
                 const dependencies = openTaskDependencies(task);
                 return `
-                  <button class="sprint-timeline-bar ${sprintTimelineStatusClass(task)} priority-${task.priority}" type="button" data-edit-task="${task.id}" style="left:${schedule.left}%; width:${schedule.width}%;" title="${escapeHtml(`${task.title}: ${formatDate(schedule.start)} - ${formatDate(schedule.end)}`)}">
+                  <button class="sprint-timeline-bar ${sprintTimelineStatusClass(task)} priority-${task.priority}" type="button" draggable="true" data-sprint-timeline-drag="${task.id}" data-edit-task="${task.id}" style="left:${schedule.left}%; width:${schedule.width}%;" title="${escapeHtml(`${task.title}: ${formatDate(schedule.start)} - ${formatDate(schedule.end)}`)}">
                     <span>${escapeHtml(task.title)}</span>
                     <small>${taskStoryPoints(task)} pts${dependencies.length ? ` / waits on ${dependencies.length}` : ""}</small>
                   </button>
@@ -20759,6 +20813,8 @@ function renderSprintTimeline(tasks, scrum, metrics) {
               }).join("")}
             </div>
           </article>
+            `;
+          })()}
         `).join("") : emptyState("Add start or due dates to sprint work to build the sprint timeline.")}
       </div>
     </section>
@@ -32025,6 +32081,13 @@ els.appView.addEventListener("input", (event) => {
 });
 
 els.appView.addEventListener("dragstart", (event) => {
+  const sprintBar = event.target.closest("[data-sprint-timeline-drag]");
+  if (sprintBar) {
+    event.dataTransfer.setData("application/agora-sprint-task", sprintBar.dataset.sprintTimelineDrag);
+    event.dataTransfer.setData("text/plain", sprintBar.dataset.sprintTimelineDrag);
+    return;
+  }
+
   const ganttBar = event.target.closest("[data-gantt-drag]");
   if (ganttBar) {
     event.dataTransfer.setData("application/agora-gantt-task", ganttBar.dataset.ganttDrag);
@@ -32063,6 +32126,10 @@ function markBoardDropTarget(event) {
 }
 
 els.appView.addEventListener("dragover", (event) => {
+  if (event.target.closest("[data-sprint-timeline-track]")) {
+    event.preventDefault();
+    return;
+  }
   if (event.target.closest("[data-gantt-start]")) {
     event.preventDefault();
     return;
@@ -32074,6 +32141,18 @@ els.appView.addEventListener("dragover", (event) => {
 });
 
 els.appView.addEventListener("drop", (event) => {
+  const sprintDropZone = event.target.closest("[data-sprint-timeline-track]");
+  const sprintTaskId = event.dataTransfer.getData("application/agora-sprint-task");
+  if (sprintDropZone && sprintTaskId) {
+    event.preventDefault();
+    const rect = sprintDropZone.getBoundingClientRect();
+    const pct = clamp(((event.clientX - rect.left) / Math.max(1, rect.width)) * 100, 0, 100);
+    const totalDays = Number(sprintDropZone.dataset.sprintTotalDays || 1);
+    const targetStart = shiftDate(sprintDropZone.dataset.sprintStart, Math.round(((totalDays - 1) * pct) / 100));
+    rescheduleSprintTimelineTask(sprintTaskId, targetStart, sprintDropZone.dataset.sprintLane || "");
+    return;
+  }
+
   const ganttDropZone = event.target.closest("[data-gantt-start]");
   const ganttTaskId = event.dataTransfer.getData("application/agora-gantt-task");
   if (ganttDropZone && ganttTaskId) {

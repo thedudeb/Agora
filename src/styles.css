@@ -3210,6 +3210,15 @@ body[data-tutorial-target="view"] #app-view {
   border-radius: 8px;
 }
 
+.sprint-timeline-lane.is-tight {
+  border-color: var(--amber);
+}
+
+.sprint-timeline-lane.is-overloaded {
+  border-color: var(--red);
+  box-shadow: inset 3px 0 0 var(--red);
+}
+
 .sprint-timeline-owner {
   display: grid;
   gap: 4px;
@@ -3223,7 +3232,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .sprint-timeline-track {
   position: relative;
-  min-height: 52px;
+  min-height: 60px;
   overflow: hidden;
   background: #eee9df;
   border: 1px solid var(--line);
@@ -3235,6 +3244,36 @@ body[data-tutorial-target="view"] #app-view {
   position: absolute;
   inset: 0;
   background: repeating-linear-gradient(90deg, transparent 0, transparent calc(25% - 1px), rgba(36, 33, 29, 0.08) calc(25% - 1px), rgba(36, 33, 29, 0.08) 25%);
+}
+
+.sprint-capacity-strip {
+  position: absolute;
+  inset: auto 6px 5px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(6px, 1fr);
+  gap: 2px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.sprint-capacity-strip span {
+  height: 6px;
+  background: rgba(36, 33, 29, 0.1);
+  border-radius: 999px;
+}
+
+.sprint-capacity-strip .is-planned {
+  background: var(--green);
+  opacity: 0.45;
+}
+
+.sprint-capacity-strip .is-tight {
+  background: var(--amber);
+}
+
+.sprint-capacity-strip .is-overloaded {
+  background: var(--red);
 }
 
 .sprint-timeline-bar {
@@ -3251,6 +3290,8 @@ body[data-tutorial-target="view"] #app-view {
   border: 1px solid var(--line);
   border-radius: 999px;
   box-shadow: 0 8px 18px rgba(36, 33, 29, 0.08);
+  cursor: grab;
+  z-index: 2;
 }
 
 .sprint-timeline-bar span,
