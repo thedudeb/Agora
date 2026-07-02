@@ -9468,7 +9468,9 @@ function globalSearchResults() {
       title: task.title,
       detail: `${projectName(task.projectId)} - ${statusLabel(task.status)} - ${memberName(task.assignee)}`,
       route: "task",
-      taskId: task.id
+      taskId: task.id,
+      projectId: task.projectId,
+      projectTab: "tasks"
     }));
 
   const projectResults = activeProjects()
@@ -9480,7 +9482,8 @@ function globalSearchResults() {
       title: project.name,
       detail: `${companyName(project.companyId)} - due ${formatDate(project.dueDate)}`,
       route: "project",
-      projectId: project.id
+      projectId: project.id,
+      projectTab: "overview"
     }));
 
   const companyResults = visibleCompanies()
@@ -9504,7 +9507,46 @@ function globalSearchResults() {
       title: document.title,
       detail: `${document.type} - ${projectName(document.projectId)}`,
       route: "project",
-      projectId: document.projectId
+      projectId: document.projectId,
+      projectTab: "docs"
+    }));
+
+  const fileResults = getVisibleFiles()
+    .filter((file) => matches([file.title, file.kind, projectName(file.projectId), memberName(file.owner)]))
+    .slice(0, 3)
+    .map((file) => ({
+      id: file.id,
+      type: "File",
+      title: file.title,
+      detail: `${file.kind || "File"} - ${projectName(file.projectId)}`,
+      route: "project",
+      projectId: file.projectId,
+      projectTab: "docs"
+    }));
+
+  const approvalResults = state.approvals
+    .filter((approval) => matches([approval.title, approval.summary, approval.reviewer, projectName(approval.projectId), approvalStatusLabel(approval.status)]))
+    .slice(0, 3)
+    .map((approval) => ({
+      id: approval.id,
+      type: "Approval",
+      title: approval.title,
+      detail: `${projectName(approval.projectId)} - ${approvalStatusLabel(approval.status)} - ${approval.reviewer || "Unassigned"}`,
+      route: "project",
+      projectId: approval.projectId,
+      projectTab: "overview"
+    }));
+
+  const decisionResults = decisionLogItems()
+    .filter((decision) => matches([decision.title, decision.detail, decision.mitigation, projectName(decision.projectId), memberName(decision.owner)]))
+    .slice(0, 3)
+    .map((decision) => ({
+      id: decision.id,
+      type: "Decision",
+      title: decision.title,
+      detail: `${projectName(decision.projectId)} - ${decisionIsResolved(decision) ? "Resolved" : "Open"} - ${memberName(decision.owner)}`,
+      route: "decisions",
+      projectId: decision.projectId
     }));
 
   const peopleResults = workspaceMembers()
@@ -9519,7 +9561,16 @@ function globalSearchResults() {
       assignee: member.id
     }));
 
-  return [...taskResults, ...projectResults, ...companyResults, ...documentResults, ...peopleResults].slice(0, 10);
+  return [
+    ...taskResults,
+    ...projectResults,
+    ...companyResults,
+    ...documentResults,
+    ...fileResults,
+    ...approvalResults,
+    ...decisionResults,
+    ...peopleResults
+  ].slice(0, 12);
 }
 
 function renderSearchResults() {
@@ -9551,6 +9602,7 @@ function renderSearchResult(result) {
       data-search-route="${result.route}"
       data-search-task="${result.taskId || ""}"
       data-search-project="${result.projectId || ""}"
+      data-search-project-tab="${result.projectTab || ""}"
       data-search-company="${result.companyId || ""}"
       data-search-assignee="${result.assignee || ""}"
     >
@@ -9565,6 +9617,7 @@ function openSearchResult(button) {
   if (!button) return;
   const taskId = button.dataset.searchTask || "";
   const projectId = button.dataset.searchProject || "";
+  const projectTab = button.dataset.searchProjectTab || "";
   const companyId = button.dataset.searchCompany || "";
   const assignee = button.dataset.searchAssignee || "";
   els.searchResults.hidden = true;
@@ -9582,7 +9635,12 @@ function openSearchResult(button) {
     return;
   }
   if (projectId) {
-    setProject(projectId);
+    state.selectedProject = projectId;
+    state.selectedRoute = "project";
+    state.selectedProjectTab = ["overview", "tasks", "board", "timeline", "milestones", "docs"].includes(projectTab) ? projectTab : "overview";
+    openSidebarGroupForRoute("project");
+    saveState();
+    render();
     return;
   }
   if (companyId) {
@@ -9797,6 +9855,70 @@ function commandPaletteRouteItems() {
     }));
 }
 
+function commandPaletteContextItems() {
+  const items = [];
+  const project = state.selectedProject !== "all" ? byId(state.projects, state.selectedProject) : null;
+  const companyId = state.selectedCompany !== "all"
+    ? state.selectedCompany
+    : project?.companyId || (state.filters.company !== "all" ? state.filters.company : "");
+  const company = byId(state.companies, companyId);
+
+  if (project && !isProjectArchived(project)) {
+    items.push(
+      {
+        id: `project:${project.id}:overview`,
+        title: `Open ${project.name} command center`,
+        detail: `${companyName(project.companyId)} - project overview, health, and next actions`,
+        group: "Current project",
+        keywords: "project command center overview health"
+      },
+      {
+        id: `project:${project.id}:board`,
+        title: `Open ${project.name} board`,
+        detail: "Jump to the project Kanban board",
+        group: "Current project",
+        keywords: "kanban board cards workflow"
+      },
+      {
+        id: `project:${project.id}:timeline`,
+        title: `Open ${project.name} timeline`,
+        detail: "Jump to timeline and Gantt planning",
+        group: "Current project",
+        keywords: "timeline gantt schedule milestones"
+      },
+      {
+        id: `project:${project.id}:docs`,
+        title: `Open ${project.name} docs and files`,
+        detail: "Jump to shared docs, files, and project assets",
+        group: "Current project",
+        keywords: "docs files assets attachments"
+      }
+    );
+  }
+
+  if (company) {
+    const readiness = clientShareReadiness(company.id);
+    items.push(
+      {
+        id: `client:${company.id}:visibility`,
+        title: `Review ${company.name} client packet`,
+        detail: readiness.ready ? "Packet is ready to send" : `${readiness.blockers.length} blocker${readiness.blockers.length === 1 ? "" : "s"} before sending`,
+        group: "Current client",
+        keywords: "client visibility handoff portal packet share"
+      },
+      {
+        id: `client:${company.id}:portal`,
+        title: `Preview ${company.name} portal`,
+        detail: "Open the client portal preview for this company",
+        group: "Current client",
+        keywords: "client portal preview stakeholder"
+      }
+    );
+  }
+
+  return items;
+}
+
 function commandPaletteSearchItems(query) {
   if (query.trim().length < 2) return [];
   const previousQuery = state.filters.query;
@@ -9818,6 +9940,7 @@ function commandPaletteItems() {
   const haystackQuery = query.toLowerCase();
   const items = [
     ...commandPaletteBaseItems(),
+    ...commandPaletteContextItems(),
     ...commandPaletteRouteItems(),
     ...commandPaletteSearchItems(query)
   ];
@@ -9831,6 +9954,7 @@ function commandPaletteItems() {
 function commandPaletteAllItems() {
   return [
     ...commandPaletteBaseItems(),
+    ...commandPaletteContextItems(),
     ...commandPaletteRouteItems(),
     ...commandPaletteSearchItems(els.commandInput?.value.trim() || "")
   ];
@@ -9849,9 +9973,12 @@ function renderCommandPalette() {
       data-command-id="${escapeHtml(item.id)}"
       ${item.disabled ? "disabled" : ""}
     >
-      <span>${escapeHtml(item.group)}</span>
-      <strong>${escapeHtml(item.title)}</strong>
-      <small>${escapeHtml(item.detail)}</small>
+      <span class="command-result-kind">${escapeHtml(item.group)}</span>
+      <span class="command-result-copy">
+        <strong>${escapeHtml(item.title)}</strong>
+        <small>${escapeHtml(item.detail)}</small>
+      </span>
+      <kbd>${item.disabled ? "Locked" : "Enter"}</kbd>
     </button>
   `).join("") : emptyState("No commands match that search.");
 }
@@ -10086,7 +10213,12 @@ function openCommandSearchResult(result) {
     return;
   }
   if (result.projectId) {
-    setProject(result.projectId);
+    state.selectedProject = result.projectId;
+    state.selectedRoute = "project";
+    state.selectedProjectTab = ["overview", "tasks", "board", "timeline", "milestones", "docs"].includes(result.projectTab) ? result.projectTab : "overview";
+    openSidebarGroupForRoute("project");
+    saveState();
+    render();
     return;
   }
   if (result.companyId) {
@@ -10115,6 +10247,36 @@ function executeCommand(commandId) {
 
   if (commandId.startsWith("route:")) {
     setRoute(commandId.replace("route:", ""));
+    return;
+  }
+
+  if (commandId.startsWith("project:")) {
+    const [, projectId, tab = "overview"] = commandId.split(":");
+    const project = byId(state.projects, projectId);
+    if (!project) return;
+    state.selectedProject = project.id;
+    state.selectedRoute = "project";
+    state.selectedProjectTab = ["overview", "tasks", "board", "timeline", "milestones", "docs"].includes(tab) ? tab : "overview";
+    openSidebarGroupForRoute("project");
+    saveState();
+    render();
+    return;
+  }
+
+  if (commandId.startsWith("client:")) {
+    const [, companyId, action = "visibility"] = commandId.split(":");
+    const company = byId(state.companies, companyId);
+    if (!company) return;
+    if (action === "portal") {
+      startClientPortalPreview(company.id);
+      return;
+    }
+    state.selectedCompany = company.id;
+    state.filters.company = company.id;
+    state.selectedRoute = "visibility";
+    openSidebarGroupForRoute("visibility");
+    saveState();
+    render();
     return;
   }
 
