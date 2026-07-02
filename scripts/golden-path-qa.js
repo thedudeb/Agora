@@ -182,6 +182,8 @@ const routeChecks = [
       "Sprint planning",
       "Velocity target",
       "Recommended removals",
+      "AI scrum master",
+      "Copy standup brief",
       "Burndown",
       "Standup queue",
       "Readiness checks",

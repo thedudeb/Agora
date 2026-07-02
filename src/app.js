@@ -20796,6 +20796,148 @@ function renderSprintPlanningPanel(tasks, scrum) {
   `;
 }
 
+function sprintStaleTasks(tasks) {
+  return tasks
+    .filter((task) => task.status !== "done")
+    .filter((task) => daysBetween(cleanString(task.updatedAt || task.createdAt).slice(0, 10), todayKey()) >= 3);
+}
+
+function sprintScrumMasterInsights(tasks, scrum, metrics) {
+  const standup = sprintStandupQueue(tasks);
+  const stale = sprintStaleTasks(tasks);
+  const overdue = tasks.filter((task) => task.status !== "done" && isOverdue(task));
+  const review = tasks.filter((task) => task.status === "review");
+  const forecast = sprintPlanningForecast(tasks, scrum);
+  const risks = [
+    ...metrics.blocked.slice(0, 3).map((task) => ({
+      label: "Blocked story",
+      detail: `${task.title} is waiting on ${openTaskDependencies(task).map((item) => item.title).join(", ") || "a dependency"}.`,
+      task
+    })),
+    ...overdue.slice(0, 2).map((task) => ({
+      label: "Past due",
+      detail: `${task.title} is past its sprint due date.`,
+      task
+    })),
+    ...stale.slice(0, 2).map((task) => ({
+      label: "No recent movement",
+      detail: `${task.title} has not changed since ${formatDate(cleanString(task.updatedAt || task.createdAt).slice(0, 10))}.`,
+      task
+    })),
+    ...(forecast.status === "over" ? [{
+      label: "Commitment risk",
+      detail: `${forecast.committedPoints} committed points is ${forecast.variance} over the velocity target.`,
+      task: null
+    }] : []),
+    ...(review.length ? [{
+      label: "Review queue",
+      detail: `${review.length} ${review.length === 1 ? "story is" : "stories are"} waiting in review.`,
+      task: review[0]
+    }] : [])
+  ].slice(0, 6);
+  const questions = [
+    metrics.blocked[0] ? `What is the smallest next unblocker for ${metrics.blocked[0].title}?` : "",
+    review[0] ? `Who can review ${review[0].title} before the next standup?` : "",
+    forecast.status === "over" ? `Which ${forecast.variance} points should move out of ${scrum.sprintName}?` : "",
+    stale[0] ? `Does ${stale[0].title} still belong in this sprint?` : ""
+  ].filter(Boolean).slice(0, 4);
+
+  return {
+    standup,
+    stale,
+    overdue,
+    review,
+    forecast,
+    risks,
+    questions,
+    topFocus: standup.slice(0, 3)
+  };
+}
+
+function scrumMasterBriefText(tasks, scrum, metrics) {
+  const insights = sprintScrumMasterInsights(tasks, scrum, metrics);
+  const focus = insights.topFocus.length
+    ? insights.topFocus.map(({ task, reason }) => `- ${task.title}: ${reason} (${memberName(task.assignee)})`).join("\n")
+    : "- No urgent focus item detected.";
+  const risks = insights.risks.length
+    ? insights.risks.map((risk) => `- ${risk.label}: ${risk.detail}`).join("\n")
+    : "- No major sprint risks detected.";
+  const questions = insights.questions.length
+    ? insights.questions.map((question) => `- ${question}`).join("\n")
+    : "- Is anything newly blocked, delayed, or no longer worth the sprint slot?";
+  return [
+    `Scrum brief for ${scrum.sprintName}`,
+    `Goal: ${scrum.goal}`,
+    `Health: ${metrics.health}% | Progress: ${metrics.progress}% | Remaining: ${metrics.actualRemaining} pts | Velocity target: ${scrum.velocityPoints} pts`,
+    "",
+    "Focus today:",
+    focus,
+    "",
+    "Risks:",
+    risks,
+    "",
+    "Questions:",
+    questions
+  ].join("\n");
+}
+
+function renderSprintScrumMasterPanel(tasks, scrum, metrics) {
+  const insights = sprintScrumMasterInsights(tasks, scrum, metrics);
+  const briefPreview = scrumMasterBriefText(tasks, scrum, metrics).split("\n").slice(0, 8).join("\n");
+  return `
+    <section class="panel sprint-scrum-master-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">AI scrum master</p>
+          <h2>Daily coaching brief</h2>
+        </div>
+        <button class="button button-primary compact-button" type="button" data-scrum-master-copy-brief>Copy standup brief</button>
+      </div>
+      <div class="scrum-master-grid">
+        <section>
+          <div class="mini-section-header">
+            <strong>Focus today</strong>
+            <span>Generated from blockers, due dates, review state, and sprint health.</span>
+          </div>
+          <div class="sprint-planning-list">
+            ${insights.topFocus.length ? insights.topFocus.map(({ task, reason }) => `
+              <article class="sprint-planning-row">
+                <div>
+                  <strong>${escapeHtml(task.title)}</strong>
+                  <span>${escapeHtml(`${reason} - ${memberName(task.assignee)} - ${taskStoryPoints(task)} pts`)}</span>
+                </div>
+                <button class="button button-secondary compact-button" type="button" data-scrum-master-note="${escapeHtml(task.id)}">Post note</button>
+              </article>
+            `).join("") : emptyState("No urgent standup focus items right now.")}
+          </div>
+        </section>
+        <section>
+          <div class="mini-section-header">
+            <strong>Risk prompts</strong>
+            <span>Questions a scrum master should ask before work drifts.</span>
+          </div>
+          <div class="scrum-master-risk-list">
+            ${insights.risks.length ? insights.risks.map((risk) => `
+              <article>
+                <strong>${escapeHtml(risk.label)}</strong>
+                <span>${escapeHtml(risk.detail)}</span>
+                ${risk.task ? `<button class="button button-secondary compact-button" type="button" data-edit-task="${escapeHtml(risk.task.id)}">Open</button>` : ""}
+              </article>
+            `).join("") : emptyState("No major sprint risks detected.")}
+          </div>
+        </section>
+        <section>
+          <div class="mini-section-header">
+            <strong>Brief preview</strong>
+            <span>Ready for Slack, email, or the daily scrum.</span>
+          </div>
+          <pre class="scrum-master-brief-preview">${escapeHtml(briefPreview)}</pre>
+        </section>
+      </div>
+    </section>
+  `;
+}
+
 function renderSprintBurndown(metrics) {
   const maxPoints = Math.max(metrics.totalPoints, 1);
   const days = metrics.days;
@@ -21018,6 +21160,7 @@ function renderSprintCommandCenter() {
     <div class="sprint-grid">
       ${renderSprintTimeline(tasks, scrum, metrics)}
       ${renderSprintPlanningPanel(tasks, scrum)}
+      ${renderSprintScrumMasterPanel(tasks, scrum, metrics)}
 
       <section class="panel">
         <div class="panel-header">
@@ -26658,6 +26801,77 @@ function removeTaskFromSprint(taskId) {
   saveState();
 }
 
+async function copyScrumMasterBrief() {
+  const scrum = scrumSettings();
+  const tasks = sprintScopedTasks(scrum);
+  const metrics = sprintMetrics(tasks, scrum);
+  if (!navigator.clipboard?.writeText) {
+    showToast("Clipboard is not available in this browser", "info");
+    return;
+  }
+  await navigator.clipboard.writeText(scrumMasterBriefText(tasks, scrum, metrics));
+  showToast("Standup brief copied", "success");
+}
+
+function scrumMasterTaskNote(task, scrum) {
+  const dependencies = openTaskDependencies(task);
+  if (dependencies.length) {
+    return `AI scrum master check-in: ${task.title} is blocked by ${dependencies.map((item) => item.title).join(", ")}. What is the smallest unblocker we can move today for ${scrum.sprintName}?`;
+  }
+  if (task.status === "review") {
+    return `AI scrum master check-in: ${task.title} is waiting in review. Who can review it before the next standup so we protect the sprint goal?`;
+  }
+  if (isOverdue(task)) {
+    return `AI scrum master check-in: ${task.title} is past due inside ${scrum.sprintName}. Should we swarm, resize, or move it out of the sprint?`;
+  }
+  return `AI scrum master check-in: ${task.title} is a focus item for ${scrum.sprintName}. What is the next visible update before tomorrow's standup?`;
+}
+
+function postScrumMasterTaskNote(taskId) {
+  if (!canWrite("comments:write")) {
+    showToast("Your role cannot post scrum master notes", "info");
+    return;
+  }
+  const task = byId(state.tasks, taskId);
+  if (!task) return;
+  const scrum = scrumSettings();
+  const now = new Date().toISOString();
+  const comment = {
+    id: uid("comment"),
+    taskId,
+    parentId: "",
+    author: activeMemberId(),
+    body: scrumMasterTaskNote(task, scrum),
+    kind: "question",
+    status: "open",
+    mentionIds: [task.assignee].filter(Boolean),
+    resolvedAt: "",
+    resolvedBy: "",
+    createdAt: now,
+    updatedAt: now
+  };
+  state.comments = normalizeComments([comment, ...state.comments]);
+  setTaskWatching(taskId, true);
+  addActivity({
+    projectId: task.projectId,
+    taskId,
+    type: "scrum_master_note",
+    message: `posted an AI scrum master check-in on ${task.title}`
+  });
+  addAuditEvent({
+    action: "scrum_master_note",
+    detail: `Posted AI scrum master note on ${task.title}`,
+    targetType: "task",
+    targetId: task.id,
+    impact: "low",
+    reversible: true
+  });
+  saveState();
+  render();
+  showToast("Scrum master note posted", "success");
+  syncCommentToApi(comment, "Scrum master note synced to API");
+}
+
 function openProjectFromBacklog(projectId) {
   if (!byId(state.projects, projectId)) return;
   state.selectedProject = projectId;
@@ -30804,6 +31018,18 @@ document.addEventListener("click", (event) => {
   const sprintRemoveTaskButton = event.target.closest("[data-sprint-remove-task]");
   if (sprintRemoveTaskButton) {
     removeTaskFromSprint(sprintRemoveTaskButton.dataset.sprintRemoveTask);
+    return;
+  }
+
+  const scrumMasterBriefButton = event.target.closest("[data-scrum-master-copy-brief]");
+  if (scrumMasterBriefButton) {
+    copyScrumMasterBrief();
+    return;
+  }
+
+  const scrumMasterNoteButton = event.target.closest("[data-scrum-master-note]");
+  if (scrumMasterNoteButton) {
+    postScrumMasterTaskNote(scrumMasterNoteButton.dataset.scrumMasterNote);
     return;
   }
 

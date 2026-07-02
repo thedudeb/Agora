@@ -3164,6 +3164,10 @@ body[data-tutorial-target="view"] #app-view {
   grid-column: 1 / -1;
 }
 
+.sprint-scrum-master-panel {
+  grid-column: 1 / -1;
+}
+
 .sprint-planning-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3176,7 +3180,8 @@ body[data-tutorial-target="view"] #app-view {
   gap: 12px;
 }
 
-.sprint-planning-grid > section {
+.sprint-planning-grid > section,
+.scrum-master-grid > section {
   display: grid;
   align-content: start;
   gap: 10px;
@@ -3230,6 +3235,50 @@ body[data-tutorial-target="view"] #app-view {
 .sprint-planning-row span {
   color: var(--muted);
   font-size: 0.76rem;
+}
+
+.scrum-master-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  gap: 12px;
+}
+
+.scrum-master-risk-list {
+  display: grid;
+  gap: 8px;
+}
+
+.scrum-master-risk-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 10px;
+  align-items: center;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.scrum-master-risk-list article span {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.scrum-master-brief-preview {
+  min-height: 180px;
+  max-height: 260px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--text);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  line-height: 1.45;
 }
 
 .sprint-timeline-legend {
@@ -9282,6 +9331,7 @@ body[data-density="compact"] .main-content {
   .sprint-settings-form,
   .sprint-planning-summary,
   .sprint-planning-grid,
+  .scrum-master-grid,
   .sprint-timeline-scale,
   .sprint-timeline-lane,
   .doc-composer,
