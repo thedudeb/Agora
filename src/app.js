@@ -3243,6 +3243,9 @@ function normalizeAutomationRun(run = {}) {
     status: ["applied", "failed", "rolled-back"].includes(run.status) ? run.status : "applied",
     changedCount: Number(run.changedCount || 0),
     summary: String(run.summary || "").trim(),
+    rationale: String(run.rationale || "").trim(),
+    affectedItems: Array.isArray(run.affectedItems) ? run.affectedItems.filter(Boolean).slice(0, 50) : [],
+    actionLog: Array.isArray(run.actionLog) ? run.actionLog.filter(Boolean).slice(0, 50) : [],
     rollbackState: run.rollbackState || null,
     rollbackAvailable: Boolean(run.rollbackAvailable),
     createdAt: run.createdAt || new Date().toISOString()
@@ -21177,6 +21180,27 @@ const sprintAutomationDefinitions = [
   }
 ];
 
+const sprintAutomationPresetDefinitions = [
+  {
+    id: "scrum-starter",
+    name: "Scrum starter pack",
+    description: "A balanced pack for standup, review flow, and closeout retro follow-through.",
+    ruleIds: ["blocked-standup", "review-reminder", "close-retro-actions"]
+  },
+  {
+    id: "strict-delivery",
+    name: "Strict delivery pack",
+    description: "Tighter delivery control for blockers, carryover risk, and review reminders.",
+    ruleIds: ["blocked-standup", "carryover-risk", "review-reminder"]
+  },
+  {
+    id: "async-lightweight",
+    name: "Lightweight async team pack",
+    description: "Low-noise rules for distributed teams that need blockers and carryover visible.",
+    ruleIds: ["blocked-standup", "carryover-risk"]
+  }
+];
+
 function sprintAutomationRuleId(definitionId) {
   return `sprint-automation-${definitionId}`;
 }
@@ -21199,7 +21223,14 @@ function sprintAutomationPreview(definition, tasks, scrum, metrics) {
   return [];
 }
 
+function sprintAutomationHistory() {
+  return state.automationHistory
+    .filter((run) => String(run.source || "").includes("sprint") || String(run.automationId || "").startsWith("sprint-automation-"))
+    .slice(0, 6);
+}
+
 function renderSprintAutomationPanel(tasks, scrum, metrics) {
+  const history = sprintAutomationHistory();
   return `
     <section class="panel sprint-automation-panel">
       <div class="panel-header">
@@ -21241,6 +21272,42 @@ function renderSprintAutomationPanel(tasks, scrum, metrics) {
             </article>
           `;
         }).join("")}
+      </div>
+      <div class="sprint-automation-presets">
+        <div class="mini-section-header">
+          <strong>One-click presets</strong>
+          <span>Install a useful starter set, then preview or run each rule from the sprint command center.</span>
+        </div>
+        <div class="sprint-automation-preset-grid">
+          ${sprintAutomationPresetDefinitions.map((preset) => `
+            <article>
+              <strong>${escapeHtml(preset.name)}</strong>
+              <span>${escapeHtml(preset.description)}</span>
+              <button class="button button-secondary compact-button" type="button" data-sprint-automation-preset="${escapeHtml(preset.id)}" ${canWrite("projects:write") ? "" : "disabled"}>Install Preset</button>
+            </article>
+          `).join("")}
+        </div>
+      </div>
+      <div class="sprint-automation-audit">
+        <div class="mini-section-header">
+          <strong>Sprint automation audit trail</strong>
+          <span>Every run records why it fired and what changed.</span>
+        </div>
+        <div class="sprint-automation-audit-list">
+          ${history.length ? history.map((run) => `
+            <article>
+              <div>
+                <strong>${escapeHtml(run.summary || "Sprint automation run")}</strong>
+                <span>${escapeHtml(`${run.changedCount} changed - ${formatTimestamp(run.createdAt)}`)}</span>
+              </div>
+              <p>${escapeHtml(run.rationale || "No rationale recorded.")}</p>
+              ${run.actionLog?.length ? `<small>${escapeHtml(run.actionLog.slice(0, 2).join(" / "))}</small>` : ""}
+            </article>
+          `).join("") : emptyState("No sprint automation runs yet.")}
+        </div>
+      </div>
+      <div class="sprint-automation-actions">
+        <button class="button button-primary compact-button" type="button" data-sprint-automation-run ${canWrite("projects:write") ? "" : "disabled"}>Run Enabled Sprint Rules</button>
       </div>
     </section>
   `;
@@ -28300,8 +28367,15 @@ function enableSprintAutomation(definitionId) {
   }
   const definition = sprintAutomationDefinitions.find((item) => item.id === definitionId);
   if (!definition) return;
+  upsertSprintAutomationDefinition(definition);
+  saveState();
+  render();
+  showToast(`${definition.name} enabled`, "success");
+}
+
+function sprintAutomationRuleFromDefinition(definition) {
   const existing = sprintAutomationRule(definition);
-  const rule = normalizeAutomationRule({
+  return normalizeAutomationRule({
     id: sprintAutomationRuleId(definition.id),
     name: `Sprint: ${definition.name}`,
     trigger: automationTriggerLabel(definition.triggerKind),
@@ -28320,13 +28394,177 @@ function enableSprintAutomation(definitionId) {
     installedAt: existing?.installedAt || new Date().toISOString(),
     license: existing?.license || "Workspace rule"
   });
+}
+
+function upsertSprintAutomationDefinition(definition) {
+  const existing = sprintAutomationRule(definition);
+  const rule = sprintAutomationRuleFromDefinition(definition);
   state.automations = existing
     ? state.automations.map((automation) => automation.id === rule.id ? rule : automation)
     : [rule, ...state.automations].slice(0, 50);
+  syncAutomationRuleToApi(rule, existing ? "Sprint automation updated in API" : "Sprint automation enabled in API", false);
+  return rule;
+}
+
+function installSprintAutomationPreset(presetId) {
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot manage sprint automations", "info");
+    return;
+  }
+  const preset = sprintAutomationPresetDefinitions.find((item) => item.id === presetId);
+  if (!preset) return;
+  const rules = preset.ruleIds
+    .map((definitionId) => sprintAutomationDefinitions.find((definition) => definition.id === definitionId))
+    .filter(Boolean)
+    .map(upsertSprintAutomationDefinition);
+  addAuditEvent({
+    action: "sprint_automation_preset",
+    detail: `Installed ${preset.name}`,
+    targetType: "automation",
+    targetId: preset.id,
+    impact: "low",
+    reversible: true,
+    metadata: { rules: rules.map((rule) => rule.id) }
+  });
   saveState();
   render();
-  showToast(`${definition.name} enabled`, "success");
-  syncAutomationRuleToApi(rule, existing ? "Sprint automation updated in API" : "Sprint automation enabled in API", false);
+  showToast(`${preset.name} installed`, "success");
+}
+
+function recordSprintAutomationRun(rule, changedCount, summary, rationale, actionLog, rollbackState = null) {
+  const now = new Date().toISOString();
+  state.automations = state.automations.map((automation) => automation.id === rule.id
+    ? { ...automation, lastRun: now, runCount: Number(automation.runCount || 0) + 1 }
+    : automation);
+  state.automationHistory = [normalizeAutomationRun({
+    id: uid("automation-run"),
+    automationId: rule.id,
+    triggerKind: rule.triggerKind,
+    source: "sprint",
+    status: "applied",
+    changedCount,
+    summary,
+    rationale,
+    affectedItems: actionLog.map((entry) => entry.split(":")[0]).filter(Boolean),
+    actionLog,
+    rollbackState,
+    rollbackAvailable: Boolean(rollbackState && changedCount),
+    createdAt: now
+  }), ...state.automationHistory].slice(0, 50);
+  addAuditEvent({
+    action: "sprint_automation_run",
+    detail: `${summary}: ${changedCount} ${changedCount === 1 ? "change" : "changes"}`,
+    targetType: "automation",
+    targetId: rule.id,
+    impact: changedCount ? "medium" : "low",
+    reversible: Boolean(rollbackState && changedCount),
+    metadata: { rationale, actionLog }
+  });
+}
+
+function runSprintAutomationRule(rule, tasks, scrum, metrics, rollbackState) {
+  const definition = sprintAutomationDefinitions.find((item) => sprintAutomationRuleId(item.id) === rule.id);
+  if (!definition) return 0;
+  const previewTasks = sprintAutomationPreview(definition, tasks, scrum, metrics);
+  const actionLog = [];
+  let changedCount = 0;
+  if (definition.id === "blocked-standup") {
+    previewTasks.forEach((task) => {
+      addActivity({
+        projectId: task.projectId,
+        taskId: task.id,
+        memberId: task.assignee,
+        type: "sprint_automation_blocked",
+        message: `added blocked sprint story ${task.title} to standup focus`
+      });
+      actionLog.push(`${task.id}: added blocked story standup activity`);
+      changedCount += 1;
+    });
+  } else if (definition.id === "carryover-risk") {
+    previewTasks.forEach((task) => {
+      if ((task.tags || []).includes("carryover-risk")) return;
+      const tags = [...new Set([...(task.tags || []), "carryover-risk"])];
+      state.tasks = state.tasks.map((item) => item.id === task.id ? { ...item, tags, updatedAt: new Date().toISOString() } : item);
+      syncTaskToApi({ ...task, tags }, "Sprint automation task tag synced", false);
+      actionLog.push(`${task.id}: tagged carryover-risk`);
+      changedCount += 1;
+    });
+  } else if (definition.id === "review-reminder") {
+    previewTasks.forEach((task) => {
+      const reminder = {
+        id: uid("reminder"),
+        sourceId: rule.id,
+        taskId: task.id,
+        approvalId: "",
+        projectId: task.projectId,
+        title: "Review sprint story",
+        message: `Review reminder for ${task.title}`,
+        remindAt: shiftDate(todayKey(), 1),
+        repeat: "none",
+        status: "scheduled",
+        createdAt: new Date().toISOString()
+      };
+      state.notificationReminders = normalizeNotificationReminders([reminder, ...state.notificationReminders]);
+      syncRecordToApi("notificationReminders", { ...reminder, memberId: task.assignee || activeMemberId() }, "Sprint automation reminder synced", false);
+      actionLog.push(`${task.id}: scheduled review reminder`);
+      changedCount += 1;
+    });
+  } else if (definition.id === "close-retro-actions") {
+    const current = scrumSettings();
+    const existingTitles = new Set(current.retroActions.map((action) => action.title.toLowerCase()));
+    const actions = sprintRetroInsights(tasks, scrum, metrics)
+      .map((insight) => insight.prompt)
+      .filter((prompt) => !existingTitles.has(prompt.toLowerCase()))
+      .slice(0, 3)
+      .map((prompt) => ({
+        id: uid("retro-action"),
+        title: prompt,
+        owner: activeMemberId(),
+        status: "open"
+      }));
+    if (actions.length) {
+      state.workspace = {
+        ...state.workspace,
+        scrum: normalizeWorkspaceScrum({
+          ...current,
+          retroActions: [...actions, ...current.retroActions]
+        })
+      };
+      actionLog.push(`workspace: created ${actions.length} retro actions`);
+      changedCount += actions.length;
+    }
+  }
+  recordSprintAutomationRun(
+    rule,
+    changedCount,
+    rule.name,
+    `${rule.name} fired from ${automationTriggerLabel(rule.triggerKind)} with ${previewTasks.length} matching sprint ${previewTasks.length === 1 ? "item" : "items"}.`,
+    actionLog.length ? actionLog : ["No matching changes were needed."],
+    changedCount ? rollbackState : null
+  );
+  return changedCount;
+}
+
+function runEnabledSprintAutomations() {
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot run sprint automations", "info");
+    return;
+  }
+  const scrum = scrumSettings();
+  const tasks = sprintScopedTasks(scrum);
+  const metrics = sprintMetrics(tasks, scrum);
+  const rollbackState = automationRollbackState();
+  const rules = sprintAutomationDefinitions
+    .map((definition) => sprintAutomationRule(definition))
+    .filter((rule) => rule?.enabled)
+    .map(normalizeAutomationRule);
+  let total = 0;
+  rules.forEach((rule) => {
+    total += runSprintAutomationRule(rule, tasks, scrum, metrics, rollbackState);
+  });
+  saveState();
+  render();
+  showToast(total ? `Sprint automations changed ${total} ${total === 1 ? "item" : "items"}` : "Sprint automations ran with no changes", total ? "success" : "info");
 }
 
 function openProjectFromBacklog(projectId) {
@@ -32556,6 +32794,18 @@ document.addEventListener("click", (event) => {
   const sprintAutomationEnableButton = event.target.closest("[data-sprint-automation-enable]");
   if (sprintAutomationEnableButton) {
     enableSprintAutomation(sprintAutomationEnableButton.dataset.sprintAutomationEnable);
+    return;
+  }
+
+  const sprintAutomationPresetButton = event.target.closest("[data-sprint-automation-preset]");
+  if (sprintAutomationPresetButton) {
+    installSprintAutomationPreset(sprintAutomationPresetButton.dataset.sprintAutomationPreset);
+    return;
+  }
+
+  const sprintAutomationRunButton = event.target.closest("[data-sprint-automation-run]");
+  if (sprintAutomationRunButton) {
+    runEnabledSprintAutomations();
     return;
   }
 

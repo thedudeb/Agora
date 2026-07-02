@@ -3506,6 +3506,58 @@ body[data-tutorial-target="view"] #app-view {
   gap: 6px;
 }
 
+.sprint-automation-presets,
+.sprint-automation-audit {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.sprint-automation-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sprint-automation-preset-grid article,
+.sprint-automation-audit-list article {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sprint-automation-preset-grid span,
+.sprint-automation-audit-list span,
+.sprint-automation-audit-list p,
+.sprint-automation-audit-list small {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.sprint-automation-audit-list {
+  display: grid;
+  gap: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.sprint-automation-audit-list article > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.sprint-automation-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .sprint-closeout-actions {
   display: flex;
   flex-wrap: wrap;
@@ -9932,6 +9984,7 @@ body[data-density="compact"] .main-content {
   .scrum-master-grid,
   .sprint-roadmap-grid,
   .sprint-automation-grid,
+  .sprint-automation-preset-grid,
   .sprint-scenario-grid,
   .sprint-scenario-metrics,
   .sprint-sync-grid,
