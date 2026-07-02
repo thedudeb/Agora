@@ -1151,6 +1151,7 @@ const seedData = {
       goal: "Ship the collaboration and client feedback workflow without destabilizing offline work.",
       startDate: "2026-07-01",
       endDate: "2026-07-14",
+      velocityPoints: 24,
       scopeChangeLabel: "Scope added mid-sprint",
       definitionOfReady: ["Clear outcome", "Owner assigned", "Estimate or effort set", "Dependencies named"],
       definitionOfDone: ["Acceptance checked", "Docs or notes updated", "Review complete", "No unresolved blocker"],
@@ -3261,6 +3262,7 @@ function normalizeWorkspaceScrum(scrum = {}) {
     goal: String(scrum.goal || fallback.goal || "Deliver the highest priority committed work.").trim().slice(0, 240),
     startDate: scrum.startDate || fallback.startDate || todayKey(),
     endDate: scrum.endDate || fallback.endDate || shiftDate(todayKey(), 14),
+    velocityPoints: clamp(Math.round(Number(scrum.velocityPoints ?? fallback.velocityPoints ?? 24)) || 24, 1, 500),
     scopeChangeLabel: String(scrum.scopeChangeLabel || fallback.scopeChangeLabel || "Scope added mid-sprint").trim().slice(0, 80),
     definitionOfReady: (Array.isArray(scrum.definitionOfReady) ? scrum.definitionOfReady : fallback.definitionOfReady || [])
       .map((item) => String(item || "").trim())
@@ -20552,7 +20554,7 @@ function taskInSprintWindow(task, scrum) {
   const start = task.startDate || task.createdAt?.slice(0, 10) || task.dueDate || "";
   const due = task.dueDate || start;
   const sprintTag = cleanString(task.customFields?.sprint || "").toLowerCase();
-  if (sprintTag && sprintTag === scrum.sprintName.toLowerCase()) return true;
+  if (sprintTag) return sprintTag === scrum.sprintName.toLowerCase();
   if ((task.tags || []).some((tag) => String(tag).toLowerCase().includes("sprint"))) return true;
   if (!start && !due) return task.status !== "done";
   return (!start || start <= scrum.endDate) && (!due || due >= scrum.startDate);
@@ -20651,6 +20653,147 @@ function sprintReadinessRows(tasks, scrum) {
       detail: "Stories without unresolved blockers."
     }
   ];
+}
+
+function sprintPlanningForecast(tasks, scrum) {
+  const targetPoints = scrum.velocityPoints;
+  const committedPoints = tasks.reduce((sum, task) => sum + taskStoryPoints(task), 0);
+  const openPoints = tasks
+    .filter((task) => task.status !== "done")
+    .reduce((sum, task) => sum + taskStoryPoints(task), 0);
+  const variance = committedPoints - targetPoints;
+  let remainingOverage = Math.max(0, variance);
+  const priorityWeight = { urgent: 4, high: 3, normal: 2, low: 1 };
+  const recommendedRemovals = tasks
+    .filter((task) => task.status !== "done")
+    .sort((a, b) => {
+      const blockedDelta = Number(isTaskBlocked(b)) - Number(isTaskBlocked(a));
+      if (blockedDelta) return blockedDelta;
+      const priorityDelta = (priorityWeight[a.priority] || 0) - (priorityWeight[b.priority] || 0);
+      if (priorityDelta) return priorityDelta;
+      return taskStoryPoints(b) - taskStoryPoints(a);
+    })
+    .filter((task) => {
+      if (remainingOverage <= 0 && !isTaskBlocked(task)) return false;
+      remainingOverage -= taskStoryPoints(task);
+      return true;
+    })
+    .slice(0, 5);
+
+  return {
+    targetPoints,
+    committedPoints,
+    openPoints,
+    variance,
+    recommendedRemovals,
+    status: variance > 3 ? "over" : variance < -3 ? "under" : "on-track"
+  };
+}
+
+function sprintCandidateTasks(scrum) {
+  const sprintTaskIds = new Set(sprintScopedTasks(scrum).map((task) => task.id));
+  const priorityWeight = { urgent: 4, high: 3, normal: 2, low: 1 };
+  return activeTasks()
+    .filter((task) => task.status !== "done")
+    .filter((task) => !sprintTaskIds.has(task.id))
+    .filter((task) => !cleanString(task.customFields?.sprint))
+    .filter((task) => state.selectedProject === "all" || task.projectId === state.selectedProject)
+    .sort((a, b) => {
+      const priorityDelta = (priorityWeight[b.priority] || 0) - (priorityWeight[a.priority] || 0);
+      if (priorityDelta) return priorityDelta;
+      const dueDelta = String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31"));
+      if (dueDelta) return dueDelta;
+      return taskStoryPoints(b) - taskStoryPoints(a);
+    })
+    .slice(0, 6);
+}
+
+function sprintProjectBacklogCandidates() {
+  return normalizeProjectBacklog(state.projectBacklog)
+    .filter((item) => !item.promotedProjectId)
+    .filter((item) => item.status === "approved" || item.status === "scoping")
+    .sort((a, b) => projectBacklogScore(b) - projectBacklogScore(a))
+    .slice(0, 4);
+}
+
+function renderSprintPlanningTaskRow(task, action) {
+  const isAdd = action === "add";
+  return `
+    <article class="sprint-planning-row">
+      <div>
+        <strong>${escapeHtml(task.title)}</strong>
+        <span>${escapeHtml(`${taskStoryPoints(task)} pts - ${priorityLabel(task.priority)} - ${projectName(task.projectId)}`)}</span>
+      </div>
+      <button class="button button-secondary compact-button" type="button" ${isAdd ? `data-sprint-add-task="${escapeHtml(task.id)}"` : `data-sprint-remove-task="${escapeHtml(task.id)}"`}>
+        ${isAdd ? "Pull In" : "Remove"}
+      </button>
+    </article>
+  `;
+}
+
+function renderSprintPlanningPanel(tasks, scrum) {
+  const forecast = sprintPlanningForecast(tasks, scrum);
+  const candidates = sprintCandidateTasks(scrum);
+  const projectCandidates = sprintProjectBacklogCandidates();
+  const forecastLabel = forecast.status === "over"
+    ? `${forecast.variance} pts over`
+    : forecast.status === "under"
+      ? `${Math.abs(forecast.variance)} pts open`
+      : "On target";
+  return `
+    <section class="panel sprint-planning-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Sprint planning</p>
+          <h2>Commitment forecast</h2>
+        </div>
+        <span class="status-pill ${forecast.status === "over" ? "inbox-red" : forecast.status === "under" ? "inbox-blue" : "inbox-green"}">${escapeHtml(forecastLabel)}</span>
+      </div>
+      <div class="sprint-planning-summary">
+        ${metric("Velocity target", `${forecast.targetPoints} pts`)}
+        ${metric("Committed", `${forecast.committedPoints} pts`)}
+        ${metric("Open work", `${forecast.openPoints} pts`)}
+        ${metric("Pull-in candidates", candidates.length)}
+      </div>
+      <div class="sprint-planning-grid">
+        <section>
+          <div class="mini-section-header">
+            <strong>Backlog candidates</strong>
+            <span>Ready to pull into ${escapeHtml(scrum.sprintName)}</span>
+          </div>
+          <div class="sprint-planning-list">
+            ${candidates.length ? candidates.map((task) => renderSprintPlanningTaskRow(task, "add")).join("") : emptyState("No unscheduled task candidates match the current project scope.")}
+          </div>
+        </section>
+        <section>
+          <div class="mini-section-header">
+            <strong>Recommended removals</strong>
+            <span>Use when the sprint is over capacity or blocked.</span>
+          </div>
+          <div class="sprint-planning-list">
+            ${forecast.recommendedRemovals.length ? forecast.recommendedRemovals.map((task) => renderSprintPlanningTaskRow(task, "remove")).join("") : emptyState("Sprint commitment is within the velocity target.")}
+          </div>
+        </section>
+        <section>
+          <div class="mini-section-header">
+            <strong>Project backlog</strong>
+            <span>Approved larger work to promote before planning tasks.</span>
+          </div>
+          <div class="sprint-planning-list">
+            ${projectCandidates.length ? projectCandidates.map((item) => `
+              <article class="sprint-planning-row">
+                <div>
+                  <strong>${escapeHtml(item.title)}</strong>
+                  <span>${escapeHtml(`${projectBacklogStatusLabel(item.status)} - score ${projectBacklogScore(item)} - ${memberName(item.owner)}`)}</span>
+                </div>
+                <button class="button button-secondary compact-button" type="button" data-promote-project-backlog="${escapeHtml(item.id)}" ${canWrite("projects:write") ? "" : "disabled"}>Promote</button>
+              </article>
+            `).join("") : emptyState("No approved project-backlog candidates are waiting.")}
+          </div>
+        </section>
+      </div>
+    </section>
+  `;
 }
 
 function renderSprintBurndown(metrics) {
@@ -20860,6 +21003,10 @@ function renderSprintCommandCenter() {
           <span>End</span>
           <input name="endDate" type="date" value="${escapeHtml(scrum.endDate)}" ${canManage ? "" : "disabled"}>
         </label>
+        <label>
+          <span>Velocity target</span>
+          <input name="velocityPoints" type="number" min="1" max="500" value="${scrum.velocityPoints}" ${canManage ? "" : "disabled"}>
+        </label>
         <label class="wide-field">
           <span>Goal</span>
           <input name="goal" value="${escapeHtml(scrum.goal)}" ${canManage ? "" : "disabled"}>
@@ -20870,6 +21017,7 @@ function renderSprintCommandCenter() {
 
     <div class="sprint-grid">
       ${renderSprintTimeline(tasks, scrum, metrics)}
+      ${renderSprintPlanningPanel(tasks, scrum)}
 
       <section class="panel">
         <div class="panel-header">
@@ -26456,6 +26604,60 @@ function promoteProjectBacklogItem(itemId) {
   syncProjectToApi(project, "Project promoted from backlog in API", true);
 }
 
+function addTaskToSprint(taskId) {
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot plan sprint tasks", "info");
+    render();
+    return;
+  }
+  const task = byId(state.tasks, taskId);
+  if (!task) return;
+  const scrum = scrumSettings();
+  updateTask(taskId, {
+    customFields: {
+      ...(task.customFields || {}),
+      sprint: scrum.sprintName
+    },
+    startDate: task.startDate || scrum.startDate,
+    dueDate: task.dueDate || scrum.endDate
+  });
+  addAuditEvent({
+    action: "sprint_task_add",
+    detail: `Pulled ${task.title} into ${scrum.sprintName}`,
+    targetType: "task",
+    targetId: task.id,
+    impact: "low",
+    reversible: true
+  });
+  saveState();
+}
+
+function removeTaskFromSprint(taskId) {
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot plan sprint tasks", "info");
+    render();
+    return;
+  }
+  const task = byId(state.tasks, taskId);
+  if (!task) return;
+  const scrum = scrumSettings();
+  updateTask(taskId, {
+    customFields: {
+      ...(task.customFields || {}),
+      sprint: "backlog"
+    }
+  });
+  addAuditEvent({
+    action: "sprint_task_remove",
+    detail: `Removed ${task.title} from ${scrum.sprintName}`,
+    targetType: "task",
+    targetId: task.id,
+    impact: "low",
+    reversible: true
+  });
+  saveState();
+}
+
 function openProjectFromBacklog(projectId) {
   if (!byId(state.projects, projectId)) return;
   state.selectedProject = projectId;
@@ -26485,7 +26687,8 @@ function saveSprintSettings(form) {
       sprintName: form.elements.sprintName?.value.trim() || current.sprintName,
       goal: form.elements.goal?.value.trim() || current.goal,
       startDate,
-      endDate
+      endDate,
+      velocityPoints: form.elements.velocityPoints?.value || current.velocityPoints
     })
   };
   addAuditEvent({
@@ -30589,6 +30792,18 @@ document.addEventListener("click", (event) => {
   const projectBacklogPromoteButton = event.target.closest("[data-promote-project-backlog]");
   if (projectBacklogPromoteButton) {
     promoteProjectBacklogItem(projectBacklogPromoteButton.dataset.promoteProjectBacklog);
+    return;
+  }
+
+  const sprintAddTaskButton = event.target.closest("[data-sprint-add-task]");
+  if (sprintAddTaskButton) {
+    addTaskToSprint(sprintAddTaskButton.dataset.sprintAddTask);
+    return;
+  }
+
+  const sprintRemoveTaskButton = event.target.closest("[data-sprint-remove-task]");
+  if (sprintRemoveTaskButton) {
+    removeTaskFromSprint(sprintRemoveTaskButton.dataset.sprintRemoveTask);
     return;
   }
 

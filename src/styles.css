@@ -3136,7 +3136,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .sprint-settings-form {
   display: grid;
-  grid-template-columns: minmax(160px, 0.9fr) repeat(2, minmax(130px, 0.45fr)) minmax(220px, 1.4fr) auto;
+  grid-template-columns: minmax(150px, 0.9fr) repeat(3, minmax(120px, 0.45fr)) minmax(220px, 1.4fr) auto;
   gap: 10px;
   align-items: end;
 }
@@ -3158,6 +3158,78 @@ body[data-tutorial-target="view"] #app-view {
 
 .sprint-timeline-panel {
   grid-column: 1 / -1;
+}
+
+.sprint-planning-panel {
+  grid-column: 1 / -1;
+}
+
+.sprint-planning-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sprint-planning-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sprint-planning-grid > section {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mini-section-header {
+  display: grid;
+  gap: 3px;
+}
+
+.mini-section-header strong {
+  font-size: 0.9rem;
+}
+
+.mini-section-header span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.sprint-planning-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sprint-planning-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sprint-planning-row > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.sprint-planning-row strong,
+.sprint-planning-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sprint-planning-row span {
+  color: var(--muted);
+  font-size: 0.76rem;
 }
 
 .sprint-timeline-legend {
@@ -9208,6 +9280,8 @@ body[data-density="compact"] .main-content {
   .task-time-grid,
   .time-entry-form,
   .sprint-settings-form,
+  .sprint-planning-summary,
+  .sprint-planning-grid,
   .sprint-timeline-scale,
   .sprint-timeline-lane,
   .doc-composer,
@@ -9242,6 +9316,7 @@ body[data-density="compact"] .main-content {
   .integration-summary-grid,
   .sprint-signal-grid,
   .sprint-definition-list,
+  .sprint-planning-row,
   .capacity-summary-grid,
   .integration-control-grid,
   .integration-event-grid,
