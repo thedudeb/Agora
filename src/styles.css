@@ -260,7 +260,7 @@ button {
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 32px;
+  min-height: 42px;
   padding: 6px 8px;
   color: var(--muted);
   text-align: left;
@@ -273,12 +273,41 @@ button {
   text-transform: uppercase;
 }
 
+.nav-group-label {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nav-group-label strong,
+.nav-group-label small {
+  display: block;
+  min-width: 0;
+}
+
+.nav-group-label strong {
+  color: currentColor;
+  font-size: 0.68rem;
+  line-height: 1;
+}
+
+.nav-group-label small {
+  color: var(--muted);
+  overflow: hidden;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
 .nav-group-toggle:hover {
   color: var(--text);
   background: rgba(255, 255, 255, 0.42);
 }
 
-.nav-group-toggle small {
+.nav-group-count {
   display: inline-flex;
   align-items: center;
   justify-content: center;

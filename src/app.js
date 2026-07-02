@@ -196,7 +196,9 @@ const apiSyncQueueStore = {
 const sidebarDefaults = {
   home: true,
   work: true,
-  manage: false,
+  control: false,
+  clients: false,
+  library: false,
   admin: false,
   projects: false
 };
@@ -891,7 +893,7 @@ const tutorialSteps = [
     route: "dashboard",
     target: "sidebar",
     title: "Move through the workspace",
-    body: "The sidebar groups the app into Home, Work, Manage, Admin, and Projects. Open the groups you need and jump between project views without losing your filters."
+    body: "The sidebar groups the app into Home, Work, Control, Clients, Library, Admin, and Projects. Open the lane you need and jump between project views without losing your filters."
   },
   {
     id: "filters",
@@ -14349,9 +14351,11 @@ function render() {
 }
 
 function sidebarGroupForRoute(route) {
-  if (["landing", "dashboard", "command-center", "launch", "portal", "daily", "inbox"].includes(route)) return "home";
-  if (["board", "list", "calendar", "my-work", "time", "operator", "collaboration"].includes(route)) return "work";
-  if (["reports", "decisions", "visibility", "goals", "marketplace", "templates", "automations", "docs", "intake", "feature-requests", "fields", "companies", "company"].includes(route)) return "manage";
+  if (["landing", "dashboard", "command-center", "launch", "daily", "inbox"].includes(route)) return "home";
+  if (["board", "list", "calendar", "my-work", "time", "collaboration"].includes(route)) return "work";
+  if (["reports", "decisions", "goals", "operator", "automations"].includes(route)) return "control";
+  if (["visibility", "portal", "intake", "feature-requests", "companies", "company"].includes(route)) return "clients";
+  if (["marketplace", "templates", "docs", "fields"].includes(route)) return "library";
   if (["audit", "permissions", "beta", "readiness", "data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
   if (route === "invite") return "";
@@ -14369,7 +14373,7 @@ function renderPermissionChrome() {
     item.hidden = !canAccessRoute(item.dataset.route);
   });
   document.querySelectorAll("[data-nav-group]").forEach((group) => {
-    group.hidden = !group.querySelector(".nav-item:not([hidden])");
+    group.hidden = !group.querySelector(".nav-item:not([hidden]), .project-pill:not([hidden])");
   });
   const newProjectButton = document.querySelector("#new-project-button");
   if (newProjectButton) {
@@ -14428,7 +14432,9 @@ function openSidebarGroupForRoute(route) {
       ...sidebarState,
       home: groupId === "home",
       work: groupId === "work",
-      manage: groupId === "manage",
+      control: groupId === "control",
+      clients: groupId === "clients",
+      library: groupId === "library",
       admin: groupId === "admin",
       projects: groupId === "projects"
     };

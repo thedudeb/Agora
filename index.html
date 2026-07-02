@@ -57,7 +57,10 @@
         <nav class="nav-list" aria-label="Primary">
           <section class="nav-group is-open" data-nav-group="home">
             <button class="nav-group-toggle" type="button" data-sidebar-toggle="home" aria-expanded="true" aria-controls="nav-group-home">
-              <span>Home</span>
+              <span class="nav-group-label">
+                <strong>Home</strong>
+                <small>Start and triage</small>
+              </span>
               <span class="nav-group-chevron" aria-hidden="true"></span>
             </button>
             <div class="nav-group-panel" id="nav-group-home">
@@ -65,7 +68,6 @@
               <button class="nav-item" type="button" data-route="dashboard">Dashboard</button>
               <button class="nav-item" type="button" data-route="command-center">Command Center</button>
               <button class="nav-item" type="button" data-route="launch">Launch Flow</button>
-              <button class="nav-item" type="button" data-route="portal">Portal</button>
               <button class="nav-item" type="button" data-route="daily">Today</button>
               <button class="nav-item" type="button" data-route="inbox">
                 <span>Inbox</span>
@@ -76,7 +78,10 @@
 
           <section class="nav-group is-open" data-nav-group="work">
             <button class="nav-group-toggle" type="button" data-sidebar-toggle="work" aria-expanded="true" aria-controls="nav-group-work">
-              <span>Work</span>
+              <span class="nav-group-label">
+                <strong>Work</strong>
+                <small>Execute the plan</small>
+              </span>
               <span class="nav-group-chevron" aria-hidden="true"></span>
             </button>
             <div class="nav-group-panel" id="nav-group-work">
@@ -85,35 +90,66 @@
               <button class="nav-item" type="button" data-route="calendar">Calendar</button>
               <button class="nav-item" type="button" data-route="my-work">My Work</button>
               <button class="nav-item" type="button" data-route="time">Time</button>
-              <button class="nav-item" type="button" data-route="operator">Operator</button>
               <button class="nav-item" type="button" data-route="collaboration">Collab</button>
             </div>
           </section>
 
-          <section class="nav-group" data-nav-group="manage">
-            <button class="nav-group-toggle" type="button" data-sidebar-toggle="manage" aria-expanded="false" aria-controls="nav-group-manage">
-              <span>Manage</span>
+          <section class="nav-group" data-nav-group="control">
+            <button class="nav-group-toggle" type="button" data-sidebar-toggle="control" aria-expanded="false" aria-controls="nav-group-control">
+              <span class="nav-group-label">
+                <strong>Control</strong>
+                <small>Report and decide</small>
+              </span>
               <span class="nav-group-chevron" aria-hidden="true"></span>
             </button>
-            <div class="nav-group-panel" id="nav-group-manage">
+            <div class="nav-group-panel" id="nav-group-control">
               <button class="nav-item" type="button" data-route="reports">Reports</button>
               <button class="nav-item" type="button" data-route="decisions">Decisions</button>
-              <button class="nav-item" type="button" data-route="visibility">Visibility</button>
               <button class="nav-item" type="button" data-route="goals">Goals</button>
-              <button class="nav-item" type="button" data-route="marketplace">Marketplace</button>
-              <button class="nav-item" type="button" data-route="templates">Templates</button>
+              <button class="nav-item" type="button" data-route="operator">Operator</button>
               <button class="nav-item" type="button" data-route="automations">Automations</button>
-              <button class="nav-item" type="button" data-route="docs">Docs</button>
+            </div>
+          </section>
+
+          <section class="nav-group" data-nav-group="clients">
+            <button class="nav-group-toggle" type="button" data-sidebar-toggle="clients" aria-expanded="false" aria-controls="nav-group-clients">
+              <span class="nav-group-label">
+                <strong>Clients</strong>
+                <small>Share and collect</small>
+              </span>
+              <span class="nav-group-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="nav-group-panel" id="nav-group-clients">
+              <button class="nav-item" type="button" data-route="visibility">Client Visibility</button>
+              <button class="nav-item" type="button" data-route="portal">Portal</button>
+              <button class="nav-item" type="button" data-route="companies">Companies</button>
               <button class="nav-item" type="button" data-route="intake">Intake</button>
               <button class="nav-item" type="button" data-route="feature-requests">Feature Requests</button>
+            </div>
+          </section>
+
+          <section class="nav-group" data-nav-group="library">
+            <button class="nav-group-toggle" type="button" data-sidebar-toggle="library" aria-expanded="false" aria-controls="nav-group-library">
+              <span class="nav-group-label">
+                <strong>Library</strong>
+                <small>Reusable assets</small>
+              </span>
+              <span class="nav-group-chevron" aria-hidden="true"></span>
+            </button>
+            <div class="nav-group-panel" id="nav-group-library">
+              <button class="nav-item" type="button" data-route="templates">Templates</button>
+              <button class="nav-item" type="button" data-route="marketplace">Marketplace</button>
+              <button class="nav-item" type="button" data-route="docs">Docs & Files</button>
               <button class="nav-item" type="button" data-route="fields">Fields</button>
-              <button class="nav-item" type="button" data-route="companies">Companies</button>
             </div>
           </section>
 
           <section class="nav-group" data-nav-group="admin">
             <button class="nav-group-toggle" type="button" data-sidebar-toggle="admin" aria-expanded="false" aria-controls="nav-group-admin">
-              <span>Admin</span>
+              <span class="nav-group-label">
+                <strong>Admin</strong>
+                <small>Trust and setup</small>
+              </span>
               <span class="nav-group-chevron" aria-hidden="true"></span>
             </button>
             <div class="nav-group-panel" id="nav-group-admin">
@@ -129,8 +165,11 @@
 
         <section class="sidebar-section nav-group" data-nav-group="projects" aria-labelledby="projects-heading">
           <button class="nav-group-toggle" id="projects-heading" type="button" data-sidebar-toggle="projects" aria-expanded="false" aria-controls="project-list">
-            <span>Projects</span>
-            <small id="project-section-count">0</small>
+            <span class="nav-group-label">
+              <strong>Projects</strong>
+              <small>Open workspaces</small>
+            </span>
+            <small class="nav-group-count" id="project-section-count">0</small>
             <span class="nav-group-chevron" aria-hidden="true"></span>
           </button>
           <div class="project-list nav-group-panel" id="project-list"></div>
