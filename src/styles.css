@@ -5750,7 +5750,12 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .client-handoff-card .readiness-item {
-  grid-template-columns: minmax(72px, auto) minmax(0, 1fr);
+  grid-template-columns: minmax(72px, 96px) minmax(0, 1fr);
+}
+
+.client-handoff-card .readiness-item > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .client-handoff-story h3 {
