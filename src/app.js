@@ -440,6 +440,20 @@ const integrationCatalog = [
     signals: ["Issues", "Pull requests", "Releases"]
   },
   {
+    id: "jira",
+    name: "Jira",
+    category: "Delivery",
+    description: "Sync sprint scope, issue status, story points, and delivery blockers with Jira projects.",
+    signals: ["Issues", "Sprints", "Story points"]
+  },
+  {
+    id: "linear",
+    name: "Linear",
+    category: "Delivery",
+    description: "Mirror sprint cycles, issue ownership, labels, estimates, and release readiness with Linear.",
+    signals: ["Cycles", "Issues", "Estimates"]
+  },
+  {
     id: "google-drive",
     name: "Google Drive",
     category: "Files",
@@ -1133,6 +1147,28 @@ const seedData = {
           health: "planned",
           events: ["task.updated"],
           secretStatus: "not-required"
+        },
+        {
+          id: "jira",
+          status: "planned",
+          syncMode: "two-way",
+          owner: "mara",
+          notes: "Map Agora sprint scope to Jira issues, statuses, and story points.",
+          lastSyncedAt: "",
+          health: "planned",
+          events: ["task.updated"],
+          secretStatus: "missing"
+        },
+        {
+          id: "linear",
+          status: "planned",
+          syncMode: "two-way",
+          owner: "eli",
+          notes: "Map Agora sprint scope to Linear cycles, estimates, and issue owners.",
+          lastSyncedAt: "",
+          health: "planned",
+          events: ["task.updated"],
+          secretStatus: "missing"
         }
       ]
     },
@@ -21169,6 +21205,128 @@ function renderSprintScenarioPanel(tasks, scrum, metrics) {
   `;
 }
 
+const sprintSyncProviders = ["jira", "linear", "github"];
+
+function sprintSyncProviderLabel(providerId) {
+  return integrationCatalog.find((item) => item.id === providerId)?.name || providerId;
+}
+
+function sprintSyncFieldMapping(providerId) {
+  const common = {
+    title: "Task title",
+    status: "Board status",
+    assignee: "Agora member",
+    points: "Story points",
+    sprint: "Sprint name",
+    dueDate: "Due date"
+  };
+  if (providerId === "jira") return { ...common, externalId: "Issue key", sprint: "Jira Sprint", points: "Story Points field" };
+  if (providerId === "linear") return { ...common, externalId: "Issue identifier", sprint: "Linear Cycle", points: "Estimate" };
+  return { ...common, externalId: "Issue number", sprint: "Milestone", points: "Issue points label" };
+}
+
+function sprintExternalSyncPayload(providerId, tasks, scrum) {
+  const mapping = sprintSyncFieldMapping(providerId);
+  return {
+    source: "agora",
+    provider: providerId,
+    operation: "sprint.plan.upsert",
+    workspaceId: state.workspace.id,
+    sprint: {
+      name: scrum.sprintName,
+      goal: scrum.goal,
+      startDate: scrum.startDate,
+      endDate: scrum.endDate,
+      velocityPoints: scrum.velocityPoints
+    },
+    fieldMapping: mapping,
+    tasks: tasks.map((task) => ({
+      agoraId: task.id,
+      externalId: task.customFields?.[`${providerId}Id`] || task.customFields?.[`${providerId}Key`] || "",
+      title: task.title,
+      status: statusLabel(task.status),
+      assignee: memberName(task.assignee),
+      project: projectName(task.projectId),
+      storyPoints: taskStoryPoints(task),
+      priority: priorityLabel(task.priority),
+      startDate: task.startDate || "",
+      dueDate: task.dueDate || "",
+      blockedBy: openTaskDependencies(task).map((dependency) => dependency.title),
+      labels: [...new Set([...(task.tags || []), scrum.sprintName])].slice(0, 12)
+    }))
+  };
+}
+
+function sprintSyncProviderRows(tasks, scrum) {
+  const integrations = integrationSettings();
+  return sprintSyncProviders.map((providerId) => {
+    const catalogItem = integrationCatalog.find((item) => item.id === providerId);
+    const connection = integrations.connections.find((item) => item.id === providerId) || {};
+    const payload = sprintExternalSyncPayload(providerId, tasks, scrum);
+    const ready = connection.status === "connected" && (connection.syncMode === "outbound" || connection.syncMode === "two-way") && connection.health === "healthy";
+    return {
+      providerId,
+      catalogItem,
+      connection,
+      payload,
+      ready
+    };
+  });
+}
+
+function renderSprintExternalSyncPanel(tasks, scrum) {
+  const rows = sprintSyncProviderRows(tasks, scrum);
+  const readyCount = rows.filter((row) => row.ready).length;
+  const previewPayload = rows[0]?.payload || {};
+  return `
+    <section class="panel sprint-sync-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">External sync</p>
+          <h2>Jira / Linear / GitHub sync</h2>
+        </div>
+        <span class="status-pill ${readyCount ? "inbox-green" : "inbox-neutral"}">${readyCount}/${rows.length} ready</span>
+      </div>
+      <div class="sprint-sync-grid">
+        ${rows.map((row) => {
+          const statusClass = row.ready ? "inbox-green" : row.connection.status === "connected" ? "inbox-amber" : "inbox-neutral";
+          const mapping = sprintSyncFieldMapping(row.providerId);
+          return `
+            <article class="sprint-sync-card">
+              <div class="sprint-sync-card-header">
+                <div>
+                  <strong>${escapeHtml(row.catalogItem?.name || row.providerId)}</strong>
+                  <span>${escapeHtml(row.catalogItem?.description || "External sprint sync adapter.")}</span>
+                </div>
+                <span class="status-pill ${statusClass}">${row.ready ? "Ready" : escapeHtml(integrationStatusLabel(row.connection.status || "planned"))}</span>
+              </div>
+              <div class="sprint-sync-meta">
+                <span>${escapeHtml(integrationSyncLabel(row.connection.syncMode || "none"))}</span>
+                <span>${escapeHtml(row.connection.health || "planned")}</span>
+                <span>${row.payload.tasks.length} tasks</span>
+              </div>
+              <div class="sprint-sync-mapping">
+                ${Object.entries(mapping).slice(0, 4).map(([agoraField, externalField]) => `<span>${escapeHtml(`${agoraField} -> ${externalField}`)}</span>`).join("")}
+              </div>
+              <div class="sprint-sync-actions">
+                <button class="button button-secondary compact-button" type="button" data-sprint-sync-copy="${escapeHtml(row.providerId)}">Copy Payload</button>
+                <button class="button button-primary compact-button" type="button" data-sprint-sync-mark="${escapeHtml(row.providerId)}" ${canWrite("integrations:write") ? "" : "disabled"}>Mark Synced</button>
+              </div>
+            </article>
+          `;
+        }).join("")}
+      </div>
+      <div class="sprint-sync-preview">
+        <div>
+          <strong>Sync payload preview</strong>
+          <span>Provider payloads are ready for server adapters, CLI scripts, or MCP tools.</span>
+        </div>
+        <pre>${escapeHtml(JSON.stringify(previewPayload, null, 2))}</pre>
+      </div>
+    </section>
+  `;
+}
+
 function renderSprintBurndown(metrics) {
   const maxPoints = Math.max(metrics.totalPoints, 1);
   const days = metrics.days;
@@ -21394,6 +21552,7 @@ function renderSprintCommandCenter() {
       ${renderSprintScrumMasterPanel(tasks, scrum, metrics)}
       ${renderSprintRoadmapPanel(tasks, scrum)}
       ${renderSprintScenarioPanel(tasks, scrum, metrics)}
+      ${renderSprintExternalSyncPanel(tasks, scrum)}
 
       <section class="panel">
         <div class="panel-header">
@@ -27197,6 +27356,56 @@ function applySprintScenario(scenarioId) {
   }
 }
 
+async function copySprintSyncPayload(providerId) {
+  const scrum = scrumSettings();
+  const tasks = sprintScopedTasks(scrum);
+  const payload = sprintExternalSyncPayload(providerId, tasks, scrum);
+  if (!navigator.clipboard?.writeText) {
+    showToast("Clipboard is not available in this browser", "info");
+    return;
+  }
+  await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+  showToast(`${sprintSyncProviderLabel(providerId)} sync payload copied`, "success");
+}
+
+function markSprintSyncProviderSynced(providerId) {
+  if (!canWrite("integrations:write")) {
+    showToast("Your role cannot manage integration sync", "info");
+    return;
+  }
+  if (!sprintSyncProviders.includes(providerId)) return;
+  const integrations = integrationSettings();
+  const now = new Date().toISOString();
+  state.workspace = {
+    ...state.workspace,
+    integrations: normalizeWorkspaceIntegrations({
+      ...integrations,
+      connections: integrations.connections.map((connection) => connection.id === providerId
+        ? {
+          ...connection,
+          status: connection.status === "disabled" ? "planned" : connection.status,
+          syncMode: connection.syncMode === "none" ? "outbound" : connection.syncMode,
+          health: "healthy",
+          lastSyncedAt: now,
+          events: [...new Set([...(connection.events || []), "task.updated"])]
+        }
+        : connection)
+    })
+  };
+  addAuditEvent({
+    action: "sprint_external_sync",
+    detail: `Marked ${sprintSyncProviderLabel(providerId)} sprint sync at ${formatTimestamp(now)}`,
+    targetType: "workspace",
+    targetId: state.workspace.id,
+    impact: "low",
+    reversible: true
+  });
+  syncIntegrationSettingsToApi("Sprint sync settings synced to API");
+  saveState();
+  render();
+  showToast(`${sprintSyncProviderLabel(providerId)} marked synced`, "success");
+}
+
 function openProjectFromBacklog(projectId) {
   if (!byId(state.projects, projectId)) return;
   state.selectedProject = projectId;
@@ -31370,6 +31579,18 @@ document.addEventListener("click", (event) => {
   const sprintScenarioButton = event.target.closest("[data-sprint-scenario]");
   if (sprintScenarioButton) {
     applySprintScenario(sprintScenarioButton.dataset.sprintScenario);
+    return;
+  }
+
+  const sprintSyncCopyButton = event.target.closest("[data-sprint-sync-copy]");
+  if (sprintSyncCopyButton) {
+    copySprintSyncPayload(sprintSyncCopyButton.dataset.sprintSyncCopy);
+    return;
+  }
+
+  const sprintSyncMarkButton = event.target.closest("[data-sprint-sync-mark]");
+  if (sprintSyncMarkButton) {
+    markSprintSyncProviderSynced(sprintSyncMarkButton.dataset.sprintSyncMark);
     return;
   }
 

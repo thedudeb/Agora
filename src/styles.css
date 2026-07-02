@@ -3176,6 +3176,10 @@ body[data-tutorial-target="view"] #app-view {
   grid-column: 1 / -1;
 }
 
+.sprint-sync-panel {
+  grid-column: 1 / -1;
+}
+
 .sprint-planning-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3417,6 +3421,99 @@ body[data-tutorial-target="view"] #app-view {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.sprint-sync-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sprint-sync-card {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sprint-sync-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.sprint-sync-card-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.sprint-sync-card-header strong,
+.sprint-sync-card-header span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sprint-sync-card-header span,
+.sprint-sync-meta span,
+.sprint-sync-preview span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.sprint-sync-meta,
+.sprint-sync-mapping,
+.sprint-sync-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sprint-sync-meta span,
+.sprint-sync-mapping span {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  padding: 0 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.sprint-sync-preview {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.32fr) minmax(0, 1fr);
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.sprint-sync-preview > div {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+}
+
+.sprint-sync-preview pre {
+  max-height: 320px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--text);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.76rem;
+  line-height: 1.4;
 }
 
 .sprint-timeline-legend {
@@ -9473,6 +9570,8 @@ body[data-density="compact"] .main-content {
   .sprint-roadmap-grid,
   .sprint-scenario-grid,
   .sprint-scenario-metrics,
+  .sprint-sync-grid,
+  .sprint-sync-preview,
   .sprint-timeline-scale,
   .sprint-timeline-lane,
   .doc-composer,

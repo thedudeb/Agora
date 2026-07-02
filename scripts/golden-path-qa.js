@@ -188,6 +188,8 @@ const routeChecks = [
       "Carryover planner",
       "Scenario planning",
       "What-if forecast",
+      "Jira / Linear / GitHub sync",
+      "Sync payload preview",
       "Burndown",
       "Standup queue",
       "Readiness checks",
