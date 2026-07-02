@@ -70,7 +70,9 @@ const recordCollections = {
   notificationReminders: { writePermission: "workspace:read", normalizer: normalizeNotificationReminder, label: "notification reminder" },
   notificationHistory: { writePermission: "workspace:read", normalizer: normalizeNotificationHistoryEvent, label: "notification history" },
   inboxState: { writePermission: "workspace:read", normalizer: normalizeInboxStateRecord, label: "inbox state" },
-  integrationSettings: { writePermission: "integrations:write", normalizer: normalizeIntegrationSettingsRecord, label: "integration settings" }
+  integrationSettings: { writePermission: "integrations:write", normalizer: normalizeIntegrationSettingsRecord, label: "integration settings" },
+  automationRules: { writePermission: "projects:write", normalizer: normalizeAutomationRuleRecord, label: "automation rule" },
+  automationRuns: { writePermission: "scheduler:run", normalizer: normalizeAutomationRunRecord, label: "automation run" }
 };
 
 const sessions = new Map();
@@ -755,6 +757,23 @@ function createServer(options = {}) {
           session,
           actorId: session.user.id,
           source: "manual"
+        });
+        sendJson(response, 200, result);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/automations/run") {
+        if (!hasPermission(session, "scheduler:run")) {
+          sendError(response, 403, "Missing scheduler run permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const result = await runAutomationRules(storage, {
+          session,
+          actorId: session.user.id,
+          source: "manual",
+          ruleId: cleanString(body.ruleId),
+          triggerKind: cleanString(body.triggerKind)
         });
         sendJson(response, 200, result);
         return;
@@ -1672,6 +1691,387 @@ async function runNotificationScheduler(storage, options = {}) {
     history: processed.map((item) => item.history),
     generatedAt: now
   };
+}
+
+async function loadAutomationRules(storage, session = null) {
+  const [snapshot, recordRules] = await Promise.all([
+    storage.loadWorkspaceSnapshot(),
+    storage.loadRecords("automationRules", session ? scopedRecordFilters(session, {}) : {})
+  ]);
+  const snapshotRules = Array.isArray(snapshot.automations) ? snapshot.automations : [];
+  const rules = new Map();
+  snapshotRules.forEach((rule) => {
+    const normalized = normalizeAutomationRuleRecord({ ...rule, source: rule.source || "workspace" });
+    rules.set(normalized.id, { ...normalized, storageSource: "snapshot" });
+  });
+  recordRules.forEach((rule) => {
+    const normalized = normalizeAutomationRuleRecord({ ...rule, source: rule.source || "api" });
+    rules.set(normalized.id, { ...normalized, storageSource: "record" });
+  });
+  return Array.from(rules.values()).filter((rule) => rule.enabled);
+}
+
+async function runAutomationRules(storage, options = {}) {
+  const now = new Date().toISOString();
+  const actorId = options.actorId || "automation";
+  const source = options.source || "server";
+  const context = { ...(options.context || {}), session: options.session || null };
+  const requestedTrigger = cleanString(options.triggerKind);
+  const requestedRuleId = cleanString(options.ruleId);
+  const rules = (await loadAutomationRules(storage, options.session || null))
+    .filter((rule) => !requestedRuleId || rule.id === requestedRuleId)
+    .filter((rule) => !requestedTrigger || rule.triggerKind === requestedTrigger)
+    .filter((rule) => automationRuleMatchesContext(rule, context));
+  const runs = [];
+  const changed = {
+    tasks: [],
+    activities: [],
+    history: [],
+    reminders: [],
+    rules: []
+  };
+
+  for (const rule of rules) {
+    const result = await applyAutomationRule(storage, rule, { ...context, actorId, source, now });
+    const run = await recordAutomationRun(storage, rule, {
+      actorId,
+      source,
+      status: "applied",
+      changedCount: result.changedCount,
+      triggerKind: rule.triggerKind,
+      summary: result.summary || `${rule.name} ran`,
+      createdAt: now
+    });
+    const stampedRule = await stampAutomationRuleRun(storage, rule, now);
+    runs.push(run);
+    changed.rules.push(stampedRule);
+    changed.tasks.push(...result.tasks);
+    changed.activities.push(...result.activities);
+    changed.history.push(...result.history);
+    changed.reminders.push(...result.reminders);
+  }
+
+  if (runs.length) {
+    await storage.appendAuditEvent({
+      actorId,
+      action: "automation_rules_run",
+      workspaceId: workspace.id,
+      detail: `${source} ran ${runs.length} automation rule${runs.length === 1 ? "" : "s"}`,
+      metadata: { triggerKind: requestedTrigger || "", changedCount: changed.tasks.length + changed.activities.length + changed.history.length + changed.reminders.length }
+    });
+  }
+
+  return {
+    ok: true,
+    processed: runs.length,
+    changedCount: changed.tasks.length + changed.activities.length + changed.history.length + changed.reminders.length,
+    runs,
+    ...changed,
+    generatedAt: now
+  };
+}
+
+function automationRuleMatchesContext(rule, context = {}) {
+  if (!rule.enabled) return false;
+  if (context.triggerKind && rule.triggerKind !== context.triggerKind) return false;
+  if (!context.triggerKind && ["portal_feature_request", "portal_approval", "portal_comment", "import_completed"].includes(rule.triggerKind)) return false;
+  if (rule.conditionKind === "any") return true;
+  const value = rule.conditionValue.toLowerCase();
+  if (!value) return true;
+  const task = context.task || {};
+  const project = context.project || {};
+  const approval = context.approval || {};
+  const link = context.link || {};
+  if (rule.conditionKind === "project") return [task.projectId, project.id, approval.projectId, project.name].some((item) => cleanString(item).toLowerCase().includes(value));
+  if (rule.conditionKind === "assignee") return [task.assignee, approval.owner, project.owner].some((item) => cleanString(item).toLowerCase().includes(value));
+  if (rule.conditionKind === "company") return [project.companyId, approval.companyId, link.companyId, context.companyId, project.companyName].some((item) => cleanString(item).toLowerCase().includes(value));
+  if (rule.conditionKind === "priority") return cleanString(task.priority || context.priority).toLowerCase() === value;
+  if (rule.conditionKind === "tag") return Array.isArray(task.tags) && task.tags.some((tag) => cleanString(tag).toLowerCase() === value);
+  return true;
+}
+
+async function applyAutomationRule(storage, rule, context = {}) {
+  if (rule.triggerKind === "task_due_soon") return applyTaskScanAutomation(storage, rule, context, (task) => task.dueDate && daysFromToday(task.dueDate) >= 0 && daysFromToday(task.dueDate) <= 7);
+  if (rule.triggerKind === "task_blocked") return applyTaskScanAutomation(storage, rule, context, (task) => Array.isArray(task.blockedBy) && task.blockedBy.length > 0);
+  if (rule.triggerKind === "approval_pending") return applyApprovalScanAutomation(storage, rule, context);
+  return applyAutomationAction(storage, rule, context);
+}
+
+async function applyTaskScanAutomation(storage, rule, context, predicate) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const projects = Array.isArray(snapshot.projects) ? snapshot.projects.map(normalizeProject) : [];
+  const tasks = (Array.isArray(snapshot.tasks) ? snapshot.tasks : [])
+    .map(normalizeTask)
+    .filter((task) => !task.archivedAt && task.status !== "done")
+    .filter(predicate)
+    .filter((task) => automationRuleMatchesContext(rule, {
+      ...context,
+      task,
+      project: projects.find((project) => project.id === task.projectId) || {}
+    }))
+    .slice(0, 10);
+  return applyAutomationActionToMany(storage, rule, context, tasks.map((task) => ({
+    task,
+    project: projects.find((project) => project.id === task.projectId) || {}
+  })));
+}
+
+async function applyApprovalScanAutomation(storage, rule, context) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const projects = Array.isArray(snapshot.projects) ? snapshot.projects.map(normalizeProject) : [];
+  const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks.map(normalizeTask) : [];
+  const approvals = (await storage.loadRecords("approvals", context.session ? scopedRecordFilters(context.session, {}) : {}))
+    .map(normalizeApproval)
+    .filter((approval) => approval.status !== "approved")
+    .filter((approval) => automationRuleMatchesContext(rule, {
+      ...context,
+      approval,
+      task: tasks.find((task) => task.id === approval.taskId) || {},
+      project: projects.find((project) => project.id === approval.projectId) || {}
+    }))
+    .slice(0, 10);
+  return applyAutomationActionToMany(storage, rule, context, approvals.map((approval) => ({
+    approval,
+    task: tasks.find((task) => task.id === approval.taskId) || tasks.find((task) => task.projectId === approval.projectId) || {},
+    project: projects.find((project) => project.id === approval.projectId) || {}
+  })));
+}
+
+async function applyAutomationActionToMany(storage, rule, context, items) {
+  const total = { changedCount: 0, tasks: [], activities: [], history: [], reminders: [], summary: `${rule.name} ran` };
+  for (const item of items) {
+    const result = await applyAutomationAction(storage, rule, { ...context, ...item });
+    total.changedCount += result.changedCount;
+    total.tasks.push(...result.tasks);
+    total.activities.push(...result.activities);
+    total.history.push(...result.history);
+    total.reminders.push(...result.reminders);
+  }
+  total.summary = `${rule.name} changed ${total.changedCount} item${total.changedCount === 1 ? "" : "s"}`;
+  return total;
+}
+
+async function applyAutomationAction(storage, rule, context = {}) {
+  const result = { changedCount: 0, tasks: [], activities: [], history: [], reminders: [], summary: `${rule.name} ran` };
+  if (rule.actionKind === "create_task") {
+    const task = await automationCreateTask(storage, rule, context);
+    if (task) {
+      result.tasks.push(task);
+      result.changedCount += 1;
+      result.summary = `Created ${task.title}`;
+    }
+    return result;
+  }
+  if (rule.actionKind === "set_risk" || rule.actionKind === "set_priority") {
+    const task = await automationUpdateTask(storage, rule, context);
+    if (task) {
+      result.tasks.push(task);
+      result.changedCount += 1;
+      result.summary = `Updated ${task.title}`;
+    }
+    return result;
+  }
+  if (rule.actionKind === "schedule_reminder") {
+    const reminder = await automationScheduleReminder(storage, rule, context);
+    if (reminder) {
+      result.reminders.push(reminder);
+      result.changedCount += 1;
+      result.summary = `Scheduled ${reminder.title}`;
+    }
+    return result;
+  }
+  if (rule.actionKind === "notify_channel") {
+    const history = await automationNotify(storage, rule, context);
+    result.history.push(history);
+    result.changedCount += 1;
+    result.summary = `Recorded notification ${history.title}`;
+    return result;
+  }
+  const activity = await automationRecordActivity(storage, rule, context);
+  result.activities.push(activity);
+  result.changedCount += 1;
+  result.summary = `Recorded activity ${activity.message}`;
+  return result;
+}
+
+async function automationCreateTask(storage, rule, context = {}) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const projects = Array.isArray(snapshot.projects) ? snapshot.projects.map(normalizeProject) : [];
+  const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks.map(normalizeTask) : [];
+  const sourceTask = context.task || {};
+  const project = projects.find((item) => item.id === sourceTask.projectId)
+    || projects.find((item) => item.id === context.project?.id)
+    || projects.find((item) => item.companyId === context.link?.companyId)
+    || projects.find((item) => !item.archivedAt);
+  if (!project) return null;
+  const now = context.now || new Date().toISOString();
+  const subject = cleanString(context.title || sourceTask.title || context.approval?.title || "portal action");
+  const task = normalizeTask({
+    id: `automation-task-${crypto.randomUUID()}`,
+    projectId: project.id,
+    title: `${rule.actionTarget || "Follow up"}: ${subject}`,
+    description: `Automation ${rule.name} created this from ${subject}.`,
+    assignee: sourceTask.assignee || project.owner || "",
+    status: "todo",
+    priority: sourceTask.priority || "high",
+    tags: ["automation", rule.triggerKind],
+    customFields: { automationRuleId: rule.id },
+    createdAt: now,
+    updatedAt: now
+  });
+  await storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    tasks: [task, ...tasks.filter((item) => item.id !== task.id)]
+  }, {
+    storage: storage.driver || "json-file",
+    updatedBy: context.actorId || "automation",
+    action: "automation_task_create"
+  });
+  return task;
+}
+
+async function automationUpdateTask(storage, rule, context = {}) {
+  const sourceTask = context.task?.id ? context.task : null;
+  if (!sourceTask) return null;
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks.map(normalizeTask) : [];
+  const existing = tasks.find((task) => task.id === sourceTask.id);
+  if (!existing) return null;
+  const now = context.now || new Date().toISOString();
+  const target = cleanString(rule.actionTarget) || (rule.actionKind === "set_priority" ? "high" : "High");
+  const updated = normalizeTask(rule.actionKind === "set_priority"
+    ? { ...existing, priority: target.toLowerCase(), updatedAt: now }
+    : { ...existing, customFields: { ...existing.customFields, risk: target }, updatedAt: now });
+  await storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    tasks: tasks.map((task) => task.id === updated.id ? updated : task)
+  }, {
+    storage: storage.driver || "json-file",
+    updatedBy: context.actorId || "automation",
+    action: "automation_task_update"
+  });
+  return updated;
+}
+
+async function automationRecordActivity(storage, rule, context = {}) {
+  const now = context.now || new Date().toISOString();
+  return storage.upsertRecord("activities", normalizeActivity({
+    id: `automation-activity-${crypto.randomUUID()}`,
+    projectId: context.task?.projectId || context.project?.id || context.approval?.projectId || "",
+    taskId: context.task?.id || context.approval?.taskId || "",
+    memberId: context.task?.assignee || context.project?.owner || "",
+    type: "automation_action",
+    message: `${rule.name} handled ${automationContextTitle(context)}`,
+    createdAt: now
+  }), {
+    storage: storage.driver || "json-file",
+    updatedBy: context.actorId || "automation",
+    action: "automation_activity"
+  });
+}
+
+async function automationNotify(storage, rule, context = {}) {
+  const now = context.now || new Date().toISOString();
+  return storage.upsertRecord("notificationHistory", normalizeNotificationHistoryEvent({
+    id: `notification-history-${crypto.randomUUID()}`,
+    memberId: "",
+    kind: "automation-notify",
+    title: rule.name,
+    message: `${rule.actionTarget || "Automation"}: ${automationContextTitle(context)}`,
+    reason: `Triggered by ${rule.triggerKind}`,
+    count: 1,
+    channel: "automation",
+    createdAt: now,
+    updatedAt: now
+  }), {
+    storage: storage.driver || "json-file",
+    updatedBy: context.actorId || "automation",
+    action: "automation_notification"
+  });
+}
+
+async function automationScheduleReminder(storage, rule, context = {}) {
+  const now = context.now || new Date().toISOString();
+  const remindAt = new Date(Date.parse(now) + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return storage.upsertRecord("notificationReminders", normalizeNotificationReminder({
+    id: `notification-reminder-${crypto.randomUUID()}`,
+    sourceId: rule.id,
+    memberId: context.task?.assignee || context.project?.owner || "",
+    taskId: context.task?.id || context.approval?.taskId || "",
+    approvalId: context.approval?.id || "",
+    projectId: context.task?.projectId || context.project?.id || context.approval?.projectId || "",
+    companyId: context.link?.companyId || context.project?.companyId || context.approval?.companyId || "",
+    title: rule.actionTarget || rule.name,
+    message: `Automation reminder for ${automationContextTitle(context)}`,
+    remindAt,
+    repeat: "none",
+    status: "scheduled",
+    createdAt: now,
+    updatedAt: now
+  }), {
+    storage: storage.driver || "json-file",
+    updatedBy: context.actorId || "automation",
+    action: "automation_reminder"
+  });
+}
+
+async function recordAutomationRun(storage, rule, input = {}) {
+  const now = input.createdAt || new Date().toISOString();
+  return storage.upsertRecord("automationRuns", normalizeAutomationRunRecord({
+    id: `automation-run-${crypto.randomUUID()}`,
+    automationId: rule.id,
+    triggerKind: input.triggerKind || rule.triggerKind,
+    source: input.source || "server",
+    status: input.status || "applied",
+    changedCount: input.changedCount,
+    summary: input.summary,
+    createdAt: now,
+    updatedAt: now
+  }), {
+    storage: storage.driver || "json-file",
+    updatedBy: input.actorId || "automation",
+    action: "automation_run"
+  });
+}
+
+async function stampAutomationRuleRun(storage, rule, now = new Date().toISOString()) {
+  const updated = normalizeAutomationRuleRecord({
+    ...rule,
+    lastRun: now,
+    runCount: Number(rule.runCount || 0) + 1,
+    updatedAt: now
+  });
+  if (rule.storageSource === "record") {
+    return storage.upsertRecord("automationRules", updated, {
+      storage: storage.driver || "json-file",
+      updatedBy: "automation",
+      action: "automation_rule_run_stamp"
+    });
+  }
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const automations = Array.isArray(snapshot.automations) ? snapshot.automations : [];
+  if (automations.some((item) => item.id === rule.id)) {
+    await storage.saveWorkspaceSnapshot({
+      ...snapshot,
+      automations: automations.map((item) => item.id === rule.id ? { ...item, lastRun: now, runCount: updated.runCount } : item)
+    }, {
+      storage: storage.driver || "json-file",
+      updatedBy: "automation",
+      action: "automation_rule_run_stamp"
+    });
+  }
+  return updated;
+}
+
+function automationContextTitle(context = {}) {
+  return cleanString(context.task?.title || context.approval?.title || context.title || context.comment?.body || "matching work").slice(0, 120);
+}
+
+function daysFromToday(dateValue) {
+  const date = Date.parse(cleanString(dateValue).slice(0, 10));
+  if (!Number.isFinite(date)) return Number.POSITIVE_INFINITY;
+  const today = Date.parse(new Date().toISOString().slice(0, 10));
+  return Math.round((date - today) / (24 * 60 * 60 * 1000));
 }
 
 function paymentConfig() {
@@ -4001,6 +4401,19 @@ async function portalApprovalAction(storage, link, body = {}) {
     detail: `Hosted portal ${status} ${approval.title}`,
     metadata: { companyId: link.companyId, linkId: link.id, tokenId: link.tokenId, approvalId: approval.id, status }
   });
+  await runAutomationRules(storage, {
+    actorId: "portal-link",
+    source: "portal",
+    triggerKind: "portal_approval",
+    context: {
+      triggerKind: "portal_approval",
+      link,
+      approval: savedApproval,
+      task: approval.taskId ? await portalTaskRecord(storage, link.companyId, approval.taskId).catch(() => ({})) : {},
+      title: approval.title,
+      status
+    }
+  });
   return portalActionResponse(storage, link, {
     type: "approval",
     approval: publicPortalApproval(savedApproval, [], [], []),
@@ -4047,6 +4460,18 @@ async function portalCommentAction(storage, link, body = {}) {
     workspaceId: workspace.id,
     detail: `Hosted portal comment on ${task.title}`,
     metadata: { companyId: link.companyId, linkId: link.id, tokenId: link.tokenId, taskId: task.id }
+  });
+  await runAutomationRules(storage, {
+    actorId: "portal-link",
+    source: "portal",
+    triggerKind: "portal_comment",
+    context: {
+      triggerKind: "portal_comment",
+      link,
+      task,
+      comment,
+      title: task.title
+    }
   });
   return portalActionResponse(storage, link, { type: "comment", comment, activity, notification });
 }
@@ -4118,6 +4543,19 @@ async function portalFeatureRequestAction(storage, link, body = {}) {
     workspaceId: workspace.id,
     detail: `Hosted portal feature request ${title}`,
     metadata: { companyId: link.companyId, linkId: link.id, tokenId: link.tokenId, taskId: task.id, projectId: project.id }
+  });
+  await runAutomationRules(storage, {
+    actorId: "portal-link",
+    source: "portal",
+    triggerKind: "portal_feature_request",
+    context: {
+      triggerKind: "portal_feature_request",
+      link,
+      task,
+      project,
+      title,
+      priority: task.priority
+    }
   });
   return portalActionResponse(storage, link, { type: "feature-request", task, activity, notification });
 }
@@ -5424,6 +5862,101 @@ function normalizeNotificationHistoryEvent(event) {
     createdAt: event.createdAt ? String(event.createdAt) : new Date().toISOString(),
     updatedAt: event.updatedAt ? String(event.updatedAt) : event.createdAt ? String(event.createdAt) : new Date().toISOString()
   };
+}
+
+function normalizeAutomationRuleRecord(rule) {
+  requireRecord(rule, "Automation rule");
+  const triggerKind = cleanString(rule.triggerKind || triggerKindFromAutomationText(rule.trigger));
+  const actionKind = cleanString(rule.actionKind || actionKindFromAutomationText(rule.action));
+  const conditionKind = cleanString(rule.conditionKind || "any");
+  const createdAt = rule.createdAt ? String(rule.createdAt) : new Date().toISOString();
+  return {
+    id: cleanString(rule.id) || `automation-${crypto.randomUUID()}`,
+    name: cleanString(rule.name || "Untitled automation").slice(0, 100),
+    trigger: cleanString(rule.trigger || automationTriggerLabel(triggerKind)).slice(0, 180),
+    action: cleanString(rule.action || automationActionLabel(actionKind)).slice(0, 200),
+    triggerKind: ["task_due_soon", "task_blocked", "intake_high", "approval_pending", "milestone_due", "portal_feature_request", "portal_approval", "portal_comment", "import_completed"].includes(triggerKind) ? triggerKind : "task_due_soon",
+    conditionKind: ["any", "project", "assignee", "company", "priority", "tag"].includes(conditionKind) ? conditionKind : "any",
+    conditionValue: cleanString(rule.conditionValue).slice(0, 100),
+    actionKind: ["create_task", "set_risk", "set_priority", "add_activity", "draft_update", "notify_channel", "schedule_reminder"].includes(actionKind) ? actionKind : "create_task",
+    actionTarget: cleanString(rule.actionTarget).slice(0, 120),
+    enabled: rule.enabled !== false,
+    lastRun: cleanString(rule.lastRun),
+    runCount: Math.max(0, Math.round(Number(rule.runCount || 0))),
+    marketplacePackId: cleanString(rule.marketplacePackId).slice(0, 120),
+    source: cleanString(rule.source).slice(0, 64),
+    creatorName: cleanString(rule.creatorName).slice(0, 120),
+    installedAt: cleanString(rule.installedAt),
+    license: cleanString(rule.license).slice(0, 120),
+    createdAt,
+    updatedAt: rule.updatedAt ? String(rule.updatedAt) : createdAt
+  };
+}
+
+function normalizeAutomationRunRecord(run) {
+  requireRecord(run, "Automation run");
+  const createdAt = run.createdAt ? String(run.createdAt) : new Date().toISOString();
+  return {
+    id: cleanString(run.id) || `automation-run-${crypto.randomUUID()}`,
+    automationId: cleanString(run.automationId),
+    triggerKind: cleanString(run.triggerKind).slice(0, 80),
+    source: cleanString(run.source || "server").slice(0, 64),
+    status: ["applied", "failed", "rolled-back"].includes(cleanString(run.status)) ? cleanString(run.status) : "applied",
+    changedCount: Math.max(0, Math.round(Number(run.changedCount || 0))),
+    summary: cleanString(run.summary).slice(0, 260),
+    createdAt,
+    updatedAt: run.updatedAt ? String(run.updatedAt) : createdAt
+  };
+}
+
+function triggerKindFromAutomationText(value = "") {
+  const text = cleanString(value).toLowerCase();
+  if (text.includes("portal") && text.includes("feature")) return "portal_feature_request";
+  if (text.includes("portal") && text.includes("approval")) return "portal_approval";
+  if (text.includes("portal") && text.includes("comment")) return "portal_comment";
+  if (text.includes("import")) return "import_completed";
+  if (text.includes("intake")) return "intake_high";
+  if (text.includes("blocked")) return "task_blocked";
+  if (text.includes("approval")) return "approval_pending";
+  if (text.includes("milestone")) return "milestone_due";
+  return "task_due_soon";
+}
+
+function actionKindFromAutomationText(value = "") {
+  const text = cleanString(value).toLowerCase();
+  if (text.includes("priority")) return "set_priority";
+  if (text.includes("risk")) return "set_risk";
+  if (text.includes("reminder")) return "schedule_reminder";
+  if (text.includes("notify")) return "notify_channel";
+  if (text.includes("activity") || text.includes("comment")) return "add_activity";
+  if (text.includes("update")) return "draft_update";
+  return "create_task";
+}
+
+function automationTriggerLabel(triggerKind) {
+  return ({
+    task_due_soon: "Task due soon",
+    task_blocked: "Task is blocked",
+    intake_high: "High urgency intake",
+    approval_pending: "Approval pending",
+    milestone_due: "Milestone due soon",
+    portal_feature_request: "Portal feature request submitted",
+    portal_approval: "Portal approval changed",
+    portal_comment: "Portal comment added",
+    import_completed: "Import completed"
+  })[triggerKind] || "Task due soon";
+}
+
+function automationActionLabel(actionKind) {
+  return ({
+    create_task: "Create follow-up task",
+    set_risk: "Set risk field",
+    set_priority: "Set priority",
+    add_activity: "Record activity",
+    draft_update: "Draft client update",
+    notify_channel: "Notify integration channel",
+    schedule_reminder: "Schedule reminder"
+  })[actionKind] || "Create follow-up task";
 }
 
 function normalizeInboxStateRecord(record) {

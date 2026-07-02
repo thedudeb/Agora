@@ -1001,6 +1001,7 @@ async function testAccountAuth() {
       token: signup.token
     });
     assert(!recordCollections.collections.includes("clientPortalLinks"), "portal links should not be exposed as generic records");
+    assert(recordCollections.collections.includes("automationRules"), "automation rules should be exposed as generic records");
 
     const otherCompany = await request(`${baseUrl}/api/records/companies`, {
       method: "POST",
@@ -1167,6 +1168,24 @@ async function testAccountAuth() {
     });
     assert(portalComment.record.body === "Hosted portal comment", "portal comment upsert failed");
 
+    const portalAutomationRule = await request(`${baseUrl}/api/records/automationRules`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        record: {
+          id: "automation-portal-feature-smoke",
+          name: "Portal feature follow-up",
+          triggerKind: "portal_feature_request",
+          conditionKind: "company",
+          conditionValue: "company-record",
+          actionKind: "create_task",
+          actionTarget: "Owner follow-up",
+          enabled: true
+        }
+      }
+    });
+    assert(portalAutomationRule.record.triggerKind === "portal_feature_request", "automation rule upsert failed");
+
     const validatedPortalLink = await request(`${baseUrl}/api/portal-links/validate/${encodeURIComponent(portalLink.token)}`);
     assert(validatedPortalLink.portalLink.companyId === "company-record", "public portal validation did not return company scope");
     assert(validatedPortalLink.portalLink.viewCount === 1, "public portal validation did not count the view");
@@ -1224,6 +1243,14 @@ async function testAccountAuth() {
     assert(portalFeatureAction.action.notification.kind === "portal-feature-request", "hosted portal feature request did not create notification history");
     assert(portalFeatureAction.action.notification.email?.mode, "hosted portal feature request did not report email delivery status");
     assert(!portalFeatureAction.action.notification.email.to, "hosted portal feature request leaked owner email");
+    const portalAutomationRuns = await request(`${baseUrl}/api/records/automationRuns`, {
+      token: signup.token
+    });
+    assert(portalAutomationRuns.records.some((run) => run.automationId === "automation-portal-feature-smoke" && run.changedCount === 1), "portal feature request did not run matching automation");
+    const portalAutomationWorkspace = await request(`${baseUrl}/api/workspace`, {
+      token: signup.token
+    });
+    assert(portalAutomationWorkspace.snapshot.tasks.some((task) => task.title === "Owner follow-up: Portal requested timeline"), "portal automation did not create follow-up task");
 
     const copiedPortalLink = await request(`${baseUrl}/api/portal-links/${encodeURIComponent(portalLink.portalLink.id)}/events`, {
       method: "POST",

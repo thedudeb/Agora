@@ -402,7 +402,11 @@ const automationTriggerOptions = [
   { id: "task_blocked", label: "Task is blocked" },
   { id: "intake_high", label: "High urgency intake" },
   { id: "approval_pending", label: "Approval pending" },
-  { id: "milestone_due", label: "Milestone due soon" }
+  { id: "milestone_due", label: "Milestone due soon" },
+  { id: "portal_feature_request", label: "Portal feature request submitted" },
+  { id: "portal_approval", label: "Portal approval changed" },
+  { id: "portal_comment", label: "Portal comment added" },
+  { id: "import_completed", label: "Import completed" }
 ];
 
 const automationConditionOptions = [
@@ -410,15 +414,18 @@ const automationConditionOptions = [
   { id: "project", label: "Specific project" },
   { id: "assignee", label: "Specific assignee" },
   { id: "company", label: "Specific company" },
-  { id: "priority", label: "Specific priority" }
+  { id: "priority", label: "Specific priority" },
+  { id: "tag", label: "Specific tag" }
 ];
 
 const automationActionOptions = [
   { id: "create_task", label: "Create follow-up task" },
   { id: "set_risk", label: "Set risk field" },
+  { id: "set_priority", label: "Set priority" },
   { id: "add_activity", label: "Record activity" },
   { id: "draft_update", label: "Draft client update" },
-  { id: "notify_channel", label: "Notify integration channel" }
+  { id: "notify_channel", label: "Notify integration channel" },
+  { id: "schedule_reminder", label: "Schedule reminder" }
 ];
 
 const aiPermissionDefaults = {
@@ -2462,7 +2469,7 @@ function normalizeState(nextState) {
     projectTemplates: normalizeProjectTemplates(nextState.projectTemplates, nextState.deletedProjectTemplateIds),
     taskTemplates: Array.isArray(nextState.taskTemplates) ? nextState.taskTemplates : seedData.taskTemplates,
     automations: normalizeAutomations(nextState.automations),
-    automationHistory: Array.isArray(nextState.automationHistory) ? nextState.automationHistory : [],
+    automationHistory: Array.isArray(nextState.automationHistory) ? nextState.automationHistory.map(normalizeAutomationRun) : [],
     operatorActions: Array.isArray(nextState.operatorActions) ? nextState.operatorActions : [],
     companies: companies.map(normalizeCompanyRecord),
     projects: projects.map(normalizeProjectRecord),
@@ -2908,6 +2915,21 @@ function normalizeAutomations(automations = []) {
   return source.map(normalizeAutomationRule).filter((automation) => automation.name).slice(0, 50);
 }
 
+function normalizeAutomationRun(run = {}) {
+  return {
+    id: run.id || uid("automation-run"),
+    automationId: String(run.automationId || "").trim(),
+    triggerKind: String(run.triggerKind || "").trim(),
+    source: String(run.source || "local").trim(),
+    status: ["applied", "failed", "rolled-back"].includes(run.status) ? run.status : "applied",
+    changedCount: Number(run.changedCount || 0),
+    summary: String(run.summary || "").trim(),
+    rollbackState: run.rollbackState || null,
+    rollbackAvailable: Boolean(run.rollbackAvailable),
+    createdAt: run.createdAt || new Date().toISOString()
+  };
+}
+
 function normalizeAiPermissions(permissions = {}) {
   return Object.fromEntries(
     aiPermissionOptions.map((option) => [
@@ -2921,6 +2943,10 @@ function normalizeAiPermissions(permissions = {}) {
 
 function triggerKindFromText(value = "") {
   const text = String(value).toLowerCase();
+  if (text.includes("portal") && text.includes("feature")) return "portal_feature_request";
+  if (text.includes("portal") && text.includes("approval")) return "portal_approval";
+  if (text.includes("portal") && text.includes("comment")) return "portal_comment";
+  if (text.includes("import")) return "import_completed";
   if (text.includes("intake")) return "intake_high";
   if (text.includes("blocked") || text.includes("dependencies")) return "task_blocked";
   if (text.includes("approval")) return "approval_pending";
@@ -2930,7 +2956,9 @@ function triggerKindFromText(value = "") {
 
 function actionKindFromText(value = "") {
   const text = String(value).toLowerCase();
+  if (text.includes("priority")) return "set_priority";
   if (text.includes("risk")) return "set_risk";
+  if (text.includes("reminder")) return "schedule_reminder";
   if (text.includes("update")) return "draft_update";
   if (text.includes("notify")) return "notify_channel";
   if (text.includes("activity") || text.includes("alert")) return "add_activity";
@@ -3663,7 +3691,9 @@ const structuredRecordCollections = [
   "notificationReminders",
   "notificationHistory",
   "inboxState",
-  "integrationSettings"
+  "integrationSettings",
+  "automationRules",
+  "automationRuns"
 ];
 
 function mergeRecordsById(existingItems = [], incomingItems = []) {
@@ -3699,6 +3729,8 @@ function normalizeCollectionRecords(collection, items = []) {
   if (collection === "whiteboards") return normalizeWhiteboards(items);
   if (collection === "notificationReminders") return normalizeNotificationReminders(items);
   if (collection === "notificationHistory") return normalizeNotificationHistory(items);
+  if (collection === "automationRules") return normalizeAutomations(items);
+  if (collection === "automationRuns") return Array.isArray(items) ? items : [];
   return items;
 }
 
@@ -3706,6 +3738,18 @@ function mergeCollectionFromApi(collection, incoming = [], options = {}) {
   if (collection === "notificationSettings") return mergeNotificationSettingsFromApi(incoming);
   if (collection === "inboxState") return mergeInboxStateFromApi(incoming);
   if (collection === "integrationSettings") return mergeIntegrationSettingsFromApi(incoming);
+  if (collection === "automationRules") {
+    const incomingItems = normalizeAutomations(incoming);
+    const before = collectionSignature(state.automations);
+    state.automations = mergeRecordsById(state.automations, incomingItems).map(normalizeAutomationRule).slice(0, 50);
+    return before !== collectionSignature(state.automations);
+  }
+  if (collection === "automationRuns") {
+    const incomingItems = Array.isArray(incoming) ? incoming : [];
+    const before = collectionSignature(state.automationHistory);
+    state.automationHistory = mergeRecordsById(state.automationHistory, incomingItems.map(normalizeAutomationRun)).slice(0, 50);
+    return before !== collectionSignature(state.automationHistory);
+  }
   const current = Array.isArray(state[collection]) ? state[collection] : [];
   const incomingItems = normalizeCollectionRecords(collection, incoming);
   if (!incomingItems.length && !options.replaceEmpty) return false;
@@ -19755,7 +19799,10 @@ function renderAutomations() {
             <p class="eyebrow">Rules</p>
             <h2>Automations</h2>
           </div>
-          <button class="button button-primary" type="button" id="automation-run-all" ${enabled.length ? "" : "disabled"}>Run Enabled</button>
+          <div class="panel-actions">
+            <button class="button button-secondary compact-button" type="button" id="automation-run-server" ${apiSession && canWrite("scheduler:run") ? "" : "disabled"}>Run Server</button>
+            <button class="button button-primary" type="button" id="automation-run-all" ${enabled.length ? "" : "disabled"}>Run Enabled</button>
+          </div>
         </div>
         <div class="automation-composer">
           <input type="hidden" id="automation-id">
@@ -23791,6 +23838,7 @@ function matchingAutomationTasks(automation) {
     if (automation.conditionKind === "assignee") return memberName(task.assignee).toLowerCase().includes(value) || task.assignee === automation.conditionValue;
     if (automation.conditionKind === "company") return projectCompany(task.projectId).name.toLowerCase().includes(value) || projectCompany(task.projectId).id === automation.conditionValue;
     if (automation.conditionKind === "priority") return task.priority === value || priorityLabel(task.priority).toLowerCase() === value;
+    if (automation.conditionKind === "tag") return Array.isArray(task.tags) && task.tags.some((tag) => tag.toLowerCase() === value);
     return true;
   });
 }
@@ -23808,6 +23856,22 @@ function applyAutomationAction(automation, task, approval = null) {
       type: "automation_risk",
       message: `set risk for ${task.title} to ${automation.actionTarget || "High"}`
     });
+    return 1;
+  }
+  if (automation.actionKind === "set_priority") {
+    const priority = (automation.actionTarget || "high").toLowerCase();
+    state.tasks = state.tasks.map((item) => item.id === task.id ? {
+      ...item,
+      priority,
+      updatedAt: new Date().toISOString()
+    } : item);
+    addActivity({
+      projectId: task.projectId,
+      taskId: task.id,
+      type: "automation_priority",
+      message: `set priority for ${task.title} to ${priority}`
+    });
+    syncTaskToApi({ ...task, priority }, "Task priority synced", false);
     return 1;
   }
   if (automation.actionKind === "create_task") {
@@ -23837,6 +23901,24 @@ function applyAutomationAction(automation, task, approval = null) {
     });
     return 1;
   }
+  if (automation.actionKind === "schedule_reminder") {
+    const reminder = {
+      id: uid("reminder"),
+      sourceId: automation.id,
+      taskId: task.id,
+      approvalId: approval?.id || "",
+      projectId: task.projectId,
+      title: automation.actionTarget || automation.name,
+      message: `Automation reminder for ${approval?.title || task.title}`,
+      remindAt: shiftDate(todayKey(), 1),
+      repeat: "none",
+      status: "scheduled",
+      createdAt: new Date().toISOString()
+    };
+    state.notificationReminders = normalizeNotificationReminders([reminder, ...state.notificationReminders]);
+    syncRecordToApi("notificationReminders", { ...reminder, memberId: task.assignee || activeMemberId() }, "Automation reminder synced", false);
+    return 1;
+  }
   addActivity({
     projectId: task.projectId,
     taskId: task.id,
@@ -23848,10 +23930,16 @@ function applyAutomationAction(automation, task, approval = null) {
 }
 
 function toggleAutomation(ruleId) {
-  state.automations = state.automations.map((automation) => automation.id === ruleId ? { ...automation, enabled: !automation.enabled } : automation);
+  let updatedRule = null;
+  state.automations = state.automations.map((automation) => {
+    if (automation.id !== ruleId) return automation;
+    updatedRule = { ...automation, enabled: !automation.enabled, updatedAt: new Date().toISOString() };
+    return updatedRule;
+  });
   saveState();
   render();
   showToast("Automation updated", "success");
+  if (updatedRule) syncAutomationRuleToApi(updatedRule, "Automation rule updated in API", false);
 }
 
 function installAutomationMarketplacePack(packId) {
@@ -23886,6 +23974,7 @@ function installAutomationMarketplacePack(packId) {
   saveState();
   render();
   showToast(`Installed ${pack.name}`, "success");
+  rules.forEach((rule) => syncAutomationRuleToApi(rule, "Automation rule installed in API", false));
 }
 
 function exportAutomationMarketplacePack(packId) {
@@ -24055,6 +24144,7 @@ function installAutomationPackImportPayload() {
     saveState();
     render();
     showToast(`Imported ${payload.pack.name}`, "success");
+    importedRules.forEach((rule) => syncAutomationRuleToApi(rule, "Automation rule imported to API", false));
   } catch (error) {
     showToast(`Pack import failed: ${error.message}`, "info");
   }
@@ -24167,6 +24257,7 @@ function saveAutomationRule() {
   saveState();
   render();
   showToast(existing ? "Automation updated" : "Automation created", "success");
+  syncAutomationRuleToApi(rule, existing ? "Automation rule updated in API" : "Automation rule created in API", false);
 }
 
 function editAutomationRule(ruleId) {
@@ -24199,6 +24290,10 @@ function editAutomationRule(ruleId) {
 }
 
 function deleteAutomationRule(ruleId) {
+  const automation = byId(state.automations, ruleId);
+  if (automation) {
+    syncAutomationRuleToApi({ ...automation, enabled: false, updatedAt: new Date().toISOString() }, "Automation rule disabled in API", false);
+  }
   state.automations = state.automations.filter((automation) => automation.id !== ruleId);
   state.automationHistory = state.automationHistory.filter((run) => run.automationId !== ruleId);
   saveState();
@@ -26820,6 +26915,10 @@ async function syncActivityToApi(activity) {
   await syncRecordToApi("activities", activity, "Activity synced", false);
 }
 
+async function syncAutomationRuleToApi(rule, action = "Automation rule synced", showSuccess = false) {
+  await syncRecordToApi("automationRules", normalizeAutomationRule(rule), action, showSuccess);
+}
+
 async function syncDocumentToApi(document, action = "Doc synced") {
   await syncRecordToApi("documents", document, action);
 }
@@ -26856,6 +26955,42 @@ async function runServerNotificationScheduler() {
     showToast(result.processed ? `Server scheduler processed ${result.processed} reminder${result.processed === 1 ? "" : "s"}` : "No due reminders on the server", result.processed ? "success" : "info");
   } catch (error) {
     showToast(`Server scheduler failed: ${error.message}`, "info");
+  }
+}
+
+async function runServerAutomations() {
+  if (!apiSession) {
+    showToast("Connect to the API before running server automations", "info");
+    return;
+  }
+  if (!canWrite("scheduler:run")) {
+    showToast("Your role cannot run server automations", "info");
+    return;
+  }
+  try {
+    const result = await apiRequest("/api/automations/run", {
+      method: "POST",
+      body: {}
+    });
+    let changed = false;
+    if (Array.isArray(result.tasks) && result.tasks.length) {
+      const before = collectionSignature(state.tasks);
+      state.tasks = mergeRecordsById(state.tasks, result.tasks);
+      changed = before !== collectionSignature(state.tasks) || changed;
+    }
+    if (Array.isArray(result.activities)) changed = mergeCollectionFromApi("activities", result.activities) || changed;
+    if (Array.isArray(result.history)) changed = mergeCollectionFromApi("notificationHistory", result.history) || changed;
+    if (Array.isArray(result.reminders)) changed = mergeCollectionFromApi("notificationReminders", result.reminders) || changed;
+    if (Array.isArray(result.rules)) changed = mergeCollectionFromApi("automationRules", result.rules) || changed;
+    if (Array.isArray(result.runs)) changed = mergeCollectionFromApi("automationRuns", result.runs) || changed;
+    if (changed) {
+      markRealtimeChanged();
+      saveState();
+      render();
+    }
+    showToast(result.changedCount ? `Server automations changed ${result.changedCount} ${result.changedCount === 1 ? "item" : "items"}` : "No server automation changes", result.changedCount ? "success" : "info");
+  } catch (error) {
+    showToast(`Server automations failed: ${error.message}`, "info");
   }
 }
 
@@ -27522,6 +27657,9 @@ document.addEventListener("click", (event) => {
 
   const runAllAutomationsButton = event.target.closest("#automation-run-all");
   if (runAllAutomationsButton) runAllAutomations();
+
+  const runServerAutomationsButton = event.target.closest("#automation-run-server");
+  if (runServerAutomationsButton) runServerAutomations();
 
   const automationSuggestionButton = event.target.closest("[data-automation-suggestion]");
   if (automationSuggestionButton) logAutomationSuggestion(automationSuggestionButton.dataset.automationSuggestion);
