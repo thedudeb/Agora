@@ -1028,6 +1028,7 @@ const seedData = {
         { id: "done", label: "Done", wipLimit: 0, enabled: true }
       ],
       swimlane: "none",
+      swimlaneValue: "",
       sort: "manual",
       density: "comfortable",
       collapsed: [],
@@ -2581,7 +2582,8 @@ function normalizeWorkspaceBoard(board = {}) {
       enabled: column.enabled !== false
     };
   });
-  const swimlane = ["none", "assignee", "priority", "company"].includes(board.swimlane) ? board.swimlane : fallback.swimlane || "none";
+  const swimlaneOptions = ["none", "assignee", "priority", "company", "blocked", "overdue", "stale", "review", "client", "tag"];
+  const swimlane = swimlaneOptions.includes(board.swimlane) ? board.swimlane : fallback.swimlane || "none";
   const sort = ["manual", "due", "priority"].includes(board.sort) ? board.sort : fallback.sort || "manual";
   const density = ["comfortable", "compact", "minimal"].includes(board.density) ? board.density : fallback.density || "comfortable";
   const validColumnIds = statuses.map((status) => status.id);
@@ -2593,6 +2595,7 @@ function normalizeWorkspaceBoard(board = {}) {
   return {
     columns,
     swimlane,
+    swimlaneValue: String(board.swimlaneValue || fallback.swimlaneValue || "").trim().slice(0, 48),
     sort,
     density,
     collapsed: Array.isArray(board.collapsed) ? board.collapsed.map(String).filter((id) => validColumnIds.includes(id)) : fallback.collapsed || [],
@@ -9220,6 +9223,7 @@ function boardViewSnapshot() {
   const board = normalizeWorkspaceBoard(state.workspace.board);
   return {
     swimlane: board.swimlane,
+    swimlaneValue: board.swimlaneValue,
     sort: board.sort,
     density: board.density,
     collapsed: [...board.collapsed],
@@ -9234,6 +9238,7 @@ function normalizeBoardViewSettings(value, baseBoard = seedData.workspace.board)
   const board = normalizeWorkspaceBoard({ ...baseBoard, ...value });
   return {
     swimlane: board.swimlane,
+    swimlaneValue: board.swimlaneValue,
     sort: board.sort,
     density: board.density,
     collapsed: [...board.collapsed],
@@ -13198,6 +13203,7 @@ function applyBoardTemplate(templateId) {
   updateBoardSetting({
     columns: template.columns,
     swimlane: board.swimlane,
+    swimlaneValue: board.swimlaneValue,
     sort: board.sort,
     density: board.density,
     collapsed: [],
@@ -18121,8 +18127,8 @@ function boardOrderedTasks(tasks = []) {
 }
 
 function boardSwimlaneGroups(tasks = []) {
-  const swimlane = normalizeWorkspaceBoard(state.workspace.board).swimlane;
-  if (swimlane === "assignee") {
+  const board = normalizeWorkspaceBoard(state.workspace.board);
+  if (board.swimlane === "assignee") {
     const groups = workspaceMembers().map((member) => ({
       id: member.id,
       label: member.name,
@@ -18131,15 +18137,64 @@ function boardSwimlaneGroups(tasks = []) {
     const unassigned = tasks.filter((task) => !task.assignee);
     return [...groups.filter((group) => group.tasks.length), ...(unassigned.length ? [{ id: "unassigned", label: "Unassigned", tasks: unassigned }] : [])];
   }
-  if (swimlane === "priority") {
+  if (board.swimlane === "priority") {
     return priorities
       .map((priority) => ({ id: priority.id, label: priority.label, tasks: tasks.filter((task) => task.priority === priority.id) }))
       .filter((group) => group.tasks.length);
   }
-  if (swimlane === "company") {
+  if (board.swimlane === "company") {
     return state.companies
       .map((company) => ({ id: company.id, label: company.name, tasks: tasks.filter((task) => projectCompany(task.projectId).id === company.id) }))
       .filter((group) => group.tasks.length);
+  }
+  if (board.swimlane === "blocked") {
+    const blocked = tasks.filter(isTaskBlocked);
+    const flowing = tasks.filter((task) => !isTaskBlocked(task));
+    return [
+      blocked.length ? { id: "blocked", label: "Blocked", tasks: blocked } : null,
+      flowing.length ? { id: "flowing", label: "Flowing", tasks: flowing } : null
+    ].filter(Boolean);
+  }
+  if (board.swimlane === "overdue") {
+    const overdue = tasks.filter(isOverdue);
+    const onTrack = tasks.filter((task) => !isOverdue(task));
+    return [
+      overdue.length ? { id: "overdue", label: "Overdue", tasks: overdue } : null,
+      onTrack.length ? { id: "on-track", label: "On track", tasks: onTrack } : null
+    ].filter(Boolean);
+  }
+  if (board.swimlane === "stale") {
+    const stale = tasks.filter((task) => task.status !== "done" && daysBetween((task.updatedAt || task.createdAt || todayKey()).slice(0, 10), todayKey()) >= 7);
+    const fresh = tasks.filter((task) => !stale.some((item) => item.id === task.id));
+    return [
+      stale.length ? { id: "stale", label: "Needs movement", tasks: stale } : null,
+      fresh.length ? { id: "fresh", label: "Recently touched", tasks: fresh } : null
+    ].filter(Boolean);
+  }
+  if (board.swimlane === "review") {
+    const review = tasks.filter((task) => task.status === "review");
+    const other = tasks.filter((task) => task.status !== "review");
+    return [
+      review.length ? { id: "review", label: "Review queue", tasks: review } : null,
+      other.length ? { id: "other", label: "Other active work", tasks: other } : null
+    ].filter(Boolean);
+  }
+  if (board.swimlane === "client") {
+    const visible = tasks.filter((task) => taskVisibility(task) !== "internal");
+    const internal = tasks.filter((task) => taskVisibility(task) === "internal");
+    return [
+      visible.length ? { id: "client-visible", label: "Client-visible", tasks: visible } : null,
+      internal.length ? { id: "internal", label: "Internal", tasks: internal } : null
+    ].filter(Boolean);
+  }
+  if (board.swimlane === "tag") {
+    const tag = board.swimlaneValue.toLowerCase();
+    const tagged = tag ? tasks.filter((task) => task.tags.some((item) => item.toLowerCase() === tag)) : [];
+    const rest = tag ? tasks.filter((task) => !task.tags.some((item) => item.toLowerCase() === tag)) : tasks;
+    return [
+      tagged.length ? { id: `tag-${tag}`, label: `Tagged ${board.swimlaneValue}`, tasks: tagged } : null,
+      rest.length ? { id: "untagged", label: tag ? "Everything else" : "Choose a tag", tasks: rest } : null
+    ].filter(Boolean);
   }
   return [{ id: "all", label: "All work", tasks }];
 }
@@ -18399,15 +18454,25 @@ function renderBoardControls() {
           </select>
         </label>
         <label>
-          <span>Swimlanes</span>
+          <span>Advanced Swimlanes</span>
           <select id="board-swimlane">
             ${[
               ["none", "No swimlanes"],
               ["assignee", "By assignee"],
               ["priority", "By priority"],
-              ["company", "By company"]
+              ["company", "By company"],
+              ["blocked", "Blocked vs flowing"],
+              ["overdue", "Overdue vs on track"],
+              ["stale", "Needs movement"],
+              ["review", "Review queue"],
+              ["client", "Client-visible"],
+              ["tag", "Specific tag"]
             ].map(([id, label]) => `<option value="${id}" ${board.swimlane === id ? "selected" : ""}>${label}</option>`).join("")}
           </select>
+        </label>
+        <label>
+          <span>Lane tag</span>
+          <input value="${escapeHtml(board.swimlaneValue)}" placeholder="launch, client, bug" data-board-swimlane-value>
         </label>
         <label>
           <span>Sort</span>
@@ -29902,6 +29967,12 @@ els.appView.addEventListener("change", (event) => {
   const boardSwimlaneSelect = event.target.closest("#board-swimlane");
   if (boardSwimlaneSelect) {
     updateBoardSetting({ swimlane: boardSwimlaneSelect.value });
+    return;
+  }
+
+  const boardSwimlaneValueInput = event.target.closest("[data-board-swimlane-value]");
+  if (boardSwimlaneValueInput) {
+    updateBoardSetting({ swimlaneValue: boardSwimlaneValueInput.value.trim() });
     return;
   }
 

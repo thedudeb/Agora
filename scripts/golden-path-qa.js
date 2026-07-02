@@ -110,6 +110,7 @@ const routeChecks = [
       "Backlog / Triage",
       "Flow analytics",
       "Workflow",
+      "Advanced Swimlanes",
       "Swimlanes",
       "Manual order",
       "Density",
