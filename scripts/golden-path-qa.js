@@ -151,6 +151,23 @@ const routeChecks = [
     ]
   },
   {
+    name: "Project command center",
+    suite: "workspace",
+    route: "project",
+    query: { project: "launch", tab: "overview" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Project command center",
+      "Project health",
+      "Action queue",
+      "What to do next",
+      "Timeline slip",
+      "Client visibility",
+      "Decision load"
+    ]
+  },
+  {
     name: "Decision log",
     suite: "workspace",
     route: "decisions",

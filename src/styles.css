@@ -3012,6 +3012,44 @@ body[data-tutorial-target="view"] #app-view {
   margin-bottom: 16px;
 }
 
+.project-command-hero,
+.project-action-queue,
+.project-command-status {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.project-command-hero {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.project-command-status {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.project-action-queue {
+  grid-template-columns: minmax(180px, 0.7fr) repeat(5, minmax(140px, 1fr));
+}
+
+.project-command-hero article,
+.project-action-queue > div,
+.project-action-queue article {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  min-height: 104px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.project-action-queue article .button {
+  justify-self: start;
+}
+
 .project-command-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3789,6 +3827,7 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .automation-preview span,
+.project-command-hero span,
 .project-command-grid span {
   display: block;
   color: var(--muted);
@@ -3798,12 +3837,14 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .automation-preview strong,
+.project-command-hero strong,
 .project-command-grid strong {
   display: block;
   margin: 5px 0;
 }
 
 .automation-preview small,
+.project-command-hero p,
 .project-command-grid p,
 .mobile-roadmap-list p {
   margin: 0;
@@ -8523,6 +8564,8 @@ body[data-density="compact"] .main-content {
   .marketplace-command-grid,
   .team-launch-list,
   .command-center-grid,
+  .project-command-hero,
+  .project-action-queue,
   .operator-center-grid,
   .settings-grid,
   .data-grid,

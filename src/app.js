@@ -18190,6 +18190,23 @@ function renderProjectCommandCenter(project, details) {
   const readinessItems = realProjectReadinessItems(project);
   const readinessDone = readinessItems.filter((item) => item.done).length;
   const blockedTasks = openTasks.filter(isTaskBlocked);
+  const progress = projectProgress(getProjectTasks(project.id, false));
+  const scheduledTasks = getProjectTasks(project.id, false).filter((task) => task.dueDate);
+  const slippedTasks = scheduledTasks.filter((task) => isOverdue(task) && task.status !== "done");
+  const clientVisibleTasks = filteredProjectTasks.filter((task) => taskVisibility(task) !== "internal");
+  const staleTasks = openTasks.filter((task) => daysBetween((task.updatedAt || task.createdAt || todayKey()).slice(0, 10), todayKey()) >= 7);
+  const healthScore = clamp(
+    100
+      - overdueTasks.length * 12
+      - blockedTasks.length * 10
+      - projectApprovals.length * 8
+      - staleTasks.length * 5
+      - slippedTasks.length * 10
+      + Math.round(progress / 8),
+    0,
+    100
+  );
+  const healthTone = healthScore >= 80 ? "inbox-green" : healthScore >= 55 ? "inbox-amber" : "inbox-red";
   const risks = [
     overdueTasks.length ? `${overdueTasks.length} overdue ${overdueTasks.length === 1 ? "task" : "tasks"}` : "",
     blockedTasks.length ? `${blockedTasks.length} blocked ${blockedTasks.length === 1 ? "task" : "tasks"}` : "",
@@ -18202,6 +18219,12 @@ function renderProjectCommandCenter(project, details) {
     .sort((a, b) => operatorTaskScore(b) - operatorTaskScore(a))[0];
   const nextRaid = openRaidItems
     .sort((a, b) => raidSeverityScore(b) - raidSeverityScore(a) || cleanString(a.dueDate).localeCompare(cleanString(b.dueDate)))[0];
+  const actionQueue = [
+    ...overdueTasks.map((task) => ({ id: task.id, label: "Overdue", title: task.title, detail: `${memberName(task.assignee)} / due ${formatDate(task.dueDate)}`, action: "Open", taskId: task.id, tone: "red" })),
+    ...blockedTasks.map((task) => ({ id: task.id, label: "Blocked", title: task.title, detail: `${openTaskDependencies(task).length} open dependencies`, action: "Open", taskId: task.id, tone: "amber" })),
+    ...projectApprovals.map((approval) => ({ id: approval.id, label: "Approval", title: approval.title, detail: `Due ${formatDate(approval.dueDate)}`, action: "Visibility", route: "visibility", tone: "blue" })),
+    ...staleTasks.map((task) => ({ id: task.id, label: "Stale", title: task.title, detail: `Updated ${formatTimestamp(task.updatedAt || task.createdAt)}`, action: "Open", taskId: task.id, tone: "neutral" }))
+  ].slice(0, 5);
 
   return `
     <section class="panel project-command-panel">
@@ -18214,6 +18237,55 @@ function renderProjectCommandCenter(project, details) {
           <button class="button button-secondary compact-button" type="button" data-route="reports">Open reports</button>
           <button class="button button-secondary compact-button" type="button" data-project-tab="timeline">Open timeline</button>
         </div>
+      </div>
+      <div class="project-command-hero">
+        <article>
+          <span>Project health</span>
+          <strong>${healthScore}%</strong>
+          <p>${healthScore >= 80 ? "Execution is healthy." : healthScore >= 55 ? "Watch the pressure points." : "Needs PM intervention."}</p>
+        </article>
+        <article>
+          <span>Timeline slip</span>
+          <strong>${slippedTasks.length}</strong>
+          <p>${slippedTasks[0] ? `${escapeHtml(slippedTasks[0].title)} is past due.` : "No scheduled task has slipped."}</p>
+        </article>
+        <article>
+          <span>Client visibility</span>
+          <strong>${clientVisibleTasks.length}</strong>
+          <p>${clientVisibleTasks.length ? "Client-facing work is in motion." : "No client-visible task is currently flagged."}</p>
+        </article>
+        <article>
+          <span>Decision load</span>
+          <strong>${openRaidItems.filter((item) => item.type === "decision").length}</strong>
+          <p>${nextRaid?.type === "decision" ? escapeHtml(nextRaid.title) : "No decision is currently leading the queue."}</p>
+        </article>
+      </div>
+      <div class="project-command-status">
+        <span class="status-pill ${healthTone}">Health ${healthScore}%</span>
+        <span class="status-pill ${blockedTasks.length ? "inbox-amber" : "inbox-green"}">${blockedTasks.length} blocked</span>
+        <span class="status-pill ${projectApprovals.length ? "inbox-blue" : "inbox-green"}">${projectApprovals.length} approvals</span>
+        <span class="status-pill ${staleTasks.length ? "inbox-amber" : "inbox-green"}">${staleTasks.length} stale</span>
+      </div>
+      <div class="project-action-queue">
+        <div>
+          <p class="eyebrow">Action queue</p>
+          <h3>What to do next</h3>
+        </div>
+        ${actionQueue.length ? actionQueue.map((item) => `
+          <article>
+            <span class="status-pill inbox-${item.tone}">${escapeHtml(item.label)}</span>
+            <strong>${escapeHtml(item.title)}</strong>
+            <small>${escapeHtml(item.detail)}</small>
+            <button class="button button-secondary compact-button" type="button" ${item.taskId ? `data-edit-task="${item.taskId}"` : `data-route="${item.route}"`}>${escapeHtml(item.action)}</button>
+          </article>
+        `).join("") : `
+          <article>
+            <span class="status-pill inbox-green">Clear</span>
+            <strong>No urgent project action</strong>
+            <small>Use this window to groom scope, validate milestones, or prep client updates.</small>
+            <button class="button button-secondary compact-button" type="button" data-project-tab="timeline">Review Timeline</button>
+          </article>
+        `}
       </div>
       <div class="project-command-grid">
         <article>
