@@ -2608,6 +2608,14 @@ function boardColumns() {
   return normalizeWorkspaceBoard(state?.workspace?.board).columns.filter((column) => column.enabled);
 }
 
+function isBoardBacklogTask(task) {
+  return Boolean(task?.customFields?.boardBacklog);
+}
+
+function boardActiveTasks(tasks = []) {
+  return tasks.filter((task) => !isBoardBacklogTask(task));
+}
+
 function boardColumnLabel(statusId) {
   return boardColumns().find((column) => column.id === statusId)?.label || statuses.find((status) => status.id === statusId)?.label || statusId;
 }
@@ -13377,6 +13385,112 @@ function saveBoardAutomationRuleFromControls(preset = "") {
   syncAutomationRuleToApi(rule, existing ? "Board automation updated in API" : "Board automation created in API", false);
 }
 
+function createBoardBacklogTask(title) {
+  const cleanTitle = String(title || "").trim();
+  const projectId = boardQuickAddProjectId();
+  if (!cleanTitle) {
+    showToast("Add a backlog card title first", "info");
+    return;
+  }
+  if (!projectId) {
+    showToast("Create a project before adding backlog cards", "info");
+    return;
+  }
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot create tasks", "info");
+    return;
+  }
+  const now = new Date().toISOString();
+  const task = {
+    id: uid("task"),
+    projectId,
+    title: cleanTitle,
+    description: "",
+    assignee: activeMemberId(),
+    status: "todo",
+    priority: "normal",
+    startDate: todayKey(),
+    dueDate: "",
+    boardOrder: 0,
+    blockedBy: [],
+    tags: ["backlog"],
+    subtasks: [],
+    customFields: { boardBacklog: true },
+    createdAt: now,
+    updatedAt: now
+  };
+  state.tasks = [task, ...state.tasks];
+  addActivity({
+    projectId,
+    taskId: task.id,
+    type: "task_backlog",
+    message: `captured backlog card ${task.title}`
+  });
+  saveState();
+  render();
+  showToast(`Added ${task.title} to backlog`, "success");
+  syncTaskToApi(task, "Backlog task created in API", true);
+}
+
+function promoteBoardBacklogTask(taskId) {
+  const task = byId(state.tasks, taskId);
+  if (!task) return;
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot promote tasks", "info");
+    return;
+  }
+  const now = new Date().toISOString();
+  const targetStatus = "todo";
+  const nextOrder = boardOrderedTasks(getFilteredTasks().filter((item) => item.status === targetStatus && !isBoardBacklogTask(item))).length + 1;
+  const nextTask = {
+    ...task,
+    status: targetStatus,
+    boardOrder: nextOrder,
+    customFields: { ...(task.customFields || {}), boardBacklog: false },
+    updatedAt: now
+  };
+  state.tasks = state.tasks.map((item) => item.id === task.id ? nextTask : item);
+  addAuditEvent({
+    action: "task_board_promote",
+    detail: `Promoted ${task.title} from backlog`,
+    targetType: "task",
+    targetId: task.id,
+    metadata: { status: targetStatus }
+  });
+  saveState();
+  render();
+  showToast(`${task.title} promoted to ${boardColumnLabel(targetStatus)}`, "success");
+  syncTaskToApi(nextTask, "Backlog promotion synced to API", false, recordRevisionValue(task));
+}
+
+function sendTaskToBoardBacklog(taskId) {
+  const task = byId(state.tasks, taskId);
+  if (!task) return;
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot move tasks to backlog", "info");
+    return;
+  }
+  const now = new Date().toISOString();
+  const nextTask = {
+    ...task,
+    status: "todo",
+    boardOrder: 0,
+    customFields: { ...(task.customFields || {}), boardBacklog: true },
+    updatedAt: now
+  };
+  state.tasks = state.tasks.map((item) => item.id === task.id ? nextTask : item);
+  addAuditEvent({
+    action: "task_board_backlog",
+    detail: `Sent ${task.title} to backlog`,
+    targetType: "task",
+    targetId: task.id
+  });
+  saveState();
+  render();
+  showToast(`${task.title} moved to backlog`, "success");
+  syncTaskToApi(nextTask, "Backlog move synced to API", false, recordRevisionValue(task));
+}
+
 function boardQuickAddProjectId() {
   if (state.selectedProject !== "all" && byId(state.projects, state.selectedProject)) return state.selectedProject;
   if (state.filters.project !== "all" && byId(state.projects, state.filters.project)) return state.filters.project;
@@ -18137,6 +18251,40 @@ function renderBoardAutomationBuilder() {
   `;
 }
 
+function renderBoardBacklogPanel(tasks = []) {
+  const backlogTasks = tasks.filter(isBoardBacklogTask);
+  const readyTasks = backlogTasks.filter((task) => !isTaskBlocked(task) && (!task.dueDate || !isOverdue(task))).slice(0, 6);
+  return `
+    <section class="panel board-backlog-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Backlog / Triage</p>
+          <h2>${backlogTasks.length} groomed ${backlogTasks.length === 1 ? "card" : "cards"}</h2>
+        </div>
+        <span class="status-pill inbox-blue">${readyTasks.length} ready</span>
+      </div>
+      <form class="board-backlog-composer" data-board-backlog-create>
+        <input name="title" placeholder="Capture a backlog card before it hits the active board" aria-label="Backlog card title">
+        <button class="button button-secondary compact-button" type="submit">Add Backlog</button>
+      </form>
+      <div class="board-backlog-list">
+        ${backlogTasks.length ? backlogTasks.slice(0, 8).map((task) => `
+          <article class="board-backlog-item">
+            <div>
+              <strong>${escapeHtml(task.title)}</strong>
+              <span>${escapeHtml(projectName(task.projectId))} / ${priorityLabel(task.priority)}${task.dueDate ? ` / ${formatDate(task.dueDate)}` : ""}</span>
+            </div>
+            <div>
+              <button class="button button-primary compact-button" type="button" data-board-promote="${task.id}">Promote</button>
+              <button class="button button-secondary compact-button" type="button" data-edit-task="${task.id}">Open</button>
+            </div>
+          </article>
+        `).join("") : emptyState("No backlog cards yet. Capture uncertain work here before it reaches the active board.")}
+      </div>
+    </section>
+  `;
+}
+
 function renderBoardControls() {
   const board = normalizeWorkspaceBoard(state.workspace.board);
   const boardViews = state.savedViews.filter((view) => view.route === "board");
@@ -18274,7 +18422,8 @@ function renderBoardColumn(column, tasks) {
 function renderKanbanBoard(tasks, { controls = false, label = "Task board" } = {}) {
   const board = normalizeWorkspaceBoard(state.workspace.board);
   const columns = board.columns.filter((column) => column.enabled && (board.showDone || column.id !== "done"));
-  const groups = boardSwimlaneGroups(tasks);
+  const activeBoardTasks = boardActiveTasks(tasks);
+  const groups = boardSwimlaneGroups(activeBoardTasks);
   const boardMarkup = groups.map((group) => `
     <section class="board-swimlane" data-board-lane="${escapeHtml(group.id)}">
       ${board.swimlane === "none" ? "" : `
@@ -18288,7 +18437,7 @@ function renderKanbanBoard(tasks, { controls = false, label = "Task board" } = {
       </div>
     </section>
   `).join("");
-  return `${controls ? `${renderBoardControls()}${renderBoardHealthStrip(tasks)}${renderBoardMobileTabs(columns)}` : ""}${boardMarkup}`;
+  return `${controls ? `${renderBoardControls()}${renderBoardBacklogPanel(tasks)}${renderBoardHealthStrip(activeBoardTasks)}${renderBoardMobileTabs(columns)}` : ""}${boardMarkup}`;
 }
 
 function renderProjectBoard(tasks) {
@@ -23142,6 +23291,7 @@ function renderTaskCard(task) {
         <button class="button button-secondary compact-button" type="button" data-board-move="${task.id}" data-board-move-status="${nextColumn?.id || ""}" ${nextColumn ? "" : "disabled"} aria-label="Move ${escapeHtml(task.title)} to ${escapeHtml(nextColumn?.label || "next column")}">→</button>
         <button class="button button-secondary compact-button" type="button" data-edit-task="${task.id}">Open</button>
         <button class="button button-secondary compact-button" type="button" data-task-plan-today="${task.id}">Today</button>
+        <button class="button button-secondary compact-button" type="button" data-board-backlog="${task.id}">Backlog</button>
         <button class="button button-primary compact-button" type="button" data-task-complete="${task.id}" ${task.status === "done" ? "disabled" : ""}>Done</button>
         <button class="button button-secondary button-danger compact-button" type="button" data-archive-task="${task.id}">Archive</button>
       </div>` : ""}
@@ -29209,6 +29359,18 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const boardPromoteButton = event.target.closest("[data-board-promote]");
+  if (boardPromoteButton) {
+    promoteBoardBacklogTask(boardPromoteButton.dataset.boardPromote);
+    return;
+  }
+
+  const boardBacklogButton = event.target.closest("[data-board-backlog]");
+  if (boardBacklogButton) {
+    sendTaskToBoardBacklog(boardBacklogButton.dataset.boardBacklog);
+    return;
+  }
+
   const boardMobileButton = event.target.closest("[data-board-mobile-column]");
   if (boardMobileButton) {
     setBoardMobileColumn(boardMobileButton.dataset.boardMobileColumn);
@@ -29815,6 +29977,13 @@ els.appView.addEventListener("drop", (event) => {
 els.appView.addEventListener("dragend", clearBoardDropIndicators);
 
 els.appView.addEventListener("submit", (event) => {
+  const boardBacklogForm = event.target.closest("[data-board-backlog-create]");
+  if (boardBacklogForm) {
+    event.preventDefault();
+    createBoardBacklogTask(boardBacklogForm.elements.title?.value || "");
+    return;
+  }
+
   const boardQuickAddForm = event.target.closest("[data-board-quick-add]");
   if (boardQuickAddForm) {
     event.preventDefault();

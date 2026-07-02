@@ -107,6 +107,7 @@ const routeChecks = [
       "Kanban controls",
       "Board system",
       "Board automation builder",
+      "Backlog / Triage",
       "Workflow",
       "Swimlanes",
       "Manual order",

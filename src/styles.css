@@ -6424,6 +6424,44 @@ body[data-tutorial-target="view"] #app-view {
   font-weight: 800;
 }
 
+.board-backlog-panel {
+  margin-bottom: 14px;
+}
+
+.board-backlog-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.board-backlog-list {
+  display: grid;
+  gap: 8px;
+}
+
+.board-backlog-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.board-backlog-item span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.board-backlog-item > div:last-child {
+  display: inline-flex;
+  gap: 6px;
+}
+
 .board-health-strip {
   align-items: center;
   margin-bottom: 14px;
@@ -8249,6 +8287,8 @@ body[data-density="compact"] .main-content {
   .recovery-confidence-grid,
   .automation-composer,
   .board-automation-builder,
+  .board-backlog-composer,
+  .board-backlog-item,
   .settings-form,
   .settings-section-account .api-sync-form,
   .entitlement-grant-form,
