@@ -270,6 +270,14 @@ const boardWorkflowTemplates = [
   }
 ];
 
+const boardCardFieldDefaults = {
+  description: true,
+  meta: true,
+  signals: true,
+  tags: true,
+  actions: true
+};
+
 const featureRequestStatuses = [
   { id: "new", label: "New" },
   { id: "triaged", label: "Triaged" },
@@ -1017,7 +1025,11 @@ const seedData = {
       sort: "manual",
       density: "comfortable",
       collapsed: [],
-      showDone: true
+      showDone: true,
+      mobileColumn: "todo",
+      selectedTaskId: "",
+      lastUndo: null,
+      cardFields: { ...boardCardFieldDefaults }
     },
     ai: {
       provider: "local",
@@ -2176,6 +2188,7 @@ let lastPointerSyncedAt = 0;
 let liveRefreshInFlight = false;
 let taskEditSnapshots = new Map();
 let staleTaskOverrideId = "";
+let openBoardMenuColumn = "";
 
 function initSmoothScroll() {
   if (!window.Lenis || reducedMotionQuery?.matches) return;
@@ -2565,13 +2578,23 @@ function normalizeWorkspaceBoard(board = {}) {
   const swimlane = ["none", "assignee", "priority", "company"].includes(board.swimlane) ? board.swimlane : fallback.swimlane || "none";
   const sort = ["manual", "due", "priority"].includes(board.sort) ? board.sort : fallback.sort || "manual";
   const density = ["comfortable", "compact", "minimal"].includes(board.density) ? board.density : fallback.density || "comfortable";
+  const validColumnIds = statuses.map((status) => status.id);
+  const mobileColumn = validColumnIds.includes(board.mobileColumn) ? board.mobileColumn : fallback.mobileColumn || "todo";
+  const cardFields = Object.fromEntries(Object.entries(boardCardFieldDefaults).map(([key, fallbackValue]) => [
+    key,
+    typeof board.cardFields?.[key] === "boolean" ? board.cardFields[key] : fallback.cardFields?.[key] ?? fallbackValue
+  ]));
   return {
     columns,
     swimlane,
     sort,
     density,
-    collapsed: Array.isArray(board.collapsed) ? board.collapsed.map(String).filter((id) => statuses.some((status) => status.id === id)) : fallback.collapsed || [],
-    showDone: board.showDone !== false
+    collapsed: Array.isArray(board.collapsed) ? board.collapsed.map(String).filter((id) => validColumnIds.includes(id)) : fallback.collapsed || [],
+    showDone: board.showDone !== false,
+    mobileColumn,
+    selectedTaskId: String(board.selectedTaskId || ""),
+    lastUndo: board.lastUndo && typeof board.lastUndo === "object" ? board.lastUndo : null,
+    cardFields
   };
 }
 
@@ -9174,6 +9197,33 @@ function isTaskVisibleForContext(task) {
   );
 }
 
+function boardViewSnapshot() {
+  const board = normalizeWorkspaceBoard(state.workspace.board);
+  return {
+    swimlane: board.swimlane,
+    sort: board.sort,
+    density: board.density,
+    collapsed: [...board.collapsed],
+    showDone: board.showDone,
+    mobileColumn: board.mobileColumn,
+    cardFields: { ...board.cardFields }
+  };
+}
+
+function normalizeBoardViewSettings(value, baseBoard = seedData.workspace.board) {
+  if (!value || typeof value !== "object") return null;
+  const board = normalizeWorkspaceBoard({ ...baseBoard, ...value });
+  return {
+    swimlane: board.swimlane,
+    sort: board.sort,
+    density: board.density,
+    collapsed: [...board.collapsed],
+    showDone: board.showDone,
+    mobileColumn: board.mobileColumn,
+    cardFields: { ...board.cardFields }
+  };
+}
+
 function normalizeSavedViews(value) {
   const views = Array.isArray(value) ? value : seedData.savedViews;
   return views
@@ -9188,6 +9238,7 @@ function normalizeSavedViews(value) {
         ...seedData.filters,
         ...(view.filters || {})
       },
+      board: normalizeBoardViewSettings(view.board),
       pinned: Boolean(view.pinned),
       createdAt: view.createdAt || new Date().toISOString()
     }))
@@ -9202,6 +9253,7 @@ function currentViewSnapshot(name) {
     selectedProject: state.selectedProject,
     selectedCompany: state.selectedCompany,
     filters: { ...state.filters },
+    board: state.selectedRoute === "board" ? boardViewSnapshot() : null,
     createdAt: new Date().toISOString()
   };
 }
@@ -9211,13 +9263,15 @@ function currentSavedViewId() {
     route: state.selectedRoute,
     selectedProject: state.selectedProject,
     selectedCompany: state.selectedCompany,
-    filters: state.filters
+    filters: state.filters,
+    board: state.selectedRoute === "board" ? boardViewSnapshot() : null
   });
   return state.savedViews.find((view) => JSON.stringify({
     route: view.route,
     selectedProject: view.selectedProject,
     selectedCompany: view.selectedCompany,
-    filters: view.filters
+    filters: view.filters,
+    board: view.route === "board" ? view.board : null
   }) === current)?.id || "";
 }
 
@@ -9303,6 +9357,15 @@ function applySavedView(viewId) {
   if (state.selectedRoute === "company" && !byId(state.companies, state.selectedCompany)) {
     state.selectedRoute = "companies";
     state.selectedCompany = "all";
+  }
+  if (view.board && state.selectedRoute === "board") {
+    state.workspace = {
+      ...state.workspace,
+      board: normalizeWorkspaceBoard({
+        ...state.workspace.board,
+        ...view.board
+      })
+    };
   }
   openSidebarGroupForRoute(state.selectedRoute);
   saveState();
@@ -9887,6 +9950,56 @@ function handleGlobalShortcut(event) {
     return true;
   }
 
+  return false;
+}
+
+function handleBoardKeyboard(event) {
+  if (!["board", "project"].includes(state.selectedRoute)) return false;
+  if (isShortcutTypingTarget(event.target) || isBlockingShortcutDialogOpen()) return false;
+  if (event.metaKey || event.ctrlKey || event.altKey) return false;
+
+  const board = normalizeWorkspaceBoard(state.workspace.board);
+  const selectedTask = byId(activeTasks(), board.selectedTaskId);
+  if (!selectedTask) return false;
+  const columns = boardStatusOptions();
+  const columnIndex = columns.findIndex((column) => column.id === selectedTask.status);
+  const visibleTasks = columns.flatMap((column) => boardOrderedTasks(getFilteredTasks().filter((task) => task.status === column.id)));
+  const visibleIndex = visibleTasks.findIndex((task) => task.id === selectedTask.id);
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    selectBoardTask("");
+    return true;
+  }
+  if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    const offset = event.key === "ArrowLeft" ? -1 : 1;
+    const targetColumn = columns[columnIndex + offset];
+    if (targetColumn) {
+      event.preventDefault();
+      moveTaskOnBoard(selectedTask.id, targetColumn.id);
+      return true;
+    }
+  }
+  if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+    const offset = event.key === "ArrowUp" ? -1 : 1;
+    const nextTask = visibleTasks[visibleIndex + offset];
+    if (nextTask) {
+      event.preventDefault();
+      selectBoardTask(nextTask.id);
+      return true;
+    }
+  }
+  if (event.key.toLowerCase() === "d") {
+    event.preventDefault();
+    moveTaskOnBoard(selectedTask.id, "done");
+    return true;
+  }
+  if (event.key === "Enter" || event.key.toLowerCase() === "e") {
+    event.preventDefault();
+    populateTaskForm(selectedTask);
+    openDialog(els.taskDialog);
+    return true;
+  }
   return false;
 }
 
@@ -12930,6 +13043,8 @@ function moveTaskOnBoard(taskId, targetStatus, beforeTaskId = "") {
     ...targetColumn.slice(insertAt)
   ];
   const orderById = new Map(orderedColumn.map((task, index) => [task.id, index + 1]));
+  const undoTaskIds = new Set([taskId, ...orderedColumn.map((task) => task.id)]);
+  const undoTasks = state.tasks.filter((task) => undoTaskIds.has(task.id)).map((task) => ({ ...task }));
   const now = new Date().toISOString();
   let movedTask = null;
   state.tasks = state.tasks.map((task) => {
@@ -12952,13 +13067,90 @@ function moveTaskOnBoard(taskId, targetStatus, beforeTaskId = "") {
     targetId: movedTask.id,
     metadata: { from: previous.status, to: targetStatus, beforeTaskId }
   });
+  setBoardUndo({
+    type: "move",
+    label: `Move ${movedTask.title}`,
+    tasks: undoTasks,
+    createdAt: now
+  });
   saveState();
   render();
   showToast(`${movedTask.title} moved to ${boardColumnLabel(targetStatus)}`, "success");
   syncTaskToApi(movedTask, "Board move synced to API", false, recordRevisionValue(previous));
 }
 
-function updateBoardSetting(updates = {}) {
+function setBoardUndo(undo) {
+  state.workspace = {
+    ...state.workspace,
+    board: normalizeWorkspaceBoard({
+      ...state.workspace.board,
+      lastUndo: undo
+    })
+  };
+}
+
+function undoBoardAction() {
+  const board = normalizeWorkspaceBoard(state.workspace.board);
+  const undo = board.lastUndo;
+  if (!undo) {
+    showToast("Nothing to undo on this board", "info");
+    return;
+  }
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot undo board changes", "info");
+    return;
+  }
+
+  if (undo.type === "create" && undo.taskId) {
+    const task = byId(state.tasks, undo.taskId);
+    if (task && !isTaskArchived(task)) {
+      const archivedAt = new Date().toISOString();
+      state.tasks = state.tasks.map((item) => item.id === task.id ? {
+        ...item,
+        archivedAt,
+        archivedBy: currentMemberId,
+        updatedAt: archivedAt
+      } : item);
+      addAuditEvent({
+        action: "task_board_undo",
+        detail: `Undid board quick add for ${task.title}`,
+        targetType: "task",
+        targetId: task.id,
+        metadata: { undoType: undo.type }
+      });
+      syncTaskArchiveToApi(task.id);
+    }
+  }
+
+  if ((undo.type === "move" || undo.type === "bulk_move") && Array.isArray(undo.tasks)) {
+    const snapshots = new Map(undo.tasks.map((task) => [task.id, task]));
+    const restoredTasks = [];
+    state.tasks = state.tasks.map((task) => {
+      const snapshot = snapshots.get(task.id);
+      if (!snapshot) return task;
+      const restored = { ...task, ...snapshot };
+      restoredTasks.push({ previous: task, restored });
+      return restored;
+    });
+    restoredTasks.forEach(({ previous: task, restored }) => {
+      recordTaskChanges(task, restored);
+      syncTaskToApi(restored, "Board undo synced to API", false, recordRevisionValue(task));
+    });
+    addAuditEvent({
+      action: "task_board_undo",
+      detail: `Undid ${undo.label || "board move"}`,
+      targetType: "task",
+      metadata: { undoType: undo.type, restoredTasks: restoredTasks.length }
+    });
+  }
+
+  setBoardUndo(null);
+  saveState();
+  render();
+  showToast(`Undid ${undo.label || "board action"}`, "success");
+}
+
+function updateBoardSetting(updates = {}, { notify = true } = {}) {
   state.workspace = {
     ...state.workspace,
     board: normalizeWorkspaceBoard({
@@ -12968,7 +13160,7 @@ function updateBoardSetting(updates = {}) {
   };
   saveState();
   render();
-  showToast("Board settings updated", "success");
+  if (notify) showToast("Board settings updated", "success");
 }
 
 function updateBoardColumn(columnId, updates = {}) {
@@ -12987,7 +13179,12 @@ function applyBoardTemplate(templateId) {
     swimlane: board.swimlane,
     sort: board.sort,
     density: board.density,
-    collapsed: []
+    collapsed: [],
+    showDone: board.showDone,
+    mobileColumn: board.mobileColumn,
+    selectedTaskId: board.selectedTaskId,
+    lastUndo: board.lastUndo,
+    cardFields: board.cardFields
   });
 }
 
@@ -12997,6 +13194,135 @@ function toggleBoardColumn(columnId) {
   if (collapsed.has(columnId)) collapsed.delete(columnId);
   else collapsed.add(columnId);
   updateBoardSetting({ collapsed: Array.from(collapsed) });
+}
+
+function updateBoardCardField(field, enabled) {
+  const board = normalizeWorkspaceBoard(state.workspace.board);
+  if (!(field in board.cardFields)) return;
+  updateBoardSetting({
+    cardFields: {
+      ...board.cardFields,
+      [field]: Boolean(enabled)
+    }
+  });
+}
+
+function selectBoardTask(taskId) {
+  const task = byId(state.tasks, taskId);
+  updateBoardSetting({ selectedTaskId: task && !isTaskArchived(task) ? task.id : "" }, { notify: false });
+}
+
+function setBoardMobileColumn(columnId) {
+  if (!statuses.some((status) => status.id === columnId)) return;
+  updateBoardSetting({ mobileColumn: columnId }, { notify: false });
+}
+
+function archiveBoardColumn(columnId) {
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot archive tasks", "info");
+    return;
+  }
+  const now = new Date().toISOString();
+  const tasks = getFilteredTasks().filter((task) => task.status === columnId);
+  if (!tasks.length) {
+    showToast("No cards to archive in this column", "info");
+    return;
+  }
+  const taskIds = new Set(tasks.map((task) => task.id));
+  state.tasks = state.tasks.map((task) => taskIds.has(task.id) ? {
+    ...task,
+    archivedAt: task.archivedAt || now,
+    archivedBy: task.archivedBy || currentMemberId,
+    updatedAt: now
+  } : task);
+  addAuditEvent({
+    action: "task_board_archive_column",
+    detail: `Archived ${tasks.length} ${boardColumnLabel(columnId)} cards`,
+    targetType: "task",
+    metadata: { status: columnId, count: tasks.length }
+  });
+  saveState();
+  render();
+  showToast(`Archived ${tasks.length} cards`, "success");
+  tasks.forEach((task) => syncTaskArchiveToApi(task.id));
+}
+
+function moveBoardColumnTasks(columnId, targetStatus) {
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot move tasks", "info");
+    return;
+  }
+  if (!boardStatusOptions().some((status) => status.id === targetStatus)) return;
+  const tasks = boardOrderedTasks(getFilteredTasks().filter((task) => task.status === columnId));
+  if (!tasks.length) {
+    showToast("No cards to move in this column", "info");
+    return;
+  }
+  const targetColumnSize = getFilteredTasks().filter((task) => task.status === targetStatus).length;
+  const undoTasks = tasks.map((task) => ({ ...task }));
+  const now = new Date().toISOString();
+  state.tasks = state.tasks.map((task) => {
+    const index = tasks.findIndex((item) => item.id === task.id);
+    if (index < 0) return task;
+    return {
+      ...task,
+      status: targetStatus,
+      boardOrder: targetColumnSize + index + 1,
+      updatedAt: now
+    };
+  });
+  setBoardUndo({
+    type: "bulk_move",
+    label: `Move ${tasks.length} ${boardColumnLabel(columnId)} cards`,
+    tasks: undoTasks,
+    createdAt: now
+  });
+  addAuditEvent({
+    action: "task_board_bulk_move",
+    detail: `Moved ${tasks.length} cards from ${boardColumnLabel(columnId)} to ${boardColumnLabel(targetStatus)}`,
+    targetType: "task",
+    metadata: { from: columnId, to: targetStatus, count: tasks.length }
+  });
+  saveState();
+  render();
+  showToast(`Moved ${tasks.length} cards to ${boardColumnLabel(targetStatus)}`, "success");
+  tasks.forEach((task) => {
+    const next = byId(state.tasks, task.id);
+    if (next) syncTaskToApi(next, "Board bulk move synced to API", false, recordRevisionValue(task));
+  });
+}
+
+function saveBoardViewFromControls() {
+  const input = document.querySelector("#board-view-name");
+  const name = input?.value.trim() || "Board view";
+  const existing = state.savedViews.find((view) => view.route === "board" && view.name.toLowerCase() === name.toLowerCase());
+  const nextView = {
+    ...currentViewSnapshot(name),
+    route: "board",
+    id: existing?.id || uid("view"),
+    pinned: Boolean(existing?.pinned),
+    board: boardViewSnapshot(),
+    createdAt: existing?.createdAt || new Date().toISOString()
+  };
+  state.savedViews = normalizeSavedViews([
+    nextView,
+    ...state.savedViews.filter((view) => view.id !== nextView.id)
+  ]).slice(0, 20);
+  saveState();
+  render();
+  showToast(`Saved ${nextView.name}`, "success");
+}
+
+function deleteBoardViewFromControls(viewId) {
+  const view = state.savedViews.find((item) => item.id === viewId && item.route === "board");
+  if (!view) {
+    showToast("Choose a board view to forget", "info");
+    return;
+  }
+  state.savedViews = state.savedViews.filter((item) => item.id !== view.id);
+  saveState();
+  render();
+  showToast(`Forgot ${view.name}`, "success");
 }
 
 function boardQuickAddProjectId() {
@@ -13042,6 +13368,12 @@ function createBoardTask(status, title) {
     updatedAt: now
   };
   state.tasks = [task, ...state.tasks];
+  setBoardUndo({
+    type: "create",
+    label: `Add ${task.title}`,
+    taskId: task.id,
+    createdAt: now
+  });
   addActivity({
     projectId,
     taskId: task.id,
@@ -17645,8 +17977,76 @@ function boardSwimlaneGroups(tasks = []) {
   return [{ id: "all", label: "All work", tasks }];
 }
 
+function boardHealthStats(tasks = []) {
+  const board = normalizeWorkspaceBoard(state.workspace.board);
+  const columns = board.columns.filter((column) => column.enabled);
+  const visibleTasks = tasks.filter((task) => task.status !== "done");
+  const overWip = columns.filter((column) => {
+    const count = tasks.filter((task) => task.status === column.id).length;
+    return column.wipLimit > 0 && count > column.wipLimit;
+  }).length;
+  const stale = visibleTasks.filter((task) => daysBetween((task.updatedAt || task.createdAt || todayKey()).slice(0, 10), todayKey()) >= 7).length;
+  const blocked = visibleTasks.filter(isTaskBlocked).length;
+  const overdue = visibleTasks.filter(isOverdue).length;
+  const unowned = visibleTasks.filter((task) => !task.assignee).length;
+  const review = tasks.filter((task) => task.status === "review").length;
+  return { overWip, stale, blocked, overdue, unowned, review };
+}
+
+function renderBoardHealthStrip(tasks = []) {
+  const stats = boardHealthStats(tasks);
+  const board = normalizeWorkspaceBoard(state.workspace.board);
+  const undo = board.lastUndo;
+  return `
+    <section class="board-health-strip" aria-label="Board health">
+      <div>
+        <p class="eyebrow">Board health</p>
+        <strong>${tasks.length} visible cards</strong>
+      </div>
+      <span class="status-pill ${stats.overWip ? "inbox-red" : "inbox-green"}">${stats.overWip} over WIP</span>
+      <span class="status-pill ${stats.blocked ? "inbox-red" : "inbox-green"}">${stats.blocked} blocked</span>
+      <span class="status-pill ${stats.overdue ? "inbox-red" : "inbox-green"}">${stats.overdue} overdue</span>
+      <span class="status-pill ${stats.stale ? "inbox-amber" : "inbox-green"}">${stats.stale} stale</span>
+      <span class="status-pill ${stats.unowned ? "inbox-amber" : "inbox-green"}">${stats.unowned} unowned</span>
+      <span class="status-pill inbox-blue">${stats.review} in review</span>
+      ${undo ? `<button class="button button-secondary compact-button" type="button" data-board-undo>Undo ${escapeHtml(undo.label || "last action")}</button>` : ""}
+    </section>
+  `;
+}
+
+function renderBoardMobileTabs(columns) {
+  const board = normalizeWorkspaceBoard(state.workspace.board);
+  return `
+    <div class="board-mobile-tabs" role="tablist" aria-label="Board columns">
+      ${columns.map((column) => `
+        <button class="compact-button ${board.mobileColumn === column.id ? "is-active" : ""}" type="button" data-board-mobile-column="${column.id}" role="tab" aria-selected="${board.mobileColumn === column.id ? "true" : "false"}">
+          ${escapeHtml(column.label)}
+        </button>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderBoardColumnMenu(column) {
+  if (openBoardMenuColumn !== column.id) return "";
+  const columns = boardStatusOptions();
+  const nextColumn = columns[columns.findIndex((item) => item.id === column.id) + 1];
+  return `
+    <div class="board-column-menu" role="menu">
+      <button type="button" data-board-menu-action="add" data-board-menu-column="${column.id}">Add card</button>
+      <button type="button" data-board-menu-action="rename" data-board-menu-column="${column.id}">Rename column</button>
+      <button type="button" data-board-menu-action="wip" data-board-menu-column="${column.id}">Set WIP limit</button>
+      <button type="button" data-board-menu-action="collapse" data-board-menu-column="${column.id}">Collapse column</button>
+      ${nextColumn ? `<button type="button" data-board-menu-action="move-all" data-board-menu-column="${column.id}" data-board-menu-target="${nextColumn.id}">Move all to ${escapeHtml(nextColumn.label)}</button>` : ""}
+      ${column.id === "done" ? `<button type="button" data-board-menu-action="archive" data-board-menu-column="${column.id}">Archive visible cards</button>` : ""}
+    </div>
+  `;
+}
+
 function renderBoardControls() {
   const board = normalizeWorkspaceBoard(state.workspace.board);
+  const boardViews = state.savedViews.filter((view) => view.route === "board");
+  const currentBoardView = currentSavedViewId();
   return `
     <section class="panel board-control-panel">
       <div class="panel-header">
@@ -17655,6 +18055,21 @@ function renderBoardControls() {
           <h2>Board system</h2>
         </div>
         <span class="status-pill inbox-blue">${board.columns.filter((column) => column.wipLimit).length} WIP limits</span>
+      </div>
+      <div class="board-view-row">
+        <label>
+          <span>Saved board views</span>
+          <select id="board-view-select">
+            <option value="">Custom board view</option>
+            ${boardViews.map((view) => `<option value="${view.id}" ${view.id === currentBoardView ? "selected" : ""}>${view.pinned ? "Pinned - " : ""}${escapeHtml(view.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>View name</span>
+          <input id="board-view-name" placeholder="Standup, Client review, Ops">
+        </label>
+        <button class="button button-secondary compact-button" type="button" data-board-save-view>Save View</button>
+        <button class="button button-secondary compact-button" type="button" data-board-delete-view="${escapeHtml(currentBoardView)}" ${currentBoardView ? "" : "disabled"}>Forget View</button>
       </div>
       <div class="board-control-grid">
         <label>
@@ -17702,6 +18117,20 @@ function renderBoardControls() {
           </label>
         `).join("")}
       </div>
+      <div class="board-card-toggle-row" aria-label="Card detail toggles">
+        ${Object.entries({
+          description: "Descriptions",
+          meta: "Meta",
+          signals: "Signals",
+          tags: "Tags",
+          actions: "Actions"
+        }).map(([field, labelText]) => `
+          <label>
+            <input type="checkbox" data-board-card-field="${field}" ${board.cardFields[field] ? "checked" : ""}>
+            <span>${labelText}</span>
+          </label>
+        `).join("")}
+      </div>
       <div class="board-label-grid">
         ${board.columns.map((column) => `
           <label>
@@ -17718,9 +18147,10 @@ function renderBoardColumn(column, tasks) {
   const columnTasks = boardOrderedTasks(tasks.filter((task) => task.status === column.id));
   const overLimit = column.wipLimit > 0 && columnTasks.length > column.wipLimit;
   const atLimit = column.wipLimit > 0 && columnTasks.length === column.wipLimit;
-  const collapsed = normalizeWorkspaceBoard(state.workspace.board).collapsed.includes(column.id);
+  const board = normalizeWorkspaceBoard(state.workspace.board);
+  const collapsed = board.collapsed.includes(column.id);
   return `
-    <section class="board-column ${overLimit ? "is-over-wip" : atLimit ? "is-at-wip" : ""} ${collapsed ? "is-collapsed" : ""}" data-status="${column.id}">
+    <section class="board-column ${overLimit ? "is-over-wip" : atLimit ? "is-at-wip" : ""} ${collapsed ? "is-collapsed" : ""} ${board.mobileColumn === column.id ? "is-mobile-active" : ""}" data-status="${column.id}">
       <div class="board-column-header">
         <div>
           <h2>${escapeHtml(column.label)}</h2>
@@ -17728,9 +18158,11 @@ function renderBoardColumn(column, tasks) {
         </div>
         <div class="board-column-actions">
           <span>${columnTasks.length}</span>
+          <button class="icon-button compact-button" type="button" data-board-menu="${column.id}" aria-label="Open ${escapeHtml(column.label)} column menu">&hellip;</button>
           <button class="icon-button compact-button" type="button" data-board-collapse="${column.id}" aria-label="${collapsed ? "Expand" : "Collapse"} ${escapeHtml(column.label)}">${collapsed ? "+" : "-"}</button>
         </div>
       </div>
+      ${renderBoardColumnMenu(column)}
       ${collapsed ? "" : `
         <form class="board-quick-add" data-board-quick-add="${column.id}">
           <input name="title" placeholder="Add a card to ${escapeHtml(column.label)}" aria-label="Add a card to ${escapeHtml(column.label)}">
@@ -17761,7 +18193,7 @@ function renderKanbanBoard(tasks, { controls = false, label = "Task board" } = {
       </div>
     </section>
   `).join("");
-  return `${controls ? renderBoardControls() : ""}${boardMarkup}`;
+  return `${controls ? `${renderBoardControls()}${renderBoardHealthStrip(tasks)}${renderBoardMobileTabs(columns)}` : ""}${boardMarkup}`;
 }
 
 function renderProjectBoard(tasks) {
@@ -22575,38 +23007,41 @@ function renderTaskCard(task) {
   const fields = renderTaskFieldChips(task);
   const dependencies = renderTaskDependencyChips(task);
   const liveViewers = livePresenceRecords({ taskId: task.id }).length;
+  const board = normalizeWorkspaceBoard(state.workspace.board);
+  const cardFields = board.cardFields;
   const columns = boardStatusOptions();
   const columnIndex = columns.findIndex((column) => column.id === task.status);
   const previousColumn = columns[columnIndex - 1];
   const nextColumn = columns[columnIndex + 1];
   return `
-    <article class="task-card ${isTaskBlocked(task) ? "is-blocked" : ""}" draggable="true" data-task-id="${task.id}" data-task-status="${task.status}" data-board-order="${Number(task.boardOrder || 0)}">
+    <article class="task-card ${isTaskBlocked(task) ? "is-blocked" : ""} ${board.selectedTaskId === task.id ? "is-selected" : ""}" draggable="true" data-task-id="${task.id}" data-task-status="${task.status}" data-board-order="${Number(task.boardOrder || 0)}">
       <button class="task-card-main" type="button" data-edit-task="${task.id}">
         <span class="task-project">${escapeHtml(company.name)} / ${escapeHtml(projectName(task.projectId))}</span>
         <strong>${escapeHtml(task.title)}</strong>
-        <span>${escapeHtml(task.description)}</span>
+        ${cardFields.description && task.description ? `<span>${escapeHtml(task.description)}</span>` : ""}
       </button>
-      <div class="task-meta">
+      ${cardFields.meta ? `<div class="task-meta">
         <span class="avatar">${memberName(task.assignee).split(" ").map((part) => part[0]).join("")}</span>
         <span class="priority priority-${task.priority}">${priorityLabel(task.priority)}</span>
         <span class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}</span>
         ${checklist ? `<span>${escapeHtml(checklist)}</span>` : ""}
         ${liveViewers ? `<span class="live-task-chip">Live ${liveViewers}</span>` : ""}
-      </div>
-      ${renderTaskCardSignals(task)}
+      </div>` : ""}
+      ${cardFields.signals ? renderTaskCardSignals(task) : ""}
       ${dependencies}
-      <div class="tag-row">
+      ${cardFields.tags ? `<div class="tag-row">
         ${task.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
-      </div>
+      </div>` : ""}
       ${fields}
-      <div class="task-card-actions">
+      ${cardFields.actions ? `<div class="task-card-actions">
+        <button class="button button-secondary compact-button" type="button" data-board-select="${task.id}" aria-pressed="${board.selectedTaskId === task.id ? "true" : "false"}">Select</button>
         <button class="button button-secondary compact-button" type="button" data-board-move="${task.id}" data-board-move-status="${previousColumn?.id || ""}" ${previousColumn ? "" : "disabled"} aria-label="Move ${escapeHtml(task.title)} to ${escapeHtml(previousColumn?.label || "previous column")}">←</button>
         <button class="button button-secondary compact-button" type="button" data-board-move="${task.id}" data-board-move-status="${nextColumn?.id || ""}" ${nextColumn ? "" : "disabled"} aria-label="Move ${escapeHtml(task.title)} to ${escapeHtml(nextColumn?.label || "next column")}">→</button>
         <button class="button button-secondary compact-button" type="button" data-edit-task="${task.id}">Open</button>
         <button class="button button-secondary compact-button" type="button" data-task-plan-today="${task.id}">Today</button>
         <button class="button button-primary compact-button" type="button" data-task-complete="${task.id}" ${task.status === "done" ? "disabled" : ""}>Done</button>
         <button class="button button-secondary button-danger compact-button" type="button" data-archive-task="${task.id}">Archive</button>
-      </div>
+      </div>` : ""}
     </article>
   `;
 }
@@ -28586,6 +29021,77 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const boardUndoButton = event.target.closest("[data-board-undo]");
+  if (boardUndoButton) {
+    undoBoardAction();
+    return;
+  }
+
+  const boardSelectButton = event.target.closest("[data-board-select]");
+  if (boardSelectButton) {
+    selectBoardTask(boardSelectButton.dataset.boardSelect);
+    return;
+  }
+
+  const boardMobileButton = event.target.closest("[data-board-mobile-column]");
+  if (boardMobileButton) {
+    setBoardMobileColumn(boardMobileButton.dataset.boardMobileColumn);
+    return;
+  }
+
+  const boardSaveViewButton = event.target.closest("[data-board-save-view]");
+  if (boardSaveViewButton) {
+    saveBoardViewFromControls();
+    return;
+  }
+
+  const boardDeleteViewButton = event.target.closest("[data-board-delete-view]");
+  if (boardDeleteViewButton) {
+    deleteBoardViewFromControls(boardDeleteViewButton.dataset.boardDeleteView);
+    return;
+  }
+
+  const boardMenuButton = event.target.closest("[data-board-menu]");
+  if (boardMenuButton) {
+    openBoardMenuColumn = openBoardMenuColumn === boardMenuButton.dataset.boardMenu ? "" : boardMenuButton.dataset.boardMenu;
+    render();
+    return;
+  }
+
+  const boardMenuAction = event.target.closest("[data-board-menu-action]");
+  if (boardMenuAction) {
+    const columnId = boardMenuAction.dataset.boardMenuColumn;
+    const action = boardMenuAction.dataset.boardMenuAction;
+    openBoardMenuColumn = "";
+    if (action === "add") {
+      render();
+      document.querySelector(`[data-board-quick-add="${CSS.escape(columnId)}"] input`)?.focus();
+      return;
+    }
+    if (action === "rename") {
+      render();
+      document.querySelector(`[data-board-label="${CSS.escape(columnId)}"]`)?.focus();
+      return;
+    }
+    if (action === "wip") {
+      render();
+      document.querySelector(`[data-board-wip="${CSS.escape(columnId)}"]`)?.focus();
+      return;
+    }
+    if (action === "collapse") {
+      toggleBoardColumn(columnId);
+      return;
+    }
+    if (action === "archive") {
+      archiveBoardColumn(columnId);
+      return;
+    }
+    if (action === "move-all") {
+      moveBoardColumnTasks(columnId, boardMenuAction.dataset.boardMenuTarget);
+      return;
+    }
+  }
+
   const boardCollapseButton = event.target.closest("[data-board-collapse]");
   if (boardCollapseButton) {
     toggleBoardColumn(boardCollapseButton.dataset.boardCollapse);
@@ -28810,6 +29316,7 @@ document.addEventListener("change", (event) => {
 
 document.addEventListener("keydown", (event) => {
   if (handleGlobalShortcut(event)) return;
+  if (handleBoardKeyboard(event)) return;
 
   if (event.key === "Enter" && event.target.closest("#subtask-title")) {
     event.preventDefault();
@@ -28990,6 +29497,18 @@ els.appView.addEventListener("change", (event) => {
     return;
   }
 
+  const boardViewSelect = event.target.closest("#board-view-select");
+  if (boardViewSelect) {
+    if (boardViewSelect.value) applySavedView(boardViewSelect.value);
+    return;
+  }
+
+  const boardCardFieldToggle = event.target.closest("[data-board-card-field]");
+  if (boardCardFieldToggle) {
+    updateBoardCardField(boardCardFieldToggle.dataset.boardCardField, boardCardFieldToggle.checked);
+    return;
+  }
+
   const boardWipInput = event.target.closest("[data-board-wip]");
   if (boardWipInput) {
     updateBoardColumn(boardWipInput.dataset.boardWip, { wipLimit: Number(boardWipInput.value || 0) });
@@ -29060,8 +29579,36 @@ els.appView.addEventListener("dragstart", (event) => {
   event.dataTransfer.setData("text/plain", card.dataset.taskId);
 });
 
+function clearBoardDropIndicators() {
+  els.appView.querySelectorAll(".is-drag-over, .is-drop-before, .is-drop-after").forEach((element) => {
+    element.classList.remove("is-drag-over", "is-drop-before", "is-drop-after");
+  });
+  els.appView.querySelectorAll("[data-drop-before-task]").forEach((element) => {
+    delete element.dataset.dropBeforeTask;
+  });
+}
+
+function markBoardDropTarget(event) {
+  const dropZone = event.target.closest("[data-drop-status]");
+  if (!dropZone) return;
+  clearBoardDropIndicators();
+  dropZone.classList.add("is-drag-over");
+  const targetCard = event.target.closest("[data-task-id]");
+  if (!targetCard || !dropZone.contains(targetCard)) return;
+  const rect = targetCard.getBoundingClientRect();
+  const dropAfter = event.clientY > rect.top + rect.height / 2;
+  const beforeTask = dropAfter
+    ? targetCard.nextElementSibling?.matches?.("[data-task-id]") ? targetCard.nextElementSibling : null
+    : targetCard;
+  targetCard.classList.add(dropAfter ? "is-drop-after" : "is-drop-before");
+  dropZone.dataset.dropBeforeTask = beforeTask?.dataset.taskId || "";
+}
+
 els.appView.addEventListener("dragover", (event) => {
-  if (event.target.closest("[data-drop-status]")) event.preventDefault();
+  if (event.target.closest("[data-drop-status]")) {
+    event.preventDefault();
+    markBoardDropTarget(event);
+  }
 });
 
 els.appView.addEventListener("drop", (event) => {
@@ -29070,9 +29617,14 @@ els.appView.addEventListener("drop", (event) => {
   event.preventDefault();
   const targetCard = event.target.closest("[data-task-id]");
   const draggedId = event.dataTransfer.getData("text/plain");
-  const beforeTaskId = targetCard && targetCard.dataset.taskId !== draggedId ? targetCard.dataset.taskId : "";
+  const beforeTaskId = dropZone.dataset.dropBeforeTask && dropZone.dataset.dropBeforeTask !== draggedId
+    ? dropZone.dataset.dropBeforeTask
+    : targetCard && targetCard.dataset.taskId !== draggedId ? targetCard.dataset.taskId : "";
+  clearBoardDropIndicators();
   moveTaskOnBoard(draggedId, dropZone.dataset.dropStatus, beforeTaskId);
 });
+
+els.appView.addEventListener("dragend", clearBoardDropIndicators);
 
 els.appView.addEventListener("submit", (event) => {
   const boardQuickAddForm = event.target.closest("[data-board-quick-add]");

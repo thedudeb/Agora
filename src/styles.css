@@ -6367,6 +6367,78 @@ body[data-tutorial-target="view"] #app-view {
   margin-bottom: 14px;
 }
 
+.board-view-row,
+.board-card-toggle-row,
+.board-health-strip,
+.board-mobile-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
+
+.board-view-row {
+  margin-bottom: 12px;
+}
+
+.board-view-row label {
+  min-width: min(220px, 100%);
+  flex: 1 1 220px;
+}
+
+.board-card-toggle-row {
+  align-items: center;
+  margin-top: 12px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.board-card-toggle-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.board-health-strip {
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.board-health-strip > div {
+  margin-right: auto;
+}
+
+.board-health-strip strong {
+  display: block;
+}
+
+.board-mobile-tabs {
+  display: none;
+  margin-bottom: 12px;
+}
+
+.board-mobile-tabs button {
+  color: var(--muted);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.board-mobile-tabs button.is-active {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
 .board-control-grid,
 .board-label-grid {
   display: grid;
@@ -6411,6 +6483,7 @@ body[data-tutorial-target="view"] #app-view {
 .board-column-header {
   align-items: center;
   margin-bottom: 12px;
+  position: relative;
 }
 
 .board-column.is-at-wip {
@@ -6435,6 +6508,31 @@ body[data-tutorial-target="view"] #app-view {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.board-column-menu {
+  display: grid;
+  gap: 4px;
+  margin: -4px 0 10px auto;
+  padding: 8px;
+  width: min(220px, 100%);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.board-column-menu button {
+  padding: 7px 8px;
+  color: var(--text);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+}
+
+.board-column-menu button:hover {
+  background: var(--surface);
 }
 
 .board-column-header span {
@@ -6469,6 +6567,12 @@ body[data-tutorial-target="view"] #app-view {
   min-height: 140px;
 }
 
+.task-stack.is-drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
 .task-stack:empty {
   min-height: 180px;
 }
@@ -6476,6 +6580,35 @@ body[data-tutorial-target="view"] #app-view {
 .task-card.is-blocked {
   border-color: var(--amber);
   box-shadow: 0 8px 24px rgba(154, 100, 25, 0.08);
+}
+
+.task-card.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.task-card.is-drop-before,
+.task-card.is-drop-after {
+  position: relative;
+}
+
+.task-card.is-drop-before::before,
+.task-card.is-drop-after::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  left: 10px;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.task-card.is-drop-before::before {
+  top: -7px;
+}
+
+.task-card.is-drop-after::after {
+  bottom: -7px;
 }
 
 .task-card:active {
@@ -8361,6 +8494,29 @@ body[data-density="compact"] .main-content {
   .board,
   .work-lanes {
     grid-template-columns: minmax(260px, 1fr);
+  }
+
+  .board-mobile-tabs {
+    display: flex;
+  }
+
+  .board .board-column {
+    display: none;
+  }
+
+  .board .board-column.is-mobile-active {
+    display: block;
+  }
+
+  .board-health-strip,
+  .board-view-row {
+    align-items: stretch;
+  }
+
+  .board-health-strip .button,
+  .board-view-row .button,
+  .board-view-row label {
+    width: 100%;
   }
 }
 
