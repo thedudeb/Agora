@@ -19426,6 +19426,41 @@ function taskRealtimeSummary(taskId) {
   };
 }
 
+function renderTaskDetailSummary(task = null) {
+  const container = document.querySelector("#task-detail-summary");
+  if (!container) return;
+  const project = task ? byId(state.projects, task.projectId) : null;
+  const comments = task ? openCommentCount(task.id) : 0;
+  const timeMinutes = task ? sumMinutes(getTaskTimeEntries(task.id)) : 0;
+  const dependencies = task ? openTaskDependencies(task).length : 0;
+  const downstream = task ? tasksBlockedBy(task.id).length : 0;
+  const visibility = task ? taskVisibility(task) : "internal";
+  const dueText = task?.dueDate ? `Due ${formatDate(task.dueDate)}` : "No due date";
+  const healthTone = task && isOverdue(task) ? "inbox-red" : dependencies ? "inbox-amber" : "inbox-green";
+
+  container.innerHTML = `
+    <div class="task-record-strip">
+      <div>
+        <p class="eyebrow">Task record</p>
+        <strong>${escapeHtml(task?.title || "Draft task")}</strong>
+        <span>${escapeHtml(project?.name || "Choose a project")} / ${task ? memberName(task.assignee) : "Assign owner"} / ${dueText}</span>
+      </div>
+      <span class="status-pill ${healthTone}">${task ? statusLabel(task.status) : "Draft"}</span>
+      <span class="status-pill inbox-neutral">${task ? priorityLabel(task.priority) : "Priority"}</span>
+      <span class="status-pill ${dependencies ? "inbox-amber" : "inbox-green"}">${dependencies} blockers</span>
+      <span class="status-pill inbox-blue">${comments} open comments</span>
+      <span class="status-pill inbox-neutral">${formatDuration(timeMinutes)}</span>
+      <span class="status-pill ${visibility !== "internal" ? "inbox-blue" : "inbox-neutral"}">${escapeHtml(visibilityLabel(visibility))}</span>
+    </div>
+    <div class="task-record-actions">
+      ${task ? `<button class="button button-secondary compact-button" type="button" data-task-plan-today="${task.id}">Plan Today</button>` : ""}
+      ${task && task.status !== "done" ? `<button class="button button-primary compact-button" type="button" data-task-complete="${task.id}">Mark Done</button>` : ""}
+      ${task ? `<button class="button button-secondary compact-button" type="button" data-project-id="${task.projectId}">Open Project</button>` : ""}
+      ${downstream ? `<span>${downstream} downstream ${downstream === 1 ? "task" : "tasks"}</span>` : ""}
+    </div>
+  `;
+}
+
 function renderTaskCollaboration(taskId = "") {
   const container = document.querySelector("#task-collaboration");
   if (!container) return;
@@ -24352,6 +24387,7 @@ function populateTaskForm(task = null) {
   document.querySelector("#task-start-date").value = task?.startDate || "";
   document.querySelector("#task-due-date").value = task?.dueDate || "";
   document.querySelector("#task-tags").value = task?.tags?.join(", ") || "";
+  renderTaskDetailSummary(task);
   draftSubtasks = taskSubtasks(task || {}).map((subtask) => ({ ...subtask }));
   els.taskFormTitle.textContent = task ? "Edit Task" : "New Task";
 

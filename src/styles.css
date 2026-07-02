@@ -7250,6 +7250,51 @@ th {
   border-radius: 8px;
 }
 
+.task-detail-summary {
+  margin-top: -4px;
+}
+
+.task-record-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.task-record-strip > div {
+  flex: 1 1 260px;
+}
+
+.task-record-strip strong {
+  display: block;
+  margin-bottom: 3px;
+}
+
+.task-record-strip span:not(.status-pill),
+.task-record-actions span {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.task-record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.collaboration-panel {
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
 .task-edit-warning[hidden] {
   display: none;
 }
@@ -7420,11 +7465,6 @@ th {
 .whiteboard-blue {
   border-color: rgba(53, 93, 150, 0.4);
   background: rgba(53, 93, 150, 0.1);
-}
-
-.collaboration-panel {
-  padding-top: 4px;
-  border-top: 1px solid var(--line);
 }
 
 .live-collaboration-panel {
