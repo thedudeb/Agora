@@ -105,6 +105,8 @@ const routeChecks = [
       "Start Beta Workspace",
       "Beta walkthrough",
       "First 10 minutes for a tester",
+      "Beta exit proof",
+      "Leave with my data",
       "Hosted onboarding",
       "Email diagnostics",
       "Copy Feedback Link",
@@ -127,6 +129,10 @@ const routeChecks = [
       "Review portal status",
       "Triage a feature request",
       "Prove exit and recovery",
+      "Leave with my data",
+      "Download workspace JSON",
+      "Tasks CSV",
+      "Time CSV",
       "3 seeded beta requests",
       "Agency Client Delivery Beta is loaded with client work"
     ]
@@ -276,6 +282,8 @@ const routeChecks = [
     height: 712,
     required: [
       "Feedback triage",
+      "Beta feedback command center",
+      "Needs response",
       "Feature Requests",
       "Request queue",
       "Copy Public Link"

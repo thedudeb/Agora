@@ -6277,6 +6277,53 @@ function renderBetaWalkthroughPanel() {
   `;
 }
 
+function renderBetaExitProofPanel() {
+  const recovery = portableRecoveryStatus();
+  const bundleFiles = portableWorkspaceFiles();
+  const counts = recovery.manifest.counts;
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Beta exit proof</p>
+          <h2>Leave with my data</h2>
+        </div>
+        <span class="status-pill ${recovery.score >= Math.max(3, recovery.total - 1) ? "inbox-green" : "inbox-amber"}">${recovery.score}/${recovery.total} ready</span>
+      </div>
+      <p class="panel-note">A beta tester should be able to export the whole workspace, inspect plain files, and create a recovery checkpoint from this one screen.</p>
+      <div class="switcher-report-grid">
+        <article>
+          <span>Bundle</span>
+          <strong>${bundleFiles.length} files</strong>
+          <small>workspace.json, Markdown, CSV, templates, audit log, and offline contract</small>
+        </article>
+        <article>
+          <span>Workspace JSON</span>
+          <strong>${counts.tasks} tasks</strong>
+          <small>${counts.projects} projects / ${counts.companies} companies / schema v${CURRENT_WORKSPACE_SCHEMA_VERSION}</small>
+        </article>
+        <article>
+          <span>Tables</span>
+          <strong>CSV ready</strong>
+          <small>Tasks CSV and Time CSV are available for spreadsheet review.</small>
+        </article>
+        <article>
+          <span>Recovery</span>
+          <strong>${recovery.backups.length} backups</strong>
+          <small>${recovery.latestBackup ? formatTimestamp(recovery.latestBackup.createdAt) : "Create a checkpoint before the beta call ends."}</small>
+        </article>
+      </div>
+      <div class="data-actions">
+        <button class="button button-primary" type="button" data-beta-export-action="bundle">Download Bundle</button>
+        <button class="button button-secondary" type="button" data-beta-export-action="workspace-json">Download workspace JSON</button>
+        <button class="button button-secondary" type="button" data-beta-export-action="tasks-csv">Tasks CSV</button>
+        <button class="button button-secondary" type="button" data-beta-export-action="time-csv">Time CSV</button>
+        <button class="button button-secondary" type="button" data-beta-export-action="backup">Create Backup</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderBetaLaunch() {
   const items = betaLaunchItems();
   const score = readinessScore(items);
@@ -6334,6 +6381,7 @@ function renderBetaLaunch() {
     </section>
 
     ${renderBetaWalkthroughPanel()}
+    ${renderBetaExitProofPanel()}
 
     <div class="settings-grid">
       ${renderHostedOnboardingPanel()}
@@ -11810,6 +11858,30 @@ function handleBetaWalkthroughAction(action) {
     saveState();
     render();
     showToast("Opened the tester feedback form", "success");
+  }
+}
+
+function handleBetaExportAction(action) {
+  if (action === "bundle") {
+    downloadPortableWorkspaceBundle();
+    return;
+  }
+  if (action === "workspace-json") {
+    downloadWorkspaceExport();
+    return;
+  }
+  if (action === "tasks-csv") {
+    downloadTextFile(`${slugFromName(state.workspace.name)}-tasks-${todayKey()}.csv`, exportTasksCsv(), "text/csv");
+    showToast("Tasks CSV downloaded", "success");
+    return;
+  }
+  if (action === "time-csv") {
+    downloadTextFile(`${slugFromName(state.workspace.name)}-time-${todayKey()}.csv`, exportTimeCsv(), "text/csv");
+    showToast("Time CSV downloaded", "success");
+    return;
+  }
+  if (action === "backup") {
+    createWorkspaceBackup("Beta exit proof checkpoint");
   }
 }
 
@@ -20104,6 +20176,13 @@ function featureRequestNeedsTriage(task) {
   return featureRequestStatus(task) === "new" && featureRequestAgeDays(task) >= 2;
 }
 
+function featureRequestNeedsRequesterResponse(task) {
+  const status = featureRequestStatus(task);
+  const hasEmail = Boolean(task?.customFields?.requesterEmail);
+  const hasUpdate = Boolean(task?.customFields?.lastRequesterUpdateAt);
+  return hasEmail && !hasUpdate && (featureRequestNeedsTriage(task) || ["triaged", "planned", "shipped", "declined"].includes(status));
+}
+
 function featureRequestLifecycleSummary(task) {
   const status = featureRequestStatus(task);
   if (status === "shipped") return "Requester can be told what changed.";
@@ -20125,6 +20204,64 @@ function featureRequestSuggestedUpdate(status) {
 
 function featureRequestPublicLink() {
   return `${window.location.origin}${window.location.pathname}#feedback`;
+}
+
+function renderFeatureRequestCommandCenter(requests) {
+  const needsResponse = requests.filter(featureRequestNeedsRequesterResponse);
+  const ownedRequests = requests.filter((task) => Boolean(task.assignee));
+  const publicRequests = requests.filter((task) => featureRequestSource(task) === "public");
+  const updateTimes = requests
+    .map((task) => task.customFields?.lastRequesterUpdateAt || task.updatedAt || task.createdAt || "")
+    .filter(Boolean)
+    .sort();
+  const latestUpdate = updateTimes[updateTimes.length - 1];
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Beta feedback command center</p>
+          <h2>Close the loop with requesters</h2>
+        </div>
+        <span class="status-pill ${needsResponse.length ? "inbox-amber" : "inbox-green"}">${needsResponse.length} needs response</span>
+      </div>
+      <div class="feature-request-insights">
+        <article class="${needsResponse.length ? "is-hot" : ""}">
+          <span>Needs response</span>
+          <strong>${needsResponse.length}</strong>
+          <small>${needsResponse.length ? "requests have enough status to update the requester" : "no requester updates are waiting"}</small>
+        </article>
+        <article>
+          <span>Owned</span>
+          <strong>${ownedRequests.length}</strong>
+          <small>${requests.length ? `${Math.round((ownedRequests.length / requests.length) * 100)}% have an owner` : "no requests yet"}</small>
+        </article>
+        <article>
+          <span>Public source</span>
+          <strong>${publicRequests.length}</strong>
+          <small>${requests.length ? `${Math.round((publicRequests.length / requests.length) * 100)}% came from public intake` : "no public requests yet"}</small>
+        </article>
+        <article>
+          <span>Last update</span>
+          <strong>${latestUpdate ? formatTimestamp(latestUpdate) : "None"}</strong>
+          <small>Requester update, task update, or creation time</small>
+        </article>
+      </div>
+      ${needsResponse.length ? `
+        <div class="readiness-list compact-readiness">
+          ${needsResponse.slice(0, 3).map((task) => `
+            <article class="readiness-item is-pending">
+              <span>Next</span>
+              <div>
+                <strong>${escapeHtml(task.title.replace(/^Feature request:\s*/i, ""))}</strong>
+                <p>${escapeHtml(memberName(task.assignee))} owns this ${escapeHtml(featureRequestStatusLabel(featureRequestStatus(task)).toLowerCase())} request from ${escapeHtml(task.customFields?.requester || "Unknown")}.</p>
+              </div>
+              <button class="button button-secondary compact-button" type="button" data-edit-task="${escapeHtml(task.id)}">Open</button>
+            </article>
+          `).join("")}
+        </div>
+      ` : ""}
+    </section>
+  `;
 }
 
 function renderFeatureRequests() {
@@ -20171,6 +20308,8 @@ function renderFeatureRequests() {
         </article>
       </div>
     </section>
+
+    ${renderFeatureRequestCommandCenter(requests)}
 
     <section class="panel">
       <div class="panel-header">
@@ -20220,17 +20359,20 @@ function renderFeatureRequestRow(task) {
   const source = featureRequestSource(task);
   const age = featureRequestAgeDays(task);
   const needsTriage = featureRequestNeedsTriage(task);
+  const needsResponse = featureRequestNeedsRequesterResponse(task);
   return `
-    <article class="feature-request-row ${needsTriage ? "needs-triage" : ""}">
+    <article class="feature-request-row ${needsTriage || needsResponse ? "needs-triage" : ""}">
       <div>
         <div class="feature-request-chip-row">
           <span class="status-pill inbox-neutral">${escapeHtml(impact)}</span>
           <span class="status-pill ${source === "public" ? "inbox-blue" : "inbox-neutral"}">${escapeHtml(featureRequestSourceLabel(source))}</span>
           <span class="status-pill ${needsTriage ? "inbox-amber" : "inbox-green"}">${age ? `${age}d old` : "today"}</span>
+          <span class="status-pill ${needsResponse ? "inbox-amber" : "inbox-green"}">${needsResponse ? "Needs response" : "Response clear"}</span>
         </div>
         <h3>${escapeHtml(task.title.replace(/^Feature request:\s*/i, ""))}</h3>
         <p>${escapeHtml(task.description.split("\n").slice(-1)[0] || task.description)}</p>
         <small>${escapeHtml(projectName(task.projectId))} - ${escapeHtml(requester)}${requesterEmail ? ` - ${escapeHtml(requesterEmail)}` : ""}</small>
+        <small>Owner ${escapeHtml(memberName(task.assignee))} / Status ${escapeHtml(featureRequestStatusLabel(status))} / Source ${escapeHtml(featureRequestSourceLabel(source))}</small>
         <small>${escapeHtml(featureRequestLifecycleSummary(task))}</small>
         ${lastUpdate ? `<small>Last requester update ${escapeHtml(formatTimestamp(lastUpdate))}</small>` : ""}
       </div>
@@ -24974,6 +25116,12 @@ document.addEventListener("click", (event) => {
   const betaWalkthroughButton = event.target.closest("[data-beta-walkthrough-action]");
   if (betaWalkthroughButton) {
     handleBetaWalkthroughAction(betaWalkthroughButton.dataset.betaWalkthroughAction);
+    return;
+  }
+
+  const betaExportButton = event.target.closest("[data-beta-export-action]");
+  if (betaExportButton) {
+    handleBetaExportAction(betaExportButton.dataset.betaExportAction);
     return;
   }
 
