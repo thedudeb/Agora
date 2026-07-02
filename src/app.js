@@ -759,6 +759,7 @@ const routes = {
   collaboration: "Collaboration",
   reports: "Reports",
   decisions: "Decisions",
+  visibility: "Client Visibility",
   goals: "Goals",
   marketplace: "Marketplace",
   templates: "Templates",
@@ -2761,7 +2762,7 @@ function normalizeRaidItems(items = []) {
         severity,
         status,
         mitigation: String(item.mitigation || "").trim().slice(0, 280),
-        visibility: ["internal", "shared", "client"].includes(item.visibility) ? item.visibility : "internal",
+        visibility: visibilityValue(item.visibility),
         linkType: ["task", "document", "approval", "chat", "whiteboard", "project", ""].includes(item.linkType) ? item.linkType : "",
         linkId: String(item.linkId || ""),
         sourceType: ["chat", "whiteboard", "manual", "import", ""].includes(item.sourceType) ? item.sourceType : "",
@@ -3699,6 +3700,7 @@ function normalizeProjectRecord(project = {}) {
 }
 
 function normalizeTaskRecord(task = {}) {
+  const customFields = task.customFields && typeof task.customFields === "object" ? task.customFields : {};
   return {
     archivedAt: "",
     archivedBy: "",
@@ -3708,7 +3710,8 @@ function normalizeTaskRecord(task = {}) {
     updatedAt: task.updatedAt || task.createdAt || new Date().toISOString(),
     blockedBy: Array.isArray(task.blockedBy) ? task.blockedBy : [],
     subtasks: Array.isArray(task.subtasks) ? task.subtasks : [],
-    customFields: task.customFields && typeof task.customFields === "object" ? task.customFields : {}
+    customFields,
+    visibility: taskVisibility({ ...task, customFields })
   };
 }
 
@@ -4134,6 +4137,7 @@ function canAccessRoute(route) {
     settings: "workspace:read",
     reports: "workspace:read",
     decisions: "workspace:read",
+    visibility: "workspace:read",
     goals: "workspace:read",
     marketplace: "projects:write",
     templates: "projects:write",
@@ -4475,6 +4479,7 @@ function createBetaWorkspaceState(options = {}) {
         requester: "sam",
         reviewer: "Jordan Lee",
         status: "requested",
+        visibility: "client",
         dueDate: day(3),
         summary: "Confirm the meeting plan before the first client stakeholder call.",
         createdAt: at(-1, 13)
@@ -4488,6 +4493,7 @@ function createBetaWorkspaceState(options = {}) {
         requester: "nina",
         reviewer: "Priya Shah",
         status: "needs-changes",
+        visibility: "client",
         dueDate: day(5),
         summary: "Client wants the portal summary to separate launch tasks from open risks.",
         createdAt: at(-1, 15)
@@ -4567,7 +4573,7 @@ function createBetaWorkspaceState(options = {}) {
         id: "clientVisibility",
         name: "Client Visibility",
         type: "select",
-        options: ["Internal", "Shared", "Portal"]
+        options: ["Internal", "Shared", "Client-visible"]
       },
       {
         id: "approvalStage",
@@ -4583,6 +4589,7 @@ function createBetaWorkspaceState(options = {}) {
         title: "Kickoff Brief",
         type: "Brief",
         owner: "sam",
+        visibility: "shared",
         updatedAt: at(-1, 12),
         body: "Goals, stakeholders, timeline, open risks, portal expectations, and the first approval path for the client onboarding beta."
       },
@@ -4592,6 +4599,7 @@ function createBetaWorkspaceState(options = {}) {
         title: "Client Portal Weekly Update",
         type: "Status",
         owner: "nina",
+        visibility: "client",
         updatedAt: at(0, 9),
         body: "Plain-language status summary for client stakeholders: what changed, what needs review, and what happens next."
       },
@@ -4601,6 +4609,7 @@ function createBetaWorkspaceState(options = {}) {
         title: "Beta Feedback Log",
         type: "Notes",
         owner: "mara",
+        visibility: "internal",
         updatedAt: at(0, 11),
         body: "Notes from the first beta pass, including collaboration gaps, migration questions, and client portal requests."
       }
@@ -4613,6 +4622,7 @@ function createBetaWorkspaceState(options = {}) {
         kind: "Archive",
         size: "8.4 MB",
         owner: "sam",
+        visibility: "shared",
         updatedAt: at(-1, 9)
       },
       {
@@ -4622,6 +4632,7 @@ function createBetaWorkspaceState(options = {}) {
         kind: "PDF",
         size: "920 KB",
         owner: "mara",
+        visibility: "internal",
         updatedAt: at(-2, 15)
       }
     ],
@@ -4756,7 +4767,8 @@ function createBetaWorkspaceState(options = {}) {
           { id: "beta-subtask-agenda-2", title: "Attach decision log", done: true },
           { id: "beta-subtask-agenda-3", title: "Send for approval", done: false }
         ],
-        customFields: { effort: "Small", risk: "Medium", budget: "500", clientVisibility: "Portal", approvalStage: "Requested" },
+        visibility: "client",
+        customFields: { effort: "Small", risk: "Medium", budget: "500", clientVisibility: "Client-visible", approvalStage: "Requested" },
         createdAt: at(-2, 13),
         updatedAt: at(-1, 13)
       },
@@ -4818,7 +4830,8 @@ function createBetaWorkspaceState(options = {}) {
           { id: "beta-subtask-portal-2", title: "Separate risks from tasks", done: false },
           { id: "beta-subtask-portal-3", title: "Request client copy approval", done: false }
         ],
-        customFields: { effort: "Medium", risk: "High", budget: "1100", clientVisibility: "Portal", approvalStage: "Changes requested" },
+        visibility: "client",
+        customFields: { effort: "Medium", risk: "High", budget: "1100", clientVisibility: "Client-visible", approvalStage: "Changes requested" },
         createdAt: at(-1, 11),
         updatedAt: at(-1, 16)
       },
@@ -4858,7 +4871,8 @@ function createBetaWorkspaceState(options = {}) {
           { id: "beta-subtask-packet-1", title: "Collect linked docs", done: false },
           { id: "beta-subtask-packet-2", title: "Add reviewer instructions", done: false }
         ],
-        customFields: { effort: "Medium", risk: "Medium", budget: "800", clientVisibility: "Portal", approvalStage: "Draft" },
+        visibility: "client",
+        customFields: { effort: "Medium", risk: "Medium", budget: "800", clientVisibility: "Client-visible", approvalStage: "Draft" },
         createdAt: at(0, 11),
         updatedAt: at(0, 11)
       },
@@ -4879,7 +4893,8 @@ function createBetaWorkspaceState(options = {}) {
           { id: "beta-subtask-review-2", title: "Capture decisions", done: false },
           { id: "beta-subtask-review-3", title: "Send recap", done: false }
         ],
-        customFields: { effort: "Medium", risk: "Medium", budget: "1500", clientVisibility: "Portal", approvalStage: "Draft" },
+        visibility: "client",
+        customFields: { effort: "Medium", risk: "Medium", budget: "1500", clientVisibility: "Client-visible", approvalStage: "Draft" },
         createdAt: at(0, 12),
         updatedAt: at(0, 12)
       },
@@ -10578,13 +10593,19 @@ function getCompanyApprovals(companyId) {
 
 function companyPortalSnapshot(companyId) {
   const projects = getCompanyProjects(companyId);
-  const tasks = getCompanyTasks(companyId);
-  const approvals = getCompanyApprovals(companyId);
-  const files = state.files.filter((file) => projects.some((project) => project.id === file.projectId));
-  const documents = state.documents.filter((document) => projects.some((project) => project.id === document.projectId));
+  const tasks = getCompanyTasks(companyId).filter((task) => isClientVisibleRecord(task, "task"));
+  const approvals = getCompanyApprovals(companyId).filter((approval) => isClientVisibleRecord(approval, "approval"));
+  const files = state.files.filter((file) => projects.some((project) => project.id === file.projectId) && isClientVisibleRecord(file, "file"));
+  const documents = state.documents.filter((document) => projects.some((project) => project.id === document.projectId) && isClientVisibleRecord(document, "document"));
+  const visibleTaskIds = new Set(tasks.map((task) => task.id));
+  const visibleProjectIds = new Set(projects.filter((project) => tasks.some((task) => task.projectId === project.id)).map((project) => project.id));
   const openTasks = tasks.filter((task) => task.status !== "done");
   const updates = [...state.activities, ...state.comments]
-    .filter((item) => projects.some((project) => project.id === item.projectId || byId(state.tasks, item.taskId)?.projectId === project.id))
+    .filter((item) => {
+      const task = byId(state.tasks, item.taskId);
+      if (task) return visibleTaskIds.has(task.id);
+      return Boolean(item.projectId && visibleProjectIds.has(item.projectId));
+    })
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
   return {
@@ -10598,6 +10619,169 @@ function companyPortalSnapshot(companyId) {
     updates,
     progress: projectProgress(tasks),
     updatedAt: updates[0]?.createdAt || ""
+  };
+}
+
+function visibilityValue(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["client", "portal", "public", "external", "client-visible", "client visible"].includes(normalized)) return "client";
+  if (["shared", "team", "stakeholder"].includes(normalized)) return "shared";
+  return "internal";
+}
+
+function visibilityLabel(value) {
+  return {
+    internal: "Internal",
+    shared: "Shared",
+    client: "Client-visible"
+  }[visibilityValue(value)] || "Internal";
+}
+
+function recordVisibility(record = {}, kind = "task") {
+  if (kind === "task") return taskVisibility(record);
+  const fallback = {
+    approval: "client",
+    document: "shared",
+    file: "shared",
+    decision: "internal"
+  }[kind] || "internal";
+  return visibilityValue(record.visibility || record.clientVisibility || record.customFields?.clientVisibility || fallback);
+}
+
+function taskVisibility(task = {}) {
+  const featureFallback = isFeatureRequestTask(task) && featureRequestSource(task) === "public" ? "shared" : "internal";
+  return visibilityValue(task.visibility || task.customFields?.clientVisibility || featureFallback);
+}
+
+function isClientVisibleRecord(record = {}, kind = "task") {
+  return recordVisibility(record, kind) !== "internal";
+}
+
+function visibilityTone(value) {
+  const visibility = visibilityValue(value);
+  if (visibility === "client") return "blue";
+  if (visibility === "shared") return "amber";
+  return "neutral";
+}
+
+function clientVisibilityWarningForItem(item) {
+  if (item.kind === "task") {
+    const task = item.record;
+    const warnings = [];
+    if (!task.assignee) warnings.push("Missing owner");
+    if (!task.dueDate) warnings.push("Missing due date");
+    if (recordVisibility(task, "task") === "client" && task.customFields?.approvalStage !== "Approved" && task.status !== "done") warnings.push("Needs approval before client review");
+    return warnings;
+  }
+  if (item.kind === "approval") {
+    const approval = item.record;
+    return [
+      !approval.reviewer ? "Missing reviewer" : "",
+      !approval.dueDate ? "Missing due date" : ""
+    ].filter(Boolean);
+  }
+  if (["document", "file"].includes(item.kind)) {
+    return item.record.owner ? [] : ["Missing owner"];
+  }
+  if (item.kind === "decision") {
+    const decision = item.record;
+    return [
+      !decision.owner ? "Missing owner" : "",
+      !decision.dueDate && !decisionIsResolved(decision) ? "Missing decision date" : "",
+      decisionIsOverdue(decision) ? "Overdue decision" : ""
+    ].filter(Boolean);
+  }
+  return [];
+}
+
+function clientVisibilityReviewData() {
+  const companies = visibleCompanies()
+    .map((company) => {
+      const projects = getCompanyProjects(company.id);
+      const projectIds = new Set(projects.map((project) => project.id));
+      const tasks = getCompanyTasks(company.id).map((task) => ({
+        kind: "task",
+        id: task.id,
+        title: task.title,
+        detail: `${projectName(task.projectId)} / ${statusLabel(task.status)} / owner ${memberName(task.assignee)}`,
+        projectId: task.projectId,
+        companyId: company.id,
+        visibility: recordVisibility(task, "task"),
+        record: task
+      }));
+      const documents = state.documents
+        .filter((document) => projectIds.has(document.projectId))
+        .map((document) => ({
+          kind: "document",
+          id: document.id,
+          title: document.title,
+          detail: `${projectName(document.projectId)} / ${document.type || "Document"}`,
+          projectId: document.projectId,
+          companyId: company.id,
+          visibility: recordVisibility(document, "document"),
+          record: document
+        }));
+      const files = state.files
+        .filter((file) => projectIds.has(file.projectId))
+        .map((file) => ({
+          kind: "file",
+          id: file.id,
+          title: file.title,
+          detail: `${projectName(file.projectId)} / ${file.kind || "File"}`,
+          projectId: file.projectId,
+          companyId: company.id,
+          visibility: recordVisibility(file, "file"),
+          record: file
+        }));
+      const approvals = getCompanyApprovals(company.id).map((approval) => ({
+        kind: "approval",
+        id: approval.id,
+        title: approval.title,
+        detail: `${projectName(approval.projectId)} / ${approvalStatusLabel(approval.status)} / reviewer ${approval.reviewer || "Unassigned"}`,
+        projectId: approval.projectId,
+        companyId: company.id,
+        visibility: recordVisibility(approval, "approval"),
+        record: approval
+      }));
+      const decisions = decisionLogItems()
+        .filter((decision) => projectIds.has(decision.projectId) || decision.companyId === company.id)
+        .map((decision) => ({
+          kind: "decision",
+          id: decision.id,
+          title: decision.title,
+          detail: `${projectName(decision.projectId)} / ${decisionVisibilityLabel(decision.visibility)} / owner ${memberName(decision.owner)}`,
+          projectId: decision.projectId,
+          companyId: company.id,
+          visibility: recordVisibility(decision, "decision"),
+          record: decision
+        }));
+      const items = [...tasks, ...documents, ...files, ...approvals, ...decisions];
+      const visibleItems = items.filter((item) => item.visibility !== "internal");
+      const warnings = visibleItems.flatMap((item) => clientVisibilityWarningForItem(item).map((warning) => ({ ...item, warning })));
+      return {
+        company,
+        projects,
+        items,
+        visibleItems,
+        warnings,
+        internal: items.filter((item) => item.visibility === "internal").length,
+        shared: items.filter((item) => item.visibility === "shared").length,
+        client: items.filter((item) => item.visibility === "client").length
+      };
+    })
+    .filter((row) => row.projects.length || row.items.length);
+
+  const items = companies.flatMap((row) => row.items);
+  const visibleItems = companies.flatMap((row) => row.visibleItems);
+  const warnings = companies.flatMap((row) => row.warnings);
+  return {
+    companies,
+    items,
+    visibleItems,
+    warnings,
+    internal: items.filter((item) => item.visibility === "internal").length,
+    shared: items.filter((item) => item.visibility === "shared").length,
+    client: items.filter((item) => item.visibility === "client").length
   };
 }
 
@@ -12508,6 +12692,7 @@ function render() {
     collaboration: renderCollaborationHub,
     reports: renderReports,
     decisions: renderDecisionLog,
+    visibility: renderClientVisibilityReview,
     goals: renderGoals,
     marketplace: renderMarketplaceHub,
     templates: renderTemplates,
@@ -12550,7 +12735,7 @@ function render() {
 function sidebarGroupForRoute(route) {
   if (["landing", "dashboard", "command-center", "launch", "portal", "daily", "inbox"].includes(route)) return "home";
   if (["board", "list", "calendar", "my-work", "time", "operator", "collaboration"].includes(route)) return "work";
-  if (["reports", "decisions", "goals", "marketplace", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
+  if (["reports", "decisions", "visibility", "goals", "marketplace", "templates", "automations", "docs", "intake", "feature-requests", "fields", "companies", "company"].includes(route)) return "manage";
   if (["audit", "permissions", "beta", "readiness", "data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
   if (route === "invite") return "";
@@ -13744,6 +13929,7 @@ function pmCommandCenterData() {
   const requests = featureRequestTasks().filter((task) => projectIds.has(task.projectId));
   const requestsNeedingResponse = requests.filter(featureRequestNeedsRequesterResponse);
   const capacity = capacityRows(scoped.tasks, scoped.timeEntries).sort((a, b) => b.utilization - a.utilization);
+  const visibilityReview = clientVisibilityReviewData();
   const clientRows = visibleCompanies()
     .map((company) => ({ company, portal: companyPortalSnapshot(company.id) }))
     .filter((row) => row.portal.projects.length)
@@ -13808,6 +13994,7 @@ function pmCommandCenterData() {
     requests,
     requestsNeedingResponse,
     capacity,
+    visibilityReview,
     clientRows,
     attentionItems
   };
@@ -13841,6 +14028,7 @@ function renderPmCommandCenter() {
       ${metric("Approvals", center.approvals.length)}
       ${metric("Open decisions", center.openDecisions.length)}
       ${metric("Needs response", center.requestsNeedingResponse.length)}
+      ${metric("Visibility warnings", center.visibilityReview.warnings.length)}
       ${metric("Overloaded", overloaded.length)}
     </div>
 
@@ -13890,10 +14078,23 @@ function renderPmCommandCenter() {
             <p class="eyebrow">Client promises</p>
             <h2>Portal and approval watch</h2>
           </div>
-          <button class="button button-secondary compact-button" type="button" data-route="portal">Open Portal</button>
+          <button class="button button-secondary compact-button" type="button" data-route="visibility">Review Visibility</button>
         </div>
         <div class="project-summary-list">
           ${center.clientRows.length ? center.clientRows.slice(0, 5).map(renderPmClientPromiseRow).join("") : emptyState("No client project is visible in this workspace.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Client visibility warnings</p>
+            <h2>Packet safety checks</h2>
+          </div>
+          <span class="status-pill ${center.visibilityReview.warnings.length ? "inbox-amber" : "inbox-green"}">${center.visibilityReview.warnings.length ? "Review" : "Clear"}</span>
+        </div>
+        <div class="readiness-list compact-readiness">
+          ${center.visibilityReview.warnings.length ? center.visibilityReview.warnings.slice(0, 5).map(renderClientVisibilityWarningRow).join("") : emptyState("No client-visible item is missing owner, due date, reviewer, or approval context.")}
         </div>
       </section>
 
@@ -13974,6 +14175,122 @@ function renderPmClientPromiseRow(row) {
       <div class="project-summary-meta">
         <span>${row.portal.documents.length + row.portal.files.length} shared assets</span>
         <span>${row.portal.updatedAt ? `Updated ${escapeHtml(formatTimestamp(row.portal.updatedAt))}` : "No update yet"}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderClientVisibilityReview() {
+  const review = clientVisibilityReviewData();
+  const selectedCompanyId = state.selectedCompany !== "all" ? state.selectedCompany : review.companies[0]?.company.id || "";
+  const selected = review.companies.find((row) => row.company.id === selectedCompanyId) || review.companies[0] || null;
+  const visiblePacket = selected ? selected.visibleItems : review.visibleItems;
+  const warnings = selected ? selected.warnings : review.warnings;
+
+  els.appView.innerHTML = `
+    ${renderRouteHeader({
+      eyebrow: "Client visibility review",
+      title: "Preview what clients can see",
+      description: "Review every shared or client-visible task, approval, asset, decision, and request before it appears in the portal packet.",
+      actions: [
+        { label: "Open Portal", route: "portal", primary: true },
+        { label: "Open Command Center", route: "command-center" }
+      ]
+    })}
+
+    <div class="metric-grid">
+      ${metric("Client-visible", review.client)}
+      ${metric("Shared", review.shared)}
+      ${metric("Internal", review.internal)}
+      ${metric("Visibility warnings", review.warnings.length)}
+      ${metric("Companies", review.companies.length)}
+    </div>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Client visibility review</p>
+          <h2>Company packets</h2>
+        </div>
+        <span class="status-pill ${review.warnings.length ? "inbox-amber" : "inbox-green"}">${review.warnings.length ? "Warnings" : "Ready"}</span>
+      </div>
+      <div class="project-summary-list">
+        ${review.companies.length ? review.companies.map(renderClientVisibilityCompanyRow).join("") : emptyState("No companies are available for portal review.")}
+      </div>
+    </section>
+
+    <div class="dashboard-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Visible packet</p>
+            <h2>${escapeHtml(selected?.company.name || "All companies")}</h2>
+          </div>
+          ${selected ? `<button class="button button-secondary compact-button" type="button" data-company-id="${escapeHtml(selected.company.id)}">Open Company</button>` : ""}
+        </div>
+        <div class="readiness-list compact-readiness">
+          ${visiblePacket.length ? visiblePacket.map(renderClientVisibilityItemRow).join("") : emptyState("Nothing is shared with this client yet.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Visibility warnings</p>
+            <h2>Fix before sharing</h2>
+          </div>
+          <button class="button button-secondary compact-button" type="button" data-route="command-center">Command Center</button>
+        </div>
+        <div class="readiness-list compact-readiness">
+          ${warnings.length ? warnings.map(renderClientVisibilityWarningRow).join("") : emptyState("This packet has no owner, due-date, reviewer, or approval warnings.")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderClientVisibilityCompanyRow(row) {
+  const selected = state.selectedCompany === row.company.id;
+  return `
+    <article class="project-summary-card ${selected ? "is-selected" : ""}">
+      <button class="table-task-button" type="button" data-company-id="${escapeHtml(row.company.id)}">
+        <strong>${escapeHtml(row.company.name)}</strong>
+        <span>${row.client} client-visible / ${row.shared} shared / ${row.internal} internal</span>
+      </button>
+      <div class="project-summary-meta">
+        <span>${row.visibleItems.length} visible packet items</span>
+        <span>${row.warnings.length} visibility warnings</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderClientVisibilityItemRow(item) {
+  return `
+    <article class="readiness-item ${item.visibility === "internal" ? "is-pending" : "is-done"}">
+      <span>${escapeHtml(item.kind)}</span>
+      <div>
+        <strong>${escapeHtml(item.title)}</strong>
+        <p>${escapeHtml(item.detail)}</p>
+        <small>${escapeHtml(companyName(item.companyId))} / ${escapeHtml(visibilityLabel(item.visibility))}</small>
+      </div>
+      <span class="status-pill inbox-${visibilityTone(item.visibility)}">${escapeHtml(visibilityLabel(item.visibility))}</span>
+    </article>
+  `;
+}
+
+function renderClientVisibilityWarningRow(item) {
+  return `
+    <article class="readiness-item is-pending">
+      <span>Fix</span>
+      <div>
+        <strong>${escapeHtml(item.warning)}</strong>
+        <p>${escapeHtml(item.title)}</p>
+        <small>${escapeHtml(item.detail)} / ${escapeHtml(visibilityLabel(item.visibility))}</small>
+      </div>
+      <div class="feature-request-actions">
+        ${item.kind === "task" ? `<button class="button button-secondary compact-button" type="button" data-edit-task="${escapeHtml(item.id)}">Open Task</button>` : ""}
+        ${item.projectId ? `<button class="button button-secondary compact-button" type="button" data-project-id="${escapeHtml(item.projectId)}">Project</button>` : ""}
       </div>
     </article>
   `;
@@ -15188,6 +15505,7 @@ function renderCompanyPortal(company) {
         </div>
         <div class="portal-actions">
           <button class="button button-secondary" type="button" data-copy-portal-packet="${company.id}">Copy Share Packet</button>
+          <button class="button button-secondary" type="button" data-route="visibility">Review Visibility</button>
           <button class="button button-primary" type="button" data-company-update="${company.id}">Draft Update</button>
         </div>
       </div>

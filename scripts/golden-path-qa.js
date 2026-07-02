@@ -91,6 +91,8 @@ const routeChecks = [
       "Team load",
       "Decision follow-up",
       "Open decisions",
+      "Client visibility warnings",
+      "Visibility warnings",
       "Decisions and RAID",
       "Feedback loop"
     ]
@@ -108,6 +110,22 @@ const routeChecks = [
       "Open decisions",
       "Client-visible",
       "Decision register"
+    ]
+  },
+  {
+    name: "Client visibility review",
+    suite: "workspace",
+    route: "visibility",
+    width: 1265,
+    height: 712,
+    required: [
+      "Client visibility review",
+      "Preview what clients can see",
+      "Visible packet",
+      "Visibility warnings",
+      "Client-visible",
+      "Shared",
+      "Internal"
     ]
   },
   {
