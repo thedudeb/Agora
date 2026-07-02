@@ -103,10 +103,32 @@ const routeChecks = [
       "Beta packet",
       "Beta workspace",
       "Start Beta Workspace",
+      "Beta walkthrough",
+      "First 10 minutes for a tester",
       "Hosted onboarding",
       "Email diagnostics",
       "Copy Feedback Link",
       "Download Bundle"
+    ]
+  },
+  {
+    name: "Start beta workspace click path",
+    suite: "release",
+    route: "beta",
+    query: { goldenAction: "startBetaWorkspace" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Agency Client Delivery Beta",
+      "Client Onboarding Launch",
+      "Northstar Labs",
+      "Beta walkthrough",
+      "Open client project",
+      "Review portal status",
+      "Triage a feature request",
+      "Prove exit and recovery",
+      "3 seeded beta requests",
+      "Agency Client Delivery Beta is loaded with client work"
     ]
   },
   {

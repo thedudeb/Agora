@@ -5110,7 +5110,10 @@ function createBetaWorkspaceState(options = {}) {
       wizardActive: true,
       wizardStep: 1,
       notificationsReviewed: false,
-      templatesReviewed: true
+      templatesReviewed: true,
+      betaWalkthrough: {
+        workspaceLoaded: true
+      }
     }
   });
 }
@@ -6126,7 +6129,7 @@ function betaLaunchItems() {
   const emailItems = emailDiagnosticsItems();
   const recovery = portableRecoveryStatus();
   const feedbackReady = Boolean(featureRequestPublicLink());
-  const betaWorkspaceReady = state.onboarding?.sampleMode === "beta" && state.workspace.name === "Agency Client Delivery Beta";
+  const betaWorkspaceReady = isBetaWorkspaceLoaded();
   const emailReady = emailItems.filter((item) => ["SMTP", "From address", "Invitations", "Feature request owner"].includes(item.label)).every((item) => item.done);
   return [
     {
@@ -6172,6 +6175,106 @@ function betaLaunchItems() {
       commandId: "route:readiness"
     }
   ];
+}
+
+function isBetaWorkspaceLoaded() {
+  return state.onboarding?.sampleMode === "beta" && state.workspace.name === "Agency Client Delivery Beta";
+}
+
+function betaWalkthroughProgress() {
+  return state.onboarding?.betaWalkthrough || {};
+}
+
+function betaWalkthroughItems() {
+  const progress = betaWalkthroughProgress();
+  const betaReady = isBetaWorkspaceLoaded();
+  const project = byId(state.projects, "beta-client-onboarding");
+  const portalTask = byId(state.tasks, "beta-task-portal-status");
+  const seededRequests = featureRequestTasks().filter((task) => task.projectId === "beta-client-onboarding");
+  return [
+    {
+      id: "workspaceLoaded",
+      label: "Load beta workspace",
+      detail: betaReady ? "Agency Client Delivery Beta is ready for the walkthrough." : "Start with the realistic agency client workspace.",
+      done: betaReady,
+      action: "load-workspace",
+      actionLabel: betaReady ? "Reload" : "Start"
+    },
+    {
+      id: "projectOpened",
+      label: "Open client project",
+      detail: project ? "Review Client Onboarding Launch, its milestones, and the work breakdown." : "Load the beta workspace to create the client project.",
+      done: Boolean(progress.projectOpened),
+      action: "open-project",
+      actionLabel: "Open Project",
+      disabled: !project
+    },
+    {
+      id: "portalReviewed",
+      label: "Review portal status",
+      detail: portalTask ? "Inspect the client-facing status task and approval context." : "Load the beta workspace to create the portal status task.",
+      done: Boolean(progress.portalReviewed),
+      action: "review-portal-status",
+      actionLabel: "Review Status",
+      disabled: !portalTask
+    },
+    {
+      id: "requestsReviewed",
+      label: "Triage a feature request",
+      detail: seededRequests.length ? `${seededRequests.length} seeded beta requests are waiting on the request board.` : "Load the beta workspace to seed feedback.",
+      done: Boolean(progress.requestsReviewed),
+      action: "open-feature-requests",
+      actionLabel: "Open Requests",
+      disabled: !seededRequests.length
+    },
+    {
+      id: "recoveryCreated",
+      label: "Prove exit and recovery",
+      detail: "Create a beta checkpoint so testers can verify the workspace is portable.",
+      done: Boolean(progress.recoveryCreated),
+      action: "create-backup",
+      actionLabel: "Create Backup",
+      disabled: !betaReady
+    },
+    {
+      id: "feedbackOpened",
+      label: "Submit tester feedback",
+      detail: "Open the public feedback form to confirm the beta loop is easy to find.",
+      done: Boolean(progress.feedbackOpened),
+      action: "open-feedback",
+      actionLabel: "Open Feedback",
+      disabled: !betaReady
+    }
+  ];
+}
+
+function renderBetaWalkthroughPanel() {
+  const items = betaWalkthroughItems();
+  const done = items.filter((item) => item.done).length;
+  const tone = done === items.length ? "green" : done > 1 ? "blue" : "amber";
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Beta walkthrough</p>
+          <h2>First 10 minutes for a tester</h2>
+        </div>
+        <span class="status-pill inbox-${tone}">${done}/${items.length}</span>
+      </div>
+      <div class="readiness-list compact-readiness">
+        ${items.map((item) => `
+          <article class="readiness-item ${item.done ? "is-done" : "is-pending"}">
+            <span>${item.done ? "OK" : "Next"}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail)}</p>
+            </div>
+            <button class="button button-secondary compact-button" type="button" data-beta-walkthrough-action="${escapeHtml(item.action)}" ${item.disabled ? "disabled" : ""}>${escapeHtml(item.actionLabel)}</button>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function renderBetaLaunch() {
@@ -6229,6 +6332,8 @@ function renderBetaLaunch() {
         <button class="button button-secondary" type="button" data-route="feature-requests">Open Request Board</button>
       </div>
     </section>
+
+    ${renderBetaWalkthroughPanel()}
 
     <div class="settings-grid">
       ${renderHostedOnboardingPanel()}
@@ -11627,6 +11732,87 @@ function handleOnboardingInlineAction(action) {
   }
 }
 
+function markBetaWalkthroughStep(stepId) {
+  state.onboarding = {
+    ...state.onboarding,
+    betaWalkthrough: {
+      ...betaWalkthroughProgress(),
+      [stepId]: true
+    }
+  };
+}
+
+function handleBetaWalkthroughAction(action) {
+  if (action === "load-workspace") {
+    state = createBetaWorkspaceState();
+    saveState();
+    render();
+    showToast("Beta workspace loaded", "success");
+    return;
+  }
+
+  if (!isBetaWorkspaceLoaded()) {
+    showToast("Start the beta workspace first", "info");
+    return;
+  }
+
+  if (action === "open-project") {
+    markBetaWalkthroughStep("projectOpened");
+    state.selectedRoute = "project";
+    state.selectedProject = "beta-client-onboarding";
+    state.selectedProjectTab = "overview";
+    state.filters = { ...state.filters, company: "beta-client", query: "" };
+    openSidebarGroupForRoute("project");
+    saveState();
+    render();
+    showToast("Opened the beta client project", "success");
+    return;
+  }
+
+  if (action === "review-portal-status") {
+    markBetaWalkthroughStep("portalReviewed");
+    state.selectedRoute = "project";
+    state.selectedProject = "beta-client-onboarding";
+    state.selectedProjectTab = "tasks";
+    state.filters = { ...state.filters, company: "beta-client", status: "all", priority: "all", assignee: "all", query: "portal status" };
+    openSidebarGroupForRoute("project");
+    saveState();
+    render();
+    showToast("Portal status task is filtered into view", "success");
+    return;
+  }
+
+  if (action === "open-feature-requests") {
+    markBetaWalkthroughStep("requestsReviewed");
+    state.selectedRoute = "feature-requests";
+    state.selectedProject = "all";
+    state.featureRequestFilters = { status: "all", source: "all", impact: "all" };
+    openSidebarGroupForRoute("feature-requests");
+    saveState();
+    render();
+    showToast("Opened the beta feedback queue", "success");
+    return;
+  }
+
+  if (action === "create-backup") {
+    markBetaWalkthroughStep("recoveryCreated");
+    saveState();
+    createWorkspaceBackup("Beta walkthrough checkpoint");
+    return;
+  }
+
+  if (action === "open-feedback") {
+    markBetaWalkthroughStep("feedbackOpened");
+    state.selectedRoute = "feedback";
+    state.selectedProject = "all";
+    state.selectedCompany = "all";
+    openSidebarGroupForRoute("feedback");
+    saveState();
+    render();
+    showToast("Opened the tester feedback form", "success");
+  }
+}
+
 function handleOnboardingAction(action) {
   const wizardSteps = onboardingWizardSteps();
   const wizardIndex = clamp(Number(state.onboarding?.wizardStep || 0), 0, wizardSteps.length - 1);
@@ -11884,6 +12070,16 @@ function routeFromLocation({ shouldRender = false } = {}) {
   saveState();
   if (shouldRender) render();
   return true;
+}
+
+function runGoldenActionFromLocation() {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has("golden")) return;
+
+  if (params.get("goldenAction") === "startBetaWorkspace") {
+    const startButton = document.querySelector('[data-onboarding-action="start-beta"]');
+    if (startButton) startButton.click();
+  }
 }
 
 function setProject(projectId) {
@@ -24775,6 +24971,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const betaWalkthroughButton = event.target.closest("[data-beta-walkthrough-action]");
+  if (betaWalkthroughButton) {
+    handleBetaWalkthroughAction(betaWalkthroughButton.dataset.betaWalkthroughAction);
+    return;
+  }
+
   const onboardingStepButton = event.target.closest("[data-onboarding-step]");
   if (onboardingStepButton) {
     openOnboardingWizard(Number(onboardingStepButton.dataset.onboardingStep));
@@ -26249,4 +26451,5 @@ if (!routeInviteFromLocation() && !routeFeedbackFromLocation() && !routeFromLoca
   openSidebarGroupForRoute(state.selectedRoute);
 }
 render();
+runGoldenActionFromLocation();
 document.documentElement.dataset.agoraBoot = "ready";
