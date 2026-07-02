@@ -743,6 +743,39 @@ async function run() {
     });
     assert(uploadedFile.file.url === "/api/files/file-upload-smoke/download", "file upload did not return download URL");
     assert(uploadedFile.file.storageProvider === "json-file", "file upload did not use local storage provider");
+    assert(uploadedFile.file.storageKey === "file-upload-smoke/smoke-upload.txt", "file upload storage key was not stable");
+
+    const blockedDanglingUpload = await requestError(`${baseUrl}/api/files/upload`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        file: {
+          id: "file-upload-dangling",
+          projectId: "project-smoke",
+          taskId: "missing-task",
+          title: "dangling-upload.txt",
+          contentType: "text/plain",
+          dataUrl: `data:text/plain;base64,${Buffer.from("Should not upload").toString("base64")}`
+        }
+      }
+    });
+    assert(blockedDanglingUpload.status === 400, "file upload should reject missing task links");
+
+    const sanitizedUpload = await request(`${baseUrl}/api/files/upload`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        file: {
+          id: "../escape-upload",
+          projectId: "project-smoke",
+          title: "escape-upload.txt",
+          contentType: "text/plain",
+          dataUrl: `data:text/plain;base64,${Buffer.from("Safe path").toString("base64")}`
+        }
+      }
+    });
+    assert(!sanitizedUpload.file.storageKey.includes(".."), "file upload storage key kept path traversal segments");
+    assert(fs.existsSync(path.join(dataDir, "uploads", sanitizedUpload.file.storageKey)), "sanitized upload was not stored inside upload root");
 
     const downloadedFile = await requestRaw(`${baseUrl}${uploadedFile.file.url}`, {
       token: login.token
@@ -752,7 +785,7 @@ async function run() {
     const files = await request(`${baseUrl}/api/files?projectId=project-smoke`, {
       token: login.token
     });
-    assert(files.files.length === 2, "file list failed");
+    assert(files.files.length === 3, "file list failed");
 
     const archivedTask = await request(`${baseUrl}/api/tasks/task-smoke`, {
       method: "DELETE",
@@ -810,6 +843,7 @@ async function run() {
     assert(workspace.snapshot.documents[0].title === "Smoke Doc", "document not stored in workspace");
     assert(workspace.snapshot.files.some((file) => file.title === "smoke-plan.pdf"), "file not stored in workspace");
     assert(workspace.snapshot.files.some((file) => file.title === "smoke-upload.txt"), "uploaded file not stored in workspace");
+    assert(workspace.snapshot.files.some((file) => file.title === "escape-upload.txt"), "sanitized upload not stored in workspace");
 
     const finalBackendHealth = await request(`${baseUrl}/api/backend/health`, {
       token: login.token
@@ -1449,6 +1483,8 @@ async function testLockedAuthDefaults() {
       }
     });
     assert(passwordLogin.user.id === signup.user.id, "password login should keep working when passwordless auth is disabled");
+    const queryTokenSession = await requestError(`${baseUrl}/api/session?token=${encodeURIComponent(passwordLogin.token)}`);
+    assert(queryTokenSession.status === 401, "query-string bearer tokens should not authenticate");
 
     for (let index = 0; index < 8; index += 1) {
       const failedLogin = await requestError(`${baseUrl}/api/auth/password-login`, {

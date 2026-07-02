@@ -2799,8 +2799,7 @@ function buildSession(user, membership, token) {
 
 async function requireSession(request, response, storage) {
   const header = request.headers.authorization || "";
-  const requestUrl = new URL(request.url, "http://127.0.0.1");
-  const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : cleanString(requestUrl.searchParams.get("token"));
+  const token = header.startsWith("Bearer ") ? header.slice("Bearer ".length) : "";
   const session = sessions.get(token);
   if (session) {
     if (isSessionExpired(session)) {
@@ -5474,6 +5473,7 @@ async function uploadFileRecord(storage, body, session) {
   const title = cleanString(fileInput.title || fileInput.fileName || fileInput.name);
   const projectId = cleanString(fileInput.projectId);
   if (!title || !projectId) publicError(400, "File upload requires title and projectId");
+  assertUploadScope(fileInput, snapshot, session);
 
   const content = decodeUploadContent(fileInput);
   const normalizedTitle = sanitizeFileName(title);
@@ -5501,6 +5501,20 @@ async function uploadFileRecord(storage, body, session) {
   return file;
 }
 
+function assertUploadScope(fileInput, snapshot = {}, session) {
+  const projectId = cleanString(fileInput.projectId);
+  const taskId = cleanString(fileInput.taskId);
+  const projects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
+  const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
+  const project = projects.find((item) => item.id === projectId);
+  if (!project) publicError(400, "File upload project is not in this workspace");
+  assertProjectCompanyScope(project, session);
+  if (!taskId) return;
+  const task = tasks.find((item) => item.id === taskId);
+  if (!task) publicError(400, "File upload task is not in this workspace");
+  if (task.projectId !== projectId) publicError(400, "File upload project does not match task");
+}
+
 function decodeUploadContent(fileInput) {
   const raw = cleanString(fileInput.dataUrl || fileInput.base64 || fileInput.content);
   if (!raw) publicError(400, "File upload requires base64 content");
@@ -5520,12 +5534,13 @@ function decodeUploadContent(fileInput) {
 }
 
 async function persistFileObject(storage, file) {
+  const safeFileId = sanitizeStoragePathSegment(file.id);
   if ((storage.driver || "json-file") === "supabase") {
-    return uploadSupabaseFileObject(file);
+    return uploadSupabaseFileObject({ ...file, safeFileId });
   }
   const uploadRoot = path.join(storage.dataDir || path.join(__dirname, "data"), "uploads");
-  const storageKey = `${file.id}/${file.fileName}`;
-  const outputPath = path.join(uploadRoot, file.id, file.fileName);
+  const storageKey = `${safeFileId}/${file.fileName}`;
+  const outputPath = path.join(uploadRoot, safeFileId, file.fileName);
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, file.buffer);
   return {
@@ -5543,7 +5558,7 @@ async function uploadSupabaseFileObject(file) {
   }
 
   const bucket = supabaseStorageBucket();
-  const storageKey = `${workspace.id}/${file.id}/${file.fileName}`;
+  const storageKey = `${sanitizeStoragePathSegment(workspace.id)}/${file.safeFileId || sanitizeStoragePathSegment(file.id)}/${file.fileName}`;
   const objectPath = storageKey.split("/").map(encodeURIComponent).join("/");
   const response = await fetch(`${supabaseUrl}/storage/v1/object/${encodeURIComponent(bucket)}/${objectPath}`, {
     method: "PUT",
@@ -5618,6 +5633,10 @@ async function readFileObject(storage, file) {
 
 function sanitizeFileName(value) {
   return cleanString(value).replace(/[/\\?%*:|"<>]/g, "-").slice(0, 160) || "file";
+}
+
+function sanitizeStoragePathSegment(value) {
+  return cleanString(value).replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 120) || crypto.randomUUID();
 }
 
 function fileKindFromName(fileName) {
