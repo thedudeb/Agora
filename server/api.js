@@ -5711,6 +5711,7 @@ function normalizeTask(task) {
     assignee: task.assignee ? String(task.assignee) : "",
     status: task.status ? String(task.status) : "todo",
     priority: task.priority ? String(task.priority) : "normal",
+    boardOrder: Number.isFinite(Number(task.boardOrder ?? task.sortOrder ?? task.customFields?.boardOrder)) ? Number(task.boardOrder ?? task.sortOrder ?? task.customFields?.boardOrder) : 0,
     startDate: task.startDate ? String(task.startDate) : "",
     dueDate: task.dueDate ? String(task.dueDate) : "",
     blockedBy: Array.isArray(task.blockedBy) ? task.blockedBy.map(String) : [],

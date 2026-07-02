@@ -98,6 +98,24 @@ const routeChecks = [
     ]
   },
   {
+    name: "Power-user Kanban board",
+    suite: "workspace",
+    route: "board",
+    width: 1265,
+    height: 712,
+    required: [
+      "Kanban controls",
+      "Board system",
+      "Swimlanes",
+      "Manual order",
+      "WIP",
+      "To do",
+      "Doing",
+      "Review",
+      "Done"
+    ]
+  },
+  {
     name: "Decision log",
     suite: "workspace",
     route: "decisions",

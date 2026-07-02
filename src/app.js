@@ -963,6 +963,17 @@ const seedData = {
       preset: "auto",
       density: "comfortable"
     },
+    board: {
+      columns: [
+        { id: "todo", label: "To do", wipLimit: 0, enabled: true },
+        { id: "doing", label: "Doing", wipLimit: 5, enabled: true },
+        { id: "review", label: "Review", wipLimit: 3, enabled: true },
+        { id: "done", label: "Done", wipLimit: 0, enabled: true }
+      ],
+      swimlane: "none",
+      sort: "manual",
+      showDone: true
+    },
     ai: {
       provider: "local",
       model: "Agora deterministic operator",
@@ -2418,6 +2429,7 @@ function normalizeState(nextState) {
       ...seedData.workspace,
       ...(nextState.workspace || {}),
       theme: normalizeWorkspaceTheme((nextState.workspace || {}).theme),
+      board: normalizeWorkspaceBoard((nextState.workspace || {}).board),
       ai: {
         ...seedData.workspace.ai,
         ...((nextState.workspace || {}).ai || {}),
@@ -2488,6 +2500,43 @@ function normalizeWorkspaceTheme(theme = {}) {
   const preset = themePresets.some((item) => item.id === theme.preset) ? theme.preset : seedData.workspace.theme.preset;
   const density = densityOptions.some((item) => item.id === theme.density) ? theme.density : seedData.workspace.theme.density;
   return { preset, density };
+}
+
+function normalizeWorkspaceBoard(board = {}) {
+  const fallback = seedData.workspace.board || {};
+  const incomingColumns = Array.isArray(board.columns) ? board.columns : fallback.columns || statuses;
+  const byId = new Map(incomingColumns
+    .filter((column) => column && column.id)
+    .map((column) => [String(column.id), column]));
+  const columns = statuses.map((status) => {
+    const column = byId.get(status.id) || {};
+    return {
+      id: status.id,
+      label: String(column.label || status.label).trim().slice(0, 32) || status.label,
+      wipLimit: clamp(Math.round(Number(column.wipLimit || 0)), 0, 99),
+      enabled: column.enabled !== false
+    };
+  });
+  const swimlane = ["none", "assignee", "priority", "company"].includes(board.swimlane) ? board.swimlane : fallback.swimlane || "none";
+  const sort = ["manual", "due", "priority"].includes(board.sort) ? board.sort : fallback.sort || "manual";
+  return {
+    columns,
+    swimlane,
+    sort,
+    showDone: board.showDone !== false
+  };
+}
+
+function boardColumns() {
+  return normalizeWorkspaceBoard(state?.workspace?.board).columns.filter((column) => column.enabled);
+}
+
+function boardColumnLabel(statusId) {
+  return boardColumns().find((column) => column.id === statusId)?.label || statuses.find((status) => status.id === statusId)?.label || statusId;
+}
+
+function boardStatusOptions() {
+  return boardColumns().length ? boardColumns() : statuses;
 }
 
 function resolvedWorkspaceThemePreset(theme = state?.workspace?.theme) {
@@ -3810,6 +3859,7 @@ function normalizeProjectRecord(project = {}) {
 
 function normalizeTaskRecord(task = {}) {
   const customFields = task.customFields && typeof task.customFields === "object" ? task.customFields : {};
+  const boardOrder = Number(task.boardOrder ?? task.sortOrder ?? customFields.boardOrder);
   return {
     archivedAt: "",
     archivedBy: "",
@@ -3817,6 +3867,7 @@ function normalizeTaskRecord(task = {}) {
     ...task,
     startDate: task.startDate || task.createdAt?.slice(0, 10) || "",
     updatedAt: task.updatedAt || task.createdAt || new Date().toISOString(),
+    boardOrder: Number.isFinite(boardOrder) ? boardOrder : 0,
     blockedBy: Array.isArray(task.blockedBy) ? task.blockedBy : [],
     subtasks: Array.isArray(task.subtasks) ? task.subtasks : [],
     customFields,
@@ -3850,6 +3901,7 @@ function coreRecordSignature({ projects = state.projects, tasks = state.tasks } 
       title: task.title,
       assignee: task.assignee,
       status: task.status,
+      boardOrder: Number(task.boardOrder || 0),
       priority: task.priority,
       startDate: task.startDate,
       dueDate: task.dueDate,
@@ -12811,6 +12863,73 @@ function updateTask(id, updates) {
   syncTaskToApi(next, "Task synced to API", false, recordRevisionValue(previous));
 }
 
+function moveTaskOnBoard(taskId, targetStatus, beforeTaskId = "") {
+  const previous = byId(state.tasks, taskId);
+  if (!previous || !targetStatus) return;
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot move tasks", "info");
+    render();
+    return;
+  }
+  if (!boardStatusOptions().some((status) => status.id === targetStatus)) return;
+  const visibleTasks = getFilteredTasks();
+  const targetColumn = boardOrderedTasks(visibleTasks.filter((task) => task.status === targetStatus && task.id !== taskId));
+  const beforeIndex = beforeTaskId ? targetColumn.findIndex((task) => task.id === beforeTaskId) : -1;
+  const insertAt = beforeIndex >= 0 ? beforeIndex : targetColumn.length;
+  const orderedColumn = [
+    ...targetColumn.slice(0, insertAt),
+    { ...previous, status: targetStatus },
+    ...targetColumn.slice(insertAt)
+  ];
+  const orderById = new Map(orderedColumn.map((task, index) => [task.id, index + 1]));
+  const now = new Date().toISOString();
+  let movedTask = null;
+  state.tasks = state.tasks.map((task) => {
+    if (!orderById.has(task.id)) return task;
+    const next = {
+      ...task,
+      status: task.id === taskId ? targetStatus : task.status,
+      boardOrder: orderById.get(task.id),
+      updatedAt: task.id === taskId ? now : task.updatedAt
+    };
+    if (task.id === taskId) movedTask = next;
+    return next;
+  });
+  if (!movedTask) return;
+  recordTaskChanges(previous, movedTask);
+  addAuditEvent({
+    actorId: activeMemberId(),
+    action: "task_board_move",
+    detail: `Moved ${movedTask.title} to ${boardColumnLabel(targetStatus)}`,
+    targetId: movedTask.id,
+    metadata: { from: previous.status, to: targetStatus, beforeTaskId }
+  });
+  saveState();
+  render();
+  showToast(`${movedTask.title} moved to ${boardColumnLabel(targetStatus)}`, "success");
+  syncTaskToApi(movedTask, "Board move synced to API", false, recordRevisionValue(previous));
+}
+
+function updateBoardSetting(updates = {}) {
+  state.workspace = {
+    ...state.workspace,
+    board: normalizeWorkspaceBoard({
+      ...state.workspace.board,
+      ...updates
+    })
+  };
+  saveState();
+  render();
+  showToast("Board settings updated", "success");
+}
+
+function updateBoardColumn(columnId, updates = {}) {
+  const board = normalizeWorkspaceBoard(state.workspace.board);
+  updateBoardSetting({
+    columns: board.columns.map((column) => column.id === columnId ? { ...column, ...updates } : column)
+  });
+}
+
 function selectedVisibilityReviewCompanyId() {
   if (state.selectedCompany !== "all" && byId(state.companies, state.selectedCompany)) return state.selectedCompany;
   if (state.filters.company !== "all" && byId(state.companies, state.filters.company)) return state.filters.company;
@@ -13483,7 +13602,7 @@ function renderFilters() {
   `;
   els.statusFilter.innerHTML = `
     <option value="all">Any status</option>
-    ${statuses.map((status) => `<option value="${status.id}">${status.label}</option>`).join("")}
+    ${boardStatusOptions().map((status) => `<option value="${status.id}">${escapeHtml(status.label)}</option>`).join("")}
   `;
   els.priorityFilter.innerHTML = `
     <option value="all">Any priority</option>
@@ -17347,7 +17466,7 @@ function renderProjectTaskRow(task) {
         </button>
       </td>
       <td>${memberName(task.assignee)}</td>
-      <td>${selectControl("status", task.id, task.status, statuses)}</td>
+      <td>${selectControl("status", task.id, task.status, boardStatusOptions())}</td>
       <td>${selectControl("priority", task.id, task.priority, priorities)}</td>
       <td class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}</td>
       <td><button class="button button-secondary button-danger compact-button" type="button" data-archive-task="${task.id}">Archive</button></td>
@@ -17355,25 +17474,147 @@ function renderProjectTaskRow(task) {
   `;
 }
 
-function renderProjectBoard(tasks) {
+function boardSortValue(task) {
+  const order = Number(task.boardOrder ?? task.customFields?.boardOrder);
+  return Number.isFinite(order) ? order : 100000 + state.tasks.findIndex((item) => item.id === task.id);
+}
+
+function boardOrderedTasks(tasks = []) {
+  const sort = normalizeWorkspaceBoard(state.workspace.board).sort;
+  const priorityOrder = new Map(priorities.map((priority, index) => [priority.id, index]));
+  return [...tasks].sort((a, b) => {
+    if (sort === "due") {
+      const dueSort = String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31"));
+      if (dueSort) return dueSort;
+    }
+    if (sort === "priority") {
+      const prioritySort = (priorityOrder.get(a.priority) ?? 99) - (priorityOrder.get(b.priority) ?? 99);
+      if (prioritySort) return prioritySort;
+    }
+    const boardSort = boardSortValue(a) - boardSortValue(b);
+    if (boardSort) return boardSort;
+    return String(a.updatedAt || a.createdAt || "").localeCompare(String(b.updatedAt || b.createdAt || ""));
+  });
+}
+
+function boardSwimlaneGroups(tasks = []) {
+  const swimlane = normalizeWorkspaceBoard(state.workspace.board).swimlane;
+  if (swimlane === "assignee") {
+    const groups = workspaceMembers().map((member) => ({
+      id: member.id,
+      label: member.name,
+      tasks: tasks.filter((task) => task.assignee === member.id)
+    }));
+    const unassigned = tasks.filter((task) => !task.assignee);
+    return [...groups.filter((group) => group.tasks.length), ...(unassigned.length ? [{ id: "unassigned", label: "Unassigned", tasks: unassigned }] : [])];
+  }
+  if (swimlane === "priority") {
+    return priorities
+      .map((priority) => ({ id: priority.id, label: priority.label, tasks: tasks.filter((task) => task.priority === priority.id) }))
+      .filter((group) => group.tasks.length);
+  }
+  if (swimlane === "company") {
+    return state.companies
+      .map((company) => ({ id: company.id, label: company.name, tasks: tasks.filter((task) => projectCompany(task.projectId).id === company.id) }))
+      .filter((group) => group.tasks.length);
+  }
+  return [{ id: "all", label: "All work", tasks }];
+}
+
+function renderBoardControls() {
+  const board = normalizeWorkspaceBoard(state.workspace.board);
   return `
-    <div class="board" aria-label="Project task board">
-      ${statuses.map((status) => {
-        const columnTasks = tasks.filter((task) => task.status === status.id);
-        return `
-          <section class="board-column" data-status="${status.id}">
-            <div class="board-column-header">
-              <h2>${status.label}</h2>
-              <span>${columnTasks.length}</span>
-            </div>
-            <div class="task-stack" data-drop-status="${status.id}">
-              ${columnTasks.length ? columnTasks.map(renderTaskCard).join("") : emptyState("No tasks here.")}
-            </div>
-          </section>
-        `;
-      }).join("")}
-    </div>
+    <section class="panel board-control-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Kanban controls</p>
+          <h2>Board system</h2>
+        </div>
+        <span class="status-pill inbox-blue">${board.columns.filter((column) => column.wipLimit).length} WIP limits</span>
+      </div>
+      <div class="board-control-grid">
+        <label>
+          <span>Swimlanes</span>
+          <select id="board-swimlane">
+            ${[
+              ["none", "No swimlanes"],
+              ["assignee", "By assignee"],
+              ["priority", "By priority"],
+              ["company", "By company"]
+            ].map(([id, label]) => `<option value="${id}" ${board.swimlane === id ? "selected" : ""}>${label}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Sort</span>
+          <select id="board-sort">
+            ${[
+              ["manual", "Manual order"],
+              ["due", "Due date"],
+              ["priority", "Priority"]
+            ].map(([id, label]) => `<option value="${id}" ${board.sort === id ? "selected" : ""}>${label}</option>`).join("")}
+          </select>
+        </label>
+        ${board.columns.map((column) => `
+          <label>
+            <span>${escapeHtml(column.label)} WIP</span>
+            <input type="number" min="0" max="99" value="${column.wipLimit}" data-board-wip="${column.id}">
+          </label>
+        `).join("")}
+      </div>
+      <div class="board-label-grid">
+        ${board.columns.map((column) => `
+          <label>
+            <span>${escapeHtml(statuses.find((status) => status.id === column.id)?.label || column.id)}</span>
+            <input value="${escapeHtml(column.label)}" maxlength="32" data-board-label="${column.id}">
+          </label>
+        `).join("")}
+      </div>
+    </section>
   `;
+}
+
+function renderBoardColumn(column, tasks) {
+  const columnTasks = boardOrderedTasks(tasks.filter((task) => task.status === column.id));
+  const overLimit = column.wipLimit > 0 && columnTasks.length > column.wipLimit;
+  const atLimit = column.wipLimit > 0 && columnTasks.length === column.wipLimit;
+  return `
+    <section class="board-column ${overLimit ? "is-over-wip" : atLimit ? "is-at-wip" : ""}" data-status="${column.id}">
+      <div class="board-column-header">
+        <div>
+          <h2>${escapeHtml(column.label)}</h2>
+          ${column.wipLimit ? `<small>WIP ${columnTasks.length}/${column.wipLimit}</small>` : `<small>${columnTasks.length} task${columnTasks.length === 1 ? "" : "s"}</small>`}
+        </div>
+        <span>${columnTasks.length}</span>
+      </div>
+      <div class="task-stack" data-drop-status="${column.id}">
+        ${columnTasks.length ? columnTasks.map(renderTaskCard).join("") : emptyState("No tasks here.")}
+      </div>
+    </section>
+  `;
+}
+
+function renderKanbanBoard(tasks, { controls = false, label = "Task board" } = {}) {
+  const board = normalizeWorkspaceBoard(state.workspace.board);
+  const columns = board.columns.filter((column) => column.enabled && (board.showDone || column.id !== "done"));
+  const groups = boardSwimlaneGroups(tasks);
+  const boardMarkup = groups.map((group) => `
+    <section class="board-swimlane" data-board-lane="${escapeHtml(group.id)}">
+      ${board.swimlane === "none" ? "" : `
+        <div class="board-swimlane-header">
+          <h2>${escapeHtml(group.label)}</h2>
+          <span>${group.tasks.length} task${group.tasks.length === 1 ? "" : "s"}</span>
+        </div>
+      `}
+      <div class="board" aria-label="${escapeHtml(label)}${board.swimlane === "none" ? "" : ` - ${escapeHtml(group.label)}`}">
+        ${columns.map((column) => renderBoardColumn(column, group.tasks)).join("")}
+      </div>
+    </section>
+  `).join("");
+  return `${controls ? renderBoardControls() : ""}${boardMarkup}`;
+}
+
+function renderProjectBoard(tasks) {
+  return renderKanbanBoard(tasks, { label: "Project task board" });
 }
 
 function renderProjectTimeline(project, tasks, milestones) {
@@ -18044,24 +18285,7 @@ function renderComment(comment, depth = 0) {
 
 function renderBoard() {
   const tasks = getFilteredTasks();
-  els.appView.innerHTML = `
-    <div class="board" aria-label="Task board">
-      ${statuses.map((status) => {
-        const columnTasks = tasks.filter((task) => task.status === status.id);
-        return `
-          <section class="board-column" data-status="${status.id}">
-            <div class="board-column-header">
-              <h2>${status.label}</h2>
-              <span>${columnTasks.length}</span>
-            </div>
-            <div class="task-stack" data-drop-status="${status.id}">
-              ${columnTasks.length ? columnTasks.map(renderTaskCard).join("") : emptyState("No tasks here.")}
-            </div>
-          </section>
-        `;
-      }).join("")}
-    </div>
-  `;
+  els.appView.innerHTML = renderKanbanBoard(tasks, { controls: true, label: "Task board" });
 }
 
 function renderList() {
@@ -18204,7 +18428,7 @@ function renderMyWork() {
   }
 
   const tasks = getFilteredTasks();
-  const grouped = statuses.map((status) => ({
+  const grouped = boardStatusOptions().map((status) => ({
     ...status,
     tasks: tasks.filter((task) => task.status === status.id)
   }));
@@ -22181,8 +22405,12 @@ function renderTaskCard(task) {
   const fields = renderTaskFieldChips(task);
   const dependencies = renderTaskDependencyChips(task);
   const liveViewers = livePresenceRecords({ taskId: task.id }).length;
+  const columns = boardStatusOptions();
+  const columnIndex = columns.findIndex((column) => column.id === task.status);
+  const previousColumn = columns[columnIndex - 1];
+  const nextColumn = columns[columnIndex + 1];
   return `
-    <article class="task-card ${isTaskBlocked(task) ? "is-blocked" : ""}" draggable="true" data-task-id="${task.id}">
+    <article class="task-card ${isTaskBlocked(task) ? "is-blocked" : ""}" draggable="true" data-task-id="${task.id}" data-task-status="${task.status}" data-board-order="${Number(task.boardOrder || 0)}">
       <button class="task-card-main" type="button" data-edit-task="${task.id}">
         <span class="task-project">${escapeHtml(company.name)} / ${escapeHtml(projectName(task.projectId))}</span>
         <strong>${escapeHtml(task.title)}</strong>
@@ -22201,6 +22429,8 @@ function renderTaskCard(task) {
       </div>
       ${fields}
       <div class="task-card-actions">
+        <button class="button button-secondary compact-button" type="button" data-board-move="${task.id}" data-board-move-status="${previousColumn?.id || ""}" ${previousColumn ? "" : "disabled"} aria-label="Move ${escapeHtml(task.title)} to ${escapeHtml(previousColumn?.label || "previous column")}">←</button>
+        <button class="button button-secondary compact-button" type="button" data-board-move="${task.id}" data-board-move-status="${nextColumn?.id || ""}" ${nextColumn ? "" : "disabled"} aria-label="Move ${escapeHtml(task.title)} to ${escapeHtml(nextColumn?.label || "next column")}">→</button>
         <button class="button button-secondary compact-button" type="button" data-edit-task="${task.id}">Open</button>
         <button class="button button-secondary compact-button" type="button" data-task-plan-today="${task.id}">Today</button>
         <button class="button button-primary compact-button" type="button" data-task-complete="${task.id}" ${task.status === "done" ? "disabled" : ""}>Done</button>
@@ -22232,7 +22462,7 @@ function renderTaskRow(task) {
         ${escapeHtml(projectName(task.projectId))}
       </td>
       <td>${memberName(task.assignee)}</td>
-      <td>${selectControl("status", task.id, task.status, statuses)}</td>
+      <td>${selectControl("status", task.id, task.status, boardStatusOptions())}</td>
       <td>${selectControl("priority", task.id, task.priority, priorities)}</td>
       <td class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}${liveViewers ? `<br><span class="live-task-chip">Live ${liveViewers}</span>` : ""}</td>
       <td><button class="button button-secondary button-danger compact-button" type="button" data-archive-task="${task.id}">Archive</button></td>
@@ -22570,7 +22800,7 @@ function populateTaskForm(task = null) {
   const selectedProject = task?.projectId || (state.selectedProject === "all" ? projectOptions[0]?.id : state.selectedProject);
   fillSelect("#task-project", projectOptions, selectedProject, "name");
   fillSelect("#task-assignee", members, task?.assignee || members[0].id, "name");
-  fillSelect("#task-status", statuses, task?.status || "todo", "label");
+  fillSelect("#task-status", boardStatusOptions(), task?.status || "todo", "label");
   fillSelect("#task-priority", priorities, task?.priority || "normal", "label");
   if (task?.id) {
     taskEditSnapshots.set(task.id, taskRevision(task));
@@ -28179,6 +28409,12 @@ document.addEventListener("click", (event) => {
     showToast("Task planned for Today", "success");
   }
 
+  const boardMoveButton = event.target.closest("[data-board-move]");
+  if (boardMoveButton) {
+    moveTaskOnBoard(boardMoveButton.dataset.boardMove, boardMoveButton.dataset.boardMoveStatus);
+    return;
+  }
+
   const dailyActionButton = event.target.closest("[data-daily-action]");
   if (dailyActionButton) {
     const taskId = dailyActionButton.dataset.taskId;
@@ -28553,6 +28789,30 @@ els.appView.addEventListener("change", (event) => {
     return;
   }
 
+  const boardSwimlaneSelect = event.target.closest("#board-swimlane");
+  if (boardSwimlaneSelect) {
+    updateBoardSetting({ swimlane: boardSwimlaneSelect.value });
+    return;
+  }
+
+  const boardSortSelect = event.target.closest("#board-sort");
+  if (boardSortSelect) {
+    updateBoardSetting({ sort: boardSortSelect.value });
+    return;
+  }
+
+  const boardWipInput = event.target.closest("[data-board-wip]");
+  if (boardWipInput) {
+    updateBoardColumn(boardWipInput.dataset.boardWip, { wipLimit: Number(boardWipInput.value || 0) });
+    return;
+  }
+
+  const boardLabelInput = event.target.closest("[data-board-label]");
+  if (boardLabelInput) {
+    updateBoardColumn(boardLabelInput.dataset.boardLabel, { label: boardLabelInput.value.trim() || boardColumnLabel(boardLabelInput.dataset.boardLabel) });
+    return;
+  }
+
   const taskDateInput = event.target.closest("[data-task-date]");
   if (taskDateInput) {
     updateTask(taskDateInput.dataset.taskDate, { dueDate: taskDateInput.value });
@@ -28619,7 +28879,10 @@ els.appView.addEventListener("drop", (event) => {
   const dropZone = event.target.closest("[data-drop-status]");
   if (!dropZone) return;
   event.preventDefault();
-  updateTask(event.dataTransfer.getData("text/plain"), { status: dropZone.dataset.dropStatus });
+  const targetCard = event.target.closest("[data-task-id]");
+  const draggedId = event.dataTransfer.getData("text/plain");
+  const beforeTaskId = targetCard && targetCard.dataset.taskId !== draggedId ? targetCard.dataset.taskId : "";
+  moveTaskOnBoard(draggedId, dropZone.dataset.dropStatus, beforeTaskId);
 });
 
 els.appView.addEventListener("submit", (event) => {
