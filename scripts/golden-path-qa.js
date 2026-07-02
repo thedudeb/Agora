@@ -106,9 +106,12 @@ const routeChecks = [
     required: [
       "Kanban controls",
       "Board system",
+      "Workflow",
       "Swimlanes",
       "Manual order",
+      "Density",
       "WIP",
+      "Add a card",
       "To do",
       "Doing",
       "Review",

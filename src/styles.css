@@ -6374,6 +6374,11 @@ body[data-tutorial-target="view"] #app-view {
   gap: 12px;
 }
 
+.board-control-grid label,
+.board-label-grid label {
+  min-width: 0;
+}
+
 .board-label-grid {
   margin-top: 12px;
 }
@@ -6422,6 +6427,16 @@ body[data-tutorial-target="view"] #app-view {
   border-color: var(--red);
 }
 
+.board-column.is-collapsed {
+  min-height: 84px;
+}
+
+.board-column-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .board-column-header span {
   display: inline-flex;
   align-items: center;
@@ -6432,6 +6447,13 @@ body[data-tutorial-target="view"] #app-view {
   background: var(--surface-strong);
   border: 1px solid var(--line);
   border-radius: 999px;
+}
+
+.board-quick-add {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
 .task-card {
@@ -6470,6 +6492,17 @@ body[data-tutorial-target="view"] #app-view {
   border: 0;
 }
 
+.task-signal-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-signal-row .status-pill {
+  min-height: 22px;
+  font-size: 0.72rem;
+}
+
 .task-card-actions {
   display: flex;
   flex-wrap: wrap;
@@ -6481,6 +6514,31 @@ body[data-tutorial-target="view"] #app-view {
   color: var(--accent);
   font-size: 0.78rem;
   font-weight: 800;
+}
+
+.board-density-compact .task-card {
+  gap: 7px;
+  padding: 10px;
+}
+
+.board-density-compact .task-card-main span:not(.task-project),
+.board-density-minimal .task-card-main span:not(.task-project),
+.board-density-minimal .tag-row,
+.board-density-minimal .task-card-actions .button:not([data-board-move]) {
+  display: none;
+}
+
+.board-density-minimal .task-card {
+  gap: 6px;
+  padding: 8px;
+}
+
+.board-density-minimal .task-meta {
+  gap: 6px;
+}
+
+.board-density-minimal .task-signal-row .status-pill:nth-child(n+4) {
+  display: none;
 }
 
 .task-meta,

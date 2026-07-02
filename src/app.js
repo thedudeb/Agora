@@ -227,6 +227,49 @@ const statuses = [
   { id: "done", label: "Done" }
 ];
 
+const boardWorkflowTemplates = [
+  {
+    id: "default",
+    label: "Classic Kanban",
+    columns: [
+      { id: "todo", label: "To do", wipLimit: 0, enabled: true },
+      { id: "doing", label: "Doing", wipLimit: 5, enabled: true },
+      { id: "review", label: "Review", wipLimit: 3, enabled: true },
+      { id: "done", label: "Done", wipLimit: 0, enabled: true }
+    ]
+  },
+  {
+    id: "client-delivery",
+    label: "Client delivery",
+    columns: [
+      { id: "todo", label: "Backlog", wipLimit: 0, enabled: true },
+      { id: "doing", label: "In progress", wipLimit: 4, enabled: true },
+      { id: "review", label: "Client review", wipLimit: 3, enabled: true },
+      { id: "done", label: "Approved", wipLimit: 0, enabled: true }
+    ]
+  },
+  {
+    id: "software",
+    label: "Software delivery",
+    columns: [
+      { id: "todo", label: "Ready", wipLimit: 0, enabled: true },
+      { id: "doing", label: "Building", wipLimit: 4, enabled: true },
+      { id: "review", label: "QA", wipLimit: 4, enabled: true },
+      { id: "done", label: "Shipped", wipLimit: 0, enabled: true }
+    ]
+  },
+  {
+    id: "creative",
+    label: "Creative review",
+    columns: [
+      { id: "todo", label: "Brief", wipLimit: 0, enabled: true },
+      { id: "doing", label: "Drafting", wipLimit: 5, enabled: true },
+      { id: "review", label: "Revisions", wipLimit: 3, enabled: true },
+      { id: "done", label: "Delivered", wipLimit: 0, enabled: true }
+    ]
+  }
+];
+
 const featureRequestStatuses = [
   { id: "new", label: "New" },
   { id: "triaged", label: "Triaged" },
@@ -972,6 +1015,8 @@ const seedData = {
       ],
       swimlane: "none",
       sort: "manual",
+      density: "comfortable",
+      collapsed: [],
       showDone: true
     },
     ai: {
@@ -2519,10 +2564,13 @@ function normalizeWorkspaceBoard(board = {}) {
   });
   const swimlane = ["none", "assignee", "priority", "company"].includes(board.swimlane) ? board.swimlane : fallback.swimlane || "none";
   const sort = ["manual", "due", "priority"].includes(board.sort) ? board.sort : fallback.sort || "manual";
+  const density = ["comfortable", "compact", "minimal"].includes(board.density) ? board.density : fallback.density || "comfortable";
   return {
     columns,
     swimlane,
     sort,
+    density,
+    collapsed: Array.isArray(board.collapsed) ? board.collapsed.map(String).filter((id) => statuses.some((status) => status.id === id)) : fallback.collapsed || [],
     showDone: board.showDone !== false
   };
 }
@@ -12930,6 +12978,82 @@ function updateBoardColumn(columnId, updates = {}) {
   });
 }
 
+function applyBoardTemplate(templateId) {
+  const template = boardWorkflowTemplates.find((item) => item.id === templateId);
+  if (!template) return;
+  const board = normalizeWorkspaceBoard(state.workspace.board);
+  updateBoardSetting({
+    columns: template.columns,
+    swimlane: board.swimlane,
+    sort: board.sort,
+    density: board.density,
+    collapsed: []
+  });
+}
+
+function toggleBoardColumn(columnId) {
+  const board = normalizeWorkspaceBoard(state.workspace.board);
+  const collapsed = new Set(board.collapsed);
+  if (collapsed.has(columnId)) collapsed.delete(columnId);
+  else collapsed.add(columnId);
+  updateBoardSetting({ collapsed: Array.from(collapsed) });
+}
+
+function boardQuickAddProjectId() {
+  if (state.selectedProject !== "all" && byId(state.projects, state.selectedProject)) return state.selectedProject;
+  if (state.filters.project !== "all" && byId(state.projects, state.filters.project)) return state.filters.project;
+  const companyFiltered = activeProjects().filter((project) => state.filters.company === "all" || project.companyId === state.filters.company);
+  return companyFiltered[0]?.id || activeProjects()[0]?.id || "";
+}
+
+function createBoardTask(status, title) {
+  const cleanTitle = String(title || "").trim();
+  const projectId = boardQuickAddProjectId();
+  if (!cleanTitle) {
+    showToast("Add a card title first", "info");
+    return;
+  }
+  if (!projectId) {
+    showToast("Create a project before adding board cards", "info");
+    return;
+  }
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot create tasks", "info");
+    return;
+  }
+  const now = new Date().toISOString();
+  const columnTasks = boardOrderedTasks(getFilteredTasks().filter((task) => task.status === status));
+  const task = {
+    id: uid("task"),
+    projectId,
+    title: cleanTitle,
+    description: "",
+    assignee: activeMemberId(),
+    status,
+    priority: "normal",
+    startDate: todayKey(),
+    dueDate: "",
+    boardOrder: columnTasks.length + 1,
+    blockedBy: [],
+    tags: [],
+    subtasks: [],
+    customFields: {},
+    createdAt: now,
+    updatedAt: now
+  };
+  state.tasks = [task, ...state.tasks];
+  addActivity({
+    projectId,
+    taskId: task.id,
+    type: "task_create",
+    message: `created ${task.title}`
+  });
+  saveState();
+  render();
+  showToast(`Added ${task.title} to ${boardColumnLabel(status)}`, "success");
+  syncTaskToApi(task, "Task created in API", true);
+}
+
 function selectedVisibilityReviewCompanyId() {
   if (state.selectedCompany !== "all" && byId(state.companies, state.selectedCompany)) return state.selectedCompany;
   if (state.filters.company !== "all" && byId(state.companies, state.filters.company)) return state.filters.company;
@@ -17534,6 +17658,13 @@ function renderBoardControls() {
       </div>
       <div class="board-control-grid">
         <label>
+          <span>Workflow</span>
+          <select id="board-template">
+            <option value="">Custom board</option>
+            ${boardWorkflowTemplates.map((template) => `<option value="${template.id}">${escapeHtml(template.label)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
           <span>Swimlanes</span>
           <select id="board-swimlane">
             ${[
@@ -17552,6 +17683,16 @@ function renderBoardControls() {
               ["due", "Due date"],
               ["priority", "Priority"]
             ].map(([id, label]) => `<option value="${id}" ${board.sort === id ? "selected" : ""}>${label}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Density</span>
+          <select id="board-density">
+            ${[
+              ["comfortable", "Comfortable"],
+              ["compact", "Compact"],
+              ["minimal", "Minimal"]
+            ].map(([id, label]) => `<option value="${id}" ${board.density === id ? "selected" : ""}>${label}</option>`).join("")}
           </select>
         </label>
         ${board.columns.map((column) => `
@@ -17577,18 +17718,28 @@ function renderBoardColumn(column, tasks) {
   const columnTasks = boardOrderedTasks(tasks.filter((task) => task.status === column.id));
   const overLimit = column.wipLimit > 0 && columnTasks.length > column.wipLimit;
   const atLimit = column.wipLimit > 0 && columnTasks.length === column.wipLimit;
+  const collapsed = normalizeWorkspaceBoard(state.workspace.board).collapsed.includes(column.id);
   return `
-    <section class="board-column ${overLimit ? "is-over-wip" : atLimit ? "is-at-wip" : ""}" data-status="${column.id}">
+    <section class="board-column ${overLimit ? "is-over-wip" : atLimit ? "is-at-wip" : ""} ${collapsed ? "is-collapsed" : ""}" data-status="${column.id}">
       <div class="board-column-header">
         <div>
           <h2>${escapeHtml(column.label)}</h2>
           ${column.wipLimit ? `<small>WIP ${columnTasks.length}/${column.wipLimit}</small>` : `<small>${columnTasks.length} task${columnTasks.length === 1 ? "" : "s"}</small>`}
         </div>
-        <span>${columnTasks.length}</span>
+        <div class="board-column-actions">
+          <span>${columnTasks.length}</span>
+          <button class="icon-button compact-button" type="button" data-board-collapse="${column.id}" aria-label="${collapsed ? "Expand" : "Collapse"} ${escapeHtml(column.label)}">${collapsed ? "+" : "-"}</button>
+        </div>
       </div>
-      <div class="task-stack" data-drop-status="${column.id}">
-        ${columnTasks.length ? columnTasks.map(renderTaskCard).join("") : emptyState("No tasks here.")}
-      </div>
+      ${collapsed ? "" : `
+        <form class="board-quick-add" data-board-quick-add="${column.id}">
+          <input name="title" placeholder="Add a card to ${escapeHtml(column.label)}" aria-label="Add a card to ${escapeHtml(column.label)}">
+          <button class="button button-secondary compact-button" type="submit">Add</button>
+        </form>
+        <div class="task-stack" data-drop-status="${column.id}">
+          ${columnTasks.length ? columnTasks.map(renderTaskCard).join("") : emptyState("No tasks here.")}
+        </div>
+      `}
     </section>
   `;
 }
@@ -17605,7 +17756,7 @@ function renderKanbanBoard(tasks, { controls = false, label = "Task board" } = {
           <span>${group.tasks.length} task${group.tasks.length === 1 ? "" : "s"}</span>
         </div>
       `}
-      <div class="board" aria-label="${escapeHtml(label)}${board.swimlane === "none" ? "" : ` - ${escapeHtml(group.label)}`}">
+      <div class="board board-density-${escapeHtml(board.density)}" aria-label="${escapeHtml(label)}${board.swimlane === "none" ? "" : ` - ${escapeHtml(group.label)}`}">
         ${columns.map((column) => renderBoardColumn(column, group.tasks)).join("")}
       </div>
     </section>
@@ -22399,6 +22550,25 @@ function renderTimeEntryRow(entry) {
   `;
 }
 
+function renderTaskCardSignals(task) {
+  const comments = openCommentCount(task.id);
+  const attachments = state.files.filter((file) => file.taskId === task.id).length;
+  const doneSubtasks = Array.isArray(task.subtasks) ? task.subtasks.filter((subtask) => subtask.done).length : 0;
+  const totalSubtasks = Array.isArray(task.subtasks) ? task.subtasks.length : 0;
+  const visibility = taskVisibility(task);
+  const staleDays = daysBetween((task.updatedAt || task.createdAt || todayKey()).slice(0, 10), todayKey());
+  const signals = [
+    isTaskBlocked(task) ? ["Blocked", "red"] : null,
+    isOverdue(task) ? ["Overdue", "red"] : null,
+    visibility !== "internal" ? [visibilityLabel(visibility), visibilityTone(visibility)] : null,
+    comments ? [`${comments} comment${comments === 1 ? "" : "s"}`, "blue"] : null,
+    attachments ? [`${attachments} file${attachments === 1 ? "" : "s"}`, "neutral"] : null,
+    totalSubtasks ? [`${doneSubtasks}/${totalSubtasks}`, doneSubtasks === totalSubtasks ? "green" : "neutral"] : null,
+    staleDays >= 7 && task.status !== "done" ? [`${staleDays}d stale`, "amber"] : null
+  ].filter(Boolean);
+  return signals.length ? `<div class="task-signal-row">${signals.map(([label, tone]) => `<span class="status-pill inbox-${tone}">${escapeHtml(label)}</span>`).join("")}</div>` : "";
+}
+
 function renderTaskCard(task) {
   const company = projectCompany(task.projectId);
   const checklist = subtaskSummary(task);
@@ -22423,6 +22593,7 @@ function renderTaskCard(task) {
         ${checklist ? `<span>${escapeHtml(checklist)}</span>` : ""}
         ${liveViewers ? `<span class="live-task-chip">Live ${liveViewers}</span>` : ""}
       </div>
+      ${renderTaskCardSignals(task)}
       ${dependencies}
       <div class="tag-row">
         ${task.tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
@@ -28415,6 +28586,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const boardCollapseButton = event.target.closest("[data-board-collapse]");
+  if (boardCollapseButton) {
+    toggleBoardColumn(boardCollapseButton.dataset.boardCollapse);
+    return;
+  }
+
   const dailyActionButton = event.target.closest("[data-daily-action]");
   if (dailyActionButton) {
     const taskId = dailyActionButton.dataset.taskId;
@@ -28795,9 +28972,21 @@ els.appView.addEventListener("change", (event) => {
     return;
   }
 
+  const boardTemplateSelect = event.target.closest("#board-template");
+  if (boardTemplateSelect) {
+    applyBoardTemplate(boardTemplateSelect.value);
+    return;
+  }
+
   const boardSortSelect = event.target.closest("#board-sort");
   if (boardSortSelect) {
     updateBoardSetting({ sort: boardSortSelect.value });
+    return;
+  }
+
+  const boardDensitySelect = event.target.closest("#board-density");
+  if (boardDensitySelect) {
+    updateBoardSetting({ density: boardDensitySelect.value });
     return;
   }
 
@@ -28886,6 +29075,12 @@ els.appView.addEventListener("drop", (event) => {
 });
 
 els.appView.addEventListener("submit", (event) => {
+  const boardQuickAddForm = event.target.closest("[data-board-quick-add]");
+  if (boardQuickAddForm) {
+    event.preventDefault();
+    createBoardTask(boardQuickAddForm.dataset.boardQuickAdd, boardQuickAddForm.elements.title?.value || "");
+    return;
+  }
   if (event.target.closest("#public-feature-request-form")) {
     event.preventDefault();
     submitPublicFeatureRequest();
