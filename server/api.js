@@ -24,6 +24,9 @@ const PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS = positiveNumber(process.env.AGORA_PUBL
 const PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS = positiveNumber(process.env.AGORA_PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS, 3);
 const PASSWORD_RESET_TTL_MS = positiveNumber(process.env.AGORA_PASSWORD_RESET_TTL_MINUTES, 30) * 60 * 1000;
 const INVITATION_TTL_MS = positiveNumber(process.env.AGORA_INVITATION_TTL_DAYS, 14) * 24 * 60 * 60 * 1000;
+const PORTAL_LINK_TTL_MS = positiveNumber(process.env.AGORA_PORTAL_LINK_TTL_DAYS, 14) * 24 * 60 * 60 * 1000;
+const PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS = positiveNumber(process.env.AGORA_PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS, 30);
+const PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS = positiveNumber(process.env.AGORA_PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS, 10 * 60 * 1000);
 
 const workspace = {
   id: "workspace-acme",
@@ -622,6 +625,14 @@ function createServer(options = {}) {
         return;
       }
 
+      const publicPortalLinkMatch = url.pathname.match(/^\/api\/portal-links\/validate\/([^/]+)$/);
+      if (publicPortalLinkMatch && request.method === "GET") {
+        assertRateLimit(request, "public-portal-link", PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS, PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS);
+        const portalLink = await validatePortalLink(storage, decodeURIComponent(publicPortalLinkMatch[1]));
+        sendJson(response, 200, { portalLink });
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/public/feature-requests") {
         if (!publicFeatureRequestsEnabled()) {
           sendError(response, 404, "Public feature requests are disabled");
@@ -886,6 +897,62 @@ function createServer(options = {}) {
         }
         const invitation = await revokeInvitation(storage, decodeURIComponent(invitationManageMatch[1]), session);
         sendJson(response, 200, { invitation });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/portal-links") {
+        if (!hasPermission(session, "workspace:read")) {
+          sendError(response, 403, "Missing workspace read permission");
+          return;
+        }
+        const portalLinks = await listPortalLinks(storage, session);
+        sendJson(response, 200, { portalLinks });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/portal-links") {
+        if (!hasPermission(session, "projects:write")) {
+          sendError(response, 403, "Missing projects write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const result = await createPortalLink(storage, body, session);
+        sendJson(response, 201, result);
+        return;
+      }
+
+      const portalLinkEventMatch = url.pathname.match(/^\/api\/portal-links\/([^/]+)\/events$/);
+      if (portalLinkEventMatch && request.method === "POST") {
+        if (!hasPermission(session, "projects:write")) {
+          sendError(response, 403, "Missing projects write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const portalLink = await recordPortalLinkEvent(storage, decodeURIComponent(portalLinkEventMatch[1]), body.event, session);
+        sendJson(response, 200, { portalLink });
+        return;
+      }
+
+      const portalLinkRotateMatch = url.pathname.match(/^\/api\/portal-links\/([^/]+)\/rotate$/);
+      if (portalLinkRotateMatch && request.method === "POST") {
+        if (!hasPermission(session, "projects:write")) {
+          sendError(response, 403, "Missing projects write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const result = await rotatePortalLink(storage, decodeURIComponent(portalLinkRotateMatch[1]), body, session);
+        sendJson(response, 200, result);
+        return;
+      }
+
+      const portalLinkRevokeMatch = url.pathname.match(/^\/api\/portal-links\/([^/]+)\/revoke$/);
+      if (portalLinkRevokeMatch && request.method === "POST") {
+        if (!hasPermission(session, "projects:write")) {
+          sendError(response, 403, "Missing projects write permission");
+          return;
+        }
+        const portalLink = await revokePortalLink(storage, decodeURIComponent(portalLinkRevokeMatch[1]), session);
+        sendJson(response, 200, { portalLink });
         return;
       }
 
@@ -3630,6 +3697,235 @@ async function acceptInvitation(storage, token, name, password) {
   return createSession({ ...user, ...passwordFields }, nextMembership);
 }
 
+async function listPortalLinks(storage, session) {
+  const links = await storage.loadRecords("clientPortalLinks", scopedRecordFilters(session, {}));
+  return links
+    .map(publicPortalLink)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+async function createPortalLink(storage, body, session, options = {}) {
+  const companyId = cleanString(body.companyId);
+  const company = await requirePortalCompany(storage, companyId, session);
+  const now = new Date().toISOString();
+  const token = createPortalToken();
+  const link = normalizeClientPortalLinkRecord({
+    id: `portal-link-${crypto.randomUUID()}`,
+    companyId,
+    tokenHash: hashPortalToken(token),
+    tokenId: portalTokenId(token),
+    status: "active",
+    createdBy: session.user.id,
+    createdAt: now,
+    expiresAt: portalLinkExpiry(body.expiresAt),
+    packetSignature: cleanString(body.packetSignature),
+    copiedAt: "",
+    emailedAt: "",
+    viewedAt: "",
+    viewCount: 0
+  });
+
+  const existingLinks = await storage.loadRecords("clientPortalLinks", scopedRecordFilters(session, { companyId }));
+  await Promise.all(existingLinks
+    .filter((item) => portalLinkStatus(item) === "active")
+    .map((item) => storage.upsertRecord("clientPortalLinks", normalizeClientPortalLinkRecord({
+      ...item,
+      status: "revoked",
+      revokedAt: now,
+      updatedAt: now
+    }), {
+      storage: storage.driver || "json-file",
+      updatedBy: session.user.id,
+      action: options.revokeAction || "client_portal_link_rotate"
+    })));
+
+  const savedLink = await storage.upsertRecord("clientPortalLinks", link, {
+    storage: storage.driver || "json-file",
+    updatedBy: session.user.id,
+    action: options.action || "client_portal_link_generate"
+  });
+  await storage.appendAuditEvent({
+    actorId: session.user.id,
+    action: options.action || "client_portal_link_generate",
+    workspaceId: workspace.id,
+    detail: `${session.user.name} ${options.verb || "generated"} a hosted portal link for ${company.name}`,
+    metadata: { companyId, linkId: savedLink.id, tokenId: savedLink.tokenId, expiresAt: savedLink.expiresAt }
+  });
+  broadcastRealtimeEvent({
+    type: "record",
+    collection: "clientPortalLinks",
+    action: options.action || "client_portal_link_generate",
+    id: savedLink.id,
+    companyId,
+    actorId: session.user.id
+  });
+  return { portalLink: publicPortalLink(savedLink), token };
+}
+
+async function rotatePortalLink(storage, linkId, body, session) {
+  const existingLink = await getPortalLinkRecord(storage, linkId, session);
+  return createPortalLink(storage, {
+    companyId: existingLink.companyId,
+    expiresAt: body.expiresAt,
+    packetSignature: cleanString(body.packetSignature) || existingLink.packetSignature
+  }, session, {
+    action: "client_portal_link_rotate",
+    verb: "rotated"
+  });
+}
+
+async function revokePortalLink(storage, linkId, session) {
+  const link = await getPortalLinkRecord(storage, linkId, session);
+  if (portalLinkStatus(link) === "revoked") return publicPortalLink(link);
+  const now = new Date().toISOString();
+  const savedLink = await storage.upsertRecord("clientPortalLinks", normalizeClientPortalLinkRecord({
+    ...link,
+    status: "revoked",
+    revokedAt: now,
+    updatedAt: now
+  }), {
+    storage: storage.driver || "json-file",
+    updatedBy: session.user.id,
+    action: "client_portal_link_revoke"
+  });
+  await storage.appendAuditEvent({
+    actorId: session.user.id,
+    action: "client_portal_link_revoke",
+    workspaceId: workspace.id,
+    detail: `${session.user.name} revoked a hosted portal link`,
+    metadata: { companyId: savedLink.companyId, linkId: savedLink.id, tokenId: savedLink.tokenId }
+  });
+  return publicPortalLink(savedLink);
+}
+
+async function recordPortalLinkEvent(storage, linkId, event, session) {
+  const normalizedEvent = cleanString(event);
+  const fieldsByEvent = {
+    copied: "copiedAt",
+    emailed: "emailedAt"
+  };
+  const field = fieldsByEvent[normalizedEvent];
+  if (!field) publicError(400, "Portal link event is invalid");
+  const link = await getPortalLinkRecord(storage, linkId, session);
+  const now = new Date().toISOString();
+  const savedLink = await storage.upsertRecord("clientPortalLinks", normalizeClientPortalLinkRecord({
+    ...link,
+    [field]: now,
+    updatedAt: now
+  }), {
+    storage: storage.driver || "json-file",
+    updatedBy: session.user.id,
+    action: `client_portal_link_${normalizedEvent}`
+  });
+  await storage.appendAuditEvent({
+    actorId: session.user.id,
+    action: `client_portal_link_${normalizedEvent}`,
+    workspaceId: workspace.id,
+    detail: `${session.user.name} ${normalizedEvent} a hosted portal link`,
+    metadata: { companyId: savedLink.companyId, linkId: savedLink.id, tokenId: savedLink.tokenId }
+  });
+  return publicPortalLink(savedLink);
+}
+
+async function validatePortalLink(storage, token) {
+  const tokenHash = hashPortalToken(token);
+  if (!tokenHash) publicError(404, "Portal link not found");
+  const links = await storage.loadRecords("clientPortalLinks", { tokenHash });
+  const link = links.find((item) => item.tokenHash === tokenHash);
+  if (!link) publicError(404, "Portal link not found");
+  const status = portalLinkStatus(link);
+  if (status !== "active") publicError(status === "expired" ? 410 : 403, `Portal link is ${status}`);
+
+  const now = new Date().toISOString();
+  const savedLink = await storage.upsertRecord("clientPortalLinks", normalizeClientPortalLinkRecord({
+    ...link,
+    viewedAt: now,
+    viewCount: Number(link.viewCount || 0) + 1,
+    updatedAt: now
+  }), {
+    storage: storage.driver || "json-file",
+    updatedBy: "portal-link",
+    action: "client_portal_link_view"
+  });
+  await storage.appendAuditEvent({
+    actorId: "portal-link",
+    action: "client_portal_link_view",
+    workspaceId: workspace.id,
+    detail: "A hosted portal link was viewed",
+    metadata: { companyId: savedLink.companyId, linkId: savedLink.id, tokenId: savedLink.tokenId }
+  });
+  return publicPortalLink(savedLink);
+}
+
+async function getPortalLinkRecord(storage, linkId, session) {
+  const links = await storage.loadRecords("clientPortalLinks", scopedRecordFilters(session, {}));
+  const link = links.find((item) => item.id === linkId);
+  if (!link) publicError(404, "Portal link not found");
+  if (sessionCompanyId(session) && link.companyId !== sessionCompanyId(session)) {
+    publicError(403, "Portal link is outside the company scope");
+  }
+  return normalizeClientPortalLinkRecord(link);
+}
+
+async function requirePortalCompany(storage, companyId, session) {
+  if (!companyId) publicError(400, "Portal link companyId is required");
+  if (sessionCompanyId(session) && companyId !== sessionCompanyId(session)) {
+    publicError(403, "Portal link company is outside the session scope");
+  }
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const company = (Array.isArray(snapshot.companies) ? snapshot.companies : []).find((item) => item.id === companyId);
+  if (!company) publicError(400, "Portal link company is not in this workspace");
+  return company;
+}
+
+function publicPortalLink(link = {}) {
+  const normalized = normalizeClientPortalLinkRecord(link);
+  return {
+    id: normalized.id,
+    companyId: normalized.companyId,
+    tokenId: normalized.tokenId,
+    source: "api",
+    status: portalLinkStatus(normalized),
+    createdBy: normalized.createdBy,
+    createdAt: normalized.createdAt,
+    expiresAt: normalized.expiresAt,
+    revokedAt: normalized.revokedAt,
+    copiedAt: normalized.copiedAt,
+    emailedAt: normalized.emailedAt,
+    viewedAt: normalized.viewedAt,
+    viewCount: normalized.viewCount,
+    packetSignature: normalized.packetSignature,
+    updatedAt: normalized.updatedAt
+  };
+}
+
+function portalLinkStatus(link = {}) {
+  if (!link?.id) return "missing";
+  if (link.status === "revoked" || link.revokedAt) return "revoked";
+  const expiresAt = Date.parse(link.expiresAt || "");
+  if (Number.isFinite(expiresAt) && expiresAt <= Date.now()) return "expired";
+  return "active";
+}
+
+function portalLinkExpiry(value) {
+  const parsed = Date.parse(cleanString(value));
+  if (Number.isFinite(parsed) && parsed > Date.now()) return new Date(parsed).toISOString();
+  return new Date(Date.now() + PORTAL_LINK_TTL_MS).toISOString();
+}
+
+function createPortalToken() {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+function hashPortalToken(token) {
+  const value = cleanString(token);
+  return value ? crypto.createHash("sha256").update(value).digest("hex") : "";
+}
+
+function portalTokenId(token) {
+  return hashPortalToken(token).slice(0, 24);
+}
+
 function workspaceUsers(snapshot = {}) {
   const users = new Map();
   demoUsers.forEach((user) => users.set(user.id, user));
@@ -4335,6 +4631,32 @@ function normalizeCompany(company) {
     owner: company.owner ? String(company.owner) : "",
     status: company.status ? String(company.status) : "active",
     description: company.description ? String(company.description) : ""
+  };
+}
+
+function normalizeClientPortalLinkRecord(record) {
+  requireRecord(record, "Client portal link");
+  const tokenHash = cleanString(record.tokenHash);
+  const tokenId = cleanString(record.tokenId) || tokenHash.slice(0, 24);
+  if (!record.id || !record.companyId || !tokenHash) {
+    publicError(400, "Client portal link requires id, companyId, and tokenHash");
+  }
+  return {
+    id: String(record.id),
+    companyId: String(record.companyId),
+    tokenHash,
+    tokenId,
+    status: cleanString(record.status) === "revoked" ? "revoked" : "active",
+    createdBy: cleanString(record.createdBy),
+    createdAt: record.createdAt ? String(record.createdAt) : new Date().toISOString(),
+    expiresAt: record.expiresAt ? String(record.expiresAt) : new Date(Date.now() + PORTAL_LINK_TTL_MS).toISOString(),
+    revokedAt: record.revokedAt ? String(record.revokedAt) : "",
+    copiedAt: record.copiedAt ? String(record.copiedAt) : "",
+    emailedAt: record.emailedAt ? String(record.emailedAt) : "",
+    viewedAt: record.viewedAt ? String(record.viewedAt) : "",
+    viewCount: Math.max(0, Number(record.viewCount || 0)),
+    packetSignature: cleanString(record.packetSignature),
+    updatedAt: record.updatedAt ? String(record.updatedAt) : record.createdAt ? String(record.createdAt) : new Date().toISOString()
   };
 }
 

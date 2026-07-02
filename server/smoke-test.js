@@ -976,6 +976,50 @@ async function testAccountAuth() {
     });
     assert(company.record.name === "Record Company", "record company upsert failed");
 
+    const portalLink = await request(`${baseUrl}/api/portal-links`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        companyId: "company-record",
+        packetSignature: "smoke-signature"
+      }
+    });
+    assert(portalLink.token, "hosted portal link did not return one-time token");
+    assert(portalLink.portalLink.source === "api", "hosted portal link did not mark api source");
+    assert(portalLink.portalLink.tokenId, "hosted portal link did not return token id");
+    assert(!portalLink.portalLink.tokenHash, "hosted portal link leaked token hash");
+    assert(!portalLink.portalLink.token, "hosted portal link leaked raw token in record");
+
+    const portalLinks = await request(`${baseUrl}/api/portal-links`, {
+      token: signup.token
+    });
+    assert(portalLinks.portalLinks.some((link) => link.id === portalLink.portalLink.id), "hosted portal link list missed created link");
+    assert(portalLinks.portalLinks.every((link) => !link.tokenHash && !link.token), "hosted portal link list leaked token material");
+
+    const recordCollections = await request(`${baseUrl}/api/records`, {
+      token: signup.token
+    });
+    assert(!recordCollections.collections.includes("clientPortalLinks"), "portal links should not be exposed as generic records");
+
+    const validatedPortalLink = await request(`${baseUrl}/api/portal-links/validate/${encodeURIComponent(portalLink.token)}`);
+    assert(validatedPortalLink.portalLink.companyId === "company-record", "public portal validation did not return company scope");
+    assert(validatedPortalLink.portalLink.viewCount === 1, "public portal validation did not count the view");
+
+    const copiedPortalLink = await request(`${baseUrl}/api/portal-links/${encodeURIComponent(portalLink.portalLink.id)}/events`, {
+      method: "POST",
+      token: signup.token,
+      body: { event: "copied" }
+    });
+    assert(copiedPortalLink.portalLink.copiedAt, "hosted portal copy event was not recorded");
+
+    const revokedPortalLink = await request(`${baseUrl}/api/portal-links/${encodeURIComponent(portalLink.portalLink.id)}/revoke`, {
+      method: "POST",
+      token: signup.token
+    });
+    assert(revokedPortalLink.portalLink.status === "revoked", "hosted portal revoke failed");
+    const blockedPortalValidation = await requestError(`${baseUrl}/api/portal-links/validate/${encodeURIComponent(portalLink.token)}`);
+    assert(blockedPortalValidation.status === 403, "revoked hosted portal token should not validate");
+
     const otherCompany = await request(`${baseUrl}/api/records/companies`, {
       method: "POST",
       token: signup.token,
@@ -1451,11 +1495,17 @@ async function testSupabaseStorageAdapter() {
     if (table.startsWith("agora_") && table !== "agora_workspace_snapshots" && table !== "agora_audit_events" && (!options.method || options.method === "GET")) {
       const workspaceId = parsed.searchParams.get("workspace_id")?.replace(/^eq\./, "");
       const projectId = parsed.searchParams.get("project_id")?.replace(/^eq\./, "");
+      const companyId = parsed.searchParams.get("company_id")?.replace(/^eq\./, "");
+      const memberId = parsed.searchParams.get("member_id")?.replace(/^eq\./, "");
+      const tokenHash = parsed.searchParams.get("record->>tokenHash")?.replace(/^eq\./, "");
       const limit = Number(parsed.searchParams.get("limit") || 0);
       const offset = Number(parsed.searchParams.get("offset") || 0);
       const rows = [...(records.get(table)?.values() || [])]
         .filter((row) => !workspaceId || row.workspace_id === workspaceId)
-        .filter((row) => !projectId || row.project_id === projectId);
+        .filter((row) => !projectId || row.project_id === projectId)
+        .filter((row) => !companyId || row.company_id === companyId)
+        .filter((row) => !memberId || row.member_id === memberId)
+        .filter((row) => !tokenHash || row.record?.tokenHash === tokenHash);
       const pageRows = limit ? rows.slice(offset, offset + limit) : rows;
       return mockResponse(pageRows, true, 200, {
         "content-range": `${offset}-${offset + pageRows.length - 1}/${rows.length}`

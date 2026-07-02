@@ -102,6 +102,9 @@ alter table public.agora_inbox_state alter column collection_key set default 'in
 create table if not exists public.agora_integration_settings (like public.agora_companies including all);
 alter table public.agora_integration_settings alter column collection_key set default 'integrationSettings';
 
+create table if not exists public.agora_client_portal_links (like public.agora_companies including all);
+alter table public.agora_client_portal_links alter column collection_key set default 'clientPortalLinks';
+
 create index if not exists idx_agora_companies_workspace_updated on public.agora_companies(workspace_id, updated_at desc);
 create index if not exists idx_agora_approvals_workspace_project on public.agora_approvals(workspace_id, project_id, updated_at desc);
 create index if not exists idx_agora_approvals_company on public.agora_approvals(workspace_id, company_id, updated_at desc);
@@ -121,6 +124,8 @@ create index if not exists idx_agora_notification_reminders_due on public.agora_
 create index if not exists idx_agora_notification_history_member on public.agora_notification_history(workspace_id, member_id, created_at desc);
 create index if not exists idx_agora_inbox_state_member on public.agora_inbox_state(workspace_id, member_id, updated_at desc);
 create index if not exists idx_agora_integration_settings_workspace_updated on public.agora_integration_settings(workspace_id, updated_at desc);
+create index if not exists idx_agora_client_portal_links_company on public.agora_client_portal_links(workspace_id, company_id, updated_at desc);
+create index if not exists idx_agora_client_portal_links_token_hash on public.agora_client_portal_links((record->>'tokenHash'));
 
 drop trigger if exists trg_agora_companies_updated_at on public.agora_companies;
 create trigger trg_agora_companies_updated_at before update on public.agora_companies for each row execute function public.agora_set_updated_at();
@@ -167,6 +172,9 @@ create trigger trg_agora_inbox_state_updated_at before update on public.agora_in
 drop trigger if exists trg_agora_integration_settings_updated_at on public.agora_integration_settings;
 create trigger trg_agora_integration_settings_updated_at before update on public.agora_integration_settings for each row execute function public.agora_set_updated_at();
 
+drop trigger if exists trg_agora_client_portal_links_updated_at on public.agora_client_portal_links;
+create trigger trg_agora_client_portal_links_updated_at before update on public.agora_client_portal_links for each row execute function public.agora_set_updated_at();
+
 alter table public.agora_companies enable row level security;
 alter table public.agora_approvals enable row level security;
 alter table public.agora_time_entries enable row level security;
@@ -182,3 +190,4 @@ alter table public.agora_notification_reminders enable row level security;
 alter table public.agora_notification_history enable row level security;
 alter table public.agora_inbox_state enable row level security;
 alter table public.agora_integration_settings enable row level security;
+alter table public.agora_client_portal_links enable row level security;

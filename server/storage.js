@@ -19,7 +19,8 @@ const recordTables = {
   notificationReminders: "agora_notification_reminders",
   notificationHistory: "agora_notification_history",
   inboxState: "agora_inbox_state",
-  integrationSettings: "agora_integration_settings"
+  integrationSettings: "agora_integration_settings",
+  clientPortalLinks: "agora_client_portal_links"
 };
 
 function createStorage(options = {}) {
@@ -364,7 +365,8 @@ function filterRecords(records, filters = {}) {
     (!filters.projectId || record.projectId === filters.projectId) &&
     (!filters.taskId || record.taskId === filters.taskId) &&
     (!filters.companyId || record.companyId === filters.companyId || record.id === filters.companyId) &&
-    (!filters.memberId || record.memberId === filters.memberId || record.owner === filters.memberId || record.author === filters.memberId || record.requester === filters.memberId)
+    (!filters.memberId || record.memberId === filters.memberId || record.owner === filters.memberId || record.author === filters.memberId || record.requester === filters.memberId) &&
+    (!filters.tokenHash || record.tokenHash === filters.tokenHash)
   ));
 }
 
@@ -406,6 +408,7 @@ function recordQuery(workspaceId, filters = {}) {
   if (filters.taskId) params.set("task_id", `eq.${filters.taskId}`);
   if (filters.companyId) params.set("company_id", `eq.${filters.companyId}`);
   if (filters.memberId) params.set("member_id", `eq.${filters.memberId}`);
+  if (filters.tokenHash) params.set("record->>tokenHash", `eq.${filters.tokenHash}`);
   if (filters.limit) params.set("limit", String(filters.limit));
   if (filters.offset) params.set("offset", String(filters.offset));
   return `?${params.toString()}`;

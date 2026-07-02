@@ -2663,7 +2663,9 @@ function normalizeClientPortalLinks(links = [], companies = seedData.companies) 
     .map((link) => ({
       id: link.id || uid("portal-link"),
       companyId: link.companyId,
-      token: String(link.token || uid("portal-token")).trim(),
+      token: String(link.token || "").trim(),
+      tokenId: String(link.tokenId || "").trim(),
+      source: link.source === "api" ? "api" : "local",
       status: ["active", "revoked"].includes(link.status) ? link.status : "active",
       createdBy: link.createdBy || currentMemberId,
       createdAt: link.createdAt || new Date().toISOString(),
@@ -2675,7 +2677,7 @@ function normalizeClientPortalLinks(links = [], companies = seedData.companies) 
       viewCount: Number(link.viewCount || 0),
       packetSignature: String(link.packetSignature || "")
     }))
-    .filter((link) => link.token)
+    .filter((link) => link.token || link.tokenId)
     .slice(0, 100);
 }
 
@@ -10867,7 +10869,7 @@ function clientPacketSignature(companyId) {
 function clientPortalLinkStatus(link) {
   if (!link) return "missing";
   if (link.status === "revoked" || link.revokedAt) return "revoked";
-  if (link.expiresAt && link.expiresAt < todayKey()) return "expired";
+  if (link.expiresAt && Date.parse(link.expiresAt) <= Date.now()) return "expired";
   if (link.packetSignature && link.packetSignature !== clientPacketSignature(link.companyId)) return "stale";
   return "active";
 }
@@ -10888,6 +10890,14 @@ function latestClientPortalLink(companyId) {
 function clientPortalLinkUrl(link) {
   if (!link?.token) return "";
   return `${window.location.origin}${window.location.pathname}#portal/${encodeURIComponent(link.token)}`;
+}
+
+function clientPortalLinkSourceLabel(link) {
+  return link?.source === "api" ? "Hosted" : "Device-local";
+}
+
+function clientPortalLinkCanShare(link) {
+  return Boolean(link?.token);
 }
 
 function clientPortalLinkByToken(token) {
@@ -12558,6 +12568,7 @@ function routePortalFromLocation({ shouldRender = false } = {}) {
     state.clientPortalPreviewCompanyId = "";
     saveState();
     if (shouldRender) render();
+    validateHostedPortalLink(token);
     return true;
   }
 
@@ -12584,6 +12595,25 @@ function routePortalFromLocation({ shouldRender = false } = {}) {
   saveState();
   if (shouldRender) render();
   return true;
+}
+
+async function validateHostedPortalLink(token) {
+  const cleanToken = String(token || "").trim();
+  if (!cleanToken || clientPortalLinkByToken(cleanToken)) return;
+  try {
+    const result = await apiRequest(`/api/portal-links/validate/${encodeURIComponent(cleanToken)}`);
+    if (!result.portalLink?.companyId) return;
+    mergeClientPortalLink({ ...result.portalLink, token: cleanToken }, cleanToken);
+    state.selectedRoute = "portal";
+    state.selectedClientPortalToken = cleanToken;
+    state.clientPortalPreviewCompanyId = "";
+    state.selectedProject = "all";
+    state.selectedCompany = "all";
+    saveState();
+    render();
+  } catch {
+    // The portal view already renders the unavailable-link state.
+  }
 }
 
 function routeInviteFromLocation({ shouldRender = false } = {}) {
@@ -12723,7 +12753,35 @@ function exitClientPortalPreview() {
   showToast("Client preview closed", "info");
 }
 
-function generateClientPortalLink(companyId, options = {}) {
+function mergeClientPortalLink(link, token = "") {
+  const nextLink = normalizeClientPortalLinks([{
+    ...link,
+    token: token || link.token || "",
+    source: link.source === "api" ? "api" : "local"
+  }], state.companies)[0];
+  if (!nextLink) return null;
+  state.clientPortalLinks = [
+    nextLink,
+    ...(state.clientPortalLinks || []).filter((item) => item.id !== nextLink.id)
+  ].slice(0, 100);
+  return nextLink;
+}
+
+async function recordHostedPortalLinkEvent(link, event) {
+  if (link?.source !== "api" || !link.id || !apiSession) return null;
+  try {
+    const result = await apiRequest(`/api/portal-links/${encodeURIComponent(link.id)}/events`, {
+      method: "POST",
+      body: { event }
+    });
+    return result.portalLink ? mergeClientPortalLink({ ...result.portalLink, token: link.token || "" }, link.token || "") : null;
+  } catch (error) {
+    showToast(error.message || "Hosted portal link audit will retry later", "info");
+    return null;
+  }
+}
+
+function generateLocalClientPortalLink(companyId, options = {}) {
   const company = byId(state.companies, companyId);
   if (!company) return null;
   const readiness = clientShareReadiness(companyId);
@@ -12746,6 +12804,8 @@ function generateClientPortalLink(companyId, options = {}) {
     id: uid("portal-link"),
     companyId,
     token: uid("portal-token"),
+    tokenId: "",
+    source: "local",
     status: "active",
     createdBy: activeMemberId(),
     createdAt: now,
@@ -12773,15 +12833,59 @@ function generateClientPortalLink(companyId, options = {}) {
   return link;
 }
 
+async function generateClientPortalLink(companyId, options = {}) {
+  const company = byId(state.companies, companyId);
+  if (!company) return null;
+  const readiness = clientShareReadiness(companyId);
+  if (!readiness.ready) {
+    showToast("Fix visibility warnings before generating a portal link", "info");
+    return null;
+  }
+  const activeLink = activeClientPortalLink(companyId);
+  if (activeLink && !options.rotate) {
+    showToast("An active portal link already exists", "info");
+    return activeLink;
+  }
+
+  if (apiSession) {
+    try {
+      const body = { companyId, packetSignature: clientPacketSignature(companyId) };
+      const path = options.rotate && activeLink?.source === "api"
+        ? `/api/portal-links/${encodeURIComponent(activeLink.id)}/rotate`
+        : "/api/portal-links";
+      const result = await apiRequest(path, { method: "POST", body });
+      const now = new Date().toISOString();
+      const revokedLinks = (state.clientPortalLinks || []).map((link) => link.companyId === companyId && clientPortalLinkStatus(link) === "active"
+        ? { ...link, status: "revoked", revokedAt: now }
+        : link);
+      state.clientPortalLinks = revokedLinks;
+      const link = mergeClientPortalLink(result.portalLink, result.token);
+      saveState();
+      render();
+      showToast(options.rotate ? "Hosted portal link rotated" : "Hosted portal link generated", "success");
+      return link;
+    } catch (error) {
+      showToast(`${error.message || "Hosted portal link failed"}. Created a device-local link instead.`, "info");
+    }
+  }
+
+  return generateLocalClientPortalLink(companyId, options);
+}
+
 async function copyClientPortalLink(companyId) {
-  const link = activeClientPortalLink(companyId) || generateClientPortalLink(companyId);
+  const link = activeClientPortalLink(companyId) || await generateClientPortalLink(companyId);
   if (!link) return;
+  if (!clientPortalLinkCanShare(link)) {
+    showToast("Rotate this hosted link to reveal a fresh share URL", "info");
+    return;
+  }
   if (!navigator.clipboard?.writeText) {
     showToast("Clipboard is not available in this browser", "info");
     return;
   }
   const now = new Date().toISOString();
   await navigator.clipboard.writeText(clientPortalLinkUrl(link));
+  await recordHostedPortalLinkEvent(link, "copied");
   state.clientPortalLinks = state.clientPortalLinks.map((item) => item.id === link.id ? { ...item, copiedAt: now } : item);
   addAuditEvent({
     action: "client_portal_link_copy",
@@ -12797,9 +12901,13 @@ async function copyClientPortalLink(companyId) {
   showToast("Portal link copied", "success");
 }
 
-function emailClientPortalLink(companyId) {
-  const link = activeClientPortalLink(companyId) || generateClientPortalLink(companyId);
+async function emailClientPortalLink(companyId) {
+  const link = activeClientPortalLink(companyId) || await generateClientPortalLink(companyId);
   if (!link) return;
+  if (!clientPortalLinkCanShare(link)) {
+    showToast("Rotate this hosted link to reveal a fresh share URL", "info");
+    return;
+  }
   const now = new Date().toISOString();
   const company = byId(state.companies, companyId);
   const body = [
@@ -12812,6 +12920,7 @@ function emailClientPortalLink(companyId) {
     "",
     portalSharePacket(companyId)
   ].join("\n");
+  await recordHostedPortalLinkEvent(link, "emailed");
   state.clientPortalLinks = state.clientPortalLinks.map((item) => item.id === link.id ? { ...item, emailedAt: now } : item);
   addAuditEvent({
     action: "client_portal_link_email_draft",
@@ -12827,13 +12936,22 @@ function emailClientPortalLink(companyId) {
   showToast("Portal link email draft opened", "success");
 }
 
-function revokeClientPortalLink(companyId) {
+async function revokeClientPortalLink(companyId) {
   const link = activeClientPortalLink(companyId) || latestClientPortalLink(companyId);
   if (!link || clientPortalLinkStatus(link) === "revoked") {
     showToast("No active portal link to revoke", "info");
     return;
   }
   const now = new Date().toISOString();
+  if (link.source === "api" && apiSession) {
+    try {
+      const result = await apiRequest(`/api/portal-links/${encodeURIComponent(link.id)}/revoke`, { method: "POST" });
+      mergeClientPortalLink({ ...result.portalLink, token: link.token || "" }, link.token || "");
+    } catch (error) {
+      showToast(error.message || "Hosted portal link revoke failed", "info");
+      return;
+    }
+  }
   state.clientPortalLinks = state.clientPortalLinks.map((item) => item.id === link.id ? { ...item, status: "revoked", revokedAt: now } : item);
   addAuditEvent({
     action: "client_portal_link_revoke",
@@ -16087,17 +16205,19 @@ function renderClientPortalLinkPanel(companyId) {
     missing: "No link"
   }[status] || "No link";
   const tone = active ? "green" : status === "stale" || status === "expired" ? "amber" : "neutral";
+  const sourceLabel = link ? clientPortalLinkSourceLabel(link) : (apiSession ? "Hosted" : "Device-local");
+  const shareable = active && clientPortalLinkCanShare(link);
   return `
     <article class="portal-status-card">
       <span class="status-pill inbox-${tone}">${escapeHtml(statusLabel)}</span>
       <h3>Client portal link</h3>
-      <p>${active ? `Expires ${formatFullDate(link.expiresAt)}. ${link.viewCount ? `${link.viewCount} view${link.viewCount === 1 ? "" : "s"}.` : "No views yet."}` : status === "stale" ? "The visible packet changed. Rotate the link before sending it again." : "Generate a company-scoped portal link when the packet is ready."}</p>
-      ${link ? `<small>Created ${escapeHtml(formatTimestamp(link.createdAt))} by ${escapeHtml(memberName(link.createdBy))}</small>` : "<small>No client access link has been generated.</small>"}
-      ${active ? `<code>${escapeHtml(clientPortalLinkUrl(link))}</code>` : ""}
+      <p>${active ? `${escapeHtml(sourceLabel)} link. Expires ${formatFullDate(link.expiresAt)}. ${link.viewCount ? `${link.viewCount} view${link.viewCount === 1 ? "" : "s"}.` : "No views yet."}` : status === "stale" ? "The visible packet changed. Rotate the link before sending it again." : `Generate a ${apiSession ? "hosted" : "device-local"} company-scoped portal link when the packet is ready.`}</p>
+      ${link ? `<small>${escapeHtml(sourceLabel)}. Created ${escapeHtml(formatTimestamp(link.createdAt))} by ${escapeHtml(memberName(link.createdBy))}${link.source === "api" && link.tokenId ? ` - token ${escapeHtml(link.tokenId)}` : ""}</small>` : "<small>No client access link has been generated.</small>"}
+      ${shareable ? `<code>${escapeHtml(clientPortalLinkUrl(link))}</code>` : active ? "<small>Raw hosted URL is only available on the device that created it. Rotate to create a new share URL.</small>" : ""}
       <div class="portal-actions">
         <button class="button button-secondary compact-button" type="button" data-generate-portal-link="${escapeHtml(companyId)}" ${readiness.ready && !active ? "" : "disabled"}>Generate Link</button>
-        <button class="button button-secondary compact-button" type="button" data-copy-portal-link="${escapeHtml(companyId)}" ${active ? "" : "disabled"}>Copy Link</button>
-        <button class="button button-secondary compact-button" type="button" data-email-portal-link="${escapeHtml(companyId)}" ${active ? "" : "disabled"}>Email Link</button>
+        <button class="button button-secondary compact-button" type="button" data-copy-portal-link="${escapeHtml(companyId)}" ${shareable ? "" : "disabled"}>Copy Link</button>
+        <button class="button button-secondary compact-button" type="button" data-email-portal-link="${escapeHtml(companyId)}" ${shareable ? "" : "disabled"}>Email Link</button>
         <button class="button button-secondary compact-button" type="button" data-rotate-portal-link="${escapeHtml(companyId)}" ${readiness.ready && link ? "" : "disabled"}>Rotate</button>
         <button class="button button-secondary compact-button" type="button" data-revoke-portal-link="${escapeHtml(companyId)}" ${active ? "" : "disabled"}>Revoke</button>
       </div>

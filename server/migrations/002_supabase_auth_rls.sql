@@ -358,3 +358,14 @@ create policy agora_integration_settings_manager_write on public.agora_integrati
 for all to authenticated
 using (public.agora_can_write_workspace(workspace_id))
 with check (public.agora_can_write_workspace(workspace_id));
+
+drop policy if exists agora_client_portal_links_manager_read on public.agora_client_portal_links;
+create policy agora_client_portal_links_manager_read on public.agora_client_portal_links
+for select to authenticated
+using (public.agora_workspace_role(workspace_id) in ('admin', 'manager'));
+
+drop policy if exists agora_client_portal_links_manager_write on public.agora_client_portal_links;
+create policy agora_client_portal_links_manager_write on public.agora_client_portal_links
+for all to authenticated
+using (public.agora_workspace_role(workspace_id) in ('admin', 'manager'))
+with check (public.agora_workspace_role(workspace_id) in ('admin', 'manager'));

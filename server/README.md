@@ -163,6 +163,12 @@ The verifier starts a temporary Agora API server with Supabase storage, uses a u
 - `DELETE /api/invitations/:id`: revokes a pending invitation for admins.
 - `GET /api/invitations/:token`: returns public invitation details for an invite acceptance screen.
 - `POST /api/invitations/:token/accept`: accepts an invitation and creates a session. Body: `{ "name": "Jordan Lee", "password": "optional 8+ characters" }`.
+- `GET /api/portal-links`: lists hosted client portal links for the authenticated workspace scope. Responses include `tokenId`, never the raw token or token hash.
+- `POST /api/portal-links`: creates a hosted client portal link for project-manager/admin roles. Body: `{ "companyId": "company-id", "packetSignature": "optional-client-packet-signature" }`. The raw `token` is returned once in the create response and only its SHA-256 hash is stored.
+- `POST /api/portal-links/:id/events`: records hosted portal link events such as `{ "event": "copied" }` or `{ "event": "emailed" }`.
+- `POST /api/portal-links/:id/rotate`: revokes active links for the same company and returns a new hosted portal link plus one-time raw token.
+- `POST /api/portal-links/:id/revoke`: revokes a hosted portal link.
+- `GET /api/portal-links/validate/:token`: validates a public hosted portal token, records the view, and returns the company-scoped portal link metadata. Public validation is rate-limited by IP.
 - `GET /api/public/feature-requests`: returns the public feature request form configuration.
 - `POST /api/public/feature-requests`: creates a public feature-request task and sends an owner email when feature-request SMTP is configured. Public submissions are capped by `AGORA_PUBLIC_FEATURE_BODY_LIMIT_BYTES`.
 - `GET /api/records`: returns structured collections from the active storage adapter. When no structured rows exist yet, the response includes `snapshotFallback` for bootstrap compatibility.
