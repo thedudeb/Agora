@@ -3168,6 +3168,10 @@ body[data-tutorial-target="view"] #app-view {
   grid-column: 1 / -1;
 }
 
+.sprint-roadmap-panel {
+  grid-column: 1 / -1;
+}
+
 .sprint-planning-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3279,6 +3283,98 @@ body[data-tutorial-target="view"] #app-view {
   border-radius: 8px;
   font-size: 0.78rem;
   line-height: 1.45;
+}
+
+.sprint-roadmap-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sprint-roadmap-card {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sprint-roadmap-card.is-over {
+  border-color: var(--red);
+  box-shadow: inset 3px 0 0 var(--red);
+}
+
+.sprint-roadmap-card.is-open {
+  border-color: var(--blue);
+}
+
+.sprint-roadmap-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.sprint-roadmap-card-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.sprint-roadmap-card-header strong,
+.sprint-roadmap-card-header span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sprint-roadmap-card-header span,
+.sprint-roadmap-card p {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.sprint-roadmap-card p {
+  min-height: 44px;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.sprint-roadmap-meter {
+  height: 8px;
+  overflow: hidden;
+  background: rgba(36, 33, 29, 0.1);
+  border-radius: 999px;
+}
+
+.sprint-roadmap-meter span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+}
+
+.sprint-roadmap-card.is-over .sprint-roadmap-meter span {
+  background: var(--red);
+}
+
+.sprint-roadmap-card.is-open .sprint-roadmap-meter span {
+  background: var(--blue);
+}
+
+.sprint-roadmap-task-list {
+  display: grid;
+  gap: 6px;
+}
+
+.sprint-roadmap-carryover {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
 }
 
 .sprint-timeline-legend {
@@ -9332,6 +9428,7 @@ body[data-density="compact"] .main-content {
   .sprint-planning-summary,
   .sprint-planning-grid,
   .scrum-master-grid,
+  .sprint-roadmap-grid,
   .sprint-timeline-scale,
   .sprint-timeline-lane,
   .doc-composer,

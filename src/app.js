@@ -1153,6 +1153,24 @@ const seedData = {
       endDate: "2026-07-14",
       velocityPoints: 24,
       scopeChangeLabel: "Scope added mid-sprint",
+      roadmapSprints: [
+        {
+          id: "sprint-hardening",
+          name: "Hardening sprint",
+          goal: "Stabilize imports, offline installs, and reporting polish after beta feedback.",
+          startDate: "2026-07-15",
+          endDate: "2026-07-28",
+          velocityPoints: 28
+        },
+        {
+          id: "sprint-scale",
+          name: "Scale sprint",
+          goal: "Prepare collaboration, integrations, and migration tooling for larger teams.",
+          startDate: "2026-07-29",
+          endDate: "2026-08-11",
+          velocityPoints: 30
+        }
+      ],
       definitionOfReady: ["Clear outcome", "Owner assigned", "Estimate or effort set", "Dependencies named"],
       definitionOfDone: ["Acceptance checked", "Docs or notes updated", "Review complete", "No unresolved blocker"],
       retroActions: [
@@ -3264,6 +3282,17 @@ function normalizeWorkspaceScrum(scrum = {}) {
     endDate: scrum.endDate || fallback.endDate || shiftDate(todayKey(), 14),
     velocityPoints: clamp(Math.round(Number(scrum.velocityPoints ?? fallback.velocityPoints ?? 24)) || 24, 1, 500),
     scopeChangeLabel: String(scrum.scopeChangeLabel || fallback.scopeChangeLabel || "Scope added mid-sprint").trim().slice(0, 80),
+    roadmapSprints: (Array.isArray(scrum.roadmapSprints) ? scrum.roadmapSprints : fallback.roadmapSprints || [])
+      .filter((sprint) => sprint && typeof sprint === "object")
+      .map((sprint, index) => ({
+        id: sprint.id || uid("roadmap-sprint"),
+        name: String(sprint.name || `Sprint ${index + 2}`).trim().slice(0, 80),
+        goal: String(sprint.goal || "Plan the next highest-value work.").trim().slice(0, 180),
+        startDate: sprint.startDate || shiftDate(scrum.endDate || fallback.endDate || todayKey(), index * 14 + 1),
+        endDate: sprint.endDate || shiftDate(scrum.endDate || fallback.endDate || todayKey(), index * 14 + 14),
+        velocityPoints: clamp(Math.round(Number(sprint.velocityPoints ?? scrum.velocityPoints ?? fallback.velocityPoints ?? 24)) || 24, 1, 500)
+      }))
+      .slice(0, 6),
     definitionOfReady: (Array.isArray(scrum.definitionOfReady) ? scrum.definitionOfReady : fallback.definitionOfReady || [])
       .map((item) => String(item || "").trim())
       .filter(Boolean)
@@ -20938,6 +20967,122 @@ function renderSprintScrumMasterPanel(tasks, scrum, metrics) {
   `;
 }
 
+function sprintRoadmapWindows(scrum) {
+  return [
+    {
+      id: "current",
+      name: scrum.sprintName,
+      goal: scrum.goal,
+      startDate: scrum.startDate,
+      endDate: scrum.endDate,
+      velocityPoints: scrum.velocityPoints,
+      current: true
+    },
+    ...scrum.roadmapSprints
+  ];
+}
+
+function taskInSprintRoadmapWindow(task, sprint) {
+  const sprintTag = cleanString(task.customFields?.sprint || "").toLowerCase();
+  if (sprintTag) return sprintTag === cleanString(sprint.name).toLowerCase();
+  const start = task.startDate || task.createdAt?.slice(0, 10) || task.dueDate || "";
+  const due = task.dueDate || start;
+  return (!start || start <= sprint.endDate) && (!due || due >= sprint.startDate);
+}
+
+function sprintRoadmapRows(scrum) {
+  return sprintRoadmapWindows(scrum).map((sprint) => {
+    const tasks = activeTasks()
+      .filter((task) => task.status !== "done")
+      .filter((task) => taskInSprintRoadmapWindow(task, sprint))
+      .sort((a, b) => String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31")) || taskStoryPoints(b) - taskStoryPoints(a));
+    const points = tasks.reduce((sum, task) => sum + taskStoryPoints(task), 0);
+    const blocked = tasks.filter(isTaskBlocked);
+    return {
+      sprint,
+      tasks,
+      points,
+      blocked,
+      status: points > sprint.velocityPoints ? "over" : points < Math.max(1, sprint.velocityPoints - 8) ? "open" : "ready"
+    };
+  });
+}
+
+function sprintRoadmapCarryoverCandidates(currentTasks, scrum) {
+  const forecast = sprintPlanningForecast(currentTasks, scrum);
+  const recommendedIds = new Set(forecast.recommendedRemovals.map((task) => task.id));
+  return currentTasks
+    .filter((task) => task.status !== "done")
+    .filter((task) => recommendedIds.has(task.id) || isTaskBlocked(task) || !task.dueDate || task.dueDate <= scrum.endDate)
+    .sort((a, b) => {
+      const recommendedDelta = Number(recommendedIds.has(b.id)) - Number(recommendedIds.has(a.id));
+      if (recommendedDelta) return recommendedDelta;
+      const blockedDelta = Number(isTaskBlocked(b)) - Number(isTaskBlocked(a));
+      if (blockedDelta) return blockedDelta;
+      return taskStoryPoints(b) - taskStoryPoints(a);
+    })
+    .slice(0, 5);
+}
+
+function renderSprintRoadmapPanel(tasks, scrum) {
+  const rows = sprintRoadmapRows(scrum);
+  const nextSprint = rows.find((row) => !row.sprint.current)?.sprint;
+  const carryover = nextSprint ? sprintRoadmapCarryoverCandidates(tasks, scrum) : [];
+  return `
+    <section class="panel sprint-roadmap-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Multi-sprint roadmap</p>
+          <h2>Capacity across upcoming sprints</h2>
+        </div>
+        <span class="status-pill inbox-blue">${rows.length} sprints</span>
+      </div>
+      <div class="sprint-roadmap-grid">
+        ${rows.map((row) => `
+          <article class="sprint-roadmap-card is-${row.status}">
+            <div class="sprint-roadmap-card-header">
+              <div>
+                <strong>${escapeHtml(row.sprint.name)}</strong>
+                <span>${escapeHtml(`${formatDate(row.sprint.startDate)} - ${formatDate(row.sprint.endDate)}`)}</span>
+              </div>
+              <span>${row.points}/${row.sprint.velocityPoints} pts</span>
+            </div>
+            <p>${escapeHtml(row.sprint.goal)}</p>
+            <div class="sprint-roadmap-meter" aria-label="${escapeHtml(`${row.points} of ${row.sprint.velocityPoints} points planned`)}">
+              <span style="width:${clamp(Math.round((row.points / Math.max(1, row.sprint.velocityPoints)) * 100), 4, 100)}%"></span>
+            </div>
+            <div class="sprint-roadmap-task-list">
+              ${row.tasks.slice(0, 4).map((task) => `
+                <button class="table-task-button" type="button" data-edit-task="${escapeHtml(task.id)}">
+                  <strong>${escapeHtml(task.title)}</strong>
+                  <span>${escapeHtml(`${taskStoryPoints(task)} pts - ${statusLabel(task.status)}${isTaskBlocked(task) ? " - blocked" : ""}`)}</span>
+                </button>
+              `).join("") || emptyState("No open work planned for this sprint.")}
+            </div>
+          </article>
+        `).join("")}
+      </div>
+      <div class="sprint-roadmap-carryover">
+        <div class="mini-section-header">
+          <strong>Carryover planner</strong>
+          <span>${nextSprint ? `Move work into ${nextSprint.name} without losing task history.` : "Add an upcoming sprint to plan carryover."}</span>
+        </div>
+        <div class="sprint-planning-list">
+          ${carryover.length ? carryover.map((task) => `
+            <article class="sprint-planning-row">
+              <div>
+                <strong>${escapeHtml(task.title)}</strong>
+                <span>${escapeHtml(`${taskStoryPoints(task)} pts - ${isTaskBlocked(task) ? "blocked" : statusLabel(task.status)} - ${projectName(task.projectId)}`)}</span>
+              </div>
+              <button class="button button-secondary compact-button" type="button" data-sprint-roadmap-move="${escapeHtml(task.id)}" data-sprint-roadmap-target="${escapeHtml(nextSprint.name)}">Move Next</button>
+            </article>
+          `).join("") : emptyState("No carryover candidates need a future sprint right now.")}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function renderSprintBurndown(metrics) {
   const maxPoints = Math.max(metrics.totalPoints, 1);
   const days = metrics.days;
@@ -21161,6 +21306,7 @@ function renderSprintCommandCenter() {
       ${renderSprintTimeline(tasks, scrum, metrics)}
       ${renderSprintPlanningPanel(tasks, scrum)}
       ${renderSprintScrumMasterPanel(tasks, scrum, metrics)}
+      ${renderSprintRoadmapPanel(tasks, scrum)}
 
       <section class="panel">
         <div class="panel-header">
@@ -26872,6 +27018,37 @@ function postScrumMasterTaskNote(taskId) {
   syncCommentToApi(comment, "Scrum master note synced to API");
 }
 
+function moveTaskToRoadmapSprint(taskId, sprintName) {
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot move sprint roadmap work", "info");
+    render();
+    return;
+  }
+  const task = byId(state.tasks, taskId);
+  if (!task) return;
+  const scrum = scrumSettings();
+  const target = sprintRoadmapWindows(scrum).find((sprint) => sprint.name === sprintName);
+  if (!target) return;
+  updateTask(taskId, {
+    customFields: {
+      ...(task.customFields || {}),
+      sprint: target.name
+    },
+    startDate: target.startDate,
+    dueDate: target.endDate
+  });
+  addAuditEvent({
+    action: "sprint_roadmap_move",
+    detail: `Moved ${task.title} to ${target.name}`,
+    targetType: "task",
+    targetId: task.id,
+    impact: "low",
+    reversible: true
+  });
+  saveState();
+  showToast(`Moved to ${target.name}`, "success");
+}
+
 function openProjectFromBacklog(projectId) {
   if (!byId(state.projects, projectId)) return;
   state.selectedProject = projectId;
@@ -31030,6 +31207,15 @@ document.addEventListener("click", (event) => {
   const scrumMasterNoteButton = event.target.closest("[data-scrum-master-note]");
   if (scrumMasterNoteButton) {
     postScrumMasterTaskNote(scrumMasterNoteButton.dataset.scrumMasterNote);
+    return;
+  }
+
+  const sprintRoadmapMoveButton = event.target.closest("[data-sprint-roadmap-move]");
+  if (sprintRoadmapMoveButton) {
+    moveTaskToRoadmapSprint(
+      sprintRoadmapMoveButton.dataset.sprintRoadmapMove,
+      sprintRoadmapMoveButton.dataset.sprintRoadmapTarget
+    );
     return;
   }
 
