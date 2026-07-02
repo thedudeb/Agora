@@ -21083,6 +21083,92 @@ function renderSprintRoadmapPanel(tasks, scrum) {
   `;
 }
 
+function sprintScenarioPlans(tasks, scrum, metrics) {
+  const forecast = sprintPlanningForecast(tasks, scrum);
+  const candidates = sprintCandidateTasks(scrum);
+  const topCandidate = candidates[0];
+  const nextSprint = sprintRoadmapWindows(scrum).find((sprint) => !sprint.current);
+  const removalPoints = forecast.recommendedRemovals.reduce((sum, task) => sum + taskStoryPoints(task), 0);
+  const blockerCount = metrics.blocked.length;
+  const capacityTarget = Math.max(scrum.velocityPoints + 1, Math.round(scrum.velocityPoints * 1.2));
+  return [
+    {
+      id: "protect",
+      label: "Protect commitment",
+      description: nextSprint
+        ? `Move ${removalPoints || 0} lower-confidence points into ${nextSprint.name}.`
+        : "Add a future sprint before moving carryover.",
+      points: Math.max(0, forecast.committedPoints - removalPoints),
+      target: scrum.velocityPoints,
+      health: clamp(metrics.health + Math.min(24, forecast.recommendedRemovals.length * 8), 0, 100),
+      actionLabel: "Apply Carryover",
+      disabled: !nextSprint || !forecast.recommendedRemovals.length
+    },
+    {
+      id: "stretch",
+      label: "Stretch scope",
+      description: topCandidate
+        ? `Pull in ${topCandidate.title} as a stretch item.`
+        : "No high-confidence backlog candidate is ready to pull in.",
+      points: forecast.committedPoints + (topCandidate ? taskStoryPoints(topCandidate) : 0),
+      target: scrum.velocityPoints,
+      health: clamp(metrics.health - (topCandidate ? taskStoryPoints(topCandidate) * 2 : 0), 0, 100),
+      actionLabel: "Pull Stretch",
+      disabled: !topCandidate
+    },
+    {
+      id: "swarm",
+      label: "Swarm blockers",
+      description: blockerCount ? `Post focused check-ins on ${blockerCount} blocked ${blockerCount === 1 ? "story" : "stories"}.` : "No blockers need a swarm right now.",
+      points: forecast.committedPoints,
+      target: scrum.velocityPoints,
+      health: clamp(metrics.health + Math.min(30, blockerCount * 10), 0, 100),
+      actionLabel: "Post Notes",
+      disabled: !blockerCount
+    },
+    {
+      id: "capacity",
+      label: "Add capacity",
+      description: `Temporarily raise the velocity target to ${capacityTarget} points.`,
+      points: forecast.committedPoints,
+      target: capacityTarget,
+      health: clamp(metrics.health + Math.max(0, capacityTarget - scrum.velocityPoints), 0, 100),
+      actionLabel: "Use Target",
+      disabled: capacityTarget === scrum.velocityPoints
+    }
+  ];
+}
+
+function renderSprintScenarioPanel(tasks, scrum, metrics) {
+  const scenarios = sprintScenarioPlans(tasks, scrum, metrics);
+  return `
+    <section class="panel sprint-scenario-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Scenario planning</p>
+          <h2>What-if forecast</h2>
+        </div>
+        <span class="status-pill inbox-neutral">${scenarios.length} options</span>
+      </div>
+      <div class="sprint-scenario-grid">
+        ${scenarios.map((scenario) => `
+          <article class="sprint-scenario-card">
+            <div>
+              <strong>${escapeHtml(scenario.label)}</strong>
+              <span>${escapeHtml(scenario.description)}</span>
+            </div>
+            <div class="sprint-scenario-metrics">
+              ${metric("Projected", `${scenario.points}/${scenario.target} pts`)}
+              ${metric("Health", `${scenario.health}%`)}
+            </div>
+            <button class="button button-secondary compact-button" type="button" data-sprint-scenario="${escapeHtml(scenario.id)}" ${scenario.disabled ? "disabled" : ""}>${escapeHtml(scenario.actionLabel)}</button>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderSprintBurndown(metrics) {
   const maxPoints = Math.max(metrics.totalPoints, 1);
   const days = metrics.days;
@@ -21307,6 +21393,7 @@ function renderSprintCommandCenter() {
       ${renderSprintPlanningPanel(tasks, scrum)}
       ${renderSprintScrumMasterPanel(tasks, scrum, metrics)}
       ${renderSprintRoadmapPanel(tasks, scrum)}
+      ${renderSprintScenarioPanel(tasks, scrum, metrics)}
 
       <section class="panel">
         <div class="panel-header">
@@ -27049,6 +27136,67 @@ function moveTaskToRoadmapSprint(taskId, sprintName) {
   showToast(`Moved to ${target.name}`, "success");
 }
 
+function applySprintScenario(scenarioId) {
+  const scrum = scrumSettings();
+  const tasks = sprintScopedTasks(scrum);
+  const metrics = sprintMetrics(tasks, scrum);
+  const forecast = sprintPlanningForecast(tasks, scrum);
+  const nextSprint = sprintRoadmapWindows(scrum).find((sprint) => !sprint.current);
+  if (scenarioId === "protect") {
+    if (!nextSprint || !forecast.recommendedRemovals.length) {
+      showToast("No carryover scenario is ready to apply", "info");
+      return;
+    }
+    forecast.recommendedRemovals.forEach((task) => moveTaskToRoadmapSprint(task.id, nextSprint.name));
+    showToast("Carryover scenario applied", "success");
+    return;
+  }
+  if (scenarioId === "stretch") {
+    const candidate = sprintCandidateTasks(scrum)[0];
+    if (!candidate) {
+      showToast("No stretch candidate is ready", "info");
+      return;
+    }
+    addTaskToSprint(candidate.id);
+    showToast("Stretch scenario applied", "success");
+    return;
+  }
+  if (scenarioId === "swarm") {
+    if (!metrics.blocked.length) {
+      showToast("No blockers need a swarm", "info");
+      return;
+    }
+    metrics.blocked.slice(0, 3).forEach((task) => postScrumMasterTaskNote(task.id));
+    showToast("Blocker swarm notes posted", "success");
+    return;
+  }
+  if (scenarioId === "capacity") {
+    if (!canWrite("projects:write")) {
+      showToast("Your role cannot change sprint capacity", "info");
+      return;
+    }
+    const velocityPoints = Math.max(scrum.velocityPoints + 1, Math.round(scrum.velocityPoints * 1.2));
+    state.workspace = {
+      ...state.workspace,
+      scrum: normalizeWorkspaceScrum({
+        ...scrum,
+        velocityPoints
+      })
+    };
+    addAuditEvent({
+      action: "sprint_scenario_capacity",
+      detail: `Raised ${scrum.sprintName} velocity target to ${velocityPoints}`,
+      targetType: "workspace",
+      targetId: state.workspace.id,
+      impact: "low",
+      reversible: true
+    });
+    saveState();
+    render();
+    showToast("Capacity scenario applied", "success");
+  }
+}
+
 function openProjectFromBacklog(projectId) {
   if (!byId(state.projects, projectId)) return;
   state.selectedProject = projectId;
@@ -31216,6 +31364,12 @@ document.addEventListener("click", (event) => {
       sprintRoadmapMoveButton.dataset.sprintRoadmapMove,
       sprintRoadmapMoveButton.dataset.sprintRoadmapTarget
     );
+    return;
+  }
+
+  const sprintScenarioButton = event.target.closest("[data-sprint-scenario]");
+  if (sprintScenarioButton) {
+    applySprintScenario(sprintScenarioButton.dataset.sprintScenario);
     return;
   }
 

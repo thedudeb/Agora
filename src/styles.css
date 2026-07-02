@@ -3172,6 +3172,10 @@ body[data-tutorial-target="view"] #app-view {
   grid-column: 1 / -1;
 }
 
+.sprint-scenario-panel {
+  grid-column: 1 / -1;
+}
+
 .sprint-planning-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3375,6 +3379,44 @@ body[data-tutorial-target="view"] #app-view {
   gap: 10px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
+}
+
+.sprint-scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sprint-scenario-card {
+  display: grid;
+  gap: 12px;
+  align-content: space-between;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sprint-scenario-card > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.sprint-scenario-card strong {
+  font-size: 0.92rem;
+}
+
+.sprint-scenario-card span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.sprint-scenario-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .sprint-timeline-legend {
@@ -9429,6 +9471,8 @@ body[data-density="compact"] .main-content {
   .sprint-planning-grid,
   .scrum-master-grid,
   .sprint-roadmap-grid,
+  .sprint-scenario-grid,
+  .sprint-scenario-metrics,
   .sprint-timeline-scale,
   .sprint-timeline-lane,
   .doc-composer,

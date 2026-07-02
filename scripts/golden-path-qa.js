@@ -186,6 +186,8 @@ const routeChecks = [
       "Copy standup brief",
       "Multi-sprint roadmap",
       "Carryover planner",
+      "Scenario planning",
+      "What-if forecast",
       "Burndown",
       "Standup queue",
       "Readiness checks",
