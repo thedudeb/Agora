@@ -3341,6 +3341,96 @@ body[data-tutorial-target="view"] #app-view {
   line-height: 1.45;
 }
 
+.sprint-close-preview,
+.sprint-history-drawer,
+.sprint-roadmap-manager {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.sprint-close-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sprint-close-preview-list,
+.sprint-history-list,
+.sprint-roadmap-editor-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sprint-close-preview-list article {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sprint-close-preview-list span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.sprint-history-list {
+  max-height: 340px;
+  overflow: auto;
+}
+
+.sprint-history-list details {
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sprint-history-list summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.sprint-history-list summary span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.sprint-history-list pre {
+  max-height: 280px;
+  margin: 0;
+  padding: 0 10px 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--text);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.sprint-roadmap-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.9fr) repeat(3, minmax(120px, 0.45fr)) minmax(220px, 1.4fr) auto auto;
+  gap: 10px;
+  align-items: end;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sprint-roadmap-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+}
+
 .sprint-closeout-actions {
   display: flex;
   flex-wrap: wrap;
@@ -9761,6 +9851,7 @@ body[data-density="compact"] .main-content {
   .sprint-settings-form,
   .sprint-planning-summary,
   .sprint-closeout-summary,
+  .sprint-close-preview-grid,
   .sprint-planning-grid,
   .sprint-closeout-grid,
   .scrum-master-grid,
@@ -9770,6 +9861,7 @@ body[data-density="compact"] .main-content {
   .sprint-sync-grid,
   .sprint-sync-preview,
   .sprint-report-preview,
+  .sprint-roadmap-form,
   .sprint-burndown-layout,
   .sprint-burndown-summary,
   .sprint-timeline-scale,

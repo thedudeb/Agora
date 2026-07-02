@@ -982,6 +982,7 @@ const seedData = {
   selectedDailyDate: "2026-06-27",
   selectedGanttZoom: "month",
   selectedSprintChartMode: "burndown",
+  sprintClosePreviewOpen: false,
   onboarding: {
     dismissed: false,
     sampleMode: "demo",
@@ -1211,6 +1212,7 @@ const seedData = {
       definitionOfReady: ["Clear outcome", "Owner assigned", "Estimate or effort set", "Dependencies named"],
       definitionOfDone: ["Acceptance checked", "Docs or notes updated", "Review complete", "No unresolved blocker"],
       closedSprints: [],
+      lastCloseUndo: null,
       retroActions: [
         { id: "retro-action-1", title: "Shorten review feedback loop", owner: "sam", status: "open" },
         { id: "retro-action-2", title: "Call out blocked work before standup", owner: "mara", status: "done" }
@@ -2649,6 +2651,7 @@ function normalizeState(nextState) {
     selectedDailyDate: nextState.selectedDailyDate || todayKey(),
     selectedGanttZoom: ["week", "month", "quarter"].includes(nextState.selectedGanttZoom) ? nextState.selectedGanttZoom : seedData.selectedGanttZoom,
     selectedSprintChartMode: ["burndown", "burnup"].includes(nextState.selectedSprintChartMode) ? nextState.selectedSprintChartMode : seedData.selectedSprintChartMode,
+    sprintClosePreviewOpen: Boolean(nextState.sprintClosePreviewOpen),
     templateLibrary: {
       category: "all",
       query: "",
@@ -3353,6 +3356,15 @@ function normalizeWorkspaceScrum(scrum = {}) {
         report: item.report && typeof item.report === "object" ? item.report : {}
       }))
       .slice(0, 12),
+    lastCloseUndo: scrum.lastCloseUndo && typeof scrum.lastCloseUndo === "object"
+      ? {
+        id: scrum.lastCloseUndo.id || uid("sprint-close-undo"),
+        label: String(scrum.lastCloseUndo.label || "last sprint close").trim().slice(0, 120),
+        createdAt: scrum.lastCloseUndo.createdAt || new Date().toISOString(),
+        previousScrum: scrum.lastCloseUndo.previousScrum && typeof scrum.lastCloseUndo.previousScrum === "object" ? scrum.lastCloseUndo.previousScrum : null,
+        taskSnapshots: Array.isArray(scrum.lastCloseUndo.taskSnapshots) ? scrum.lastCloseUndo.taskSnapshots.filter((task) => task && typeof task === "object").slice(0, 200) : []
+      }
+      : null,
     retroActions: (Array.isArray(scrum.retroActions) ? scrum.retroActions : fallback.retroActions || [])
       .filter((item) => item && typeof item === "object")
       .map((item) => ({
@@ -20929,36 +20941,114 @@ function sprintReviewReport(tasks, scrum, metrics) {
 
 function sprintReportMarkdown(report) {
   const list = (items, formatter, fallback) => items.length ? items.map(formatter).join("\n") : `- ${fallback}`;
+  const metrics = report.metrics || {};
+  const shipped = Array.isArray(report.shipped) ? report.shipped : [];
+  const slipped = Array.isArray(report.slipped) ? report.slipped : [];
+  const blockers = Array.isArray(report.blockers) ? report.blockers : [];
+  const scopeChanges = Array.isArray(report.scopeChanges) ? report.scopeChanges : [];
+  const retroInsights = Array.isArray(report.retroInsights) ? report.retroInsights : [];
   return [
     `# ${report.sprintName} Review`,
     "",
-    `**Goal:** ${report.goal}`,
+    `**Goal:** ${report.goal || "No goal recorded."}`,
     `**Window:** ${formatDate(report.startDate)} - ${formatDate(report.endDate)}`,
-    `**Completion:** ${report.metrics.donePoints}/${report.metrics.committedPoints} pts (${report.metrics.completionPercent}%)`,
-    `**Pace:** ${report.metrics.pace}`,
-    `**Projected remaining:** ${report.metrics.projectedRemaining} pts`,
+    `**Completion:** ${metrics.donePoints || 0}/${metrics.committedPoints || 0} pts (${metrics.completionPercent || 0}%)`,
+    `**Pace:** ${metrics.pace || "Not recorded"}`,
+    `**Projected remaining:** ${metrics.projectedRemaining || 0} pts`,
     "",
     "## What Shipped",
-    list(report.shipped, (task) => `- ${task.title} (${task.points} pts, ${task.owner}, ${task.project})`, "No shipped stories recorded."),
+    list(shipped, (task) => `- ${task.title} (${task.points} pts, ${task.owner}, ${task.project})`, "No shipped stories recorded."),
     "",
     "## What Slipped",
-    list(report.slipped, (task) => `- ${task.title} (${task.points} pts, ${task.status}, ${task.owner}${task.blocked ? ", blocked" : ""})`, "No slipped stories."),
+    list(slipped, (task) => `- ${task.title} (${task.points} pts, ${task.status}, ${task.owner}${task.blocked ? ", blocked" : ""})`, "No slipped stories."),
     "",
     "## Blockers",
-    list(report.blockers, (task) => `- ${task.title}: ${task.blockedBy.join(", ") || "dependency not named"}`, "No unresolved blockers."),
+    list(blockers, (task) => `- ${task.title}: ${(task.blockedBy || []).join(", ") || "dependency not named"}`, "No unresolved blockers."),
     "",
     "## Scope Changes",
-    list(report.scopeChanges, (task) => `- ${task.title} (${task.points} pts, added ${formatDate(cleanString(task.createdAt).slice(0, 10))})`, "No mid-sprint scope changes."),
+    list(scopeChanges, (task) => `- ${task.title} (${task.points} pts, added ${formatDate(cleanString(task.createdAt).slice(0, 10))})`, "No mid-sprint scope changes."),
     "",
     "## Retro Insights",
-    list(report.retroInsights, (insight) => `- ${insight.label}: ${insight.detail} Prompt: ${insight.prompt}`, "No retro prompts generated.")
+    list(retroInsights, (insight) => `- ${insight.label}: ${insight.detail} Prompt: ${insight.prompt}`, "No retro prompts generated.")
   ].join("\n");
 }
 
-function renderSprintCloseoutPanel(tasks, scrum, metrics) {
+function sprintClosePlan(tasks, scrum, metrics) {
   const report = sprintReviewReport(tasks, scrum, metrics);
+  const nextSprint = scrum.roadmapSprints[0] || null;
+  const remainingRoadmap = nextSprint ? scrum.roadmapSprints.slice(1) : scrum.roadmapSprints;
+  const preparedSprint = nextSprint || {
+    name: `${scrum.sprintName} follow-up`,
+    goal: "Finish carryover and commit the next highest-value work.",
+    startDate: shiftDate(scrum.endDate, 1),
+    endDate: shiftDate(scrum.endDate, daysBetween(scrum.startDate, scrum.endDate) + 1),
+    velocityPoints: scrum.velocityPoints
+  };
+  const roadmapBase = remainingRoadmap[remainingRoadmap.length - 1] || preparedSprint;
+  const unfinishedTasks = tasks.filter((task) => task.status !== "done");
+  return {
+    report,
+    nextSprint,
+    remainingRoadmap,
+    preparedSprint,
+    nextRoadmapSprint: nextRoadmapSprintAfter(scrum, roadmapBase),
+    unfinishedTasks,
+    rollForwardName: nextSprint?.name || "backlog"
+  };
+}
+
+function renderSprintClosePreview(plan) {
+  if (!state.sprintClosePreviewOpen) return "";
+  return `
+    <div class="sprint-close-preview">
+      <div class="mini-section-header">
+        <strong>Close sprint preview</strong>
+        <span>Review these changes before Agora mutates tasks or promotes the next sprint.</span>
+      </div>
+      <div class="sprint-close-preview-grid">
+        ${metric("Report archived", plan.report.sprintName)}
+        ${metric("Active sprint becomes", plan.preparedSprint.name)}
+        ${metric("Unfinished moved to", plan.rollForwardName)}
+        ${metric("Tasks affected", plan.unfinishedTasks.length)}
+      </div>
+      <div class="sprint-close-preview-list">
+        ${plan.unfinishedTasks.length ? plan.unfinishedTasks.map((task) => `
+          <article>
+            <strong>${escapeHtml(task.title)}</strong>
+            <span>${escapeHtml(`${taskStoryPoints(task)} pts - ${statusLabel(task.status)} - ${memberName(task.assignee)} -> ${plan.rollForwardName}`)}</span>
+          </article>
+        `).join("") : emptyState("No unfinished work will move.")}
+      </div>
+    </div>
+  `;
+}
+
+function renderSprintCloseoutHistory(scrum) {
+  return `
+    <div class="sprint-history-drawer">
+      <div class="mini-section-header">
+        <strong>Closeout history</strong>
+        <span>Archived sprint reports remain available inside the workspace.</span>
+      </div>
+      <div class="sprint-history-list">
+        ${scrum.closedSprints.length ? scrum.closedSprints.map((item) => `
+          <details>
+            <summary>
+              <strong>${escapeHtml(item.name)}</strong>
+              <span>${escapeHtml(`${item.metrics?.completionPercent || 0}% complete - closed ${formatTimestamp(item.closedAt)}`)}</span>
+            </summary>
+            <pre>${escapeHtml(sprintReportMarkdown(item.report || { sprintName: item.name, goal: item.goal, startDate: item.startDate, endDate: item.endDate, metrics: item.metrics || {}, shipped: [], slipped: [], blockers: [], scopeChanges: [], retroInsights: [] }))}</pre>
+          </details>
+        `).join("") : emptyState("No closed sprint reports yet.")}
+      </div>
+    </div>
+  `;
+}
+
+function renderSprintCloseoutPanel(tasks, scrum, metrics) {
+  const plan = sprintClosePlan(tasks, scrum, metrics);
+  const report = plan.report;
   const latestClosed = scrum.closedSprints[0];
-  const nextSprint = scrum.roadmapSprints[0];
   return `
     <section class="panel sprint-closeout-panel">
       <div class="panel-header">
@@ -21022,15 +21112,19 @@ function renderSprintCloseoutPanel(tasks, scrum, metrics) {
       <div class="sprint-report-preview">
         <div>
           <strong>Review report preview</strong>
-          <span>${nextSprint ? `Close sprint rolls unfinished work into ${nextSprint.name}.` : "Close sprint moves unfinished work to backlog."}</span>
+          <span>${plan.nextSprint ? `Close sprint rolls unfinished work into ${plan.nextSprint.name}.` : "Close sprint moves unfinished work to backlog."}</span>
           ${latestClosed ? `<small>Last closed: ${escapeHtml(latestClosed.name)} on ${escapeHtml(formatTimestamp(latestClosed.closedAt))}</small>` : ""}
         </div>
         <pre>${escapeHtml(sprintReportMarkdown(report))}</pre>
       </div>
+      ${renderSprintClosePreview(plan)}
+      ${renderSprintCloseoutHistory(scrum)}
       <div class="sprint-closeout-actions">
         <button class="button button-secondary compact-button" type="button" data-sprint-report-copy>Copy Markdown</button>
         <button class="button button-secondary compact-button" type="button" data-sprint-report-download>Download JSON</button>
-        <button class="button button-primary compact-button" type="button" data-sprint-close ${canWrite("projects:write") ? "" : "disabled"}>Close Sprint</button>
+        ${scrum.lastCloseUndo ? `<button class="button button-secondary compact-button" type="button" data-sprint-close-undo>Undo Close</button>` : ""}
+        <button class="button button-secondary compact-button" type="button" data-sprint-close-preview ${canWrite("projects:write") ? "" : "disabled"}>${state.sprintClosePreviewOpen ? "Refresh Preview" : "Preview Close"}</button>
+        <button class="button button-primary compact-button" type="button" data-sprint-close-confirm ${state.sprintClosePreviewOpen && canWrite("projects:write") ? "" : "disabled"}>Confirm Close Sprint</button>
       </div>
     </section>
   `;
@@ -21376,6 +21470,69 @@ function sprintRoadmapCarryoverCandidates(currentTasks, scrum) {
     .slice(0, 5);
 }
 
+function renderSprintRoadmapManager(scrum) {
+  const canManage = canWrite("projects:write");
+  return `
+    <div class="sprint-roadmap-manager">
+      <div class="mini-section-header">
+        <strong>Roadmap sprint settings</strong>
+        <span>Add, edit, or remove upcoming sprint windows without leaving the sprint command center.</span>
+      </div>
+      <form class="sprint-roadmap-form" data-sprint-roadmap-create>
+        <label>
+          <span>Name</span>
+          <input name="name" placeholder="Next sprint" ${canManage ? "" : "disabled"}>
+        </label>
+        <label>
+          <span>Start</span>
+          <input name="startDate" type="date" value="${escapeHtml(shiftDate(scrum.endDate, 1))}" ${canManage ? "" : "disabled"}>
+        </label>
+        <label>
+          <span>End</span>
+          <input name="endDate" type="date" value="${escapeHtml(shiftDate(scrum.endDate, daysBetween(scrum.startDate, scrum.endDate) + 1))}" ${canManage ? "" : "disabled"}>
+        </label>
+        <label>
+          <span>Velocity</span>
+          <input name="velocityPoints" type="number" min="1" max="500" value="${scrum.velocityPoints}" ${canManage ? "" : "disabled"}>
+        </label>
+        <label class="wide-field">
+          <span>Goal</span>
+          <input name="goal" placeholder="Plan the next highest-value work" ${canManage ? "" : "disabled"}>
+        </label>
+        <button class="button button-primary compact-button" type="submit" ${canManage ? "" : "disabled"}>Add Sprint</button>
+      </form>
+      <div class="sprint-roadmap-editor-list">
+        ${scrum.roadmapSprints.length ? scrum.roadmapSprints.map((sprint) => `
+          <form class="sprint-roadmap-form" data-sprint-roadmap-update="${escapeHtml(sprint.id)}">
+            <label>
+              <span>Name</span>
+              <input name="name" value="${escapeHtml(sprint.name)}" ${canManage ? "" : "disabled"}>
+            </label>
+            <label>
+              <span>Start</span>
+              <input name="startDate" type="date" value="${escapeHtml(sprint.startDate)}" ${canManage ? "" : "disabled"}>
+            </label>
+            <label>
+              <span>End</span>
+              <input name="endDate" type="date" value="${escapeHtml(sprint.endDate)}" ${canManage ? "" : "disabled"}>
+            </label>
+            <label>
+              <span>Velocity</span>
+              <input name="velocityPoints" type="number" min="1" max="500" value="${sprint.velocityPoints}" ${canManage ? "" : "disabled"}>
+            </label>
+            <label class="wide-field">
+              <span>Goal</span>
+              <input name="goal" value="${escapeHtml(sprint.goal)}" ${canManage ? "" : "disabled"}>
+            </label>
+            <button class="button button-secondary compact-button" type="submit" ${canManage ? "" : "disabled"}>Save</button>
+            <button class="button button-secondary button-danger compact-button" type="button" data-sprint-roadmap-delete="${escapeHtml(sprint.id)}" ${canManage ? "" : "disabled"}>Remove</button>
+          </form>
+        `).join("") : emptyState("No upcoming roadmap sprints configured.")}
+      </div>
+    </div>
+  `;
+}
+
 function renderSprintRoadmapPanel(tasks, scrum) {
   const rows = sprintRoadmapRows(scrum);
   const nextSprint = rows.find((row) => !row.sprint.current)?.sprint;
@@ -21431,6 +21588,7 @@ function renderSprintRoadmapPanel(tasks, scrum) {
           `).join("") : emptyState("No carryover candidates need a future sprint right now.")}
         </div>
       </div>
+      ${renderSprintRoadmapManager(scrum)}
     </section>
   `;
 }
@@ -27791,16 +27949,28 @@ function nextRoadmapSprintAfter(scrum, baseSprint) {
   };
 }
 
+function setSprintClosePreview(open) {
+  state.sprintClosePreviewOpen = Boolean(open);
+  saveState();
+  render();
+}
+
 function closeCurrentSprint() {
   if (!canWrite("projects:write")) {
     showToast("Your role cannot close sprints", "info");
     return;
   }
+  if (!state.sprintClosePreviewOpen) {
+    setSprintClosePreview(true);
+    showToast("Review the close sprint preview first", "info");
+    return;
+  }
   const scrum = scrumSettings();
   const tasks = sprintScopedTasks(scrum);
   const metrics = sprintMetrics(tasks, scrum);
-  const report = sprintReviewReport(tasks, scrum, metrics);
-  const nextSprint = scrum.roadmapSprints[0] || null;
+  const plan = sprintClosePlan(tasks, scrum, metrics);
+  const report = plan.report;
+  const nextSprint = plan.nextSprint;
   const now = new Date().toISOString();
   const closedSprint = {
     id: report.id,
@@ -27814,6 +27984,7 @@ function closeCurrentSprint() {
   };
   const rollForwardName = nextSprint?.name || "backlog";
   const changedTasks = [];
+  const taskSnapshots = tasks.map((task) => ({ ...task, customFields: { ...(task.customFields || {}) } }));
   state.tasks = state.tasks.map((task) => {
     if (!tasks.some((sprintTask) => sprintTask.id === task.id) || task.status === "done") return task;
     const nextTask = {
@@ -27833,29 +28004,27 @@ function closeCurrentSprint() {
     recordTaskChanges(previous, next);
     syncTaskToApi(next, "Sprint closeout task synced to API", false, recordRevisionValue(previous));
   });
-  const remainingRoadmap = nextSprint ? scrum.roadmapSprints.slice(1) : scrum.roadmapSprints;
-  const preparedSprint = nextSprint || {
-    name: `${scrum.sprintName} follow-up`,
-    goal: "Finish carryover and commit the next highest-value work.",
-    startDate: shiftDate(scrum.endDate, 1),
-    endDate: shiftDate(scrum.endDate, daysBetween(scrum.startDate, scrum.endDate) + 1),
-    velocityPoints: scrum.velocityPoints
-  };
-  const roadmapBase = remainingRoadmap[remainingRoadmap.length - 1] || preparedSprint;
   state.workspace = {
     ...state.workspace,
     scrum: normalizeWorkspaceScrum({
       ...scrum,
-      sprintName: preparedSprint.name,
-      goal: preparedSprint.goal,
-      startDate: preparedSprint.startDate,
-      endDate: preparedSprint.endDate,
-      velocityPoints: preparedSprint.velocityPoints,
+      sprintName: plan.preparedSprint.name,
+      goal: plan.preparedSprint.goal,
+      startDate: plan.preparedSprint.startDate,
+      endDate: plan.preparedSprint.endDate,
+      velocityPoints: plan.preparedSprint.velocityPoints,
       closedSprints: [closedSprint, ...scrum.closedSprints],
       roadmapSprints: [
-        ...remainingRoadmap,
-        nextRoadmapSprintAfter(scrum, roadmapBase)
+        ...plan.remainingRoadmap,
+        plan.nextRoadmapSprint
       ],
+      lastCloseUndo: {
+        id: uid("sprint-close-undo"),
+        label: `Close ${closedSprint.name}`,
+        createdAt: now,
+        previousScrum: scrum,
+        taskSnapshots
+      },
       retroActions: sprintRetroInsights(tasks, scrum, metrics).slice(0, 3).map((insight) => ({
         id: uid("retro-action"),
         title: insight.prompt,
@@ -27864,6 +28033,7 @@ function closeCurrentSprint() {
       }))
     })
   };
+  state.sprintClosePreviewOpen = false;
   addAuditEvent({
     action: "sprint_close",
     detail: `Closed ${closedSprint.name}; rolled ${changedTasks.length} unfinished ${changedTasks.length === 1 ? "story" : "stories"} to ${rollForwardName}`,
@@ -27876,6 +28046,134 @@ function closeCurrentSprint() {
   saveState();
   render();
   showToast(`Closed ${closedSprint.name}`, "success");
+}
+
+function undoLastSprintClose() {
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot undo sprint closes", "info");
+    return;
+  }
+  const scrum = scrumSettings();
+  const undo = scrum.lastCloseUndo;
+  if (!undo?.previousScrum || !undo.taskSnapshots?.length) {
+    showToast("No sprint close is available to undo", "info");
+    return;
+  }
+  const snapshotsById = new Map(undo.taskSnapshots.map((task) => [task.id, task]));
+  const changedTasks = [];
+  state.tasks = state.tasks.map((task) => {
+    const snapshot = snapshotsById.get(task.id);
+    if (!snapshot) return task;
+    changedTasks.push({ previous: task, next: snapshot });
+    return snapshot;
+  });
+  changedTasks.forEach(({ previous, next }) => {
+    recordTaskChanges(previous, next);
+    syncTaskToApi(next, "Sprint close undo task synced to API", false, recordRevisionValue(previous));
+  });
+  state.workspace = {
+    ...state.workspace,
+    scrum: normalizeWorkspaceScrum({
+      ...undo.previousScrum,
+      lastCloseUndo: null
+    })
+  };
+  state.sprintClosePreviewOpen = false;
+  addAuditEvent({
+    action: "sprint_close_undo",
+    detail: `Undid ${undo.label}`,
+    targetType: "workspace",
+    targetId: state.workspace.id,
+    impact: "medium",
+    reversible: false
+  });
+  saveState();
+  render();
+  showToast("Sprint close undone", "success");
+}
+
+function roadmapSprintFromForm(form, fallback = {}) {
+  const startDate = form.elements.startDate?.value || fallback.startDate || shiftDate(scrumSettings().endDate, 1);
+  const endDate = form.elements.endDate?.value || fallback.endDate || shiftDate(startDate, 13);
+  return {
+    id: fallback.id || uid("roadmap-sprint"),
+    name: (form.elements.name?.value || fallback.name || "Upcoming sprint").trim().slice(0, 80),
+    goal: (form.elements.goal?.value || fallback.goal || "Plan the next highest-value work.").trim().slice(0, 180),
+    startDate,
+    endDate,
+    velocityPoints: clamp(Math.round(Number(form.elements.velocityPoints?.value || fallback.velocityPoints || scrumSettings().velocityPoints)) || 24, 1, 500)
+  };
+}
+
+function createRoadmapSprint(form) {
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot manage roadmap sprints", "info");
+    return;
+  }
+  const current = scrumSettings();
+  const sprint = roadmapSprintFromForm(form);
+  if (sprint.endDate < sprint.startDate) {
+    showToast("Roadmap sprint end date must be after the start date", "info");
+    return;
+  }
+  state.workspace = {
+    ...state.workspace,
+    scrum: normalizeWorkspaceScrum({
+      ...current,
+      roadmapSprints: [...current.roadmapSprints, sprint]
+    })
+  };
+  addAuditEvent({ action: "sprint_roadmap_create", detail: `Added ${sprint.name}` });
+  saveState();
+  render();
+  showToast("Roadmap sprint added", "success");
+}
+
+function updateRoadmapSprint(form, sprintId) {
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot manage roadmap sprints", "info");
+    return;
+  }
+  const current = scrumSettings();
+  const existing = current.roadmapSprints.find((sprint) => sprint.id === sprintId);
+  if (!existing) return;
+  const sprint = roadmapSprintFromForm(form, existing);
+  if (sprint.endDate < sprint.startDate) {
+    showToast("Roadmap sprint end date must be after the start date", "info");
+    return;
+  }
+  state.workspace = {
+    ...state.workspace,
+    scrum: normalizeWorkspaceScrum({
+      ...current,
+      roadmapSprints: current.roadmapSprints.map((item) => item.id === sprintId ? sprint : item)
+    })
+  };
+  addAuditEvent({ action: "sprint_roadmap_update", detail: `Updated ${sprint.name}` });
+  saveState();
+  render();
+  showToast("Roadmap sprint updated", "success");
+}
+
+function deleteRoadmapSprint(sprintId) {
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot manage roadmap sprints", "info");
+    return;
+  }
+  const current = scrumSettings();
+  const sprint = current.roadmapSprints.find((item) => item.id === sprintId);
+  if (!sprint) return;
+  state.workspace = {
+    ...state.workspace,
+    scrum: normalizeWorkspaceScrum({
+      ...current,
+      roadmapSprints: current.roadmapSprints.filter((item) => item.id !== sprintId)
+    })
+  };
+  addAuditEvent({ action: "sprint_roadmap_delete", detail: `Removed ${sprint.name}` });
+  saveState();
+  render();
+  showToast("Roadmap sprint removed", "success");
 }
 
 function openProjectFromBacklog(projectId) {
@@ -32078,9 +32376,27 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  const sprintCloseButton = event.target.closest("[data-sprint-close]");
-  if (sprintCloseButton) {
+  const sprintClosePreviewButton = event.target.closest("[data-sprint-close-preview]");
+  if (sprintClosePreviewButton) {
+    setSprintClosePreview(true);
+    return;
+  }
+
+  const sprintCloseConfirmButton = event.target.closest("[data-sprint-close-confirm]");
+  if (sprintCloseConfirmButton) {
     closeCurrentSprint();
+    return;
+  }
+
+  const sprintCloseUndoButton = event.target.closest("[data-sprint-close-undo]");
+  if (sprintCloseUndoButton) {
+    undoLastSprintClose();
+    return;
+  }
+
+  const sprintRoadmapDeleteButton = event.target.closest("[data-sprint-roadmap-delete]");
+  if (sprintRoadmapDeleteButton) {
+    deleteRoadmapSprint(sprintRoadmapDeleteButton.dataset.sprintRoadmapDelete);
     return;
   }
 
@@ -33707,6 +34023,20 @@ els.appView.addEventListener("submit", (event) => {
   if (sprintSettingsForm) {
     event.preventDefault();
     saveSprintSettings(sprintSettingsForm);
+    return;
+  }
+
+  const sprintRoadmapCreateForm = event.target.closest("[data-sprint-roadmap-create]");
+  if (sprintRoadmapCreateForm) {
+    event.preventDefault();
+    createRoadmapSprint(sprintRoadmapCreateForm);
+    return;
+  }
+
+  const sprintRoadmapUpdateForm = event.target.closest("[data-sprint-roadmap-update]");
+  if (sprintRoadmapUpdateForm) {
+    event.preventDefault();
+    updateRoadmapSprint(sprintRoadmapUpdateForm, sprintRoadmapUpdateForm.dataset.sprintRoadmapUpdate);
     return;
   }
 
