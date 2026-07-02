@@ -35,6 +35,10 @@ function run() {
   assert(plan.counts.comments === 1, "plan should preserve CSV task comments");
   assert(plan.counts.skipped === 1, "plan should record skipped rows");
   assert(plan.confidence >= 70, "plan confidence was too low");
+  assert(plan.review.status === "review", "plan review should ask for review when rows were skipped");
+  assert(plan.review.missingCoreFields.length === 0, "complete CSV should not report missing core fields");
+  assert(plan.review.followUpCounts.skippedRows === 1, "review should count skipped rows");
+  assert(plan.review.recommendedActions.some((action) => action.includes("skipped row")), "review should recommend skipped-row inspection");
   assert(plan.mappedFields.includes("title"), "title field was not mapped");
   assert(plan.mappedFields.includes("attachments"), "attachment field was not mapped");
   assert(plan.mappedFields.includes("comments"), "comment field was not mapped");
@@ -72,6 +76,17 @@ function run() {
   assert(newWorkspace.snapshot.tasks.length === 2, "new workspace should only include imported tasks");
   assert(newWorkspace.snapshot.comments.length === 1, "new workspace should include imported comments");
 
+  const sparsePlan = createMigrationPlan({
+    source: "generic-csv",
+    payload: "title\nOwnerless unscheduled task",
+    existingSnapshot: workspace
+  });
+  assert(sparsePlan.review.status === "risky", "sparse import should be marked risky");
+  assert(sparsePlan.review.missingCoreFields.includes("assignee"), "sparse import should flag missing assignee mapping");
+  assert(sparsePlan.review.followUpCounts.unassignedTasks === 1, "sparse import should count unassigned tasks");
+  assert(sparsePlan.review.followUpCounts.unscheduledTasks === 1, "sparse import should count unscheduled tasks");
+  assert(sparsePlan.review.recommendedActions.some((action) => action.includes("due dates")), "sparse import should recommend due-date cleanup");
+
   const trelloPayload = fs.readFileSync(path.join(ROOT, "tests/fixtures/trello-board.json"), "utf8");
   assert(detectMigrationSource(trelloPayload, "trello-board.json") === "trello-json", "Trello detection failed");
   const trelloPlan = createMigrationPlan({
@@ -84,6 +99,7 @@ function run() {
   assert(trelloPlan.counts.projects === 1, "Trello board should become one project");
   assert(trelloPlan.counts.tasks === 1, "Trello closed cards should be skipped");
   assert(trelloPlan.counts.comments === 1, "Trello comments should be preserved");
+  assert(trelloPlan.review.status === "review", "Trello plan should need review when priority is unmapped");
   assert(trelloPlan.tasks[0].title === "Approve launch brief", "Trello card title was not imported");
   assert(trelloPlan.tasks[0].status === "doing", "Trello list status was not mapped");
   assert(trelloPlan.tasks[0].customFields.sourceUrl.includes("trello.example"), "Trello source URL metadata missing");

@@ -305,6 +305,9 @@ function printMigrationPlan(plan) {
   console.log(`Mode: ${plan.mode}`);
   console.log(`Confidence: ${plan.confidence}%`);
   console.log(`Import batch: ${plan.importBatchId}`);
+  if (plan.review) {
+    console.log(`Readiness: ${plan.review.status}`);
+  }
   console.log("");
   console.log("Counts:");
   Object.entries(plan.counts).forEach(([key, value]) => console.log(`- ${key}: ${value}`));
@@ -316,6 +319,20 @@ function printMigrationPlan(plan) {
     console.log("");
     console.log("Warnings:");
     plan.warnings.forEach((warning) => console.log(`- ${warning}`));
+  }
+  if (plan.review?.blockers?.length) {
+    console.log("");
+    console.log("Blockers:");
+    plan.review.blockers.forEach((blocker) => console.log(`- ${blocker}`));
+  }
+  if (plan.review?.missingCoreFields?.length) {
+    console.log("");
+    console.log(`Missing core fields: ${plan.review.missingCoreFields.join(", ")}`);
+  }
+  if (plan.review?.recommendedActions?.length) {
+    console.log("");
+    console.log("Recommended actions:");
+    plan.review.recommendedActions.forEach((action) => console.log(`- ${action}`));
   }
   if (plan.samples.length) {
     console.log("");

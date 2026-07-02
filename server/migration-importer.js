@@ -302,6 +302,15 @@ function buildMigrationPlan({ source, sourceLabel, imported, mode, workspaceName
     };
   }).filter((comment) => comment.taskId && comment.body);
 
+  const counts = {
+    sourceRows: Number(imported.rawRows || 0),
+    projects: projects.length,
+    tasks: tasks.length,
+    comments: comments.length,
+    skipped: skippedTasks
+  };
+  const mapped = arrayOf(imported.mappedFields);
+  const confidence = confidenceScore({ mappedFields: mapped, tasks: tasks.length, sourceRows: imported.rawRows, errors, warnings });
   const plan = {
     type: "agora.migration-plan",
     version: 1,
@@ -313,17 +322,19 @@ function buildMigrationPlan({ source, sourceLabel, imported, mode, workspaceName
     workspace: {
       name: cleanString(workspaceName) || `${sourceLabel} Import`
     },
-    counts: {
-      sourceRows: Number(imported.rawRows || 0),
-      projects: projects.length,
-      tasks: tasks.length,
-      comments: comments.length,
-      skipped: skippedTasks
-    },
-    confidence: confidenceScore({ mappedFields: imported.mappedFields, tasks: tasks.length, sourceRows: imported.rawRows, errors, warnings }),
-    mappedFields: arrayOf(imported.mappedFields),
+    counts,
+    confidence,
+    mappedFields: mapped,
     warnings,
     errors,
+    review: migrationReadinessReview({
+      confidence,
+      mappedFields: mapped,
+      warnings,
+      errors,
+      counts,
+      tasks
+    }),
     projects,
     tasks,
     comments,
@@ -342,6 +353,46 @@ function buildMigrationPlan({ source, sourceLabel, imported, mode, workspaceName
   }
   validateMigrationPlan(plan);
   return plan;
+}
+
+function migrationReadinessReview({ confidence = 0, mappedFields = [], warnings = [], errors = [], counts = {}, tasks = [] } = {}) {
+  const coreFields = ["title", "project", "status", "assignee", "priority", "due date"];
+  const mappedSet = new Set(arrayOf(mappedFields).map(cleanString));
+  const missingCoreFields = coreFields.filter((field) => !mappedSet.has(field));
+  const unmappedImportantFields = missingCoreFields.filter((field) => field !== "title");
+  const unassignedTasks = arrayOf(tasks).filter((task) => !cleanString(task.assignee)).length;
+  const unscheduledTasks = arrayOf(tasks).filter((task) => !cleanString(task.dueDate)).length;
+  const blockers = [...arrayOf(errors)];
+  if (!counts.tasks) blockers.push("No importable tasks were found.");
+  if (!mappedSet.has("title")) blockers.push("No task title/name column was detected.");
+
+  const recommendedActions = [];
+  if (blockers.length) recommendedActions.push("Fix blockers in the source export before applying this migration.");
+  if (unmappedImportantFields.length) recommendedActions.push(`Review missing mappings: ${unmappedImportantFields.join(", ")}.`);
+  if (counts.skipped) recommendedActions.push(`Inspect ${counts.skipped} skipped row${counts.skipped === 1 ? "" : "s"} in the source file.`);
+  if (unassignedTasks) recommendedActions.push(`Assign owners for ${unassignedTasks} imported task${unassignedTasks === 1 ? "" : "s"} after import.`);
+  if (unscheduledTasks) recommendedActions.push(`Add due dates for ${unscheduledTasks} imported task${unscheduledTasks === 1 ? "" : "s"} after import.`);
+  if (!recommendedActions.length) recommendedActions.push("Preview samples, create a backup, then apply the import.");
+  const status = blockers.length
+    ? "blocked"
+    : confidence < 55
+      ? "risky"
+      : confidence < 80 || unmappedImportantFields.length || warnings.length
+        ? "review"
+        : "ready";
+
+  return {
+    status,
+    blockers,
+    missingCoreFields,
+    warnings: arrayOf(warnings),
+    recommendedActions,
+    followUpCounts: {
+      unassignedTasks,
+      unscheduledTasks,
+      skippedRows: Number(counts.skipped || 0)
+    }
+  };
 }
 
 function rowsToImportedRecords(rows, context = {}) {
