@@ -103,6 +103,7 @@ async function run() {
     assert(backendHealth.productionGates.some((item) => item.id === "public-app-url"), "backend health did not include public app URL gate");
     assert(backendHealth.productionGates.some((item) => item.id === "public-feature-abuse"), "backend health did not include public feature abuse gate");
     assert(backendHealth.readiness.some((item) => item.id === "password-reset-delivery"), "backend readiness did not include reset delivery gate");
+    assert(["smtp", "not-configured"].includes(backendHealth.email?.portalActions?.mode), "backend health did not expose portal action email status");
     assert(backendHealth.observability && Number.isFinite(backendHealth.observability.total), "backend health did not include observability metrics");
     assert(backendHealth.jobs && Array.isArray(backendHealth.jobs.recent), "backend health did not include job metrics");
     assert(backendHealth.jobs.recent.some((job) => job.id === "job-json-failed-smoke"), "backend health did not hydrate persisted job history");
@@ -1192,6 +1193,8 @@ async function testAccountAuth() {
     assert(portalApprovalAction.action.type === "approval", "hosted portal approval action did not return action type");
     assert(portalApprovalAction.portalSnapshot.approvals.some((item) => item.id === "approval-record" && item.status === "approved"), "hosted portal approval action did not update snapshot");
     assert(portalApprovalAction.action.notification.kind === "portal-approval", "hosted portal approval action did not create notification history");
+    assert(portalApprovalAction.action.notification.email?.mode, "hosted portal approval action did not report email delivery status");
+    assert(!portalApprovalAction.action.notification.email.to, "hosted portal approval action leaked owner email");
 
     const portalCommentAction = await request(`${baseUrl}/api/portal-links/actions/${encodeURIComponent(portalLink.token)}`, {
       method: "POST",
@@ -1219,6 +1222,8 @@ async function testAccountAuth() {
     assert(portalFeatureAction.action.type === "feature-request", "hosted portal feature request did not return action type");
     assert(portalFeatureAction.portalSnapshot.tasks.some((task) => task.title === "Feature request: Portal requested timeline"), "hosted portal feature request did not create visible task");
     assert(portalFeatureAction.action.notification.kind === "portal-feature-request", "hosted portal feature request did not create notification history");
+    assert(portalFeatureAction.action.notification.email?.mode, "hosted portal feature request did not report email delivery status");
+    assert(!portalFeatureAction.action.notification.email.to, "hosted portal feature request leaked owner email");
 
     const copiedPortalLink = await request(`${baseUrl}/api/portal-links/${encodeURIComponent(portalLink.portalLink.id)}/events`, {
       method: "POST",

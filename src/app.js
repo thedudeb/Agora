@@ -2653,9 +2653,22 @@ function normalizeNotificationHistory(history = []) {
       reason: event.reason || "",
       count: Number(event.count || 0),
       channel: event.channel || "in-app",
-      createdAt: event.createdAt || new Date().toISOString()
+      createdAt: event.createdAt || new Date().toISOString(),
+      email: normalizeNotificationEmailStatus(event.email)
     }))
     .slice(0, 50);
+}
+
+function normalizeNotificationEmailStatus(email) {
+  if (!email || typeof email !== "object" || Array.isArray(email)) return null;
+  const mode = String(email.mode || "not-configured").trim().slice(0, 48);
+  return {
+    mode,
+    delivered: Boolean(email.delivered),
+    queued: Boolean(email.queued),
+    reason: String(email.reason || "").trim().slice(0, 240),
+    recipient: (email.recipient || email.to) ? "configured" : ""
+  };
 }
 
 function normalizeClientPortalLinks(links = [], companies = seedData.companies) {
@@ -6217,6 +6230,11 @@ function emailDiagnosticsItems() {
       label: "Feature request owner",
       done: Boolean(email.featureRequests?.configured),
       detail: email.featureRequests?.detail || "Set AGORA_FEATURE_REQUEST_EMAIL for owner notifications."
+    },
+    {
+      label: "Portal action owner",
+      done: Boolean(email.portalActions?.configured),
+      detail: email.portalActions?.detail || "Set AGORA_PORTAL_ACTION_EMAIL for hosted portal actions."
     },
     {
       label: "Password reset",
@@ -15633,7 +15651,11 @@ function renderNotificationPreferencesPanel() {
     ["watched", "Watched tasks"],
     ["comment", "Comments"],
     ["approval", "Approvals"],
-    ["activity", "Activity"]
+    ["activity", "Activity"],
+    ["portal-approval", "Portal approvals"],
+    ["portal-comment", "Portal comments"],
+    ["portal-feature-request", "Portal feature requests"],
+    ["portal-link-view", "Portal link views"]
   ];
   return `
     <section class="panel notification-preferences-panel">
@@ -15770,6 +15792,15 @@ function renderInboxIntelligencePanel(items) {
   `;
 }
 
+function notificationEmailStatusLabel(event) {
+  const email = event.email;
+  if (!email) return "";
+  if (email.queued) return "email queued";
+  if (email.delivered) return "email delivered";
+  if (email.mode === "not-configured") return "email not configured";
+  return email.mode ? `email ${email.mode}` : "";
+}
+
 function renderNotificationHistoryPanel() {
   const history = normalizeNotificationHistory(state.notificationHistory).slice(0, 6);
   return `
@@ -15787,7 +15818,7 @@ function renderNotificationHistoryPanel() {
             <span class="status-pill inbox-blue">${escapeHtml(event.kind)}</span>
             <strong>${escapeHtml(event.title)}</strong>
             <p>${escapeHtml(event.message)}</p>
-            <small>${escapeHtml(event.reason || event.channel)} - ${formatTimestamp(event.createdAt)}</small>
+            <small>${escapeHtml([event.reason || event.channel, notificationEmailStatusLabel(event)].filter(Boolean).join(" / "))} - ${formatTimestamp(event.createdAt)}</small>
           </article>
         `).join("") : emptyState("Digest sends and browser alert tests will appear here.")}
       </div>
@@ -21280,7 +21311,7 @@ function renderPortalSecurityPanel() {
             <div>
               <strong>${escapeHtml(event.title || event.action || event.kind || "Portal action")}</strong>
               <p>${escapeHtml(event.message || event.detail || event.reason || "")}</p>
-              <small>${escapeHtml(formatTimestamp(event.createdAt))}</small>
+              <small>${escapeHtml([formatTimestamp(event.createdAt), notificationEmailStatusLabel(event)].filter(Boolean).join(" / "))}</small>
             </div>
           </article>
         `).join("") : emptyState("No hosted portal actions have been recorded yet.")}

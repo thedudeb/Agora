@@ -261,7 +261,7 @@ function normalizeBackgroundJob(job = {}) {
 
 function backgroundJobHandler(job, fallbackHandler = null) {
   if (fallbackHandler) return fallbackHandler;
-  if (["feature-request-email", "feature-request-update-email", "invitation-email"].includes(job.type)) {
+  if (["feature-request-email", "feature-request-update-email", "invitation-email", "portal-action-email"].includes(job.type)) {
     return () => sendSmtpMail(job.payload || {});
   }
   return null;
@@ -1430,11 +1430,11 @@ async function buildBackendHealth(storage, session) {
     {
       id: "email-delivery",
       label: "Team email delivery",
-      done: !productionTarget || (email.smtp.configured && email.from.configured && email.invitations.configured && email.featureRequests.configured),
+      done: !productionTarget || (email.smtp.configured && email.from.configured && email.invitations.configured && email.featureRequests.configured && email.portalActions.configured),
       detail: email.smtp.configured
-        ? `SMTP configured for invites and feedback${email.featureRequests.configured ? "" : "; feature owner recipient missing"}`
-        : productionTarget ? "SMTP is not configured for invites or feature request emails" : "SMTP is optional for local development",
-      fix: "Set AGORA_SMTP_HOST, AGORA_EMAIL_FROM, and AGORA_FEATURE_REQUEST_EMAIL before inviting a real team."
+        ? `SMTP configured for invites, feedback, and portal actions${email.featureRequests.configured && email.portalActions.configured ? "" : "; owner recipient missing"}`
+        : productionTarget ? "SMTP is not configured for invites, feature request, or portal action emails" : "SMTP is optional for local development",
+      fix: "Set AGORA_SMTP_HOST, AGORA_EMAIL_FROM, and AGORA_PORTAL_ACTION_EMAIL or AGORA_FEATURE_REQUEST_EMAIL before inviting a real team."
     },
     {
       id: "public-feature-abuse",
@@ -1549,7 +1549,7 @@ async function buildBackendHealth(storage, session) {
       id: "team-email",
       label: "Team email",
       done: email.smtp.configured && email.from.configured,
-      detail: email.smtp.configured ? "SMTP can queue invite, feature request, and requester update emails" : "SMTP is not configured yet",
+      detail: email.smtp.configured ? "SMTP can queue invite, feature request, portal action, and requester update emails" : "SMTP is not configured yet",
       fix: "Set AGORA_SMTP_HOST, AGORA_SMTP_PORT, AGORA_EMAIL_FROM, and SMTP credentials when your provider requires auth."
     },
     ...productionGates,
@@ -2719,6 +2719,31 @@ async function deliverFeatureRequestUpdate({ task, note, session }) {
   return { mode: "smtp", delivered: false, queued: true, jobId: job.id, to };
 }
 
+async function deliverPortalActionEmail({ link, actionType, title, message, reason, companyName }) {
+  const to = cleanString(process.env.AGORA_PORTAL_ACTION_EMAIL || process.env.AGORA_FEATURE_REQUEST_EMAIL || process.env.AGORA_OWNER_EMAIL);
+  if (!to) {
+    return { mode: "not-configured", delivered: false, reason: "Set AGORA_PORTAL_ACTION_EMAIL or AGORA_OWNER_EMAIL to receive portal action emails." };
+  }
+  if (!isValidEmailAddress(to)) {
+    return { mode: "not-configured", delivered: false, reason: "Portal action recipient email is invalid." };
+  }
+
+  const smtpHost = cleanString(process.env.AGORA_SMTP_HOST || process.env.SMTP_HOST);
+  if (!smtpHost) {
+    return { mode: "not-configured", delivered: false, reason: "Set AGORA_SMTP_HOST to send portal action emails.", to };
+  }
+
+  const payload = portalActionEmailPayload({ link, actionType, title, message, reason, companyName, to });
+  const job = enqueueBackgroundJob("portal-action-email", () => sendSmtpMail(payload), {
+    to,
+    linkId: link.id,
+    companyId: link.companyId,
+    actionType
+  }, payload);
+  if (job.status === "rejected") return { mode: "smtp", delivered: false, queued: false, jobId: job.id, reason: job.error, to };
+  return { mode: "smtp", delivered: false, queued: true, jobId: job.id, to };
+}
+
 async function deliverInvitationEmail({ invitation, session }) {
   if (!invitation?.email) {
     return { mode: "not-configured", delivered: false, reason: "Invitation email is missing." };
@@ -2744,6 +2769,7 @@ function emailDeliveryDiagnostics() {
   const smtpUser = cleanString(process.env.AGORA_SMTP_USER || process.env.SMTP_USER);
   const from = cleanString(process.env.AGORA_EMAIL_FROM || process.env.SMTP_FROM);
   const featureRecipient = cleanString(process.env.AGORA_FEATURE_REQUEST_EMAIL || process.env.AGORA_OWNER_EMAIL);
+  const portalRecipient = cleanString(process.env.AGORA_PORTAL_ACTION_EMAIL || process.env.AGORA_FEATURE_REQUEST_EMAIL || process.env.AGORA_OWNER_EMAIL);
   const resetDelivery = cleanString(process.env.AGORA_PASSWORD_RESET_DELIVERY || "").toLowerCase();
   const resetWebhook = cleanString(process.env.AGORA_PASSWORD_RESET_WEBHOOK_URL);
   const exposesResetToken = envFlag("AGORA_PASSWORD_RESET_RETURN_TOKEN", false) || resetDelivery === "manual";
@@ -2771,6 +2797,14 @@ function emailDeliveryDiagnostics() {
       mode: smtpConfigured && featureRecipient ? "smtp" : "not-configured",
       ownerRecipient: featureRecipient ? "configured" : "",
       detail: featureRecipient ? "Feature request owner email is set." : "Set AGORA_FEATURE_REQUEST_EMAIL for owner notifications."
+    },
+    portalActions: {
+      configured: smtpConfigured && Boolean(portalRecipient),
+      mode: smtpConfigured && portalRecipient ? "smtp" : "not-configured",
+      ownerRecipient: portalRecipient ? "configured" : "",
+      detail: portalRecipient
+        ? "Hosted portal action emails are routed to the configured owner recipient."
+        : "Set AGORA_PORTAL_ACTION_EMAIL or AGORA_OWNER_EMAIL for portal action emails."
     },
     passwordReset: {
       configured: resetDelivery === "smtp" ? smtpConfigured : resetDelivery === "webhook" ? Boolean(resetWebhook) : false,
@@ -2854,6 +2888,31 @@ function featureRequestUpdatePayload({ task, note, session, to }) {
       `Updated by: ${session.user.name || session.user.email}`,
       "",
       "Thanks for helping improve Agora."
+    ].join("\n")
+  };
+}
+
+function portalActionEmailPayload({ link, actionType, title, message, reason, companyName, to }) {
+  const appUrl = publicAppBaseUrl();
+  const portalLabel = cleanString(companyName || link.companyName || link.companyId || "Client portal");
+  const actionLabel = cleanString(actionType || "portal-action").replace(/^portal-/, "").replace(/-/g, " ");
+  return {
+    to,
+    from: cleanString(process.env.AGORA_EMAIL_FROM || process.env.SMTP_FROM || "Agora <no-reply@localhost>"),
+    subject: smtpHeader(`Agora portal action: ${title || actionLabel}`),
+    text: [
+      "A hosted client portal action was recorded in Agora.",
+      "",
+      `Workspace: ${workspace.name}`,
+      `Client: ${portalLabel}`,
+      `Action: ${actionLabel}`,
+      `Portal link: ${link.tokenId || link.id}`,
+      `Review: ${appUrl}/#client-portal`,
+      "",
+      cleanString(message || title || "A client used a hosted portal link."),
+      "",
+      "Reason:",
+      cleanString(reason || "No additional detail was included.")
     ].join("\n")
   };
 }
@@ -4113,15 +4172,26 @@ async function portalActivity(storage, input = {}) {
 
 async function recordPortalNotification(storage, link, input = {}) {
   const now = new Date().toISOString();
-  return storage.upsertRecord("notificationHistory", normalizeNotificationHistoryEvent({
+  const title = input.title || "Hosted portal action";
+  const message = input.message || "A client used a hosted portal link.";
+  const reason = input.reason || `Portal link ${link.tokenId}`;
+  const email = await deliverPortalActionEmail({
+    link,
+    actionType: input.kind || "portal-action",
+    title,
+    message,
+    reason,
+    companyName: input.companyName
+  });
+  const notification = await storage.upsertRecord("notificationHistory", normalizeNotificationHistoryEvent({
     id: `notification-history-${crypto.randomUUID()}`,
     memberId: "",
     kind: input.kind || "portal-action",
-    title: input.title || "Hosted portal action",
-    message: input.message || "A client used a hosted portal link.",
-    reason: input.reason || `Portal link ${link.tokenId}`,
+    title,
+    message,
+    reason,
     count: input.count || 1,
-    channel: "hosted portal",
+    channel: email.queued || email.delivered ? "hosted portal + email" : "hosted portal",
     createdAt: now,
     updatedAt: now
   }), {
@@ -4129,6 +4199,17 @@ async function recordPortalNotification(storage, link, input = {}) {
     updatedBy: "portal-link",
     action: "client_portal_notification"
   });
+  return { ...notification, email: portalEmailDeliveryStatus(email) };
+}
+
+function portalEmailDeliveryStatus(email = {}) {
+  return {
+    mode: cleanString(email.mode || "not-configured"),
+    delivered: Boolean(email.delivered),
+    queued: Boolean(email.queued),
+    reason: cleanString(email.reason).slice(0, 240),
+    recipient: email.to ? "configured" : ""
+  };
 }
 
 async function getPortalLinkRecord(storage, linkId, session) {
