@@ -6462,6 +6462,36 @@ body[data-tutorial-target="view"] #app-view {
   gap: 6px;
 }
 
+.board-flow-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) repeat(5, minmax(110px, 0.6fr));
+  gap: 10px;
+  align-items: stretch;
+  margin-bottom: 14px;
+}
+
+.board-flow-panel > div,
+.board-flow-panel article {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-height: 86px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.board-flow-panel span,
+.board-flow-panel small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.board-flow-panel strong {
+  font-size: 1.18rem;
+}
+
 .board-health-strip {
   align-items: center;
   margin-bottom: 14px;
@@ -8287,6 +8317,7 @@ body[data-density="compact"] .main-content {
   .recovery-confidence-grid,
   .automation-composer,
   .board-automation-builder,
+  .board-flow-panel,
   .board-backlog-composer,
   .board-backlog-item,
   .settings-form,

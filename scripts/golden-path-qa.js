@@ -108,6 +108,7 @@ const routeChecks = [
       "Board system",
       "Board automation builder",
       "Backlog / Triage",
+      "Flow analytics",
       "Workflow",
       "Swimlanes",
       "Manual order",

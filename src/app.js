@@ -18285,6 +18285,82 @@ function renderBoardBacklogPanel(tasks = []) {
   `;
 }
 
+function boardFlowAnalytics(tasks = []) {
+  const activeTasks = boardActiveTasks(tasks);
+  const openTasks = activeTasks.filter((task) => task.status !== "done");
+  const doneThisWeek = activeTasks.filter((task) => task.status === "done" && daysBetween((task.updatedAt || task.createdAt || todayKey()).slice(0, 10), todayKey()) <= 7);
+  const activeAges = openTasks.map((task) => daysBetween((task.createdAt || task.updatedAt || todayKey()).slice(0, 10), todayKey()));
+  const staleAges = openTasks.map((task) => daysBetween((task.updatedAt || task.createdAt || todayKey()).slice(0, 10), todayKey()));
+  const avgAge = activeAges.length ? Math.round(activeAges.reduce((total, age) => total + age, 0) / activeAges.length) : 0;
+  const agingWip = activeAges.filter((age) => age >= 14).length;
+  const blocked = openTasks.filter(isTaskBlocked).length;
+  const overdue = openTasks.filter(isOverdue).length;
+  const stale = staleAges.filter((age) => age >= 7).length;
+  const columns = boardColumns().map((column) => {
+    const columnTasks = activeTasks.filter((task) => task.status === column.id);
+    return {
+      ...column,
+      count: columnTasks.length,
+      blocked: columnTasks.filter(isTaskBlocked).length,
+      aging: columnTasks.filter((task) => daysBetween((task.createdAt || task.updatedAt || todayKey()).slice(0, 10), todayKey()) >= 14).length
+    };
+  });
+  const bottleneck = columns
+    .filter((column) => column.id !== "done")
+    .sort((a, b) => {
+      const aPressure = a.wipLimit ? a.count / a.wipLimit : a.count;
+      const bPressure = b.wipLimit ? b.count / b.wipLimit : b.count;
+      return bPressure - aPressure || b.blocked - a.blocked || b.aging - a.aging;
+    })[0];
+  return {
+    throughput: doneThisWeek.length,
+    avgAge,
+    agingWip,
+    blocked,
+    overdue,
+    stale,
+    bottleneck
+  };
+}
+
+function renderBoardFlowAnalytics(tasks = []) {
+  const flow = boardFlowAnalytics(tasks);
+  return `
+    <section class="board-flow-panel" aria-label="Flow analytics">
+      <div>
+        <p class="eyebrow">Flow analytics</p>
+        <strong>${flow.bottleneck?.label || "No"} bottleneck</strong>
+        <span>${flow.bottleneck ? `${flow.bottleneck.count} cards / ${flow.bottleneck.blocked} blocked / ${flow.bottleneck.aging} aging` : "No active bottleneck detected"}</span>
+      </div>
+      <article>
+        <span>Throughput</span>
+        <strong>${flow.throughput}</strong>
+        <small>done this week</small>
+      </article>
+      <article>
+        <span>Avg age</span>
+        <strong>${flow.avgAge}d</strong>
+        <small>open WIP</small>
+      </article>
+      <article>
+        <span>Aging WIP</span>
+        <strong>${flow.agingWip}</strong>
+        <small>14d+</small>
+      </article>
+      <article>
+        <span>Blocked time</span>
+        <strong>${flow.blocked}</strong>
+        <small>blocked cards</small>
+      </article>
+      <article>
+        <span>Risk</span>
+        <strong>${flow.overdue + flow.stale}</strong>
+        <small>overdue/stale</small>
+      </article>
+    </section>
+  `;
+}
+
 function renderBoardControls() {
   const board = normalizeWorkspaceBoard(state.workspace.board);
   const boardViews = state.savedViews.filter((view) => view.route === "board");
@@ -18437,7 +18513,7 @@ function renderKanbanBoard(tasks, { controls = false, label = "Task board" } = {
       </div>
     </section>
   `).join("");
-  return `${controls ? `${renderBoardControls()}${renderBoardBacklogPanel(tasks)}${renderBoardHealthStrip(activeBoardTasks)}${renderBoardMobileTabs(columns)}` : ""}${boardMarkup}`;
+  return `${controls ? `${renderBoardControls()}${renderBoardBacklogPanel(tasks)}${renderBoardFlowAnalytics(activeBoardTasks)}${renderBoardHealthStrip(activeBoardTasks)}${renderBoardMobileTabs(columns)}` : ""}${boardMarkup}`;
 }
 
 function renderProjectBoard(tasks) {
