@@ -34,20 +34,31 @@ npm run dev:api
 
 2. Open `http://127.0.0.1:5174`.
 
-3. In Settings > Account:
+3. Open Admin > Beta Launch and click `Start Beta Workspace`.
+
+This loads `Agency Client Delivery Beta`, a realistic agency client workspace with one active client, the `Client Onboarding Launch` project, seeded milestones, tasks, docs/files, approvals, collaboration notes, and feature requests.
+
+4. Review the seeded workspace:
+
+- open the `Client Onboarding Launch` project;
+- check the client portal status task and approval packet;
+- open Feature Requests and triage one seeded request;
+- inspect Docs/Files, Activity, Daily Plan, and the pending client invitation.
+
+5. In Settings > Account:
 
 - create or sign in as the first owner;
 - save or load the workspace through the API;
 - refresh Backend Health;
 - review Hosted onboarding.
 
-4. In Settings > Feedback:
+6. In Settings > Feedback:
 
 - confirm Email diagnostics;
 - copy the public feedback link;
 - submit one feature request.
 
-5. In Data:
+7. In Data:
 
 - create a backup;
 - download a portable bundle;

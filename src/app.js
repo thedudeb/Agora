@@ -4338,13 +4338,790 @@ function createBlankWorkspaceState(options = {}) {
   });
 }
 
+function createBetaWorkspaceState(options = {}) {
+  const beta = structuredClone(seedData);
+  const owner = members[0];
+  const now = new Date().toISOString();
+  const today = todayKey();
+  const workspaceId = options.id || activeWorkspaceId;
+  const workspaceName = options.name || "Agency Client Delivery Beta";
+  const day = (offset) => shiftDate(today, offset);
+  const at = (offset, hour, minute = 0) => `${day(offset)}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00.000Z`;
+  const projectId = "beta-client-onboarding";
+  const companyId = "beta-client";
+  const requestFields = (status, requester, email, impact, source = "public") => ({
+    requestType: "feature-request",
+    featureStatus: status,
+    source,
+    submittedAt: at(-2, 10),
+    requester,
+    requesterEmail: email,
+    impact
+  });
+
+  return normalizeState({
+    ...beta,
+    selectedRoute: "beta",
+    selectedProject: projectId,
+    selectedCompany: companyId,
+    selectedProjectTab: "overview",
+    selectedSettingsTab: "account",
+    selectedCalendarMonth: today.slice(0, 7),
+    selectedDailyDate: today,
+    filters: { ...beta.filters, company: companyId, assignee: "all", status: "all", priority: "all", query: "" },
+    savedViews: [
+      {
+        id: "view-beta-client-risk",
+        name: "Client risk and approvals",
+        route: "board",
+        selectedProject: projectId,
+        selectedCompany: companyId,
+        filters: {
+          company: companyId,
+          assignee: "all",
+          status: "all",
+          priority: "all",
+          query: "client approval"
+        },
+        createdAt: now
+      },
+      {
+        id: "view-beta-feature-requests",
+        name: "Beta feedback queue",
+        route: "feature-requests",
+        selectedProject: projectId,
+        selectedCompany: companyId,
+        filters: {
+          company: companyId,
+          assignee: "all",
+          status: "all",
+          priority: "all",
+          query: "feature-request"
+        },
+        createdAt: now
+      }
+    ],
+    dailyNotes: {
+      [today]: "Beta focus: make the client handoff feel real, check portal visibility, and capture tester feedback without losing context."
+    },
+    dailyPlans: {
+      "beta-task-kickoff-goals": { date: today, lane: "now" },
+      "beta-task-brand-access": { date: today, lane: "now" },
+      "beta-task-portal-status": { date: today, lane: "next" },
+      "beta-task-approval-packet": { date: today, lane: "later" }
+    },
+    dashboardWidgets: normalizeDashboardWidgets(beta.dashboardWidgets),
+    dashboardLayouts: normalizeDashboardLayouts(beta.dashboardLayouts),
+    selectedDashboardLayoutId: beta.selectedDashboardLayoutId,
+    switcherImportPreview: null,
+    switcherImportRollback: null,
+    importHistory: [],
+    inboxRead: [],
+    inboxArchived: [],
+    inboxSnoozed: {},
+    notificationHistory: [],
+    notificationReminders: [],
+    taskWatchers: {
+      "beta-task-portal-status": ["mara", "sam"],
+      "beta-task-approval-packet": ["sam", "nina"],
+      "beta-request-approval-reminders": ["mara", "sam"]
+    },
+    presence: [],
+    chatMessages: [
+      {
+        id: "beta-chat-1",
+        channel: "delivery",
+        author: "sam",
+        body: "Client portal is the thing I want testers to notice first: status, files, approvals, and the next decision.",
+        projectId,
+        createdAt: at(-1, 14, 10)
+      },
+      {
+        id: "beta-chat-2",
+        channel: "general",
+        author: "mara",
+        body: "After kickoff, please capture anything that feels like a missing collaboration loop as a feature request.",
+        createdAt: at(-1, 14, 25)
+      }
+    ],
+    whiteboards: [
+      {
+        id: "beta-whiteboard-handoff-map",
+        title: "Client Handoff Map",
+        projectId,
+        items: [
+          { id: "beta-wb-1", type: "note", text: "Sales promise and success metrics", x: 10, y: 18, color: "blue" },
+          { id: "beta-wb-2", type: "decision", text: "Portal is source of truth for weekly status", x: 38, y: 26, color: "green" },
+          { id: "beta-wb-3", type: "risk", text: "Client reviewers may miss approval due dates", x: 66, y: 18, color: "amber" }
+        ]
+      }
+    ],
+    approvals: [
+      {
+        id: "beta-approval-kickoff-agenda",
+        companyId,
+        projectId,
+        taskId: "beta-task-kickoff-agenda",
+        title: "Kickoff agenda approval",
+        requester: "sam",
+        reviewer: "Jordan Lee",
+        status: "requested",
+        dueDate: day(3),
+        summary: "Confirm the meeting plan before the first client stakeholder call.",
+        createdAt: at(-1, 13)
+      },
+      {
+        id: "beta-approval-portal-status",
+        companyId,
+        projectId,
+        taskId: "beta-task-portal-status",
+        title: "Client portal status copy",
+        requester: "nina",
+        reviewer: "Priya Shah",
+        status: "needs-changes",
+        dueDate: day(5),
+        summary: "Client wants the portal summary to separate launch tasks from open risks.",
+        createdAt: at(-1, 15)
+      }
+    ],
+    comments: [
+      {
+        id: "beta-comment-1",
+        taskId: "beta-task-kickoff-goals",
+        author: "mara",
+        body: "The beta tester should be able to understand the whole client project from this one task and the milestone rail.",
+        createdAt: at(-2, 11, 15)
+      },
+      {
+        id: "beta-comment-2",
+        taskId: "beta-task-brand-access",
+        author: "sam",
+        body: "Jordan sent logo files, analytics access, and the last campaign recap. Still waiting on billing owner details.",
+        createdAt: at(-1, 9, 35)
+      },
+      {
+        id: "beta-comment-3",
+        taskId: "beta-task-portal-status",
+        author: "nina",
+        body: "I moved the summary into client language and called out the next approval date at the top.",
+        createdAt: at(-1, 16, 5)
+      },
+      {
+        id: "beta-comment-4",
+        taskId: "beta-request-portal-digest",
+        author: "eli",
+        body: "This is a good beta request: small enough to reason about, useful enough for every client workspace.",
+        createdAt: at(0, 10, 20)
+      }
+    ],
+    activities: [
+      {
+        id: "beta-activity-1",
+        projectId,
+        taskId: "beta-task-kickoff-goals",
+        memberId: "mara",
+        type: "task_status",
+        message: "moved Confirm kickoff goals to Done",
+        createdAt: at(-2, 12)
+      },
+      {
+        id: "beta-activity-2",
+        projectId,
+        taskId: "beta-task-brand-access",
+        memberId: "sam",
+        type: "comment",
+        message: "updated the client asset checklist",
+        createdAt: at(-1, 9, 35)
+      },
+      {
+        id: "beta-activity-3",
+        projectId,
+        taskId: "beta-task-portal-status",
+        memberId: "nina",
+        type: "task_status",
+        message: "moved Publish client portal status to Review",
+        createdAt: at(-1, 16)
+      },
+      {
+        id: "beta-activity-4",
+        projectId,
+        taskId: "beta-request-approval-reminders",
+        memberId: "sam",
+        type: "task_create",
+        message: "captured feature request Client approval reminders",
+        createdAt: at(0, 10)
+      }
+    ],
+    customFields: [
+      ...beta.customFields,
+      {
+        id: "clientVisibility",
+        name: "Client Visibility",
+        type: "select",
+        options: ["Internal", "Shared", "Portal"]
+      },
+      {
+        id: "approvalStage",
+        name: "Approval Stage",
+        type: "select",
+        options: ["Draft", "Requested", "Approved", "Changes requested"]
+      }
+    ],
+    documents: [
+      {
+        id: "beta-doc-kickoff-brief",
+        projectId,
+        title: "Kickoff Brief",
+        type: "Brief",
+        owner: "sam",
+        updatedAt: at(-1, 12),
+        body: "Goals, stakeholders, timeline, open risks, portal expectations, and the first approval path for the client onboarding beta."
+      },
+      {
+        id: "beta-doc-portal-update",
+        projectId,
+        title: "Client Portal Weekly Update",
+        type: "Status",
+        owner: "nina",
+        updatedAt: at(0, 9),
+        body: "Plain-language status summary for client stakeholders: what changed, what needs review, and what happens next."
+      },
+      {
+        id: "beta-doc-feedback-log",
+        projectId,
+        title: "Beta Feedback Log",
+        type: "Notes",
+        owner: "mara",
+        updatedAt: at(0, 11),
+        body: "Notes from the first beta pass, including collaboration gaps, migration questions, and client portal requests."
+      }
+    ],
+    files: [
+      {
+        id: "beta-file-brand-assets",
+        projectId,
+        title: "Northstar brand assets.zip",
+        kind: "Archive",
+        size: "8.4 MB",
+        owner: "sam",
+        updatedAt: at(-1, 9)
+      },
+      {
+        id: "beta-file-sales-handoff",
+        projectId,
+        title: "Sales handoff notes.pdf",
+        kind: "PDF",
+        size: "920 KB",
+        owner: "mara",
+        updatedAt: at(-2, 15)
+      }
+    ],
+    timeEntries: [
+      { id: "beta-time-1", taskId: "beta-task-kickoff-goals", memberId: "sam", minutes: 45, date: day(-2), note: "Kickoff goals and stakeholder notes" },
+      { id: "beta-time-2", taskId: "beta-task-portal-status", memberId: "nina", minutes: 60, date: day(-1), note: "Portal summary rewrite" },
+      { id: "beta-time-3", taskId: "beta-task-approval-packet", memberId: "sam", minutes: 30, date: today, note: "Approval checklist pass" }
+    ],
+    intakeForms: [
+      {
+        id: "beta-form-client-change",
+        title: "Client Change Request",
+        projectId,
+        assignee: "sam",
+        description: "Capture client asks that may affect scope, timeline, or approval flow.",
+        fields: [
+          { id: "requester", label: "Requester", type: "text", required: true },
+          { id: "company", label: "Company", type: "text", required: true },
+          { id: "urgency", label: "Urgency", type: "select", options: ["Low", "Normal", "High"], required: true },
+          { id: "details", label: "Request details", type: "textarea", required: true }
+        ]
+      }
+    ],
+    intakeSubmissions: [
+      {
+        id: "beta-submission-1",
+        formId: "beta-form-client-change",
+        title: "Add executive summary to weekly portal update",
+        requester: "Jordan Lee",
+        company: "Northstar Labs",
+        urgency: "Normal",
+        details: "Leadership wants a short summary before the task-level detail.",
+        taskId: "beta-request-portal-digest",
+        createdAt: at(-1, 17)
+      }
+    ],
+    companies: [
+      {
+        id: companyId,
+        name: "Northstar Labs",
+        type: "Client",
+        owner: "sam",
+        status: "active",
+        description: "A realistic agency client onboarding project for testing portal visibility, approvals, feedback, and handoff workflows."
+      }
+    ],
+    projects: [
+      {
+        id: projectId,
+        name: "Client Onboarding Launch",
+        companyId,
+        description: "Run a new client from sales handoff through kickoff, portal setup, approval routing, and the first weekly status review.",
+        owner: "sam",
+        startDate: day(-2),
+        dueDate: day(28)
+      }
+    ],
+    goals: [
+      {
+        id: "beta-goal-client-launch",
+        title: "Make the first client onboarding week feel managed",
+        owner: "sam",
+        companyId,
+        status: "active",
+        period: "Beta sprint",
+        targetDate: day(28),
+        projectIds: [projectId],
+        keyResults: [
+          { id: "beta-kr-portal", title: "Client portal status is clear enough for weekly review", progress: 68, target: "Approved" },
+          { id: "beta-kr-approval", title: "All kickoff approvals have named reviewers and dates", progress: 55, target: "100%" },
+          { id: "beta-kr-feedback", title: "Beta feedback becomes triaged feature requests", progress: 40, target: "5 requests" }
+        ]
+      }
+    ],
+    tasks: [
+      {
+        id: "beta-task-kickoff-goals",
+        projectId,
+        title: "Confirm kickoff goals",
+        description: "Align on outcomes, stakeholders, constraints, and the definition of a successful first month.",
+        assignee: "sam",
+        status: "done",
+        priority: "high",
+        startDate: day(-2),
+        dueDate: day(-1),
+        blockedBy: [],
+        tags: ["kickoff", "client"],
+        subtasks: [
+          { id: "beta-subtask-goals-1", title: "Confirm success metrics", done: true },
+          { id: "beta-subtask-goals-2", title: "List key stakeholders", done: true },
+          { id: "beta-subtask-goals-3", title: "Capture constraints", done: true }
+        ],
+        customFields: { effort: "Small", risk: "Low", budget: "600", clientVisibility: "Shared", approvalStage: "Approved" },
+        createdAt: at(-3, 9),
+        updatedAt: at(-2, 12)
+      },
+      {
+        id: "beta-task-brand-access",
+        projectId,
+        title: "Collect brand and access assets",
+        description: "Gather logos, analytics access, brand rules, shared drives, and the billing owner needed for delivery.",
+        assignee: "sam",
+        status: "doing",
+        priority: "high",
+        startDate: day(-2),
+        dueDate: day(3),
+        blockedBy: [],
+        tags: ["assets", "client"],
+        subtasks: [
+          { id: "beta-subtask-assets-1", title: "Upload brand package", done: true },
+          { id: "beta-subtask-assets-2", title: "Confirm analytics access", done: true },
+          { id: "beta-subtask-assets-3", title: "Identify billing owner", done: false }
+        ],
+        customFields: { effort: "Medium", risk: "Medium", budget: "900", clientVisibility: "Internal", approvalStage: "Draft" },
+        createdAt: at(-3, 10),
+        updatedAt: at(-1, 9, 35)
+      },
+      {
+        id: "beta-task-kickoff-agenda",
+        projectId,
+        title: "Draft kickoff agenda",
+        description: "Prepare the kickoff meeting agenda, decision log, and first client-facing notes.",
+        assignee: "mara",
+        status: "review",
+        priority: "high",
+        startDate: day(-1),
+        dueDate: day(3),
+        blockedBy: ["beta-task-kickoff-goals"],
+        tags: ["kickoff", "approval"],
+        subtasks: [
+          { id: "beta-subtask-agenda-1", title: "Draft agenda", done: true },
+          { id: "beta-subtask-agenda-2", title: "Attach decision log", done: true },
+          { id: "beta-subtask-agenda-3", title: "Send for approval", done: false }
+        ],
+        customFields: { effort: "Small", risk: "Medium", budget: "500", clientVisibility: "Portal", approvalStage: "Requested" },
+        createdAt: at(-2, 13),
+        updatedAt: at(-1, 13)
+      },
+      {
+        id: "beta-task-approval-owners",
+        projectId,
+        title: "Map approval owners",
+        description: "Name the client and internal reviewers for scope, portal content, timeline, and final handoff decisions.",
+        assignee: "sam",
+        status: "todo",
+        priority: "normal",
+        startDate: day(0),
+        dueDate: day(4),
+        blockedBy: ["beta-task-kickoff-goals"],
+        tags: ["approval", "governance"],
+        subtasks: [
+          { id: "beta-subtask-owners-1", title: "List approval lanes", done: true },
+          { id: "beta-subtask-owners-2", title: "Assign client reviewers", done: false }
+        ],
+        customFields: { effort: "Small", risk: "Medium", budget: "400", clientVisibility: "Internal", approvalStage: "Draft" },
+        createdAt: at(-1, 10),
+        updatedAt: at(-1, 10)
+      },
+      {
+        id: "beta-task-project-plan",
+        projectId,
+        title: "Build project plan from template",
+        description: "Convert the sales handoff into milestones, dependencies, owner assignments, and the first weekly plan.",
+        assignee: "eli",
+        status: "doing",
+        priority: "normal",
+        startDate: day(0),
+        dueDate: day(6),
+        blockedBy: ["beta-task-brand-access"],
+        tags: ["planning", "template"],
+        subtasks: [
+          { id: "beta-subtask-plan-1", title: "Apply onboarding template", done: true },
+          { id: "beta-subtask-plan-2", title: "Check dependencies", done: false },
+          { id: "beta-subtask-plan-3", title: "Save beta view", done: true }
+        ],
+        customFields: { effort: "Medium", risk: "Low", budget: "1200", clientVisibility: "Shared", approvalStage: "Draft" },
+        createdAt: at(-1, 12),
+        updatedAt: at(0, 9)
+      },
+      {
+        id: "beta-task-portal-status",
+        projectId,
+        title: "Publish client portal status",
+        description: "Write a client-safe summary of current progress, open risks, upcoming approvals, and the next meeting.",
+        assignee: "nina",
+        status: "review",
+        priority: "urgent",
+        startDate: day(0),
+        dueDate: day(5),
+        blockedBy: ["beta-task-kickoff-agenda"],
+        tags: ["portal", "status", "client"],
+        subtasks: [
+          { id: "beta-subtask-portal-1", title: "Draft weekly update", done: true },
+          { id: "beta-subtask-portal-2", title: "Separate risks from tasks", done: false },
+          { id: "beta-subtask-portal-3", title: "Request client copy approval", done: false }
+        ],
+        customFields: { effort: "Medium", risk: "High", budget: "1100", clientVisibility: "Portal", approvalStage: "Changes requested" },
+        createdAt: at(-1, 11),
+        updatedAt: at(-1, 16)
+      },
+      {
+        id: "beta-task-weekly-report",
+        projectId,
+        title: "Configure weekly status report",
+        description: "Set the saved view, report sections, owners, and delivery cadence for the first recurring status report.",
+        assignee: "mara",
+        status: "todo",
+        priority: "normal",
+        startDate: day(2),
+        dueDate: day(7),
+        blockedBy: ["beta-task-portal-status"],
+        tags: ["reporting", "automation"],
+        subtasks: [
+          { id: "beta-subtask-report-1", title: "Choose report sections", done: false },
+          { id: "beta-subtask-report-2", title: "Confirm delivery cadence", done: false }
+        ],
+        customFields: { effort: "Small", risk: "Low", budget: "500", clientVisibility: "Shared", approvalStage: "Draft" },
+        createdAt: at(0, 10),
+        updatedAt: at(0, 10)
+      },
+      {
+        id: "beta-task-approval-packet",
+        projectId,
+        title: "Set up approval packet",
+        description: "Bundle the kickoff agenda, portal copy, timeline, and owner list into one reviewable package.",
+        assignee: "sam",
+        status: "todo",
+        priority: "high",
+        startDate: day(2),
+        dueDate: day(8),
+        blockedBy: ["beta-task-approval-owners", "beta-task-portal-status"],
+        tags: ["approval", "handoff"],
+        subtasks: [
+          { id: "beta-subtask-packet-1", title: "Collect linked docs", done: false },
+          { id: "beta-subtask-packet-2", title: "Add reviewer instructions", done: false }
+        ],
+        customFields: { effort: "Medium", risk: "Medium", budget: "800", clientVisibility: "Portal", approvalStage: "Draft" },
+        createdAt: at(0, 11),
+        updatedAt: at(0, 11)
+      },
+      {
+        id: "beta-task-stakeholder-review",
+        projectId,
+        title: "Run first stakeholder review",
+        description: "Walk through portal status, open risks, approval owners, and the first delivery milestones.",
+        assignee: "sam",
+        status: "todo",
+        priority: "high",
+        startDate: day(7),
+        dueDate: day(10),
+        blockedBy: ["beta-task-approval-packet"],
+        tags: ["meeting", "client"],
+        subtasks: [
+          { id: "beta-subtask-review-1", title: "Schedule review", done: false },
+          { id: "beta-subtask-review-2", title: "Capture decisions", done: false },
+          { id: "beta-subtask-review-3", title: "Send recap", done: false }
+        ],
+        customFields: { effort: "Medium", risk: "Medium", budget: "1500", clientVisibility: "Portal", approvalStage: "Draft" },
+        createdAt: at(0, 12),
+        updatedAt: at(0, 12)
+      },
+      {
+        id: "beta-task-risks-dependencies",
+        projectId,
+        title: "Capture risks and dependencies",
+        description: "Document open assumptions, dependency owners, and escalation criteria before delivery ramps.",
+        assignee: "eli",
+        status: "doing",
+        priority: "normal",
+        startDate: day(1),
+        dueDate: day(9),
+        blockedBy: [],
+        tags: ["risk", "dependency"],
+        subtasks: [
+          { id: "beta-subtask-risk-1", title: "Add risk register", done: true },
+          { id: "beta-subtask-risk-2", title: "Name mitigation owners", done: false }
+        ],
+        customFields: { effort: "Small", risk: "High", budget: "400", clientVisibility: "Shared", approvalStage: "Draft" },
+        createdAt: at(-1, 15),
+        updatedAt: at(0, 13)
+      },
+      {
+        id: "beta-task-handoff-automation",
+        projectId,
+        title: "Prepare handoff automation",
+        description: "Create the starter automation that reminds the owner when client approvals are close to their due date.",
+        assignee: "eli",
+        status: "todo",
+        priority: "normal",
+        startDate: day(5),
+        dueDate: day(12),
+        blockedBy: ["beta-task-approval-packet"],
+        tags: ["automation", "approval"],
+        subtasks: [
+          { id: "beta-subtask-auto-1", title: "Draft reminder rule", done: false },
+          { id: "beta-subtask-auto-2", title: "Add audit event note", done: false }
+        ],
+        customFields: { effort: "Medium", risk: "Medium", budget: "700", clientVisibility: "Internal", approvalStage: "Draft" },
+        createdAt: at(0, 14),
+        updatedAt: at(0, 14)
+      },
+      {
+        id: "beta-task-recovery-bundle",
+        projectId,
+        title: "Verify recovery bundle",
+        description: "Export a portable workspace bundle and confirm a tester can leave with JSON, CSV, docs, and notes.",
+        assignee: "mara",
+        status: "todo",
+        priority: "normal",
+        startDate: day(8),
+        dueDate: day(14),
+        blockedBy: [],
+        tags: ["recovery", "export"],
+        subtasks: [
+          { id: "beta-subtask-recovery-1", title: "Create backup", done: false },
+          { id: "beta-subtask-recovery-2", title: "Download bundle", done: false },
+          { id: "beta-subtask-recovery-3", title: "Preview restore path", done: false }
+        ],
+        customFields: { effort: "Small", risk: "Low", budget: "300", clientVisibility: "Internal", approvalStage: "Draft" },
+        createdAt: at(0, 15),
+        updatedAt: at(0, 15)
+      },
+      {
+        id: "beta-request-approval-reminders",
+        projectId,
+        title: "Feature request: Client approval reminders",
+        description: "Requester: Jordan Lee\nEmail: jordan@northstar.example\nImpact: Workflow blocker\n\nClient reviewers want reminders before portal approvals go overdue.",
+        assignee: "sam",
+        status: "todo",
+        priority: "urgent",
+        startDate: today,
+        dueDate: day(6),
+        blockedBy: [],
+        tags: ["feature-request", "feedback", "portal"],
+        subtasks: [],
+        customFields: requestFields("triaged", "Jordan Lee", "jordan@northstar.example", "Workflow blocker"),
+        createdAt: at(-2, 10),
+        updatedAt: at(0, 10)
+      },
+      {
+        id: "beta-request-portal-digest",
+        projectId,
+        title: "Feature request: Portal digest emails",
+        description: "Requester: Priya Shah\nEmail: priya@northstar.example\nImpact: Revenue risk\n\nLeadership wants a weekly digest email that links back to the client portal update.",
+        assignee: "mara",
+        status: "todo",
+        priority: "high",
+        startDate: today,
+        dueDate: day(9),
+        blockedBy: [],
+        tags: ["feature-request", "feedback", "email"],
+        subtasks: [],
+        customFields: {
+          ...requestFields("planned", "Priya Shah", "priya@northstar.example", "Revenue risk"),
+          lastRequesterUpdateAt: at(0, 11)
+        },
+        createdAt: at(-1, 17),
+        updatedAt: at(0, 11)
+      },
+      {
+        id: "beta-request-branded-portal",
+        projectId,
+        title: "Feature request: Branded client portal",
+        description: "Requester: Taylor Morgan\nEmail: taylor@northstar.example\nImpact: Nice to have\n\nThe client wants logo, accent color, and custom welcome copy on the portal.",
+        assignee: "nina",
+        status: "todo",
+        priority: "normal",
+        startDate: today,
+        dueDate: "",
+        blockedBy: [],
+        tags: ["feature-request", "feedback", "portal", "branding"],
+        subtasks: [],
+        customFields: requestFields("new", "Taylor Morgan", "taylor@northstar.example", "Nice to have", "in-app"),
+        createdAt: at(0, 9),
+        updatedAt: at(0, 9)
+      }
+    ],
+    milestones: [
+      {
+        id: "beta-milestone-kickoff-ready",
+        projectId,
+        title: "Kickoff ready",
+        description: "Goals, agenda, stakeholders, and initial assets are ready for the first client call.",
+        dueDate: day(5),
+        owner: "sam",
+        status: "in-progress",
+        taskIds: ["beta-task-kickoff-goals", "beta-task-brand-access", "beta-task-kickoff-agenda", "beta-task-approval-owners"]
+      },
+      {
+        id: "beta-milestone-portal-live",
+        projectId,
+        title: "Portal handoff live",
+        description: "Client portal, approval packet, and weekly status report are ready for stakeholder use.",
+        dueDate: day(12),
+        owner: "nina",
+        status: "planned",
+        taskIds: ["beta-task-portal-status", "beta-task-weekly-report", "beta-task-approval-packet", "beta-task-handoff-automation"]
+      },
+      {
+        id: "beta-milestone-first-review",
+        projectId,
+        title: "First monthly review",
+        description: "Stakeholders have reviewed status, risks, requests, and the exit-ready recovery bundle.",
+        dueDate: day(28),
+        owner: "mara",
+        status: "planned",
+        taskIds: ["beta-task-stakeholder-review", "beta-task-risks-dependencies", "beta-task-recovery-bundle"]
+      }
+    ],
+    raidItems: [
+      {
+        id: "beta-raid-approval-lag",
+        type: "risk",
+        projectId,
+        companyId,
+        title: "Approvals may stall without reminders",
+        detail: "Client reviewers have multiple open decisions and no existing reminder rhythm.",
+        owner: "sam",
+        severity: "high",
+        status: "open",
+        mitigation: "Use the approval packet and capture reminder requests on the feature board.",
+        dueDate: day(6),
+        createdAt: at(-1, 11)
+      },
+      {
+        id: "beta-raid-portal-language",
+        type: "decision",
+        projectId,
+        companyId,
+        title: "Use client-safe language in portal status",
+        detail: "Internal delivery notes stay on tasks; portal updates should read like a stakeholder summary.",
+        owner: "nina",
+        severity: "medium",
+        status: "decided",
+        mitigation: "Keep risk detail linked from the portal update instead of putting it all in the headline.",
+        dueDate: day(5),
+        createdAt: at(-1, 15)
+      }
+    ],
+    memberships: [
+      { memberId: "mara", role: "admin", status: "active" },
+      { memberId: "sam", role: "manager", status: "active" },
+      { memberId: "nina", role: "member", status: "active" },
+      { memberId: "eli", role: "member", status: "active" }
+    ],
+    users: [],
+    invitations: [
+      {
+        id: "beta-invite-jordan",
+        email: "jordan@northstar.example",
+        role: "client",
+        status: "pending",
+        token: "beta-jordan-client",
+        invitedBy: "sam",
+        createdAt: at(-1, 12),
+        expiresAt: day(13)
+      }
+    ],
+    auditEvents: [
+      {
+        id: `audit-beta-start-${workspaceId}-${Date.now()}`,
+        actorId: owner.id,
+        action: "workspace_beta_start",
+        detail: "Agency Client Delivery Beta workspace created",
+        source: "local",
+        createdAt: now
+      }
+    ],
+    workspace: {
+      ...beta.workspace,
+      id: workspaceId,
+      name: workspaceName,
+      slug: options.slug || slugFromName(workspaceName),
+      visibility: "Private",
+      backendTarget: "API + Supabase",
+      defaultRole: "member",
+      integrations: {
+        ...beta.workspace.integrations,
+        defaultOwner: "sam"
+      },
+      capacity: {
+        ...beta.workspace.capacity,
+        weeklyMinutes: 1400,
+        memberOverrides: [
+          { memberId: "sam", weeklyMinutes: 1800 },
+          { memberId: "nina", weeklyMinutes: 1200 },
+          { memberId: "eli", weeklyMinutes: 1000 }
+        ]
+      }
+    },
+    onboarding: {
+      dismissed: false,
+      sampleMode: "beta",
+      completedAt: "",
+      wizardActive: true,
+      wizardStep: 1,
+      notificationsReviewed: false,
+      templatesReviewed: true
+    }
+  });
+}
+
 function onboardingItems() {
   const activeMemberships = state.memberships.filter((membership) => membership.status !== "revoked");
   const customUserIds = new Set((state.users || []).map((user) => user.id));
   const setupMemberships = state.onboarding?.sampleMode === "clean"
     ? activeMemberships.filter((membership) => membership.memberId === members[0].id || customUserIds.has(membership.memberId))
     : activeMemberships;
-  const hasChosenDataMode = ["demo", "clean", "import", "template"].includes(state.onboarding?.sampleMode);
+  const hasChosenDataMode = ["demo", "clean", "import", "template", "beta"].includes(state.onboarding?.sampleMode);
   const hasWorkspaceName = Boolean(state.workspace.name && state.workspace.name !== "New Agora Workspace");
   const hasCompany = visibleCompanies().length > 0;
   const hasProject = activeProjects().length > 0;
@@ -4361,7 +5138,9 @@ function onboardingItems() {
           ? "Imported workspace"
           : state.onboarding?.sampleMode === "template"
             ? "Template workspace"
-            : "Demo workspace",
+            : state.onboarding?.sampleMode === "beta"
+              ? "Beta workspace"
+              : "Demo workspace",
       done: hasChosenDataMode,
       action: "start-clean"
     },
@@ -4600,6 +5379,7 @@ function renderOnboardingPanel() {
       ${renderFirstValuePath()}
       <div class="onboarding-choice-row">
         <button class="button button-primary" type="button" data-onboarding-action="wizard">${state.onboarding?.wizardActive ? "Hide Wizard" : "Open Wizard"}</button>
+        <button class="button ${state.onboarding?.sampleMode === "beta" ? "button-primary" : "button-secondary"}" type="button" data-onboarding-action="start-beta">Start Beta Workspace</button>
         <button class="button ${state.onboarding?.sampleMode === "demo" ? "button-primary" : "button-secondary"}" type="button" data-onboarding-action="use-demo">Use Demo Data</button>
         <button class="button ${state.onboarding?.sampleMode === "clean" ? "button-primary" : "button-secondary"}" type="button" data-onboarding-action="start-clean">Start Clean</button>
         <button class="button ${state.onboarding?.sampleMode === "import" ? "button-primary" : "button-secondary"}" type="button" data-onboarding-action="import">Migration Studio</button>
@@ -5346,8 +6126,15 @@ function betaLaunchItems() {
   const emailItems = emailDiagnosticsItems();
   const recovery = portableRecoveryStatus();
   const feedbackReady = Boolean(featureRequestPublicLink());
+  const betaWorkspaceReady = state.onboarding?.sampleMode === "beta" && state.workspace.name === "Agency Client Delivery Beta";
   const emailReady = emailItems.filter((item) => ["SMTP", "From address", "Invitations", "Feature request owner"].includes(item.label)).every((item) => item.done);
   return [
+    {
+      label: "Beta workspace",
+      done: betaWorkspaceReady,
+      detail: betaWorkspaceReady ? "Agency Client Delivery Beta is loaded with client work, requests, docs, and approvals." : "Load the realistic agency client workspace before sending testers through the product.",
+      action: "start-beta"
+    },
     {
       label: "Hosted onboarding",
       done: hostedItems.filter((item) => item.done).length >= Math.max(4, hostedItems.length - 1),
@@ -5429,12 +6216,15 @@ function renderBetaLaunch() {
             </div>
             ${item.action === "copy-feedback"
               ? `<button class="button button-secondary compact-button" type="button" data-copy-feature-request-link>${item.done ? "Copy" : "Set Up"}</button>`
+              : item.action === "start-beta"
+                ? `<button class="button button-secondary compact-button" type="button" data-onboarding-action="start-beta">${item.done ? "Reload" : "Start"}</button>`
               : `<button class="button button-secondary compact-button" type="button" data-command-id="${escapeHtml(item.commandId || "route:readiness")}">${item.done ? "Review" : "Do This"}</button>`}
           </article>
         `).join("")}
       </div>
       <div class="data-actions">
-        <button class="button button-primary" type="button" data-copy-feature-request-link>Copy Feedback Link</button>
+        <button class="button button-primary" type="button" data-onboarding-action="start-beta">Start Beta Workspace</button>
+        <button class="button button-secondary" type="button" data-copy-feature-request-link>Copy Feedback Link</button>
         <button class="button button-secondary" type="button" data-recovery-action="download-bundle">Download Bundle</button>
         <button class="button button-secondary" type="button" data-route="feature-requests">Open Request Board</button>
       </div>
@@ -10910,6 +11700,14 @@ function handleOnboardingAction(action) {
     saveState();
     render();
     showToast("Demo workspace loaded", "success");
+    return;
+  }
+
+  if (action === "start-beta") {
+    state = createBetaWorkspaceState();
+    saveState();
+    render();
+    showToast("Beta workspace loaded", "success");
     return;
   }
 

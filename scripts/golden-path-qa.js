@@ -101,6 +101,8 @@ const routeChecks = [
       "Beta launch",
       "Can we send Agora to an outside team?",
       "Beta packet",
+      "Beta workspace",
+      "Start Beta Workspace",
       "Hosted onboarding",
       "Email diagnostics",
       "Copy Feedback Link",
