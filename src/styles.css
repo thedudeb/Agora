@@ -3123,6 +3123,139 @@ body[data-tutorial-target="view"] #app-view {
   gap: 14px;
 }
 
+.sprint-hero-panel {
+  gap: 14px;
+}
+
+.sprint-goal {
+  max-width: 900px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.sprint-settings-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.9fr) repeat(2, minmax(130px, 0.45fr)) minmax(220px, 1.4fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.sprint-settings-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.sprint-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.sprint-burndown {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(26px, 1fr));
+  min-height: 180px;
+  gap: 8px;
+  align-items: end;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sprint-burndown-day {
+  position: relative;
+  display: grid;
+  min-height: 156px;
+  align-items: end;
+  justify-items: center;
+  gap: 4px;
+}
+
+.sprint-burndown-day span {
+  position: absolute;
+  bottom: 22px;
+  width: 9px;
+  border-radius: 999px 999px 0 0;
+}
+
+.sprint-burndown-day small {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.sprint-ideal {
+  left: calc(50% - 10px);
+  background: var(--line-strong);
+}
+
+.sprint-actual {
+  right: calc(50% - 10px);
+  background: var(--accent);
+}
+
+.sprint-list,
+.sprint-readiness-list,
+.sprint-definition-list {
+  display: grid;
+  gap: 10px;
+}
+
+.sprint-list article,
+.sprint-readiness-list article {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sprint-list article.is-muted {
+  opacity: 0.68;
+}
+
+.sprint-list article > span,
+.sprint-readiness-list p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.sprint-readiness-list article {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.sprint-readiness-list p {
+  grid-column: 1 / -1;
+}
+
+.sprint-signal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.sprint-definition-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.sprint-definition-list span {
+  padding: 9px 10px;
+  color: var(--muted);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
 .capacity-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -8426,6 +8559,7 @@ body[data-density="compact"] .main-content {
   .daily-layout,
   .time-grid,
   .reports-grid,
+  .sprint-grid,
   .templates-grid,
   .automation-grid,
   .marketplace-hub-grid,
@@ -8894,6 +9028,7 @@ body[data-density="compact"] .main-content {
   .collab-hub-grid,
   .task-time-grid,
   .time-entry-form,
+  .sprint-settings-form,
   .doc-composer,
   .file-composer,
   .project-backlog-form,
@@ -8924,6 +9059,8 @@ body[data-density="compact"] .main-content {
   .access-summary-grid,
   .integration-grid,
   .integration-summary-grid,
+  .sprint-signal-grid,
+  .sprint-definition-list,
   .capacity-summary-grid,
   .integration-control-grid,
   .integration-event-grid,

@@ -168,6 +168,23 @@ const routeChecks = [
     ]
   },
   {
+    name: "Sprint command center",
+    suite: "workspace",
+    route: "sprint",
+    width: 1265,
+    height: 712,
+    required: [
+      "Sprint Command Center",
+      "Beta sprint",
+      "Burndown",
+      "Standup queue",
+      "Readiness checks",
+      "Scope and carryover",
+      "Retro",
+      "Definition of Done"
+    ]
+  },
+  {
     name: "Decision log",
     suite: "workspace",
     route: "decisions",

@@ -861,6 +861,7 @@ const routes = {
   board: "Board",
   list: "List",
   calendar: "Calendar",
+  sprint: "Sprint",
   "my-work": "My Work",
   time: "Time",
   operator: "Operator",
@@ -1143,6 +1144,19 @@ const seedData = {
       memberOverrides: [
         { memberId: "mara", weeklyMinutes: 1500 },
         { memberId: "sam", weeklyMinutes: 1800 }
+      ]
+    },
+    scrum: {
+      sprintName: "Beta sprint",
+      goal: "Ship the collaboration and client feedback workflow without destabilizing offline work.",
+      startDate: "2026-07-01",
+      endDate: "2026-07-14",
+      scopeChangeLabel: "Scope added mid-sprint",
+      definitionOfReady: ["Clear outcome", "Owner assigned", "Estimate or effort set", "Dependencies named"],
+      definitionOfDone: ["Acceptance checked", "Docs or notes updated", "Review complete", "No unresolved blocker"],
+      retroActions: [
+        { id: "retro-action-1", title: "Shorten review feedback loop", owner: "sam", status: "open" },
+        { id: "retro-action-2", title: "Call out blocked work before standup", owner: "mara", status: "done" }
       ]
     },
     payments: {
@@ -2605,6 +2619,7 @@ function normalizeState(nextState) {
       },
       integrations: normalizeWorkspaceIntegrations((nextState.workspace || {}).integrations),
       capacity: normalizeWorkspaceCapacity((nextState.workspace || {}).capacity),
+      scrum: normalizeWorkspaceScrum((nextState.workspace || {}).scrum),
       payments: normalizeWorkspacePayments((nextState.workspace || {}).payments)
     },
     memberships: Array.isArray(nextState.memberships) ? nextState.memberships : seedData.memberships,
@@ -3235,6 +3250,35 @@ function normalizeWorkspaceCapacity(capacity = {}) {
         weeklyMinutes: clamp(Math.round(Number(override.weeklyMinutes) || fallback.weeklyMinutes || 1800), 300, 3600)
       }))
       .slice(0, 50)
+  };
+}
+
+function normalizeWorkspaceScrum(scrum = {}) {
+  const fallback = seedData.workspace.scrum || {};
+  const statuses = new Set(["open", "done"]);
+  return {
+    sprintName: String(scrum.sprintName || fallback.sprintName || "Current sprint").trim().slice(0, 80),
+    goal: String(scrum.goal || fallback.goal || "Deliver the highest priority committed work.").trim().slice(0, 240),
+    startDate: scrum.startDate || fallback.startDate || todayKey(),
+    endDate: scrum.endDate || fallback.endDate || shiftDate(todayKey(), 14),
+    scopeChangeLabel: String(scrum.scopeChangeLabel || fallback.scopeChangeLabel || "Scope added mid-sprint").trim().slice(0, 80),
+    definitionOfReady: (Array.isArray(scrum.definitionOfReady) ? scrum.definitionOfReady : fallback.definitionOfReady || [])
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+      .slice(0, 8),
+    definitionOfDone: (Array.isArray(scrum.definitionOfDone) ? scrum.definitionOfDone : fallback.definitionOfDone || [])
+      .map((item) => String(item || "").trim())
+      .filter(Boolean)
+      .slice(0, 8),
+    retroActions: (Array.isArray(scrum.retroActions) ? scrum.retroActions : fallback.retroActions || [])
+      .filter((item) => item && typeof item === "object")
+      .map((item) => ({
+        id: item.id || uid("retro-action"),
+        title: String(item.title || "Retro action").trim().slice(0, 120),
+        owner: members.some((member) => member.id === item.owner) ? item.owner : activeMemberId(),
+        status: statuses.has(item.status) ? item.status : "open"
+      }))
+      .slice(0, 12)
   };
 }
 
@@ -14590,6 +14634,7 @@ function render() {
     board: renderBoard,
     list: renderList,
     calendar: renderCalendar,
+    sprint: renderSprintCommandCenter,
     "my-work": renderMyWork,
     time: renderTimeTracking,
     operator: renderOperatorCenter,
@@ -14639,7 +14684,7 @@ function render() {
 
 function sidebarGroupForRoute(route) {
   if (["landing", "dashboard", "command-center", "launch", "daily", "inbox"].includes(route)) return "home";
-  if (["board", "list", "calendar", "my-work", "time", "collaboration"].includes(route)) return "work";
+  if (["board", "list", "calendar", "sprint", "my-work", "time", "collaboration"].includes(route)) return "work";
   if (["reports", "decisions", "goals", "operator", "automations"].includes(route)) return "control";
   if (["visibility", "portal", "project-backlog", "intake", "feature-requests", "companies", "company"].includes(route)) return "clients";
   if (["marketplace", "templates", "docs", "fields"].includes(route)) return "library";
@@ -20486,6 +20531,303 @@ function renderMyWork() {
   `;
 }
 
+function scrumSettings() {
+  return normalizeWorkspaceScrum(state.workspace?.scrum);
+}
+
+function taskStoryPoints(task) {
+  const fields = task?.customFields || {};
+  const direct = Number(fields.storyPoints || fields.points || fields.estimate || fields.Estimate);
+  if (Number.isFinite(direct) && direct > 0) return clamp(Math.round(direct), 1, 21);
+  const effort = String(fields.effort || fields.Effort || "").toLowerCase();
+  if (effort.includes("small") || effort.includes("low")) return 2;
+  if (effort.includes("large") || effort.includes("high")) return 8;
+  if (task.priority === "urgent") return 8;
+  if (task.priority === "high") return 5;
+  if ((task.subtasks || []).length >= 4) return 5;
+  return 3;
+}
+
+function taskInSprintWindow(task, scrum) {
+  const start = task.startDate || task.createdAt?.slice(0, 10) || task.dueDate || "";
+  const due = task.dueDate || start;
+  const sprintTag = cleanString(task.customFields?.sprint || "").toLowerCase();
+  if (sprintTag && sprintTag === scrum.sprintName.toLowerCase()) return true;
+  if ((task.tags || []).some((tag) => String(tag).toLowerCase().includes("sprint"))) return true;
+  if (!start && !due) return task.status !== "done";
+  return (!start || start <= scrum.endDate) && (!due || due >= scrum.startDate);
+}
+
+function sprintScopedTasks(scrum = scrumSettings()) {
+  const query = state.filters.query.trim().toLowerCase();
+  return activeTasks()
+    .filter((task) => taskInSprintWindow(task, scrum))
+    .filter((task) => (
+      (state.filters.company === "all" || projectCompany(task.projectId)?.id === state.filters.company) &&
+      (state.selectedProject === "all" || task.projectId === state.selectedProject) &&
+      (state.filters.assignee === "all" || task.assignee === state.filters.assignee) &&
+      (state.filters.priority === "all" || task.priority === state.filters.priority) &&
+      (!query || [task.title, task.description, projectName(task.projectId), memberName(task.assignee), (task.tags || []).join(" ")].join(" ").toLowerCase().includes(query))
+    ));
+}
+
+function sprintDays(scrum) {
+  const days = [];
+  let day = scrum.startDate;
+  while (day && day <= scrum.endDate && days.length < 45) {
+    days.push(day);
+    day = shiftDate(day, 1);
+  }
+  return days.length ? days : [todayKey()];
+}
+
+function sprintMetrics(tasks, scrum) {
+  const totalPoints = tasks.reduce((sum, task) => sum + taskStoryPoints(task), 0);
+  const doneTasks = tasks.filter((task) => task.status === "done");
+  const donePoints = doneTasks.reduce((sum, task) => sum + taskStoryPoints(task), 0);
+  const blocked = tasks.filter(isTaskBlocked);
+  const scopeAdded = tasks.filter((task) => cleanString(task.createdAt).slice(0, 10) > scrum.startDate);
+  const carryover = tasks.filter((task) => task.status !== "done" && (!task.dueDate || task.dueDate <= scrum.endDate));
+  const days = sprintDays(scrum);
+  const elapsedDays = clamp(days.filter((day) => day <= todayKey()).length, 1, days.length);
+  const idealRemaining = Math.max(0, Math.round(totalPoints * (1 - elapsedDays / days.length)));
+  const actualRemaining = Math.max(0, totalPoints - donePoints);
+  return {
+    totalPoints,
+    donePoints,
+    actualRemaining,
+    idealRemaining,
+    progress: totalPoints ? Math.round((donePoints / totalPoints) * 100) : 0,
+    blocked,
+    scopeAdded,
+    carryover,
+    days,
+    elapsedDays,
+    health: clamp(100 - blocked.length * 12 - Math.max(0, actualRemaining - idealRemaining) * 3 - scopeAdded.length * 4, 0, 100)
+  };
+}
+
+function sprintStandupQueue(tasks) {
+  return tasks
+    .filter((task) => task.status !== "done")
+    .map((task) => ({
+      task,
+      reason: isTaskBlocked(task)
+        ? `Blocked by ${openTaskDependencies(task).map((item) => item.title).join(", ")}`
+        : task.status === "doing"
+          ? "In progress"
+          : task.status === "review"
+            ? "Needs review movement"
+            : dueSoonTasks([task], 3).length
+              ? `Due ${formatDate(task.dueDate)}`
+              : task.priority === "urgent" || task.priority === "high"
+                ? `${priorityLabel(task.priority)} priority`
+                : "Ready for standup"
+    }))
+    .filter((item) => item.reason !== "Ready for standup" || item.task.assignee === activeMemberId())
+    .sort((a, b) => operatorTaskScore(b.task) - operatorTaskScore(a.task))
+    .slice(0, 8);
+}
+
+function sprintReadinessRows(tasks, scrum) {
+  const candidates = tasks.filter((task) => task.status !== "done");
+  return [
+    {
+      label: "Definition of Ready",
+      count: candidates.filter((task) => task.assignee && task.dueDate && taskStoryPoints(task)).length,
+      total: candidates.length,
+      detail: scrum.definitionOfReady.join(", ")
+    },
+    {
+      label: "Estimates",
+      count: candidates.filter((task) => task.customFields?.storyPoints || task.customFields?.points || task.customFields?.effort).length,
+      total: candidates.length,
+      detail: "Stories with explicit points or effort."
+    },
+    {
+      label: "Dependencies",
+      count: candidates.filter((task) => !isTaskBlocked(task)).length,
+      total: candidates.length,
+      detail: "Stories without unresolved blockers."
+    }
+  ];
+}
+
+function renderSprintBurndown(metrics) {
+  const maxPoints = Math.max(metrics.totalPoints, 1);
+  const days = metrics.days;
+  return `
+    <div class="sprint-burndown" aria-label="Burndown chart">
+      ${days.map((day, index) => {
+        const ideal = Math.max(0, Math.round(metrics.totalPoints * (1 - (index + 1) / days.length)));
+        const actual = index + 1 <= metrics.elapsedDays ? Math.max(metrics.actualRemaining, ideal - (metrics.idealRemaining - metrics.actualRemaining)) : ideal;
+        return `
+          <div class="sprint-burndown-day">
+            <span class="sprint-ideal" style="height:${clamp(Math.round((ideal / maxPoints) * 100), 4, 100)}%"></span>
+            <span class="sprint-actual" style="height:${clamp(Math.round((actual / maxPoints) * 100), 4, 100)}%"></span>
+            <small>${escapeHtml(formatDate(day).replace("Jul ", ""))}</small>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderSprintCommandCenter() {
+  const scrum = scrumSettings();
+  const tasks = sprintScopedTasks(scrum);
+  const metrics = sprintMetrics(tasks, scrum);
+  const standup = sprintStandupQueue(tasks);
+  const readiness = sprintReadinessRows(tasks, scrum);
+  const canManage = canWrite("projects:write");
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Sprint health", `${metrics.health}%`)}
+      ${metric("Committed", metrics.totalPoints)}
+      ${metric("Done", `${metrics.donePoints} pts`)}
+      ${metric("Blocked", metrics.blocked.length)}
+      ${metric("Carryover risk", metrics.carryover.length)}
+    </div>
+
+    <section class="panel sprint-hero-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Sprint Command Center</p>
+          <h2>${escapeHtml(scrum.sprintName)}</h2>
+        </div>
+        <span class="status-pill ${metrics.health >= 80 ? "inbox-green" : metrics.health >= 55 ? "inbox-amber" : "inbox-red"}">${metrics.progress}% complete</span>
+      </div>
+      <p class="sprint-goal">${escapeHtml(scrum.goal)}</p>
+      <form class="sprint-settings-form" data-sprint-settings>
+        <label>
+          <span>Sprint name</span>
+          <input name="sprintName" value="${escapeHtml(scrum.sprintName)}" ${canManage ? "" : "disabled"}>
+        </label>
+        <label>
+          <span>Start</span>
+          <input name="startDate" type="date" value="${escapeHtml(scrum.startDate)}" ${canManage ? "" : "disabled"}>
+        </label>
+        <label>
+          <span>End</span>
+          <input name="endDate" type="date" value="${escapeHtml(scrum.endDate)}" ${canManage ? "" : "disabled"}>
+        </label>
+        <label class="wide-field">
+          <span>Goal</span>
+          <input name="goal" value="${escapeHtml(scrum.goal)}" ${canManage ? "" : "disabled"}>
+        </label>
+        <button class="button button-primary compact-button" type="submit" ${canManage ? "" : "disabled"}>Save Sprint</button>
+      </form>
+    </section>
+
+    <div class="sprint-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Burndown</p>
+            <h2>${metrics.actualRemaining} points remaining</h2>
+          </div>
+          <span class="status-pill ${metrics.actualRemaining <= metrics.idealRemaining ? "inbox-green" : "inbox-amber"}">Ideal ${metrics.idealRemaining}</span>
+        </div>
+        ${renderSprintBurndown(metrics)}
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Daily scrum</p>
+            <h2>Standup queue</h2>
+          </div>
+          <span class="status-pill inbox-neutral">${standup.length}</span>
+        </div>
+        <div class="sprint-list">
+          ${standup.length ? standup.map(({ task, reason }) => `
+            <article>
+              <button class="table-task-button" type="button" data-edit-task="${task.id}">
+                <strong>${escapeHtml(task.title)}</strong>
+                <span>${escapeHtml(`${reason} - ${memberName(task.assignee)} - ${projectName(task.projectId)}`)}</span>
+              </button>
+            </article>
+          `).join("") : emptyState("No urgent standup items in the current sprint scope.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Refinement</p>
+            <h2>Readiness checks</h2>
+          </div>
+        </div>
+        <div class="sprint-readiness-list">
+          ${readiness.map((row) => `
+            <article>
+              <strong>${escapeHtml(row.label)}</strong>
+              <span>${row.count}/${row.total || 0}</span>
+              <p>${escapeHtml(row.detail)}</p>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Change control</p>
+            <h2>Scope and carryover</h2>
+          </div>
+        </div>
+        <div class="sprint-signal-grid">
+          ${metric(scrum.scopeChangeLabel, metrics.scopeAdded.length)}
+          ${metric("Carryover candidates", metrics.carryover.length)}
+        </div>
+        <div class="sprint-list">
+          ${metrics.carryover.slice(0, 5).map((task) => `
+            <article>
+              <button class="table-task-button" type="button" data-edit-task="${task.id}">
+                <strong>${escapeHtml(task.title)}</strong>
+                <span>${escapeHtml(`${taskStoryPoints(task)} pts - ${statusLabel(task.status)} - due ${formatDate(task.dueDate)}`)}</span>
+              </button>
+            </article>
+          `).join("") || emptyState("No carryover risks detected in this sprint.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Retro</p>
+            <h2>Action follow-up</h2>
+          </div>
+        </div>
+        <div class="sprint-list">
+          ${scrum.retroActions.map((action) => `
+            <article class="${action.status === "done" ? "is-muted" : ""}">
+              <strong>${escapeHtml(action.title)}</strong>
+              <span>${escapeHtml(memberName(action.owner))}</span>
+              <select data-retro-action-status="${action.id}" ${canManage ? "" : "disabled"}>
+                ${["open", "done"].map((status) => `<option value="${status}" ${action.status === status ? "selected" : ""}>${status}</option>`).join("")}
+              </select>
+            </article>
+          `).join("") || emptyState("No retro actions yet. Add follow-ups in workspace scrum settings soon.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Done agreement</p>
+            <h2>Definition of Done</h2>
+          </div>
+        </div>
+        <div class="sprint-definition-list">
+          ${scrum.definitionOfDone.map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function capacitySettings() {
   return normalizeWorkspaceCapacity(state.workspace?.capacity);
 }
@@ -25974,6 +26316,60 @@ function openProjectFromBacklog(projectId) {
   render();
 }
 
+function saveSprintSettings(form) {
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot manage sprint settings", "info");
+    return;
+  }
+  const current = scrumSettings();
+  const startDate = form.elements.startDate?.value || current.startDate;
+  const endDate = form.elements.endDate?.value || current.endDate;
+  if (endDate < startDate) {
+    showToast("Sprint end date must be after the start date", "info");
+    return;
+  }
+  state.workspace = {
+    ...state.workspace,
+    scrum: normalizeWorkspaceScrum({
+      ...current,
+      sprintName: form.elements.sprintName?.value.trim() || current.sprintName,
+      goal: form.elements.goal?.value.trim() || current.goal,
+      startDate,
+      endDate
+    })
+  };
+  addAuditEvent({
+    action: "sprint_settings_update",
+    detail: `Updated ${state.workspace.scrum.sprintName}`,
+    targetType: "workspace",
+    targetId: state.workspace.id,
+    impact: "low",
+    reversible: true
+  });
+  saveState();
+  render();
+  showToast("Sprint settings saved", "success");
+}
+
+function updateRetroActionStatus(actionId, status) {
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot update retro actions", "info");
+    render();
+    return;
+  }
+  const current = scrumSettings();
+  state.workspace = {
+    ...state.workspace,
+    scrum: normalizeWorkspaceScrum({
+      ...current,
+      retroActions: current.retroActions.map((action) => action.id === actionId ? { ...action, status } : action)
+    })
+  };
+  saveState();
+  render();
+  showToast("Retro action updated", "success");
+}
+
 function createTaskFromSubmissionRecord(submission, form) {
   const now = new Date().toISOString();
   const task = {
@@ -31422,6 +31818,12 @@ els.appView.addEventListener("change", (event) => {
     return;
   }
 
+  const retroActionStatusSelect = event.target.closest("[data-retro-action-status]");
+  if (retroActionStatusSelect) {
+    updateRetroActionStatus(retroActionStatusSelect.dataset.retroActionStatus, retroActionStatusSelect.value);
+    return;
+  }
+
   const boardSwimlaneSelect = event.target.closest("#board-swimlane");
   if (boardSwimlaneSelect) {
     updateBoardSetting({ swimlane: boardSwimlaneSelect.value });
@@ -31625,6 +32027,13 @@ els.appView.addEventListener("submit", (event) => {
   if (projectBacklogForm) {
     event.preventDefault();
     createProjectBacklogItem(projectBacklogForm);
+    return;
+  }
+
+  const sprintSettingsForm = event.target.closest("[data-sprint-settings]");
+  if (sprintSettingsForm) {
+    event.preventDefault();
+    saveSprintSettings(sprintSettingsForm);
     return;
   }
 
