@@ -628,8 +628,8 @@ function createServer(options = {}) {
       const publicPortalLinkMatch = url.pathname.match(/^\/api\/portal-links\/validate\/([^/]+)$/);
       if (publicPortalLinkMatch && request.method === "GET") {
         assertRateLimit(request, "public-portal-link", PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS, PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS);
-        const portalLink = await validatePortalLink(storage, decodeURIComponent(publicPortalLinkMatch[1]));
-        sendJson(response, 200, { portalLink });
+        const result = await validatePortalLink(storage, decodeURIComponent(publicPortalLinkMatch[1]));
+        sendJson(response, 200, result);
         return;
       }
 
@@ -3854,7 +3854,10 @@ async function validatePortalLink(storage, token) {
     detail: "A hosted portal link was viewed",
     metadata: { companyId: savedLink.companyId, linkId: savedLink.id, tokenId: savedLink.tokenId }
   });
-  return publicPortalLink(savedLink);
+  return {
+    portalLink: publicPortalLink(savedLink),
+    portalSnapshot: await publicPortalSnapshotForLink(storage, savedLink)
+  };
 }
 
 async function getPortalLinkRecord(storage, linkId, session) {
@@ -3873,9 +3876,254 @@ async function requirePortalCompany(storage, companyId, session) {
     publicError(403, "Portal link company is outside the session scope");
   }
   const snapshot = await storage.loadWorkspaceSnapshot();
-  const company = (Array.isArray(snapshot.companies) ? snapshot.companies : []).find((item) => item.id === companyId);
+  const companies = await portalCompanies(storage, snapshot);
+  const company = companies.find((item) => item.id === companyId);
   if (!company) publicError(400, "Portal link company is not in this workspace");
   return company;
+}
+
+async function publicPortalSnapshotForLink(storage, link) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const companies = await portalCompanies(storage, snapshot);
+  const company = companies.find((item) => item.id === link.companyId);
+  if (!company) publicError(404, "Portal company not found");
+
+  const users = workspaceUsers(snapshot);
+  const projects = (Array.isArray(snapshot.projects) ? snapshot.projects : [])
+    .map(normalizeProject)
+    .filter((project) => project.companyId === company.id && !project.archivedAt)
+    .map(publicPortalProject);
+  const projectIds = new Set(projects.map((project) => project.id));
+  const tasks = (Array.isArray(snapshot.tasks) ? snapshot.tasks : [])
+    .map(normalizeTask)
+    .filter((task) => projectIds.has(task.projectId) && !task.archivedAt && isPortalVisibleRecord(task, "task"))
+    .map((task) => publicPortalTask(task, projects, users));
+  const visibleTaskIds = new Set(tasks.map((task) => task.id));
+  const visibleProjectIds = new Set(projects.filter((project) => tasks.some((task) => task.projectId === project.id)).map((project) => project.id));
+  const approvals = (await storage.loadRecords("approvals", {}))
+    .map(normalizeApproval)
+    .filter((approval) => (approval.companyId === company.id || projectIds.has(approval.projectId)) && isPortalVisibleRecord(approval, "approval"))
+    .map((approval) => publicPortalApproval(approval, projects, tasks, users))
+    .sort((a, b) => {
+      const statusSort = Number(a.status === "approved") - Number(b.status === "approved");
+      if (statusSort !== 0) return statusSort;
+      return (a.dueDate || "9999-12-31").localeCompare(b.dueDate || "9999-12-31");
+    });
+  const documents = (await storage.loadRecords("documents", {}))
+    .map(normalizeDocument)
+    .filter((document) => projectIds.has(document.projectId) && isPortalVisibleRecord(document, "document"))
+    .map((document) => publicPortalDocument(document, projects));
+  const files = (await storage.loadRecords("files", {}))
+    .map(normalizeFile)
+    .filter((file) => projectIds.has(file.projectId) && isPortalVisibleRecord(file, "file"))
+    .map((file) => publicPortalFile(file, projects));
+  const updates = [
+    ...(await storage.loadRecords("activities", {})).map(normalizeActivity).map((activity) => publicPortalActivity(activity, projects, tasks, users)),
+    ...(await storage.loadRecords("comments", {})).map(normalizeComment).map((comment) => publicPortalComment(comment, projects, tasks, users))
+  ]
+    .filter((update) => {
+      if (update.taskId) return visibleTaskIds.has(update.taskId);
+      return Boolean(update.projectId && visibleProjectIds.has(update.projectId));
+    })
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 25);
+  const openTasks = tasks.filter((task) => task.status !== "done");
+  const pendingApprovals = approvals.filter((approval) => approval.status !== "approved");
+  const updatedAt = updates[0]?.createdAt || tasks[0]?.updatedAt || projects[0]?.updatedAt || "";
+
+  return {
+    generatedAt: new Date().toISOString(),
+    link: publicPortalLink(link),
+    company: publicPortalCompany(company),
+    projects: projects.map((project) => ({
+      ...project,
+      progress: portalProgress(tasks.filter((task) => task.projectId === project.id))
+    })),
+    tasks,
+    openTasks,
+    approvals,
+    pendingApprovals,
+    documents,
+    files,
+    updates,
+    progress: portalProgress(tasks),
+    updatedAt
+  };
+}
+
+async function portalCompanies(storage, snapshot = {}) {
+  const snapshotCompanies = Array.isArray(snapshot.companies) ? snapshot.companies : [];
+  const recordCompanies = await storage.loadRecords("companies", {}).catch(() => []);
+  return mergeById(snapshotCompanies, recordCompanies, "id").map(normalizeCompany);
+}
+
+function publicPortalCompany(company) {
+  return {
+    id: company.id,
+    name: company.name,
+    type: company.type,
+    description: company.description,
+    status: company.status
+  };
+}
+
+function publicPortalProject(project) {
+  return {
+    id: project.id,
+    name: project.name,
+    companyId: project.companyId,
+    description: project.description,
+    owner: project.owner,
+    startDate: project.startDate,
+    dueDate: project.dueDate,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt
+  };
+}
+
+function publicPortalTask(task, projects, users) {
+  return {
+    id: task.id,
+    projectId: task.projectId,
+    projectName: portalProjectName(projects, task.projectId),
+    title: task.title,
+    description: task.description,
+    assignee: task.assignee,
+    assigneeName: portalMemberName(users, task.assignee),
+    status: task.status,
+    priority: task.priority,
+    startDate: task.startDate,
+    dueDate: task.dueDate,
+    tags: task.tags,
+    visibility: portalRecordVisibility(task, "task"),
+    customFields: publicPortalCustomFields(task.customFields),
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt
+  };
+}
+
+function publicPortalApproval(approval, projects, tasks, users) {
+  return {
+    id: approval.id,
+    companyId: approval.companyId,
+    projectId: approval.projectId,
+    projectName: portalProjectName(projects, approval.projectId),
+    taskId: approval.taskId,
+    taskTitle: tasks.find((task) => task.id === approval.taskId)?.title || "",
+    title: approval.title,
+    requester: approval.requester,
+    requesterName: portalMemberName(users, approval.requester),
+    reviewer: approval.reviewer,
+    reviewerName: portalMemberName(users, approval.reviewer) || approval.reviewer,
+    status: approval.status,
+    dueDate: approval.dueDate,
+    summary: approval.summary,
+    visibility: portalRecordVisibility(approval, "approval"),
+    createdAt: approval.createdAt,
+    updatedAt: approval.updatedAt
+  };
+}
+
+function publicPortalDocument(document, projects) {
+  return {
+    id: document.id,
+    projectId: document.projectId,
+    projectName: portalProjectName(projects, document.projectId),
+    title: document.title,
+    type: document.type,
+    owner: document.owner,
+    updatedAt: document.updatedAt,
+    visibility: portalRecordVisibility(document, "document")
+  };
+}
+
+function publicPortalFile(file, projects) {
+  return {
+    id: file.id,
+    projectId: file.projectId,
+    taskId: file.taskId,
+    projectName: portalProjectName(projects, file.projectId),
+    title: file.title,
+    kind: file.kind,
+    size: file.size,
+    contentType: file.contentType,
+    updatedAt: file.updatedAt,
+    visibility: portalRecordVisibility(file, "file")
+  };
+}
+
+function publicPortalActivity(activity, projects, tasks, users) {
+  const task = tasks.find((item) => item.id === activity.taskId);
+  const projectId = activity.projectId || task?.projectId || "";
+  return {
+    id: activity.id,
+    projectId,
+    projectName: portalProjectName(projects, projectId),
+    taskId: activity.taskId,
+    taskTitle: task?.title || "",
+    type: activity.type,
+    message: activity.message,
+    actorName: portalMemberName(users, activity.memberId),
+    createdAt: activity.createdAt
+  };
+}
+
+function publicPortalComment(comment, projects, tasks, users) {
+  const task = tasks.find((item) => item.id === comment.taskId);
+  const projectId = task?.projectId || "";
+  return {
+    id: comment.id,
+    projectId,
+    projectName: portalProjectName(projects, projectId),
+    taskId: comment.taskId,
+    taskTitle: task?.title || "",
+    type: "comment",
+    message: comment.body,
+    actorName: portalMemberName(users, comment.author),
+    createdAt: comment.createdAt
+  };
+}
+
+function publicPortalCustomFields(fields = {}) {
+  const allowed = ["impact", "requester", "requesterEmail", "featureStatus", "requestType", "source", "lastRequesterUpdateAt", "approvalStage", "clientVisibility"];
+  return Object.fromEntries(allowed.map((key) => [key, cleanString(fields[key])]).filter(([, value]) => value));
+}
+
+function portalProjectName(projects, projectId) {
+  return projects.find((project) => project.id === projectId)?.name || "Shared project";
+}
+
+function portalMemberName(users, memberId) {
+  return cleanString(users.find((user) => user.id === memberId)?.name || memberId);
+}
+
+function portalProgress(tasks) {
+  const done = tasks.filter((task) => task.status === "done").length;
+  return tasks.length ? Math.round((done / tasks.length) * 100) : 0;
+}
+
+function isPortalVisibleRecord(record = {}, kind = "task") {
+  return portalRecordVisibility(record, kind) !== "internal";
+}
+
+function portalRecordVisibility(record = {}, kind = "task") {
+  if (kind === "task") {
+    const featureFallback = cleanString(record.customFields?.featureSource) === "public" || /^Feature request:/i.test(cleanString(record.title)) ? "shared" : "internal";
+    return portalVisibilityValue(record.visibility || record.clientVisibility || record.customFields?.clientVisibility || featureFallback);
+  }
+  const fallback = {
+    approval: "client",
+    document: "shared",
+    file: "shared"
+  }[kind] || "internal";
+  return portalVisibilityValue(record.visibility || record.clientVisibility || record.customFields?.clientVisibility || fallback);
+}
+
+function portalVisibilityValue(value) {
+  const normalized = cleanString(value).toLowerCase();
+  if (["client", "portal", "public", "external", "client-visible", "client visible"].includes(normalized)) return "client";
+  if (["shared", "team", "stakeholder"].includes(normalized)) return "shared";
+  return "internal";
 }
 
 function publicPortalLink(link = {}) {

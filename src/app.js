@@ -849,6 +849,7 @@ const seedData = {
   selectedCompany: "all",
   clientPortalPreviewCompanyId: "",
   selectedClientPortalToken: "",
+  hostedPortalSnapshot: null,
   selectedInviteToken: "",
   clientPortalLinks: [],
   selectedProjectTab: "overview",
@@ -2425,6 +2426,7 @@ function normalizeState(nextState) {
     auditEvents: Array.isArray(nextState.auditEvents) ? nextState.auditEvents : seedData.auditEvents,
     clientPortalPreviewCompanyId: byId(companies, nextState.clientPortalPreviewCompanyId) ? nextState.clientPortalPreviewCompanyId : "",
     selectedClientPortalToken: typeof nextState.selectedClientPortalToken === "string" ? nextState.selectedClientPortalToken : "",
+    hostedPortalSnapshot: normalizeHostedPortalSnapshot(nextState.hostedPortalSnapshot),
     clientPortalLinks: normalizeClientPortalLinks(nextState.clientPortalLinks, companies),
     savedViews: normalizeSavedViews(nextState.savedViews),
     dailyNotes: Object.prototype.hasOwnProperty.call(nextState, "dailyNotes") ? nextState.dailyNotes || {} : seedData.dailyNotes,
@@ -2679,6 +2681,25 @@ function normalizeClientPortalLinks(links = [], companies = seedData.companies) 
     }))
     .filter((link) => link.token || link.tokenId)
     .slice(0, 100);
+}
+
+function normalizeHostedPortalSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot) || !snapshot.company?.id) return null;
+  const arrays = ["projects", "tasks", "openTasks", "approvals", "pendingApprovals", "documents", "files", "updates"];
+  return {
+    generatedAt: String(snapshot.generatedAt || ""),
+    updatedAt: String(snapshot.updatedAt || ""),
+    progress: clamp(Math.round(Number(snapshot.progress) || 0), 0, 100),
+    link: snapshot.link && typeof snapshot.link === "object" ? snapshot.link : null,
+    company: {
+      id: String(snapshot.company.id || ""),
+      name: String(snapshot.company.name || "Client"),
+      type: String(snapshot.company.type || "Client"),
+      description: String(snapshot.company.description || ""),
+      status: String(snapshot.company.status || "")
+    },
+    ...Object.fromEntries(arrays.map((key) => [key, Array.isArray(snapshot[key]) ? snapshot[key] : []]))
+  };
 }
 
 function normalizeNotificationReminders(reminders = []) {
@@ -10900,6 +10921,16 @@ function clientPortalLinkCanShare(link) {
   return Boolean(link?.token);
 }
 
+function hostedPortalForSelectedToken() {
+  if (!state.selectedClientPortalToken || !state.hostedPortalSnapshot?.company?.id) return null;
+  const link = state.hostedPortalSnapshot.link;
+  if (link?.source === "api") {
+    if (link.status === "revoked" || link.revokedAt) return null;
+    if (link.expiresAt && Date.parse(link.expiresAt) <= Date.now()) return null;
+  }
+  return state.hostedPortalSnapshot;
+}
+
 function clientPortalLinkByToken(token) {
   const cleanToken = String(token || "").trim();
   if (!cleanToken) return null;
@@ -12566,6 +12597,7 @@ function routePortalFromLocation({ shouldRender = false } = {}) {
     state.selectedRoute = "portal";
     state.selectedClientPortalToken = token;
     state.clientPortalPreviewCompanyId = "";
+    state.hostedPortalSnapshot = null;
     saveState();
     if (shouldRender) render();
     validateHostedPortalLink(token);
@@ -12606,6 +12638,7 @@ async function validateHostedPortalLink(token) {
     mergeClientPortalLink({ ...result.portalLink, token: cleanToken }, cleanToken);
     state.selectedRoute = "portal";
     state.selectedClientPortalToken = cleanToken;
+    state.hostedPortalSnapshot = normalizeHostedPortalSnapshot(result.portalSnapshot);
     state.clientPortalPreviewCompanyId = "";
     state.selectedProject = "all";
     state.selectedCompany = "all";
@@ -12737,6 +12770,7 @@ function startClientPortalPreview(companyId = selectedVisibilityReviewCompanyId(
 function exitClientPortalLinkSession() {
   if (!state.selectedClientPortalToken) return;
   state.selectedClientPortalToken = "";
+  state.hostedPortalSnapshot = null;
   state.selectedRoute = "landing";
   saveState();
   render();
@@ -16227,9 +16261,15 @@ function renderClientPortalLinkPanel(companyId) {
 
 function renderClientPortal() {
   const companyId = clientCompanyId();
-  const company = byId(state.companies, companyId);
   const previewing = !isClientSession() && Boolean(state.clientPortalPreviewCompanyId);
   const linkedAccess = Boolean(state.selectedClientPortalToken);
+  const hostedPortal = linkedAccess ? hostedPortalForSelectedToken() : null;
+  if (hostedPortal) {
+    renderHostedClientPortal(hostedPortal);
+    return;
+  }
+
+  const company = byId(state.companies, companyId);
   if (!company) {
     const link = clientPortalLinkByToken(state.selectedClientPortalToken);
     const status = clientPortalLinkStatus(link);
@@ -16389,6 +16429,201 @@ function renderClientPortal() {
         </div>
       </section>
     </div>
+  `;
+}
+
+function renderHostedClientPortal(snapshot) {
+  const company = snapshot.company;
+  const sharedAssets = [...snapshot.documents, ...snapshot.files]
+    .sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0))
+    .slice(0, 6);
+  const visibleTasks = snapshot.openTasks.slice(0, 6);
+  const featureRequests = snapshot.tasks.filter(isFeatureRequestTask).slice(0, 6);
+  const recentUpdates = snapshot.updates.slice(0, 5);
+  els.appView.innerHTML = `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Secure portal link</p>
+          <h2>You are viewing the hosted client portal for ${escapeHtml(company.name)}</h2>
+        </div>
+        <button class="button button-secondary" type="button" data-client-link-exit>Exit Portal</button>
+      </div>
+    </section>
+
+    <section class="project-hero portal-hero">
+      <div>
+        <p class="eyebrow">Client portal</p>
+        <h2>${escapeHtml(company.name)}</h2>
+        <p>${escapeHtml(company.description || "Shared project visibility, approvals, files, and updates.")}</p>
+        <div class="meta-row">
+          <span>${snapshot.projects.length} ${snapshot.projects.length === 1 ? "project" : "projects"}</span>
+          <span>${snapshot.pendingApprovals.length} pending approvals</span>
+          <span>${snapshot.progress}% complete</span>
+        </div>
+      </div>
+      <div class="project-progress-card">
+        <span>Portal status</span>
+        <strong>${snapshot.pendingApprovals.length ? "Needs review" : "On track"}</strong>
+        <span>${snapshot.updatedAt ? `Updated ${formatTimestamp(snapshot.updatedAt)}` : "No recent updates"}</span>
+        <button class="button button-secondary" type="button" data-client-link-exit>Exit Portal</button>
+      </div>
+    </section>
+
+    <div class="metric-grid">
+      ${metric("Open tasks", snapshot.openTasks.length)}
+      ${metric("Approvals", snapshot.pendingApprovals.length)}
+      ${metric("Shared assets", sharedAssets.length)}
+      ${metric("Progress", `${snapshot.progress}%`)}
+    </div>
+
+    <div class="client-portal-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Approvals</p>
+            <h2>Review queue</h2>
+          </div>
+        </div>
+        <div class="portal-list">
+          ${snapshot.approvals.length ? snapshot.approvals.map(renderHostedApprovalRow).join("") : emptyState("No approvals are waiting on you.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Shared work</p>
+            <h2>Docs & files</h2>
+          </div>
+        </div>
+        <div class="portal-list">
+          ${sharedAssets.length ? sharedAssets.map(renderHostedAssetRow).join("") : emptyState("No shared assets yet.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Projects</p>
+            <h2>Status summary</h2>
+          </div>
+        </div>
+        <div class="project-summary-list">
+          ${snapshot.projects.length ? snapshot.projects.map(renderHostedProjectSummary).join("") : emptyState("No shared projects yet.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Requests</p>
+            <h2>Feature request status</h2>
+          </div>
+          <span class="status-pill inbox-blue">${featureRequests.length}</span>
+        </div>
+        <div class="portal-list">
+          ${featureRequests.length ? featureRequests.map(renderClientFeatureRequestSummary).join("") : emptyState("No feature requests are visible yet.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Next up</p>
+            <h2>Open work</h2>
+          </div>
+        </div>
+        <div class="task-stack">
+          ${visibleTasks.length ? visibleTasks.map(renderHostedClientTaskSummary).join("") : emptyState("No open work is visible right now.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Updates</p>
+            <h2>Latest activity</h2>
+          </div>
+        </div>
+        <div class="portal-list">
+          ${recentUpdates.length ? recentUpdates.map(renderHostedPortalUpdateRow).join("") : emptyState("No recent updates are visible yet.")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderHostedApprovalRow(approval) {
+  return `
+    <article class="approval-row">
+      <div>
+        <span class="status-pill inbox-${approvalTone(approval.status)}">${escapeHtml(approvalStatusLabel(approval.status))}</span>
+        <h3>${escapeHtml(approval.title)}</h3>
+        <p>${escapeHtml(approval.summary)}</p>
+        <small>${escapeHtml(approval.projectName || "Shared project")} / due ${formatDate(approval.dueDate)} / reviewer ${escapeHtml(approval.reviewerName || approval.reviewer || "Client")}</small>
+      </div>
+    </article>
+  `;
+}
+
+function renderHostedAssetRow(asset) {
+  return `
+    <article class="portal-asset-row">
+      <div>
+        <strong>${escapeHtml(asset.title)}</strong>
+        <span>${escapeHtml(asset.type || asset.kind || "Asset")} / ${escapeHtml(asset.projectName || "Shared project")}</span>
+      </div>
+      <small>${formatTimestamp(asset.updatedAt)}</small>
+    </article>
+  `;
+}
+
+function renderHostedProjectSummary(project) {
+  const progress = clamp(Math.round(Number(project.progress) || 0), 0, 100);
+  return `
+    <article class="project-summary">
+      <div>
+        <h3>${escapeHtml(project.name)}</h3>
+        <p>${escapeHtml(project.description)}</p>
+        <div class="meta-row">
+          <span>${escapeHtml(project.owner || "Team")}</span>
+          <span>Due ${formatDate(project.dueDate)}</span>
+        </div>
+      </div>
+      <div class="progress-block" aria-label="${progress}% complete">
+        <strong>${progress}%</strong>
+        <span class="progress-track"><span style="width: ${progress}%"></span></span>
+      </div>
+    </article>
+  `;
+}
+
+function renderHostedClientTaskSummary(task) {
+  return `
+    <article class="client-task-summary">
+      <div>
+        <strong>${escapeHtml(task.title)}</strong>
+        <p>${escapeHtml(task.description)}</p>
+        <div class="meta-row">
+          <span>${escapeHtml(task.projectName || "Shared project")}</span>
+          <span>${statusLabel(task.status)}</span>
+          <span>${formatDate(task.dueDate)}</span>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function renderHostedPortalUpdateRow(update) {
+  return `
+    <article class="portal-asset-row">
+      <div>
+        <strong>${escapeHtml(update.message || "Workspace update")}</strong>
+        <span>${escapeHtml(update.projectName || "Shared project")} / ${escapeHtml(update.actorName || "Team")}</span>
+      </div>
+      <small>${formatTimestamp(update.createdAt)}</small>
+    </article>
   `;
 }
 

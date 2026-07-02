@@ -1001,25 +1001,6 @@ async function testAccountAuth() {
     });
     assert(!recordCollections.collections.includes("clientPortalLinks"), "portal links should not be exposed as generic records");
 
-    const validatedPortalLink = await request(`${baseUrl}/api/portal-links/validate/${encodeURIComponent(portalLink.token)}`);
-    assert(validatedPortalLink.portalLink.companyId === "company-record", "public portal validation did not return company scope");
-    assert(validatedPortalLink.portalLink.viewCount === 1, "public portal validation did not count the view");
-
-    const copiedPortalLink = await request(`${baseUrl}/api/portal-links/${encodeURIComponent(portalLink.portalLink.id)}/events`, {
-      method: "POST",
-      token: signup.token,
-      body: { event: "copied" }
-    });
-    assert(copiedPortalLink.portalLink.copiedAt, "hosted portal copy event was not recorded");
-
-    const revokedPortalLink = await request(`${baseUrl}/api/portal-links/${encodeURIComponent(portalLink.portalLink.id)}/revoke`, {
-      method: "POST",
-      token: signup.token
-    });
-    assert(revokedPortalLink.portalLink.status === "revoked", "hosted portal revoke failed");
-    const blockedPortalValidation = await requestError(`${baseUrl}/api/portal-links/validate/${encodeURIComponent(portalLink.token)}`);
-    assert(blockedPortalValidation.status === 403, "revoked hosted portal token should not validate");
-
     const otherCompany = await request(`${baseUrl}/api/records/companies`, {
       method: "POST",
       token: signup.token,
@@ -1047,6 +1028,27 @@ async function testAccountAuth() {
     });
     assert(projectRecord.project.companyId === "company-record", "record project create failed");
 
+    const portalTask = await request(`${baseUrl}/api/tasks`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        task: {
+          id: "portal-task-record",
+          projectId: "project-record",
+          title: "Hosted Portal Task",
+          description: "Visible from a hosted portal link",
+          status: "todo",
+          dueDate: "2026-07-15",
+          visibility: "client",
+          customFields: {
+            clientVisibility: "Client-visible",
+            approvalStage: "Approved"
+          }
+        }
+      }
+    });
+    assert(portalTask.task.title === "Hosted Portal Task", "portal visible task create failed");
+
     const otherProject = await request(`${baseUrl}/api/projects`, {
       method: "POST",
       token: signup.token,
@@ -1069,8 +1071,11 @@ async function testAccountAuth() {
           id: "approval-record",
           companyId: "company-record",
           projectId: "project-record",
+          taskId: "portal-task-record",
           title: "Record Approval",
-          status: "requested"
+          status: "requested",
+          summary: "Approve the hosted portal task",
+          dueDate: "2026-07-20"
         }
       }
     });
@@ -1095,6 +1100,100 @@ async function testAccountAuth() {
       token: signup.token
     });
     assert(records.records.length === 1, "record approval filter failed");
+
+    const portalDocument = await request(`${baseUrl}/api/records/documents`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        record: {
+          id: "portal-doc-record",
+          projectId: "project-record",
+          title: "Hosted Portal Brief",
+          type: "Brief",
+          visibility: "shared",
+          body: "Internal body should not be returned by the public hosted portal."
+        }
+      }
+    });
+    assert(portalDocument.record.title === "Hosted Portal Brief", "portal document upsert failed");
+
+    const portalFile = await request(`${baseUrl}/api/records/files`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        record: {
+          id: "portal-file-record",
+          projectId: "project-record",
+          taskId: "portal-task-record",
+          title: "Hosted Portal Asset",
+          kind: "PDF",
+          size: "42 KB",
+          visibility: "shared",
+          storageBucket: "secret-bucket",
+          storageKey: "secret-key"
+        }
+      }
+    });
+    assert(portalFile.record.title === "Hosted Portal Asset", "portal file upsert failed");
+
+    const portalActivity = await request(`${baseUrl}/api/records/activities`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        record: {
+          id: "portal-activity-record",
+          projectId: "project-record",
+          taskId: "portal-task-record",
+          type: "update",
+          message: "Hosted portal update",
+          memberId: owner.id
+        }
+      }
+    });
+    assert(portalActivity.record.message === "Hosted portal update", "portal activity upsert failed");
+
+    const portalComment = await request(`${baseUrl}/api/records/comments`, {
+      method: "POST",
+      token: signup.token,
+      body: {
+        record: {
+          id: "portal-comment-record",
+          taskId: "portal-task-record",
+          body: "Hosted portal comment",
+          author: owner.id
+        }
+      }
+    });
+    assert(portalComment.record.body === "Hosted portal comment", "portal comment upsert failed");
+
+    const validatedPortalLink = await request(`${baseUrl}/api/portal-links/validate/${encodeURIComponent(portalLink.token)}`);
+    assert(validatedPortalLink.portalLink.companyId === "company-record", "public portal validation did not return company scope");
+    assert(validatedPortalLink.portalLink.viewCount === 1, "public portal validation did not count the view");
+    assert(validatedPortalLink.portalSnapshot.company.name === "Record Company", "public portal snapshot missed company");
+    assert(validatedPortalLink.portalSnapshot.projects.some((project) => project.id === "project-record"), "public portal snapshot missed project");
+    assert(validatedPortalLink.portalSnapshot.tasks.some((task) => task.id === "portal-task-record"), "public portal snapshot missed visible task");
+    assert(validatedPortalLink.portalSnapshot.approvals.some((item) => item.id === "approval-record"), "public portal snapshot missed approval");
+    assert(validatedPortalLink.portalSnapshot.documents.some((item) => item.id === "portal-doc-record"), "public portal snapshot missed document");
+    assert(validatedPortalLink.portalSnapshot.files.some((item) => item.id === "portal-file-record"), "public portal snapshot missed file");
+    assert(validatedPortalLink.portalSnapshot.updates.some((item) => item.message === "Hosted portal update"), "public portal snapshot missed activity");
+    assert(validatedPortalLink.portalSnapshot.files.every((item) => !item.storageBucket && !item.storageKey), "public portal snapshot leaked file storage internals");
+    assert(validatedPortalLink.portalSnapshot.documents.every((item) => !item.body), "public portal snapshot leaked document bodies");
+    assert(!JSON.stringify(validatedPortalLink.portalSnapshot).includes("Other Company"), "public portal snapshot leaked another company");
+
+    const copiedPortalLink = await request(`${baseUrl}/api/portal-links/${encodeURIComponent(portalLink.portalLink.id)}/events`, {
+      method: "POST",
+      token: signup.token,
+      body: { event: "copied" }
+    });
+    assert(copiedPortalLink.portalLink.copiedAt, "hosted portal copy event was not recorded");
+
+    const revokedPortalLink = await request(`${baseUrl}/api/portal-links/${encodeURIComponent(portalLink.portalLink.id)}/revoke`, {
+      method: "POST",
+      token: signup.token
+    });
+    assert(revokedPortalLink.portalLink.status === "revoked", "hosted portal revoke failed");
+    const blockedPortalValidation = await requestError(`${baseUrl}/api/portal-links/validate/${encodeURIComponent(portalLink.token)}`);
+    assert(blockedPortalValidation.status === 403, "revoked hosted portal token should not validate");
 
     const invitation = await request(`${baseUrl}/api/invitations`, {
       method: "POST",
