@@ -3691,10 +3691,27 @@ body[data-tutorial-target="view"] #app-view {
   border-color: var(--green);
 }
 
+.sprint-burndown-panel {
+  grid-column: 1 / -1;
+}
+
+.sprint-burndown-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sprint-burndown-layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 1.4fr) minmax(280px, 0.8fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
 .sprint-burndown {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(26px, 1fr));
-  min-height: 180px;
+  min-height: 238px;
   gap: 8px;
   align-items: end;
   padding: 12px;
@@ -3706,7 +3723,7 @@ body[data-tutorial-target="view"] #app-view {
 .sprint-burndown-day {
   position: relative;
   display: grid;
-  min-height: 156px;
+  min-height: 214px;
   align-items: end;
   justify-items: center;
   gap: 4px;
@@ -3732,6 +3749,85 @@ body[data-tutorial-target="view"] #app-view {
 .sprint-actual {
   right: calc(50% - 10px);
   background: var(--accent);
+}
+
+.sprint-scope-total {
+  left: calc(50% + 8px);
+  background: var(--amber);
+  opacity: 0.55;
+}
+
+.sprint-scope-marker {
+  position: absolute;
+  bottom: 36px;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  background: var(--red);
+  border: 2px solid var(--surface);
+  border-radius: 999px;
+  transform: translateX(-50%);
+}
+
+.sprint-burndown-readout {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sprint-burndown-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sprint-burndown-legend span {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  color: var(--muted);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.sprint-burndown-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.sprint-actual-dot {
+  background: var(--accent);
+}
+
+.sprint-ideal-dot {
+  background: var(--line-strong);
+}
+
+.sprint-scope-dot {
+  background: var(--amber);
+}
+
+.sprint-marker-dot {
+  background: var(--red);
+}
+
+.sprint-burndown-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sprint-burndown-readout p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .sprint-list,
@@ -9572,6 +9668,8 @@ body[data-density="compact"] .main-content {
   .sprint-scenario-metrics,
   .sprint-sync-grid,
   .sprint-sync-preview,
+  .sprint-burndown-layout,
+  .sprint-burndown-summary,
   .sprint-timeline-scale,
   .sprint-timeline-lane,
   .doc-composer,

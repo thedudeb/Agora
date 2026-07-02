@@ -981,6 +981,7 @@ const seedData = {
   selectedCalendarMonth: "2026-07",
   selectedDailyDate: "2026-06-27",
   selectedGanttZoom: "month",
+  selectedSprintChartMode: "burndown",
   onboarding: {
     dismissed: false,
     sampleMode: "demo",
@@ -2646,6 +2647,7 @@ function normalizeState(nextState) {
     selectedCalendarMonth: nextState.selectedCalendarMonth || seedData.selectedCalendarMonth,
     selectedDailyDate: nextState.selectedDailyDate || todayKey(),
     selectedGanttZoom: ["week", "month", "quarter"].includes(nextState.selectedGanttZoom) ? nextState.selectedGanttZoom : seedData.selectedGanttZoom,
+    selectedSprintChartMode: ["burndown", "burnup"].includes(nextState.selectedSprintChartMode) ? nextState.selectedSprintChartMode : seedData.selectedSprintChartMode,
     templateLibrary: {
       category: "all",
       query: "",
@@ -20720,6 +20722,85 @@ function sprintReadinessRows(tasks, scrum) {
   ];
 }
 
+function sprintTaskCompletionDate(task) {
+  if (task.status !== "done") return "";
+  return cleanString(task.customFields?.completedAt || task.completedAt || task.updatedAt || task.dueDate || task.createdAt).slice(0, 10);
+}
+
+function sprintScopeDate(task, scrum) {
+  const created = cleanString(task.createdAt).slice(0, 10);
+  if (!created || created < scrum.startDate) return scrum.startDate;
+  return created > scrum.endDate ? scrum.endDate : created;
+}
+
+function sprintBurndownSeries(tasks, scrum, metrics) {
+  const totalPoints = Math.max(metrics.totalPoints, 0);
+  return metrics.days.map((day, index) => {
+    const scopePoints = tasks.reduce((sum, task) => sprintScopeDate(task, scrum) <= day ? sum + taskStoryPoints(task) : sum, 0);
+    const donePoints = tasks.reduce((sum, task) => {
+      const completed = sprintTaskCompletionDate(task);
+      return completed && completed <= day ? sum + taskStoryPoints(task) : sum;
+    }, 0);
+    const idealDone = Math.round(totalPoints * ((index + 1) / metrics.days.length));
+    const scopeAdded = tasks.filter((task) => sprintScopeDate(task, scrum) === day && cleanString(task.createdAt).slice(0, 10) > scrum.startDate);
+    return {
+      day,
+      scopePoints,
+      donePoints,
+      remainingPoints: Math.max(0, scopePoints - donePoints),
+      idealRemaining: Math.max(0, totalPoints - idealDone),
+      idealDone,
+      scopeAdded
+    };
+  });
+}
+
+function sprintBurndownForecast(metrics) {
+  const elapsed = Math.max(metrics.elapsedDays, 1);
+  const dailyDoneRate = metrics.donePoints / elapsed;
+  const projectedDone = Math.round(dailyDoneRate * metrics.days.length);
+  const projectedRemaining = Math.max(0, metrics.totalPoints - projectedDone);
+  const paceDelta = metrics.actualRemaining - metrics.idealRemaining;
+  const finishDayOffset = dailyDoneRate > 0 ? Math.ceil(metrics.totalPoints / dailyDoneRate) : Infinity;
+  return {
+    dailyDoneRate,
+    projectedDone,
+    projectedRemaining,
+    paceDelta,
+    finishDayOffset,
+    status: projectedRemaining <= 0 ? "on-track" : paceDelta <= 2 ? "watch" : "at-risk"
+  };
+}
+
+function sprintHistoricalComparison(scrum) {
+  const days = sprintDays(scrum);
+  const previousEnd = shiftDate(scrum.startDate, -1);
+  const previousStart = shiftDate(previousEnd, -(days.length - 1));
+  const previousTasks = activeTasks().filter((task) => {
+    const start = task.startDate || cleanString(task.createdAt).slice(0, 10) || task.dueDate || "";
+    const due = task.dueDate || start;
+    return (!start || start <= previousEnd) && (!due || due >= previousStart);
+  });
+  const previousTotal = previousTasks.reduce((sum, task) => sum + taskStoryPoints(task), 0);
+  const previousDone = previousTasks
+    .filter((task) => task.status === "done")
+    .reduce((sum, task) => sum + taskStoryPoints(task), 0);
+  return {
+    previousStart,
+    previousEnd,
+    previousTotal,
+    previousDone,
+    previousProgress: previousTotal ? Math.round((previousDone / previousTotal) * 100) : 0
+  };
+}
+
+function sprintPaceReadout(forecast, metrics) {
+  if (!metrics.totalPoints) return "No committed points yet.";
+  if (forecast.paceDelta > 0) return `${forecast.paceDelta} pts behind ideal pace.`;
+  if (forecast.paceDelta < 0) return `${Math.abs(forecast.paceDelta)} pts ahead of ideal pace.`;
+  return "On ideal pace.";
+}
+
 function sprintPlanningForecast(tasks, scrum) {
   const targetPoints = scrum.velocityPoints;
   const committedPoints = tasks.reduce((sum, task) => sum + taskStoryPoints(task), 0);
@@ -21327,22 +21408,55 @@ function renderSprintExternalSyncPanel(tasks, scrum) {
   `;
 }
 
-function renderSprintBurndown(metrics) {
-  const maxPoints = Math.max(metrics.totalPoints, 1);
-  const days = metrics.days;
+function renderSprintBurndown(tasks, scrum, metrics) {
+  const mode = ["burndown", "burnup"].includes(state.selectedSprintChartMode) ? state.selectedSprintChartMode : "burndown";
+  const series = sprintBurndownSeries(tasks, scrum, metrics);
+  const forecast = sprintBurndownForecast(metrics);
+  const historical = sprintHistoricalComparison(scrum);
+  const maxPoints = Math.max(metrics.totalPoints, ...series.map((item) => item.scopePoints), 1);
+  const forecastLabel = forecast.status === "on-track"
+    ? "Likely finish by sprint end"
+    : forecast.status === "watch"
+      ? "Watch pace"
+      : "At risk";
   return `
-    <div class="sprint-burndown" aria-label="Burndown chart">
-      ${days.map((day, index) => {
-        const ideal = Math.max(0, Math.round(metrics.totalPoints * (1 - (index + 1) / days.length)));
-        const actual = index + 1 <= metrics.elapsedDays ? Math.max(metrics.actualRemaining, ideal - (metrics.idealRemaining - metrics.actualRemaining)) : ideal;
-        return `
-          <div class="sprint-burndown-day">
-            <span class="sprint-ideal" style="height:${clamp(Math.round((ideal / maxPoints) * 100), 4, 100)}%"></span>
-            <span class="sprint-actual" style="height:${clamp(Math.round((actual / maxPoints) * 100), 4, 100)}%"></span>
-            <small>${escapeHtml(formatDate(day).replace("Jul ", ""))}</small>
-          </div>
-        `;
-      }).join("")}
+    <div class="sprint-burndown-toolbar" aria-label="Burndown chart mode">
+      ${["burndown", "burnup"].map((chartMode) => `
+        <button class="compact-button ${mode === chartMode ? "is-active" : ""}" type="button" data-sprint-chart-mode="${chartMode}" aria-pressed="${mode === chartMode ? "true" : "false"}">${chartMode === "burndown" ? "Burndown" : "Burnup"}</button>
+      `).join("")}
+    </div>
+    <div class="sprint-burndown-layout">
+      <div class="sprint-burndown" aria-label="${mode === "burndown" ? "Burndown chart" : "Burnup chart"}">
+        ${series.map((item, index) => {
+          const actualValue = mode === "burndown" ? item.remainingPoints : item.donePoints;
+          const idealValue = mode === "burndown" ? item.idealRemaining : item.idealDone;
+          const scopeHeight = mode === "burnup" ? clamp(Math.round((item.scopePoints / maxPoints) * 100), 4, 100) : 0;
+          return `
+            <div class="sprint-burndown-day ${item.scopeAdded.length ? "has-scope-change" : ""}">
+              ${mode === "burnup" ? `<span class="sprint-scope-total" style="height:${scopeHeight}%"></span>` : ""}
+              <span class="sprint-ideal" style="height:${clamp(Math.round((idealValue / maxPoints) * 100), 4, 100)}%"></span>
+              <span class="sprint-actual" style="height:${clamp(Math.round((actualValue / maxPoints) * 100), 4, 100)}%"></span>
+              ${item.scopeAdded.length ? `<i class="sprint-scope-marker" title="${escapeHtml(`${item.scopeAdded.length} scope change${item.scopeAdded.length === 1 ? "" : "s"} on ${formatDate(item.day)}`)}"></i>` : ""}
+              <small>${escapeHtml(formatDate(item.day).replace("Jul ", ""))}</small>
+            </div>
+          `;
+        }).join("")}
+      </div>
+      <div class="sprint-burndown-readout">
+        <div class="sprint-burndown-legend">
+          <span><i class="sprint-actual-dot"></i>${mode === "burndown" ? "Actual remaining" : "Actual done"}</span>
+          <span><i class="sprint-ideal-dot"></i>Ideal pace</span>
+          ${mode === "burnup" ? `<span><i class="sprint-scope-dot"></i>Total scope</span>` : ""}
+          <span><i class="sprint-marker-dot"></i>Scope changes</span>
+        </div>
+        <div class="sprint-burndown-summary">
+          ${metric("Forecast", forecastLabel)}
+          ${metric("Pace", sprintPaceReadout(forecast, metrics))}
+          ${metric("Scope changes", metrics.scopeAdded.length)}
+          ${metric("Historical comparison", `${historical.previousProgress}% last sprint`)}
+        </div>
+        <p>${escapeHtml(`Projected remaining at sprint end: ${forecast.projectedRemaining} pts. Current sprint is ${metrics.progress}% complete versus ${historical.previousProgress}% in ${formatDate(historical.previousStart)}-${formatDate(historical.previousEnd)}.`)}</p>
+      </div>
     </div>
   `;
 }
@@ -21554,15 +21668,15 @@ function renderSprintCommandCenter() {
       ${renderSprintScenarioPanel(tasks, scrum, metrics)}
       ${renderSprintExternalSyncPanel(tasks, scrum)}
 
-      <section class="panel">
+      <section class="panel sprint-burndown-panel">
         <div class="panel-header">
           <div>
             <p class="eyebrow">Burndown</p>
-            <h2>${metrics.actualRemaining} points remaining</h2>
+            <h2>Burndown and burnup forecast</h2>
           </div>
-          <span class="status-pill ${metrics.actualRemaining <= metrics.idealRemaining ? "inbox-green" : "inbox-amber"}">Ideal ${metrics.idealRemaining}</span>
+          <span class="status-pill ${metrics.actualRemaining <= metrics.idealRemaining ? "inbox-green" : "inbox-amber"}">${metrics.actualRemaining} pts remaining</span>
         </div>
-        ${renderSprintBurndown(metrics)}
+        ${renderSprintBurndown(tasks, scrum, metrics)}
       </section>
 
       <section class="panel">
@@ -32519,6 +32633,14 @@ document.addEventListener("click", (event) => {
   const ganttZoomButton = event.target.closest("[data-gantt-zoom]");
   if (ganttZoomButton) {
     state.selectedGanttZoom = ganttZoomButton.dataset.ganttZoom;
+    saveState();
+    render();
+    return;
+  }
+
+  const sprintChartModeButton = event.target.closest("[data-sprint-chart-mode]");
+  if (sprintChartModeButton) {
+    state.selectedSprintChartMode = sprintChartModeButton.dataset.sprintChartMode;
     saveState();
     render();
     return;
