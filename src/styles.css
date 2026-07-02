@@ -6114,6 +6114,18 @@ body[data-tutorial-target="view"] #app-view {
   border-radius: 8px;
 }
 
+.timeline-milestone-composer {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(150px, 0.5fr) minmax(140px, 0.45fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
 .timeline-list {
   display: grid;
   gap: 0;
@@ -6379,6 +6391,32 @@ body[data-tutorial-target="view"] #app-view {
   border-radius: 999px;
   cursor: grab;
   gap: 6px;
+}
+
+.gantt-baseline {
+  position: absolute;
+  bottom: 5px;
+  height: 5px;
+  background: repeating-linear-gradient(90deg, var(--muted) 0 6px, transparent 6px 10px);
+  border-radius: 999px;
+  opacity: 0.75;
+}
+
+.gantt-baseline-delta {
+  position: absolute;
+  right: 8px;
+  bottom: 12px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.gantt-baseline-delta.is-late {
+  color: var(--red);
+}
+
+.gantt-baseline-delta.is-early {
+  color: var(--green);
 }
 
 .gantt-bar.priority-urgent,
@@ -8729,6 +8767,7 @@ body[data-density="compact"] .main-content {
 
   .timeline-card,
   .undated-task,
+  .timeline-milestone-composer,
   .portfolio-gantt-row,
   .invitation-row,
   .member-role-row {

@@ -14051,6 +14051,52 @@ function shiftGanttTask(taskId, days) {
   });
 }
 
+function setGanttTaskBaseline(taskId) {
+  const task = byId(state.tasks, taskId);
+  if (!task) return;
+  updateTask(task.id, {
+    customFields: {
+      ...(task.customFields || {}),
+      baselineStart: taskStartDate(task),
+      baselineDue: task.dueDate || taskStartDate(task)
+    }
+  });
+}
+
+function createTimelineMilestone(form) {
+  const projectId = form.dataset.timelineMilestoneCreate;
+  const project = byId(state.projects, projectId);
+  const title = form.elements.title?.value.trim();
+  const dueDate = form.elements.dueDate?.value || "";
+  const status = form.elements.status?.value || "planned";
+  if (!project || !title || !dueDate) {
+    showToast("Add milestone title and date", "info");
+    return;
+  }
+  const now = new Date().toISOString();
+  const milestone = {
+    id: uid("milestone"),
+    projectId,
+    title,
+    description: `Timeline milestone for ${project.name}.`,
+    owner: project.owner,
+    dueDate,
+    status,
+    createdAt: now,
+    updatedAt: now
+  };
+  state.milestones = [milestone, ...state.milestones];
+  addActivity({
+    projectId,
+    type: "milestone_create",
+    message: `created milestone ${title}`
+  });
+  saveState();
+  render();
+  showToast("Milestone added to timeline", "success");
+  syncRecordToApi("milestones", milestone, "Milestone synced", false);
+}
+
 function recordTaskChanges(previous, next) {
   if (previous.status !== next.status) {
     addActivity({
@@ -18843,6 +18889,24 @@ function renderProjectTimeline(project, tasks, milestones) {
         </label>
       </div>
 
+      <form class="timeline-milestone-composer" data-timeline-milestone-create="${project.id}">
+        <label>
+          <span>Milestone</span>
+          <input name="title" placeholder="Design signoff, Beta launch, Client approval">
+        </label>
+        <label>
+          <span>Date</span>
+          <input name="dueDate" type="date" value="${project.dueDate || todayKey()}">
+        </label>
+        <label>
+          <span>Status</span>
+          <select name="status">
+            ${["planned", "at-risk", "completed"].map((status) => `<option value="${status}">${status.replace("-", " ")}</option>`).join("")}
+          </select>
+        </label>
+        <button class="button button-secondary compact-button" type="submit">Add Milestone</button>
+      </form>
+
       ${gantt}
 
       <div class="timeline-list">
@@ -18885,6 +18949,32 @@ function ganttTaskSchedule(task, rangeStart, totalDays) {
   const left = Math.min(100, (offset / totalDays) * 100);
   const width = Math.max(4, Math.min(100 - left, (duration / totalDays) * 100));
   return { start, end, left, width, duration };
+}
+
+function ganttTaskBaseline(task) {
+  const baselineStart = task.customFields?.baselineStart || "";
+  const baselineDue = task.customFields?.baselineDue || "";
+  if (!baselineStart || !baselineDue) return null;
+  const startDelta = daysBetween(baselineStart, taskStartDate(task));
+  const dueDelta = daysBetween(baselineDue, task.dueDate || taskStartDate(task));
+  return { baselineStart, baselineDue, startDelta, dueDelta };
+}
+
+function renderGanttBaseline(task, rangeStart, totalDays) {
+  const baseline = ganttTaskBaseline(task);
+  if (!baseline) return "";
+  const schedule = ganttTaskSchedule({
+    ...task,
+    startDate: baseline.baselineStart,
+    dueDate: baseline.baselineDue
+  }, rangeStart, totalDays);
+  const drift = baseline.dueDelta;
+  return `
+    <span class="gantt-baseline" style="left: ${schedule.left}%; width: ${schedule.width}%;" title="Baseline ${escapeHtml(formatDate(baseline.baselineStart))} - ${escapeHtml(formatDate(baseline.baselineDue))}"></span>
+    <span class="gantt-baseline-delta ${drift > 0 ? "is-late" : drift < 0 ? "is-early" : ""}">
+      ${drift === 0 ? "On baseline" : `${Math.abs(drift)}d ${drift > 0 ? "late" : "early"}`}
+    </span>
+  `;
 }
 
 function ganttTaskRisk(task) {
@@ -19023,6 +19113,7 @@ function renderGanttTaskRow(task, rangeStart, totalDays, milestones) {
           const markerLeft = Math.min(100, Math.max(0, (daysBetween(rangeStart, milestone.dueDate) / totalDays) * 100));
           return `<span class="gantt-marker" style="left: ${markerLeft}%" title="${escapeHtml(milestone.title)}"></span>`;
         }).join("")}
+        ${renderGanttBaseline(task, rangeStart, totalDays)}
         <span class="gantt-bar priority-${task.priority}" draggable="true" data-gantt-drag="${task.id}" style="left: ${left}%; width: ${width}%;">
           <button type="button" data-gantt-shift="${task.id}" data-gantt-shift-days="-1" aria-label="Move ${escapeHtml(task.title)} one day earlier">&lsaquo;</button>
           <span>${formatDate(start)} - ${formatDate(end)}</span>
@@ -19032,6 +19123,7 @@ function renderGanttTaskRow(task, rangeStart, totalDays, milestones) {
       <div class="gantt-dependencies">
         ${dependencies.length ? `Waits on ${dependencies.map((dependency) => escapeHtml(dependency.title)).join(", ")}` : "No blockers"}
         ${openDependencies.length ? `<strong>${openDependencies.length} open</strong>` : ""}
+        <button class="button button-secondary compact-button" type="button" data-gantt-baseline="${task.id}">${ganttTaskBaseline(task) ? "Reset baseline" : "Set baseline"}</button>
       </div>
     </article>
   `;
@@ -29853,6 +29945,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const ganttBaselineButton = event.target.closest("[data-gantt-baseline]");
+  if (ganttBaselineButton) {
+    setGanttTaskBaseline(ganttBaselineButton.dataset.ganttBaseline);
+    return;
+  }
+
   const boardMenuButton = event.target.closest("[data-board-menu]");
   if (boardMenuButton) {
     openBoardMenuColumn = openBoardMenuColumn === boardMenuButton.dataset.boardMenu ? "" : boardMenuButton.dataset.boardMenu;
@@ -30460,6 +30558,13 @@ els.appView.addEventListener("drop", (event) => {
 els.appView.addEventListener("dragend", clearBoardDropIndicators);
 
 els.appView.addEventListener("submit", (event) => {
+  const milestoneForm = event.target.closest("[data-timeline-milestone-create]");
+  if (milestoneForm) {
+    event.preventDefault();
+    createTimelineMilestone(milestoneForm);
+    return;
+  }
+
   const boardBacklogForm = event.target.closest("[data-board-backlog-create]");
   if (boardBacklogForm) {
     event.preventDefault();
