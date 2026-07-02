@@ -278,6 +278,39 @@ const boardCardFieldDefaults = {
   actions: true
 };
 
+const boardCardRecipes = [
+  {
+    id: "client-review",
+    name: "Client Review Card",
+    description: "Prepare client feedback, open questions, recap, and approval follow-up.",
+    priority: "high",
+    durationDays: 3,
+    tags: ["client", "review"],
+    subtasks: ["Collect feedback", "Resolve open questions", "Send recap", "Confirm next date"],
+    customFields: { effort: "Medium", risk: "Medium" }
+  },
+  {
+    id: "bug-triage",
+    name: "Bug Triage Card",
+    description: "Reproduce, scope impact, assign owner, and verify the fix path.",
+    priority: "urgent",
+    durationDays: 2,
+    tags: ["bug", "triage"],
+    subtasks: ["Reproduce issue", "Identify impact", "Assign owner", "Verify fix"],
+    customFields: { effort: "Small", risk: "High" }
+  },
+  {
+    id: "launch-check",
+    name: "Launch Checklist Card",
+    description: "Final launch checks for docs, QA, comms, and release confidence.",
+    priority: "high",
+    durationDays: 4,
+    tags: ["launch", "qa"],
+    subtasks: ["Run smoke test", "Check mobile", "Review docs", "Prepare release notes"],
+    customFields: { effort: "Large", risk: "Medium" }
+  }
+];
+
 const featureRequestStatuses = [
   { id: "new", label: "New" },
   { id: "triaged", label: "Triaged" },
@@ -13438,6 +13471,82 @@ function createBoardBacklogTask(title) {
   syncTaskToApi(task, "Backlog task created in API", true);
 }
 
+function nextBoardOrderForStatus(status) {
+  return boardOrderedTasks(getFilteredTasks().filter((task) => task.status === status && !isBoardBacklogTask(task))).length + 1;
+}
+
+function createBoardTaskFromTemplate() {
+  const templateId = document.querySelector("#board-task-template")?.value;
+  const status = document.querySelector("#board-template-status")?.value || "todo";
+  const projectId = boardQuickAddProjectId();
+  if (!templateId || !projectId) {
+    showToast("Choose a template and project first", "info");
+    return;
+  }
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot create tasks", "info");
+    return;
+  }
+  const task = createTaskFromTemplate(templateId, projectId);
+  if (!task) return;
+  const nextTask = {
+    ...task,
+    status,
+    boardOrder: nextBoardOrderForStatus(status),
+    customFields: { ...(task.customFields || {}), boardBacklog: false },
+    updatedAt: new Date().toISOString()
+  };
+  state.tasks = state.tasks.map((item) => item.id === task.id ? nextTask : item);
+  saveState();
+  render();
+  showToast(`Created ${task.title} from template`, "success");
+  syncTaskToApi(nextTask, "Board template task synced to API", true);
+}
+
+function createBoardTaskFromRecipe(recipeId) {
+  const recipe = boardCardRecipes.find((item) => item.id === recipeId);
+  const status = document.querySelector("#board-template-status")?.value || "todo";
+  const projectId = boardQuickAddProjectId();
+  if (!recipe || !projectId) {
+    showToast("Choose a project before using recipes", "info");
+    return;
+  }
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot create tasks", "info");
+    return;
+  }
+  const now = new Date().toISOString();
+  const task = {
+    id: uid("task"),
+    projectId,
+    title: recipe.name,
+    description: recipe.description,
+    assignee: activeMemberId(),
+    status,
+    priority: recipe.priority,
+    startDate: todayKey(),
+    dueDate: shiftDate(todayKey(), recipe.durationDays),
+    boardOrder: nextBoardOrderForStatus(status),
+    blockedBy: [],
+    tags: [...recipe.tags],
+    subtasks: recipe.subtasks.map((title) => ({ id: uid("subtask"), title, done: false })),
+    customFields: { ...recipe.customFields, boardBacklog: false },
+    createdAt: now,
+    updatedAt: now
+  };
+  state.tasks = [task, ...state.tasks];
+  addActivity({
+    projectId,
+    taskId: task.id,
+    type: "board_recipe",
+    message: `created ${task.title} from a board checklist recipe`
+  });
+  saveState();
+  render();
+  showToast(`Created ${task.title} recipe`, "success");
+  syncTaskToApi(task, "Board recipe task synced to API", true);
+}
+
 function promoteBoardBacklogTask(taskId) {
   const task = byId(state.tasks, taskId);
   if (!task) return;
@@ -13447,7 +13556,7 @@ function promoteBoardBacklogTask(taskId) {
   }
   const now = new Date().toISOString();
   const targetStatus = "todo";
-  const nextOrder = boardOrderedTasks(getFilteredTasks().filter((item) => item.status === targetStatus && !isBoardBacklogTask(item))).length + 1;
+  const nextOrder = nextBoardOrderForStatus(targetStatus);
   const nextTask = {
     ...task,
     status: targetStatus,
@@ -18306,6 +18415,35 @@ function renderBoardAutomationBuilder() {
   `;
 }
 
+function renderBoardTemplatePanel() {
+  const projectId = boardQuickAddProjectId();
+  return `
+    <div class="board-template-panel">
+      <div>
+        <p class="eyebrow">Card templates</p>
+        <strong>${state.taskTemplates.length} saved templates</strong>
+      </div>
+      <label>
+        <span>Task template</span>
+        <select id="board-task-template" ${state.taskTemplates.length ? "" : "disabled"}>
+          ${state.taskTemplates.map((template) => `<option value="${template.id}">${escapeHtml(template.name)}</option>`).join("")}
+        </select>
+      </label>
+      <label>
+        <span>Column</span>
+        <select id="board-template-status">
+          ${boardStatusOptions().map((status) => `<option value="${status.id}">${escapeHtml(status.label)}</option>`).join("")}
+        </select>
+      </label>
+      <button class="button button-primary compact-button" type="button" data-board-template-create ${state.taskTemplates.length && projectId ? "" : "disabled"}>Create From Template</button>
+      <div class="board-recipe-list" aria-label="Checklist recipes">
+        <span>Checklist recipes</span>
+        ${boardCardRecipes.map((recipe) => `<button class="button button-secondary compact-button" type="button" data-board-recipe="${recipe.id}" ${projectId ? "" : "disabled"}>${escapeHtml(recipe.name)}</button>`).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function renderBoardBacklogPanel(tasks = []) {
   const backlogTasks = tasks.filter(isBoardBacklogTask);
   const readyTasks = backlogTasks.filter((task) => !isTaskBlocked(task) && (!task.dueDate || !isOverdue(task))).slice(0, 6);
@@ -18430,6 +18568,7 @@ function renderBoardControls() {
         <span class="status-pill inbox-blue">${board.columns.filter((column) => column.wipLimit).length} WIP limits</span>
       </div>
       ${renderBoardAutomationBuilder()}
+      ${renderBoardTemplatePanel()}
       <div class="board-view-row">
         <label>
           <span>Saved board views</span>
@@ -29539,6 +29678,18 @@ document.addEventListener("click", (event) => {
   const boardAutomationPresetButton = event.target.closest("[data-board-automation-preset]");
   if (boardAutomationPresetButton) {
     saveBoardAutomationRuleFromControls(boardAutomationPresetButton.dataset.boardAutomationPreset);
+    return;
+  }
+
+  const boardTemplateCreateButton = event.target.closest("[data-board-template-create]");
+  if (boardTemplateCreateButton) {
+    createBoardTaskFromTemplate();
+    return;
+  }
+
+  const boardRecipeButton = event.target.closest("[data-board-recipe]");
+  if (boardRecipeButton) {
+    createBoardTaskFromRecipe(boardRecipeButton.dataset.boardRecipe);
     return;
   }
 
