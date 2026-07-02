@@ -20673,6 +20673,98 @@ function renderSprintBurndown(metrics) {
   `;
 }
 
+function sprintTimelineSchedule(task, scrum) {
+  const rangeStart = scrum.startDate;
+  const rangeEnd = scrum.endDate;
+  const totalDays = Math.max(1, daysBetween(rangeStart, rangeEnd) + 1);
+  const rawStart = taskStartDate(task);
+  const rawEnd = task.dueDate || rawStart;
+  const start = rawStart < rangeStart ? rangeStart : rawStart;
+  const end = rawEnd > rangeEnd ? rangeEnd : rawEnd;
+  const offset = clamp(daysBetween(rangeStart, start), 0, totalDays);
+  const duration = Math.max(1, daysBetween(start, end) + 1);
+  const left = Math.min(100, (offset / totalDays) * 100);
+  const width = Math.max(5, Math.min(100 - left, (duration / totalDays) * 100));
+  return { start, end, left, width, totalDays };
+}
+
+function sprintTimelineStatusClass(task) {
+  if (isTaskBlocked(task)) return "is-blocked";
+  if (task.status === "done") return "is-done";
+  if (task.status === "review") return "is-review";
+  if (task.status === "doing") return "is-doing";
+  return "is-ready";
+}
+
+function sprintTimelineLanes(tasks) {
+  const lanes = new Map();
+  tasks
+    .filter((task) => task.status !== "done" || task.dueDate)
+    .forEach((task) => {
+      const laneId = task.assignee || "unassigned";
+      if (!lanes.has(laneId)) lanes.set(laneId, []);
+      lanes.get(laneId).push(task);
+    });
+  return Array.from(lanes.entries()).map(([memberId, laneTasks]) => ({
+    memberId,
+    tasks: laneTasks.sort((a, b) => taskStartDate(a).localeCompare(taskStartDate(b)) || String(a.dueDate || "").localeCompare(String(b.dueDate || "")))
+  })).sort((a, b) => memberName(a.memberId).localeCompare(memberName(b.memberId)));
+}
+
+function renderSprintTimeline(tasks, scrum, metrics) {
+  const scheduledTasks = tasks.filter((task) => task.startDate || task.dueDate || task.createdAt);
+  const lanes = sprintTimelineLanes(scheduledTasks);
+  const tickStep = Math.max(1, Math.floor(metrics.days.length / 4));
+  const ticks = metrics.days.filter((_, index) => index === 0 || index === metrics.days.length - 1 || index % tickStep === 0).slice(0, 6);
+  return `
+    <section class="panel sprint-timeline-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Sprint timeline</p>
+          <h2>Stories across ${escapeHtml(scrum.sprintName)}</h2>
+        </div>
+        <div class="meta-row">
+          <span>${formatDate(scrum.startDate)} - ${formatDate(scrum.endDate)}</span>
+          <span>${scheduledTasks.length} scheduled</span>
+        </div>
+      </div>
+      <div class="sprint-timeline-legend" aria-label="Sprint timeline legend">
+        <span class="is-ready">Ready</span>
+        <span class="is-doing">Doing</span>
+        <span class="is-review">Review</span>
+        <span class="is-blocked">Blocked</span>
+        <span class="is-done">Done</span>
+      </div>
+      <div class="sprint-timeline-scale" aria-hidden="true">
+        <span></span>
+        <div>${ticks.map((tick) => `<span>${formatDate(tick)}</span>`).join("")}</div>
+      </div>
+      <div class="sprint-timeline-lanes">
+        ${lanes.length ? lanes.map((lane) => `
+          <article class="sprint-timeline-lane">
+            <div class="sprint-timeline-owner">
+              <strong>${escapeHtml(memberName(lane.memberId))}</strong>
+              <span>${lane.tasks.length} ${lane.tasks.length === 1 ? "story" : "stories"}</span>
+            </div>
+            <div class="sprint-timeline-track">
+              ${lane.tasks.map((task) => {
+                const schedule = sprintTimelineSchedule(task, scrum);
+                const dependencies = openTaskDependencies(task);
+                return `
+                  <button class="sprint-timeline-bar ${sprintTimelineStatusClass(task)} priority-${task.priority}" type="button" data-edit-task="${task.id}" style="left:${schedule.left}%; width:${schedule.width}%;" title="${escapeHtml(`${task.title}: ${formatDate(schedule.start)} - ${formatDate(schedule.end)}`)}">
+                    <span>${escapeHtml(task.title)}</span>
+                    <small>${taskStoryPoints(task)} pts${dependencies.length ? ` / waits on ${dependencies.length}` : ""}</small>
+                  </button>
+                `;
+              }).join("")}
+            </div>
+          </article>
+        `).join("") : emptyState("Add start or due dates to sprint work to build the sprint timeline.")}
+      </div>
+    </section>
+  `;
+}
+
 function renderSprintCommandCenter() {
   const scrum = scrumSettings();
   const tasks = sprintScopedTasks(scrum);
@@ -20721,6 +20813,8 @@ function renderSprintCommandCenter() {
     </section>
 
     <div class="sprint-grid">
+      ${renderSprintTimeline(tasks, scrum, metrics)}
+
       <section class="panel">
         <div class="panel-header">
           <div>

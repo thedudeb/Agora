@@ -3156,6 +3156,144 @@ body[data-tutorial-target="view"] #app-view {
   margin-top: 16px;
 }
 
+.sprint-timeline-panel {
+  grid-column: 1 / -1;
+}
+
+.sprint-timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sprint-timeline-legend span {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  padding: 0 9px;
+  color: var(--muted);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.sprint-timeline-scale,
+.sprint-timeline-lane {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.24fr) minmax(420px, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.sprint-timeline-scale {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.sprint-timeline-scale > div {
+  display: flex;
+  justify-content: space-between;
+}
+
+.sprint-timeline-lanes {
+  display: grid;
+  gap: 10px;
+}
+
+.sprint-timeline-lane {
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sprint-timeline-owner {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sprint-timeline-owner span {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.sprint-timeline-track {
+  position: relative;
+  min-height: 52px;
+  overflow: hidden;
+  background: #eee9df;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sprint-timeline-track::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0, transparent calc(25% - 1px), rgba(36, 33, 29, 0.08) calc(25% - 1px), rgba(36, 33, 29, 0.08) 25%);
+}
+
+.sprint-timeline-bar {
+  position: absolute;
+  top: 8px;
+  display: grid;
+  min-width: 74px;
+  min-height: 34px;
+  align-content: center;
+  padding: 4px 10px;
+  color: var(--text);
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 8px 18px rgba(36, 33, 29, 0.08);
+}
+
+.sprint-timeline-bar span,
+.sprint-timeline-bar small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sprint-timeline-bar span {
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.sprint-timeline-bar small {
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.sprint-timeline-bar.is-ready {
+  border-color: var(--line-strong);
+}
+
+.sprint-timeline-bar.is-doing {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.sprint-timeline-bar.is-review {
+  background: #e0e8f8;
+  border-color: var(--blue);
+}
+
+.sprint-timeline-bar.is-blocked {
+  background: #fff2d5;
+  border-color: var(--amber);
+}
+
+.sprint-timeline-bar.is-done {
+  background: #ddede4;
+  border-color: var(--green);
+}
+
 .sprint-burndown {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(26px, 1fr));
@@ -9029,6 +9167,8 @@ body[data-density="compact"] .main-content {
   .task-time-grid,
   .time-entry-form,
   .sprint-settings-form,
+  .sprint-timeline-scale,
+  .sprint-timeline-lane,
   .doc-composer,
   .file-composer,
   .project-backlog-form,

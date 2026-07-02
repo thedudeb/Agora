@@ -176,6 +176,8 @@ const routeChecks = [
     required: [
       "Sprint Command Center",
       "Beta sprint",
+      "Sprint timeline",
+      "Stories across Beta sprint",
       "Burndown",
       "Standup queue",
       "Readiness checks",
