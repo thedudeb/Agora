@@ -1210,6 +1210,7 @@ const seedData = {
       ],
       definitionOfReady: ["Clear outcome", "Owner assigned", "Estimate or effort set", "Dependencies named"],
       definitionOfDone: ["Acceptance checked", "Docs or notes updated", "Review complete", "No unresolved blocker"],
+      closedSprints: [],
       retroActions: [
         { id: "retro-action-1", title: "Shorten review feedback loop", owner: "sam", status: "open" },
         { id: "retro-action-2", title: "Call out blocked work before standup", owner: "mara", status: "done" }
@@ -3339,6 +3340,19 @@ function normalizeWorkspaceScrum(scrum = {}) {
       .map((item) => String(item || "").trim())
       .filter(Boolean)
       .slice(0, 8),
+    closedSprints: (Array.isArray(scrum.closedSprints) ? scrum.closedSprints : fallback.closedSprints || [])
+      .filter((item) => item && typeof item === "object")
+      .map((item) => ({
+        id: item.id || uid("closed-sprint"),
+        name: String(item.name || "Closed sprint").trim().slice(0, 80),
+        goal: String(item.goal || "").trim().slice(0, 240),
+        startDate: item.startDate || "",
+        endDate: item.endDate || "",
+        closedAt: item.closedAt || item.createdAt || new Date().toISOString(),
+        metrics: item.metrics && typeof item.metrics === "object" ? item.metrics : {},
+        report: item.report && typeof item.report === "object" ? item.report : {}
+      }))
+      .slice(0, 12),
     retroActions: (Array.isArray(scrum.retroActions) ? scrum.retroActions : fallback.retroActions || [])
       .filter((item) => item && typeof item === "object")
       .map((item) => ({
@@ -20801,6 +20815,227 @@ function sprintPaceReadout(forecast, metrics) {
   return "On ideal pace.";
 }
 
+function sprintRetroInsights(tasks, scrum, metrics) {
+  const reviewTasks = tasks.filter((task) => task.status === "review");
+  const lanes = sprintTimelineLanes(tasks);
+  const overloaded = lanes
+    .map((lane) => ({
+      memberId: lane.memberId,
+      capacity: sprintTimelineCapacity(lane.tasks, scrum, metrics.days)
+    }))
+    .filter((lane) => lane.capacity.status === "overloaded");
+  const insights = [];
+  if (metrics.scopeAdded.length) {
+    insights.push({
+      label: "Scope changed mid-sprint",
+      detail: `${metrics.scopeAdded.length} ${metrics.scopeAdded.length === 1 ? "story was" : "stories were"} added after sprint start.`,
+      prompt: "Which intake rule should change before the next sprint starts?"
+    });
+  }
+  if (metrics.blocked.length) {
+    insights.push({
+      label: "Blocked work slowed flow",
+      detail: `${metrics.blocked.length} ${metrics.blocked.length === 1 ? "story has" : "stories have"} unresolved dependencies.`,
+      prompt: "Which dependency should be escalated before planning the next sprint?"
+    });
+  }
+  if (reviewTasks.length >= 2) {
+    insights.push({
+      label: "Review bottleneck",
+      detail: `${reviewTasks.length} stories are waiting in review.`,
+      prompt: "Who owns review capacity next sprint, and what is the SLA?"
+    });
+  }
+  if (overloaded.length) {
+    insights.push({
+      label: "Capacity pressure",
+      detail: `${overloaded.map((lane) => memberName(lane.memberId)).join(", ")} peaked above daily capacity.`,
+      prompt: "What should move earlier, later, or to another owner?"
+    });
+  }
+  if (metrics.actualRemaining > metrics.idealRemaining) {
+    insights.push({
+      label: "Burn pace drift",
+      detail: sprintPaceReadout(sprintBurndownForecast(metrics), metrics),
+      prompt: "Which estimate or interruption created the biggest pace gap?"
+    });
+  }
+  if (!insights.length) {
+    insights.push({
+      label: "Healthy sprint shape",
+      detail: "Scope, blockers, review, and capacity are within expected bounds.",
+      prompt: "What practice should the team deliberately keep?"
+    });
+  }
+  return insights.slice(0, 6);
+}
+
+function sprintReviewReport(tasks, scrum, metrics) {
+  const shipped = tasks.filter((task) => task.status === "done");
+  const slipped = tasks.filter((task) => task.status !== "done");
+  const blockers = metrics.blocked;
+  const forecast = sprintBurndownForecast(metrics);
+  const retroInsights = sprintRetroInsights(tasks, scrum, metrics);
+  return {
+    id: uid("sprint-report"),
+    sprintName: scrum.sprintName,
+    goal: scrum.goal,
+    startDate: scrum.startDate,
+    endDate: scrum.endDate,
+    generatedAt: new Date().toISOString(),
+    metrics: {
+      committedPoints: metrics.totalPoints,
+      donePoints: metrics.donePoints,
+      remainingPoints: metrics.actualRemaining,
+      completionPercent: metrics.progress,
+      sprintHealth: metrics.health,
+      idealRemaining: metrics.idealRemaining,
+      projectedRemaining: forecast.projectedRemaining,
+      pace: sprintPaceReadout(forecast, metrics),
+      scopeChanges: metrics.scopeAdded.length,
+      blocked: blockers.length,
+      carryover: metrics.carryover.length
+    },
+    shipped: shipped.map((task) => ({
+      id: task.id,
+      title: task.title,
+      points: taskStoryPoints(task),
+      owner: memberName(task.assignee),
+      project: projectName(task.projectId)
+    })),
+    slipped: slipped.map((task) => ({
+      id: task.id,
+      title: task.title,
+      points: taskStoryPoints(task),
+      status: statusLabel(task.status),
+      owner: memberName(task.assignee),
+      project: projectName(task.projectId),
+      blocked: isTaskBlocked(task)
+    })),
+    blockers: blockers.map((task) => ({
+      id: task.id,
+      title: task.title,
+      blockedBy: openTaskDependencies(task).map((dependency) => dependency.title)
+    })),
+    scopeChanges: metrics.scopeAdded.map((task) => ({
+      id: task.id,
+      title: task.title,
+      createdAt: task.createdAt,
+      points: taskStoryPoints(task)
+    })),
+    retroInsights
+  };
+}
+
+function sprintReportMarkdown(report) {
+  const list = (items, formatter, fallback) => items.length ? items.map(formatter).join("\n") : `- ${fallback}`;
+  return [
+    `# ${report.sprintName} Review`,
+    "",
+    `**Goal:** ${report.goal}`,
+    `**Window:** ${formatDate(report.startDate)} - ${formatDate(report.endDate)}`,
+    `**Completion:** ${report.metrics.donePoints}/${report.metrics.committedPoints} pts (${report.metrics.completionPercent}%)`,
+    `**Pace:** ${report.metrics.pace}`,
+    `**Projected remaining:** ${report.metrics.projectedRemaining} pts`,
+    "",
+    "## What Shipped",
+    list(report.shipped, (task) => `- ${task.title} (${task.points} pts, ${task.owner}, ${task.project})`, "No shipped stories recorded."),
+    "",
+    "## What Slipped",
+    list(report.slipped, (task) => `- ${task.title} (${task.points} pts, ${task.status}, ${task.owner}${task.blocked ? ", blocked" : ""})`, "No slipped stories."),
+    "",
+    "## Blockers",
+    list(report.blockers, (task) => `- ${task.title}: ${task.blockedBy.join(", ") || "dependency not named"}`, "No unresolved blockers."),
+    "",
+    "## Scope Changes",
+    list(report.scopeChanges, (task) => `- ${task.title} (${task.points} pts, added ${formatDate(cleanString(task.createdAt).slice(0, 10))})`, "No mid-sprint scope changes."),
+    "",
+    "## Retro Insights",
+    list(report.retroInsights, (insight) => `- ${insight.label}: ${insight.detail} Prompt: ${insight.prompt}`, "No retro prompts generated.")
+  ].join("\n");
+}
+
+function renderSprintCloseoutPanel(tasks, scrum, metrics) {
+  const report = sprintReviewReport(tasks, scrum, metrics);
+  const latestClosed = scrum.closedSprints[0];
+  const nextSprint = scrum.roadmapSprints[0];
+  return `
+    <section class="panel sprint-closeout-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Sprint closeout</p>
+          <h2>Sprint review and retrospective</h2>
+        </div>
+        <span class="status-pill ${report.metrics.remainingPoints ? "inbox-amber" : "inbox-green"}">${report.metrics.completionPercent}% complete</span>
+      </div>
+      <div class="sprint-closeout-summary">
+        ${metric("Committed", `${report.metrics.committedPoints} pts`)}
+        ${metric("Shipped", `${report.metrics.donePoints} pts`)}
+        ${metric("Slipped", `${report.metrics.remainingPoints} pts`)}
+        ${metric("Scope changes", report.metrics.scopeChanges)}
+      </div>
+      <div class="sprint-closeout-grid">
+        <section>
+          <div class="mini-section-header">
+            <strong>What shipped</strong>
+            <span>Done work ready for the sprint review.</span>
+          </div>
+          <div class="sprint-planning-list">
+            ${report.shipped.length ? report.shipped.slice(0, 5).map((task) => `
+              <article class="sprint-closeout-row">
+                <strong>${escapeHtml(task.title)}</strong>
+                <span>${escapeHtml(`${task.points} pts - ${task.owner} - ${task.project}`)}</span>
+              </article>
+            `).join("") : emptyState("No completed sprint stories yet.")}
+          </div>
+        </section>
+        <section>
+          <div class="mini-section-header">
+            <strong>What slipped</strong>
+            <span>Carryover candidates for the next sprint or backlog.</span>
+          </div>
+          <div class="sprint-planning-list">
+            ${report.slipped.length ? report.slipped.slice(0, 5).map((task) => `
+              <article class="sprint-closeout-row ${task.blocked ? "is-risk" : ""}">
+                <strong>${escapeHtml(task.title)}</strong>
+                <span>${escapeHtml(`${task.points} pts - ${task.status} - ${task.owner}${task.blocked ? " - blocked" : ""}`)}</span>
+              </article>
+            `).join("") : emptyState("No slipped sprint stories.")}
+          </div>
+        </section>
+        <section>
+          <div class="mini-section-header">
+            <strong>Retro insights</strong>
+            <span>Prompts generated from scope, blockers, review, pace, and capacity.</span>
+          </div>
+          <div class="sprint-retro-insight-list">
+            ${report.retroInsights.map((insight) => `
+              <article>
+                <strong>${escapeHtml(insight.label)}</strong>
+                <span>${escapeHtml(insight.detail)}</span>
+                <p>${escapeHtml(insight.prompt)}</p>
+              </article>
+            `).join("")}
+          </div>
+        </section>
+      </div>
+      <div class="sprint-report-preview">
+        <div>
+          <strong>Review report preview</strong>
+          <span>${nextSprint ? `Close sprint rolls unfinished work into ${nextSprint.name}.` : "Close sprint moves unfinished work to backlog."}</span>
+          ${latestClosed ? `<small>Last closed: ${escapeHtml(latestClosed.name)} on ${escapeHtml(formatTimestamp(latestClosed.closedAt))}</small>` : ""}
+        </div>
+        <pre>${escapeHtml(sprintReportMarkdown(report))}</pre>
+      </div>
+      <div class="sprint-closeout-actions">
+        <button class="button button-secondary compact-button" type="button" data-sprint-report-copy>Copy Markdown</button>
+        <button class="button button-secondary compact-button" type="button" data-sprint-report-download>Download JSON</button>
+        <button class="button button-primary compact-button" type="button" data-sprint-close ${canWrite("projects:write") ? "" : "disabled"}>Close Sprint</button>
+      </div>
+    </section>
+  `;
+}
+
 function sprintPlanningForecast(tasks, scrum) {
   const targetPoints = scrum.velocityPoints;
   const committedPoints = tasks.reduce((sum, task) => sum + taskStoryPoints(task), 0);
@@ -21667,6 +21902,7 @@ function renderSprintCommandCenter() {
       ${renderSprintRoadmapPanel(tasks, scrum)}
       ${renderSprintScenarioPanel(tasks, scrum, metrics)}
       ${renderSprintExternalSyncPanel(tasks, scrum)}
+      ${renderSprintCloseoutPanel(tasks, scrum, metrics)}
 
       <section class="panel sprint-burndown-panel">
         <div class="panel-header">
@@ -27520,6 +27756,128 @@ function markSprintSyncProviderSynced(providerId) {
   showToast(`${sprintSyncProviderLabel(providerId)} marked synced`, "success");
 }
 
+async function copySprintReportMarkdown() {
+  const scrum = scrumSettings();
+  const tasks = sprintScopedTasks(scrum);
+  const metrics = sprintMetrics(tasks, scrum);
+  const report = sprintReviewReport(tasks, scrum, metrics);
+  if (!navigator.clipboard?.writeText) {
+    showToast("Clipboard is not available in this browser", "info");
+    return;
+  }
+  await navigator.clipboard.writeText(sprintReportMarkdown(report));
+  showToast("Sprint review report copied", "success");
+}
+
+function downloadSprintReportJson() {
+  const scrum = scrumSettings();
+  const tasks = sprintScopedTasks(scrum);
+  const metrics = sprintMetrics(tasks, scrum);
+  const report = sprintReviewReport(tasks, scrum, metrics);
+  downloadJsonFile(`${slugFromName(scrum.sprintName)}-sprint-review-${todayKey()}.json`, JSON.stringify(report, null, 2));
+  showToast("Sprint review JSON downloaded", "success");
+}
+
+function nextRoadmapSprintAfter(scrum, baseSprint) {
+  const startDate = shiftDate(baseSprint.endDate || scrum.endDate, 1);
+  const endDate = shiftDate(startDate, Math.max(6, daysBetween(scrum.startDate, scrum.endDate)));
+  return {
+    id: uid("roadmap-sprint"),
+    name: `${baseSprint.name || scrum.sprintName} +1`,
+    goal: "Plan the next highest-value work.",
+    startDate,
+    endDate,
+    velocityPoints: baseSprint.velocityPoints || scrum.velocityPoints
+  };
+}
+
+function closeCurrentSprint() {
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot close sprints", "info");
+    return;
+  }
+  const scrum = scrumSettings();
+  const tasks = sprintScopedTasks(scrum);
+  const metrics = sprintMetrics(tasks, scrum);
+  const report = sprintReviewReport(tasks, scrum, metrics);
+  const nextSprint = scrum.roadmapSprints[0] || null;
+  const now = new Date().toISOString();
+  const closedSprint = {
+    id: report.id,
+    name: scrum.sprintName,
+    goal: scrum.goal,
+    startDate: scrum.startDate,
+    endDate: scrum.endDate,
+    closedAt: now,
+    metrics: report.metrics,
+    report
+  };
+  const rollForwardName = nextSprint?.name || "backlog";
+  const changedTasks = [];
+  state.tasks = state.tasks.map((task) => {
+    if (!tasks.some((sprintTask) => sprintTask.id === task.id) || task.status === "done") return task;
+    const nextTask = {
+      ...task,
+      customFields: {
+        ...(task.customFields || {}),
+        sprint: rollForwardName
+      },
+      startDate: nextSprint ? nextSprint.startDate : task.startDate,
+      dueDate: nextSprint ? nextSprint.endDate : task.dueDate,
+      updatedAt: now
+    };
+    changedTasks.push({ previous: task, next: nextTask });
+    return nextTask;
+  });
+  changedTasks.forEach(({ previous, next }) => {
+    recordTaskChanges(previous, next);
+    syncTaskToApi(next, "Sprint closeout task synced to API", false, recordRevisionValue(previous));
+  });
+  const remainingRoadmap = nextSprint ? scrum.roadmapSprints.slice(1) : scrum.roadmapSprints;
+  const preparedSprint = nextSprint || {
+    name: `${scrum.sprintName} follow-up`,
+    goal: "Finish carryover and commit the next highest-value work.",
+    startDate: shiftDate(scrum.endDate, 1),
+    endDate: shiftDate(scrum.endDate, daysBetween(scrum.startDate, scrum.endDate) + 1),
+    velocityPoints: scrum.velocityPoints
+  };
+  const roadmapBase = remainingRoadmap[remainingRoadmap.length - 1] || preparedSprint;
+  state.workspace = {
+    ...state.workspace,
+    scrum: normalizeWorkspaceScrum({
+      ...scrum,
+      sprintName: preparedSprint.name,
+      goal: preparedSprint.goal,
+      startDate: preparedSprint.startDate,
+      endDate: preparedSprint.endDate,
+      velocityPoints: preparedSprint.velocityPoints,
+      closedSprints: [closedSprint, ...scrum.closedSprints],
+      roadmapSprints: [
+        ...remainingRoadmap,
+        nextRoadmapSprintAfter(scrum, roadmapBase)
+      ],
+      retroActions: sprintRetroInsights(tasks, scrum, metrics).slice(0, 3).map((insight) => ({
+        id: uid("retro-action"),
+        title: insight.prompt,
+        owner: activeMemberId(),
+        status: "open"
+      }))
+    })
+  };
+  addAuditEvent({
+    action: "sprint_close",
+    detail: `Closed ${closedSprint.name}; rolled ${changedTasks.length} unfinished ${changedTasks.length === 1 ? "story" : "stories"} to ${rollForwardName}`,
+    targetType: "workspace",
+    targetId: state.workspace.id,
+    impact: "medium",
+    reversible: true,
+    metadata: { reportId: report.id, rolledForward: changedTasks.length }
+  });
+  saveState();
+  render();
+  showToast(`Closed ${closedSprint.name}`, "success");
+}
+
 function openProjectFromBacklog(projectId) {
   if (!byId(state.projects, projectId)) return;
   state.selectedProject = projectId;
@@ -31705,6 +32063,24 @@ document.addEventListener("click", (event) => {
   const sprintSyncMarkButton = event.target.closest("[data-sprint-sync-mark]");
   if (sprintSyncMarkButton) {
     markSprintSyncProviderSynced(sprintSyncMarkButton.dataset.sprintSyncMark);
+    return;
+  }
+
+  const sprintReportCopyButton = event.target.closest("[data-sprint-report-copy]");
+  if (sprintReportCopyButton) {
+    copySprintReportMarkdown();
+    return;
+  }
+
+  const sprintReportDownloadButton = event.target.closest("[data-sprint-report-download]");
+  if (sprintReportDownloadButton) {
+    downloadSprintReportJson();
+    return;
+  }
+
+  const sprintCloseButton = event.target.closest("[data-sprint-close]");
+  if (sprintCloseButton) {
+    closeCurrentSprint();
     return;
   }
 

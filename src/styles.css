@@ -3180,7 +3180,17 @@ body[data-tutorial-target="view"] #app-view {
   grid-column: 1 / -1;
 }
 
+.sprint-closeout-panel {
+  grid-column: 1 / -1;
+}
+
 .sprint-planning-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sprint-closeout-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
@@ -3192,8 +3202,15 @@ body[data-tutorial-target="view"] #app-view {
   gap: 12px;
 }
 
+.sprint-closeout-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .sprint-planning-grid > section,
-.scrum-master-grid > section {
+.scrum-master-grid > section,
+.sprint-closeout-grid > section {
   display: grid;
   align-content: start;
   gap: 10px;
@@ -3247,6 +3264,88 @@ body[data-tutorial-target="view"] #app-view {
 .sprint-planning-row span {
   color: var(--muted);
   font-size: 0.76rem;
+}
+
+.sprint-closeout-row {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sprint-closeout-row.is-risk {
+  border-color: var(--amber);
+}
+
+.sprint-closeout-row span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.sprint-retro-insight-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sprint-retro-insight-list article {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sprint-retro-insight-list span,
+.sprint-retro-insight-list p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.sprint-report-preview {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.3fr) minmax(0, 1fr);
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.sprint-report-preview > div {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+}
+
+.sprint-report-preview span,
+.sprint-report-preview small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.sprint-report-preview pre {
+  max-height: 340px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  white-space: pre-wrap;
+  color: var(--text);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.sprint-closeout-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .scrum-master-grid {
@@ -9661,13 +9760,16 @@ body[data-density="compact"] .main-content {
   .time-entry-form,
   .sprint-settings-form,
   .sprint-planning-summary,
+  .sprint-closeout-summary,
   .sprint-planning-grid,
+  .sprint-closeout-grid,
   .scrum-master-grid,
   .sprint-roadmap-grid,
   .sprint-scenario-grid,
   .sprint-scenario-metrics,
   .sprint-sync-grid,
   .sprint-sync-preview,
+  .sprint-report-preview,
   .sprint-burndown-layout,
   .sprint-burndown-summary,
   .sprint-timeline-scale,
