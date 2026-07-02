@@ -6228,6 +6228,46 @@ body[data-tutorial-target="view"] #app-view {
   margin: 0;
 }
 
+.gantt-zoom-controls {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.gantt-zoom-controls button {
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.gantt-zoom-controls button.is-active {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.gantt-insights {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.gantt-insights article {
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.gantt-insights span,
+.gantt-insights small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
 .gantt-scale {
   color: var(--muted);
   font-size: 0.76rem;
@@ -6241,21 +6281,52 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .gantt-list {
+  position: relative;
   display: grid;
   gap: 10px;
   min-width: 0;
 }
 
+.gantt-connectors {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.gantt-connector {
+  position: absolute;
+  border-top: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+  opacity: 0.42;
+}
+
+.gantt-connector.is-blocked {
+  border-color: var(--amber);
+  opacity: 0.7;
+}
+
 .gantt-row {
+  position: relative;
   padding: 10px;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
+  z-index: 1;
 }
 
 .gantt-row.is-blocked {
   border-color: var(--amber);
   box-shadow: 0 8px 24px rgba(154, 100, 25, 0.08);
+}
+
+.gantt-row.is-critical {
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+
+.gantt-row.is-slipped {
+  border-color: var(--red);
+  box-shadow: inset 3px 0 0 var(--red);
 }
 
 .gantt-label {
@@ -6306,11 +6377,24 @@ body[data-tutorial-target="view"] #app-view {
   background: var(--accent-soft);
   border: 1px solid var(--accent);
   border-radius: 999px;
+  cursor: grab;
+  gap: 6px;
 }
 
 .gantt-bar.priority-urgent,
 .gantt-bar.priority-high {
   color: #ffffff;
+}
+
+.gantt-bar button {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.18);
+  border: 0;
+  border-radius: 999px;
 }
 
 .gantt-marker {
@@ -6331,6 +6415,60 @@ body[data-tutorial-target="view"] #app-view {
 .gantt-dependencies strong {
   margin-left: 8px;
   color: var(--amber);
+}
+
+.portfolio-gantt-panel {
+  margin-bottom: 14px;
+}
+
+.portfolio-gantt-list {
+  display: grid;
+  gap: 10px;
+}
+
+.portfolio-gantt-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.34fr) minmax(360px, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.portfolio-gantt-row.is-slipped {
+  border-color: var(--red);
+}
+
+.portfolio-gantt-track {
+  position: relative;
+  min-height: 38px;
+  overflow: hidden;
+  background: #eee9df;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.portfolio-gantt-track::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0, transparent calc(25% - 1px), rgba(36, 33, 29, 0.08) calc(25% - 1px), rgba(36, 33, 29, 0.08) 25%);
+}
+
+.portfolio-gantt-bar {
+  position: absolute;
+  top: 7px;
+  min-width: 54px;
+  min-height: 22px;
+  padding: 4px 8px;
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 900;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
 }
 
 .undated-panel {
@@ -8351,6 +8489,7 @@ body[data-density="compact"] .main-content {
   .board-flow-panel,
   .board-backlog-composer,
   .board-backlog-item,
+  .gantt-insights,
   .settings-form,
   .settings-section-account .api-sync-form,
   .entitlement-grant-form,
@@ -8590,6 +8729,7 @@ body[data-density="compact"] .main-content {
 
   .timeline-card,
   .undated-task,
+  .portfolio-gantt-row,
   .invitation-row,
   .member-role-row {
     grid-template-columns: 1fr;

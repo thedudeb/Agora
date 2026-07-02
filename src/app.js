@@ -953,6 +953,7 @@ const seedData = {
   selectedSettingsTab: "account",
   selectedCalendarMonth: "2026-07",
   selectedDailyDate: "2026-06-27",
+  selectedGanttZoom: "month",
   onboarding: {
     dismissed: false,
     sampleMode: "demo",
@@ -2507,6 +2508,7 @@ function normalizeState(nextState) {
     selectedSettingsTab: nextState.selectedSettingsTab || seedData.selectedSettingsTab,
     selectedCalendarMonth: nextState.selectedCalendarMonth || seedData.selectedCalendarMonth,
     selectedDailyDate: nextState.selectedDailyDate || todayKey(),
+    selectedGanttZoom: ["week", "month", "quarter"].includes(nextState.selectedGanttZoom) ? nextState.selectedGanttZoom : seedData.selectedGanttZoom,
     templateLibrary: {
       category: "all",
       query: "",
@@ -14038,6 +14040,17 @@ function updateProjectDate(id, field, date) {
   syncProjectToApi(nextProject, "Project synced to API", false, recordRevisionValue(project));
 }
 
+function shiftGanttTask(taskId, days) {
+  const task = byId(state.tasks, taskId);
+  if (!task || !Number.isFinite(days) || !days) return;
+  const start = taskStartDate(task);
+  const end = task.dueDate || start;
+  updateTask(task.id, {
+    startDate: shiftDate(start, days),
+    dueDate: shiftDate(end, days)
+  });
+}
+
 function recordTaskChanges(previous, next) {
   if (previous.status !== next.status) {
     addActivity({
@@ -14755,6 +14768,47 @@ function renderWhiteboardItem(item) {
   `;
 }
 
+function renderPortfolioGantt(projects = []) {
+  const scheduledProjects = projects.filter((project) => project.startDate && project.dueDate);
+  if (!scheduledProjects.length) return "";
+  const dates = scheduledProjects.flatMap((project) => [project.startDate, project.dueDate]).sort();
+  const rangeStart = dates[0];
+  const totalDays = Math.max(1, daysBetween(rangeStart, dates[dates.length - 1]));
+  return `
+    <section class="panel portfolio-gantt-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Portfolio Gantt</p>
+          <h2>Cross-project schedule</h2>
+        </div>
+        <span class="status-pill inbox-blue">${scheduledProjects.length} scheduled</span>
+      </div>
+      <div class="portfolio-gantt-list">
+        ${scheduledProjects.map((project) => {
+          const left = Math.min(100, (daysBetween(rangeStart, project.startDate) / totalDays) * 100);
+          const width = Math.max(6, Math.min(100 - left, ((daysBetween(project.startDate, project.dueDate) + 1) / totalDays) * 100));
+          const tasks = getProjectTasks(project.id, false);
+          const progress = projectProgress(tasks);
+          const slipped = project.dueDate && parseDateValue(project.dueDate) < new Date() && progress < 100;
+          return `
+            <article class="portfolio-gantt-row ${slipped ? "is-slipped" : ""}">
+              <button class="table-task-button" type="button" data-project-id="${project.id}">
+                <strong>${escapeHtml(project.name)}</strong>
+                <span>${escapeHtml(companyName(project.companyId))} - ${progress}% complete</span>
+              </button>
+              <div class="portfolio-gantt-track">
+                <span class="portfolio-gantt-bar" style="left: ${left}%; width: ${width}%;">
+                  ${formatDate(project.startDate)} - ${formatDate(project.dueDate)}
+                </span>
+              </div>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderDashboard() {
   const tasks = getFilteredTasks();
   const visibleProjects = state.filters.company === "all"
@@ -14788,6 +14842,8 @@ function renderDashboard() {
       ${metric("Overdue", overdueTasks.length)}
       ${metric("Progress", `${completionRate}%`)}
     </div>
+
+    ${renderPortfolioGantt(visibleProjects)}
 
     <div class="dashboard-support-grid">
       ${renderOnboardingPanel()}
@@ -18808,6 +18864,91 @@ function renderProjectTimeline(project, tasks, milestones) {
   `;
 }
 
+function ganttZoomWindow(rangeStart, rangeEnd) {
+  const zoom = ["week", "month", "quarter"].includes(state.selectedGanttZoom) ? state.selectedGanttZoom : "month";
+  const minDays = { week: 7, month: 30, quarter: 90 }[zoom];
+  const actualDays = Math.max(1, daysBetween(rangeStart, rangeEnd));
+  const totalDays = Math.max(minDays, actualDays);
+  return {
+    zoom,
+    rangeStart,
+    rangeEnd: totalDays === actualDays ? rangeEnd : shiftDate(rangeStart, totalDays),
+    totalDays
+  };
+}
+
+function ganttTaskSchedule(task, rangeStart, totalDays) {
+  const start = taskStartDate(task);
+  const end = task.dueDate || start;
+  const offset = Math.max(0, daysBetween(rangeStart, start));
+  const duration = Math.max(1, daysBetween(start, end) + 1);
+  const left = Math.min(100, (offset / totalDays) * 100);
+  const width = Math.max(4, Math.min(100 - left, (duration / totalDays) * 100));
+  return { start, end, left, width, duration };
+}
+
+function ganttTaskRisk(task) {
+  const openDependencies = openTaskDependencies(task);
+  const slipped = task.dueDate && isOverdue(task) && task.status !== "done";
+  const critical = slipped || openDependencies.length || task.priority === "urgent" || task.priority === "high";
+  return {
+    openDependencies,
+    slipped,
+    critical,
+    label: slipped ? "Slipped path" : critical ? "Critical path" : "On track"
+  };
+}
+
+function ganttDependencyConnectors(tasks, rangeStart, totalDays) {
+  const rowIndex = new Map(tasks.map((task, index) => [task.id, index]));
+  return tasks.flatMap((task) => taskDependencies(task).map((dependency) => {
+    if (!rowIndex.has(dependency.id)) return null;
+    const from = ganttTaskSchedule(dependency, rangeStart, totalDays);
+    const to = ganttTaskSchedule(task, rangeStart, totalDays);
+    const fromRow = rowIndex.get(dependency.id);
+    const toRow = rowIndex.get(task.id);
+    const top = Math.min(fromRow, toRow) * 92 + 46;
+    const height = Math.max(12, Math.abs(toRow - fromRow) * 92);
+    const left = Math.min(96, Math.max(0, from.left + from.width));
+    const width = Math.max(4, Math.min(100 - left, to.left - left));
+    return {
+      id: `${dependency.id}-${task.id}`,
+      top,
+      height,
+      left,
+      width,
+      blocked: openTaskDependencies(task).some((item) => item.id === dependency.id)
+    };
+  }).filter(Boolean));
+}
+
+function renderGanttInsights(tasks) {
+  const critical = tasks.filter((task) => ganttTaskRisk(task).critical);
+  const slipped = tasks.filter((task) => ganttTaskRisk(task).slipped);
+  const blocked = tasks.filter((task) => openTaskDependencies(task).length);
+  const latest = [...tasks].sort((a, b) => String(b.dueDate || "").localeCompare(String(a.dueDate || "")))[0];
+  return `
+    <div class="gantt-insights" aria-label="Critical path insights">
+      <article><span>Critical path</span><strong>${critical.length}</strong><small>high-risk scheduled tasks</small></article>
+      <article><span>Slipped path</span><strong>${slipped.length}</strong><small>overdue scheduled tasks</small></article>
+      <article><span>Dependency risk</span><strong>${blocked.length}</strong><small>waiting on open work</small></article>
+      <article><span>Final scheduled finish</span><strong>${latest ? formatDate(latest.dueDate) : "None"}</strong><small>${latest ? escapeHtml(latest.title) : "No scheduled tasks"}</small></article>
+    </div>
+  `;
+}
+
+function renderGanttZoomControls() {
+  return `
+    <div class="gantt-zoom-controls" aria-label="Gantt zoom controls">
+      ${[
+        ["week", "Week"],
+        ["month", "Month"],
+        ["quarter", "Quarter"]
+      ].map(([id, label]) => `<button class="compact-button ${state.selectedGanttZoom === id ? "is-active" : ""}" type="button" data-gantt-zoom="${id}">${label}</button>`).join("")}
+    </div>
+  `;
+}
+
 function renderProjectGantt(project, tasks, milestones) {
   const scheduledTasks = tasks.filter((task) => task.dueDate);
   if (!scheduledTasks.length) return emptyState("Add task start and due dates to build a Gantt chart.");
@@ -18818,11 +18959,14 @@ function renderProjectGantt(project, tasks, milestones) {
     ...scheduledTasks.flatMap((task) => [taskStartDate(task), task.dueDate]),
     ...milestones.map((milestone) => milestone.dueDate)
   ].filter(Boolean).sort();
-  const rangeStart = dates[0];
-  const rangeEnd = dates[dates.length - 1];
-  const totalDays = Math.max(1, daysBetween(rangeStart, rangeEnd));
+  const zoomWindow = ganttZoomWindow(dates[0], dates[dates.length - 1]);
+  const rangeStart = zoomWindow.rangeStart;
+  const rangeEnd = zoomWindow.rangeEnd;
+  const totalDays = zoomWindow.totalDays;
   const ticks = Array.from({ length: 5 }, (_, index) => shiftDate(rangeStart, Math.round((totalDays * index) / 4)));
   const visibleMilestones = milestones.filter((milestone) => milestone.dueDate);
+  const orderedTasks = scheduledTasks.sort((a, b) => taskStartDate(a).localeCompare(taskStartDate(b)));
+  const connectors = ganttDependencyConnectors(orderedTasks, rangeStart, totalDays);
 
   return `
     <section class="gantt-panel" aria-label="Project Gantt schedule">
@@ -18836,38 +18980,38 @@ function renderProjectGantt(project, tasks, milestones) {
           <span>${scheduledTasks.filter(isTaskBlocked).length} blocked</span>
         </div>
       </div>
+      ${renderGanttZoomControls()}
+      ${renderGanttInsights(scheduledTasks)}
       <div class="gantt-scale" aria-hidden="true">
         <span></span>
         <div>
           ${ticks.map((tick) => `<span>${formatDate(tick)}</span>`).join("")}
         </div>
       </div>
-      <div class="gantt-list">
-        ${scheduledTasks
-          .sort((a, b) => taskStartDate(a).localeCompare(taskStartDate(b)))
-          .map((task) => renderGanttTaskRow(task, rangeStart, totalDays, visibleMilestones))
-          .join("")}
+      <div class="gantt-list" data-gantt-start="${rangeStart}" data-gantt-total-days="${totalDays}">
+        <div class="gantt-connectors" aria-hidden="true">
+          ${connectors.map((connector) => `
+            <span class="gantt-connector ${connector.blocked ? "is-blocked" : ""}" style="top: ${connector.top}px; left: ${connector.left}%; width: ${connector.width}%; height: ${connector.height}px;"></span>
+          `).join("")}
+        </div>
+        ${orderedTasks.map((task) => renderGanttTaskRow(task, rangeStart, totalDays, visibleMilestones)).join("")}
       </div>
     </section>
   `;
 }
 
 function renderGanttTaskRow(task, rangeStart, totalDays, milestones) {
-  const start = taskStartDate(task);
-  const end = task.dueDate || start;
-  const offset = Math.max(0, daysBetween(rangeStart, start));
-  const duration = Math.max(1, daysBetween(start, end) + 1);
-  const left = Math.min(100, (offset / totalDays) * 100);
-  const width = Math.max(4, Math.min(100 - left, (duration / totalDays) * 100));
+  const { start, end, left, width } = ganttTaskSchedule(task, rangeStart, totalDays);
   const dependencies = taskDependencies(task);
-  const openDependencies = openTaskDependencies(task);
+  const risk = ganttTaskRisk(task);
+  const openDependencies = risk.openDependencies;
 
   return `
-    <article class="gantt-row ${openDependencies.length ? "is-blocked" : ""}">
+    <article class="gantt-row ${openDependencies.length ? "is-blocked" : ""} ${risk.critical ? "is-critical" : ""} ${risk.slipped ? "is-slipped" : ""}">
       <div class="gantt-label">
         <button class="table-task-button" type="button" data-edit-task="${task.id}">
           <strong>${escapeHtml(task.title)}</strong>
-          <span>${memberName(task.assignee)} - ${statusLabel(task.status)}</span>
+          <span>${memberName(task.assignee)} - ${statusLabel(task.status)} - ${risk.label}</span>
         </button>
         <div class="gantt-date-controls">
           <input type="date" value="${start}" data-task-start="${task.id}" aria-label="Change task start date">
@@ -18879,8 +19023,10 @@ function renderGanttTaskRow(task, rangeStart, totalDays, milestones) {
           const markerLeft = Math.min(100, Math.max(0, (daysBetween(rangeStart, milestone.dueDate) / totalDays) * 100));
           return `<span class="gantt-marker" style="left: ${markerLeft}%" title="${escapeHtml(milestone.title)}"></span>`;
         }).join("")}
-        <span class="gantt-bar priority-${task.priority}" style="left: ${left}%; width: ${width}%;">
+        <span class="gantt-bar priority-${task.priority}" draggable="true" data-gantt-drag="${task.id}" style="left: ${left}%; width: ${width}%;">
+          <button type="button" data-gantt-shift="${task.id}" data-gantt-shift-days="-1" aria-label="Move ${escapeHtml(task.title)} one day earlier">&lsaquo;</button>
           <span>${formatDate(start)} - ${formatDate(end)}</span>
+          <button type="button" data-gantt-shift="${task.id}" data-gantt-shift-days="1" aria-label="Move ${escapeHtml(task.title)} one day later">&rsaquo;</button>
         </span>
       </div>
       <div class="gantt-dependencies">
@@ -29693,6 +29839,20 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const ganttZoomButton = event.target.closest("[data-gantt-zoom]");
+  if (ganttZoomButton) {
+    state.selectedGanttZoom = ganttZoomButton.dataset.ganttZoom;
+    saveState();
+    render();
+    return;
+  }
+
+  const ganttShiftButton = event.target.closest("[data-gantt-shift]");
+  if (ganttShiftButton) {
+    shiftGanttTask(ganttShiftButton.dataset.ganttShift, Number(ganttShiftButton.dataset.ganttShiftDays || 0));
+    return;
+  }
+
   const boardMenuButton = event.target.closest("[data-board-menu]");
   if (boardMenuButton) {
     openBoardMenuColumn = openBoardMenuColumn === boardMenuButton.dataset.boardMenu ? "" : boardMenuButton.dataset.boardMenu;
@@ -30222,6 +30382,13 @@ els.appView.addEventListener("input", (event) => {
 });
 
 els.appView.addEventListener("dragstart", (event) => {
+  const ganttBar = event.target.closest("[data-gantt-drag]");
+  if (ganttBar) {
+    event.dataTransfer.setData("application/agora-gantt-task", ganttBar.dataset.ganttDrag);
+    event.dataTransfer.setData("text/plain", ganttBar.dataset.ganttDrag);
+    return;
+  }
+
   const card = event.target.closest("[data-task-id]");
   if (!card) return;
   event.dataTransfer.setData("text/plain", card.dataset.taskId);
@@ -30253,6 +30420,10 @@ function markBoardDropTarget(event) {
 }
 
 els.appView.addEventListener("dragover", (event) => {
+  if (event.target.closest("[data-gantt-start]")) {
+    event.preventDefault();
+    return;
+  }
   if (event.target.closest("[data-drop-status]")) {
     event.preventDefault();
     markBoardDropTarget(event);
@@ -30260,6 +30431,20 @@ els.appView.addEventListener("dragover", (event) => {
 });
 
 els.appView.addEventListener("drop", (event) => {
+  const ganttDropZone = event.target.closest("[data-gantt-start]");
+  const ganttTaskId = event.dataTransfer.getData("application/agora-gantt-task");
+  if (ganttDropZone && ganttTaskId) {
+    event.preventDefault();
+    const task = byId(state.tasks, ganttTaskId);
+    if (!task) return;
+    const rect = ganttDropZone.getBoundingClientRect();
+    const pct = clamp(((event.clientX - rect.left) / Math.max(1, rect.width)) * 100, 0, 100);
+    const targetStart = shiftDate(ganttDropZone.dataset.ganttStart, Math.round((Number(ganttDropZone.dataset.ganttTotalDays || 1) * pct) / 100));
+    const delta = daysBetween(taskStartDate(task), targetStart);
+    shiftGanttTask(ganttTaskId, delta);
+    return;
+  }
+
   const dropZone = event.target.closest("[data-drop-status]");
   if (!dropZone) return;
   event.preventDefault();
