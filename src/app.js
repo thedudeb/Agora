@@ -745,6 +745,7 @@ const marketplaceProjectTemplates = [
 const routes = {
   landing: "Agora",
   dashboard: "Dashboard",
+  "command-center": "Command Center",
   launch: "Launch Flow",
   portal: "Portal",
   daily: "Today",
@@ -4118,6 +4119,7 @@ function canAccessRoute(route) {
   if (isClientSession()) return clientAllowedRoutes().has(route);
   if (!apiSession) return true;
   const routePermissions = {
+    "command-center": "workspace:read",
     audit: "audit:read",
     permissions: "audit:read",
     beta: "workspace:read",
@@ -10406,6 +10408,10 @@ function isOverdue(task) {
   return new Date(`${task.dueDate}T00:00:00`) < today;
 }
 
+function cleanString(value) {
+  return String(value || "").trim();
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -12371,6 +12377,7 @@ function render() {
     docs: renderDocsAndFiles,
     intake: renderIntake,
     "feature-requests": renderFeatureRequests,
+    "command-center": renderPmCommandCenter,
     fields: renderCustomFields,
     audit: renderAuditLog,
     permissions: renderPermissionsAudit,
@@ -12403,7 +12410,7 @@ function render() {
 }
 
 function sidebarGroupForRoute(route) {
-  if (["landing", "dashboard", "launch", "portal", "daily", "inbox"].includes(route)) return "home";
+  if (["landing", "dashboard", "command-center", "launch", "portal", "daily", "inbox"].includes(route)) return "home";
   if (["board", "list", "calendar", "my-work", "time", "operator", "collaboration"].includes(route)) return "work";
   if (["reports", "goals", "marketplace", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
   if (["audit", "permissions", "beta", "readiness", "data", "settings"].includes(route)) return "admin";
@@ -13571,6 +13578,248 @@ function renderDashboardWidgets(context) {
     "Turn on dashboard widgets to build a command center.",
     { label: "Open Settings", route: "settings" }
   );
+}
+
+function pmCommandCenterData() {
+  const scoped = reportTaskScope();
+  const openTasks = scoped.tasks.filter((task) => task.status !== "done");
+  const overdueTasks = scoped.tasks.filter(isOverdue);
+  const blockedTasks = scoped.tasks.filter(isTaskBlocked);
+  const dueSoon = dueSoonTasks(scoped.tasks, 7);
+  const projectRows = scoped.projects.map((project) => projectReport(project, scoped.tasks, scoped.timeEntries, scoped.submissions));
+  const projectIds = new Set(scoped.projects.map((project) => project.id));
+  const approvals = state.approvals
+    .filter((approval) => projectIds.has(approval.projectId) && approval.status !== "approved")
+    .sort((a, b) => cleanString(a.dueDate || "9999-12-31").localeCompare(cleanString(b.dueDate || "9999-12-31")));
+  const raidItems = normalizeRaidItems(state.raidItems)
+    .filter((item) => projectIds.has(item.projectId) && item.status !== "closed")
+    .sort((a, b) => raidSeverityScore(b) - raidSeverityScore(a) || cleanString(a.dueDate).localeCompare(cleanString(b.dueDate)));
+  const requests = featureRequestTasks().filter((task) => projectIds.has(task.projectId));
+  const requestsNeedingResponse = requests.filter(featureRequestNeedsRequesterResponse);
+  const capacity = capacityRows(scoped.tasks, scoped.timeEntries).sort((a, b) => b.utilization - a.utilization);
+  const clientRows = visibleCompanies()
+    .map((company) => ({ company, portal: companyPortalSnapshot(company.id) }))
+    .filter((row) => row.portal.projects.length)
+    .sort((a, b) => b.portal.pendingApprovals.length - a.portal.pendingApprovals.length || b.portal.openTasks.length - a.portal.openTasks.length);
+  const attentionItems = [
+    ...overdueTasks.map((task) => ({
+      tone: "red",
+      type: "Overdue",
+      title: task.title,
+      detail: `${projectName(task.projectId)} / due ${formatDate(task.dueDate)} / ${memberName(task.assignee)}`,
+      taskId: task.id
+    })),
+    ...blockedTasks.map((task) => ({
+      tone: "amber",
+      type: "Blocked",
+      title: task.title,
+      detail: `Waiting on ${openTaskDependencies(task).map((dependency) => dependency.title).join(", ")}`,
+      taskId: task.id
+    })),
+    ...approvals.map((approval) => ({
+      tone: approval.status === "needs-changes" ? "red" : "amber",
+      type: "Approval",
+      title: approval.title,
+      detail: `${projectName(approval.projectId)} / reviewer ${approval.reviewer} / due ${formatDate(approval.dueDate)}`,
+      projectId: approval.projectId
+    })),
+    ...requestsNeedingResponse.map((task) => ({
+      tone: "blue",
+      type: "Feedback",
+      title: task.title.replace(/^Feature request:\s*/i, ""),
+      detail: `${task.customFields?.requester || "Requester"} needs an update / ${featureRequestStatusLabel(featureRequestStatus(task))}`,
+      taskId: task.id
+    })),
+    ...raidItems.slice(0, 4).map((item) => ({
+      tone: raidTone(item),
+      type: raidTypeLabel(item.type),
+      title: item.title,
+      detail: `${projectName(item.projectId)} / ${raidSeverityLabel(item.severity)} / due ${formatDate(item.dueDate)}`,
+      projectId: item.projectId
+    }))
+  ].sort((a, b) => ({ red: 4, amber: 3, blue: 2, green: 1, neutral: 0 }[b.tone] || 0) - ({ red: 4, amber: 3, blue: 2, green: 1, neutral: 0 }[a.tone] || 0));
+
+  return {
+    ...scoped,
+    openTasks,
+    overdueTasks,
+    blockedTasks,
+    dueSoon,
+    projectRows,
+    approvals,
+    raidItems,
+    requests,
+    requestsNeedingResponse,
+    capacity,
+    clientRows,
+    attentionItems
+  };
+}
+
+function renderPmCommandCenter() {
+  const center = pmCommandCenterData();
+  const atRiskProjects = center.projectRows.filter((row) => row.health < 75);
+  const overloaded = center.capacity.filter((row) => row.status === "overloaded");
+  const atRiskCapacity = center.capacity.filter((row) => row.status === "at-risk");
+  const topActions = [...center.openTasks]
+    .sort((a, b) => operatorTaskScore(b) - operatorTaskScore(a))
+    .slice(0, 5);
+
+  els.appView.innerHTML = `
+    ${renderRouteHeader({
+      eyebrow: "PM command center",
+      title: "What needs attention now?",
+      description: "A daily operating view for blocked work, overdue tasks, approvals, client promises, team load, and feedback loops across the workspace.",
+      actions: [
+        { label: "Open Today", route: "daily", primary: true },
+        { label: "Open Reports", route: "reports" },
+        { label: "Feature Requests", route: "feature-requests" }
+      ]
+    })}
+
+    <div class="metric-grid">
+      ${metric("Needs attention", center.attentionItems.length)}
+      ${metric("Overdue", center.overdueTasks.length)}
+      ${metric("Blocked", center.blockedTasks.length)}
+      ${metric("Approvals", center.approvals.length)}
+      ${metric("Needs response", center.requestsNeedingResponse.length)}
+      ${metric("Overloaded", overloaded.length)}
+    </div>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Attention queue</p>
+          <h2>Highest-risk items</h2>
+        </div>
+        <span class="status-pill ${center.attentionItems.length ? "inbox-amber" : "inbox-green"}">${center.attentionItems.length ? "Action needed" : "Clear"}</span>
+      </div>
+      <div class="risk-list">
+        ${center.attentionItems.length ? center.attentionItems.slice(0, 10).map(renderPmAttentionItem).join("") : emptyState("No overdue, blocked, approval, feedback, or RAID item needs attention right now.")}
+      </div>
+    </section>
+
+    <div class="dashboard-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Next best actions</p>
+            <h2>Do these first</h2>
+          </div>
+          <button class="button button-secondary compact-button" type="button" data-route="daily">Open Today</button>
+        </div>
+        <div class="task-stack">
+          ${topActions.length ? topActions.map(renderTaskCard).join("") : emptyState("No open task is currently asking for attention.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Project health</p>
+            <h2>At-risk projects</h2>
+          </div>
+          <button class="button button-secondary compact-button" type="button" data-route="reports">Open Reports</button>
+        </div>
+        <div class="report-card-list">
+          ${atRiskProjects.length ? atRiskProjects.sort((a, b) => a.health - b.health).slice(0, 5).map(renderProjectReportCard).join("") : emptyState("No project is below the health threshold.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Client promises</p>
+            <h2>Portal and approval watch</h2>
+          </div>
+          <button class="button button-secondary compact-button" type="button" data-route="portal">Open Portal</button>
+        </div>
+        <div class="project-summary-list">
+          ${center.clientRows.length ? center.clientRows.slice(0, 5).map(renderPmClientPromiseRow).join("") : emptyState("No client project is visible in this workspace.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Team load</p>
+            <h2>Capacity pressure</h2>
+          </div>
+          <span class="status-pill ${overloaded.length ? "inbox-red" : atRiskCapacity.length ? "inbox-amber" : "inbox-green"}">${overloaded.length || atRiskCapacity.length ? "Rebalance" : "Balanced"}</span>
+        </div>
+        <div class="workload-report-list">
+          ${center.capacity.slice(0, 5).map(renderWorkloadReportRow).join("")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Decisions and RAID</p>
+            <h2>Control points</h2>
+          </div>
+          <button class="button button-secondary compact-button" type="button" data-route="collaboration">Open Collab</button>
+        </div>
+        <div class="project-raid-list">
+          ${center.raidItems.length ? center.raidItems.slice(0, 6).map(renderRaidItem).join("") : emptyState("No open risks, assumptions, issues, decisions, or changes are tracked.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Feedback loop</p>
+            <h2>Requester updates</h2>
+          </div>
+          <button class="button button-secondary compact-button" type="button" data-route="feature-requests">Open Requests</button>
+        </div>
+        <div class="readiness-list compact-readiness">
+          ${center.requestsNeedingResponse.length ? center.requestsNeedingResponse.slice(0, 5).map(renderPmFeedbackRow).join("") : emptyState("No requester update is waiting.")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderPmAttentionItem(item) {
+  return `
+    <article class="risk-item">
+      <span class="status-pill inbox-${item.tone}">${escapeHtml(item.type)}</span>
+      <button class="table-task-button" type="button" ${item.taskId ? `data-edit-task="${escapeHtml(item.taskId)}"` : ""} ${item.projectId ? `data-project-id="${escapeHtml(item.projectId)}"` : ""}>
+        <strong>${escapeHtml(item.title)}</strong>
+        <span>${escapeHtml(item.detail)}</span>
+      </button>
+    </article>
+  `;
+}
+
+function renderPmClientPromiseRow(row) {
+  return `
+    <article class="project-summary-card">
+      <button class="table-task-button" type="button" data-company-id="${escapeHtml(row.company.id)}">
+        <strong>${escapeHtml(row.company.name)}</strong>
+        <span>${row.portal.openTasks.length} open tasks / ${row.portal.pendingApprovals.length} pending approvals / ${row.portal.progress}% complete</span>
+      </button>
+      <div class="project-summary-meta">
+        <span>${row.portal.documents.length + row.portal.files.length} shared assets</span>
+        <span>${row.portal.updatedAt ? `Updated ${escapeHtml(formatTimestamp(row.portal.updatedAt))}` : "No update yet"}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderPmFeedbackRow(task) {
+  const status = featureRequestStatus(task);
+  return `
+    <article class="readiness-item is-pending">
+      <span>Next</span>
+      <div>
+        <strong>${escapeHtml(task.title.replace(/^Feature request:\s*/i, ""))}</strong>
+        <p>${escapeHtml(task.customFields?.requester || "Requester")} / ${escapeHtml(featureRequestStatusLabel(status))} / owner ${escapeHtml(memberName(task.assignee))}</p>
+      </div>
+      <button class="button button-secondary compact-button" type="button" data-edit-task="${escapeHtml(task.id)}">Open</button>
+    </article>
+  `;
 }
 
 function renderDashboardProjectsWidget(visibleProjects) {

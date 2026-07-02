@@ -76,6 +76,24 @@ const routeChecks = [
     ]
   },
   {
+    name: "PM command center",
+    suite: "workspace",
+    route: "command-center",
+    width: 1265,
+    height: 712,
+    required: [
+      "PM command center",
+      "What needs attention now?",
+      "Attention queue",
+      "Highest-risk items",
+      "Next best actions",
+      "Client promises",
+      "Team load",
+      "Decisions and RAID",
+      "Feedback loop"
+    ]
+  },
+  {
     name: "Production readiness audit",
     suite: "release",
     route: "readiness",
