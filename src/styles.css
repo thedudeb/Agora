@@ -3184,6 +3184,10 @@ body[data-tutorial-target="view"] #app-view {
   grid-column: 1 / -1;
 }
 
+.sprint-automation-panel {
+  grid-column: 1 / -1;
+}
+
 .sprint-planning-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -3429,6 +3433,77 @@ body[data-tutorial-target="view"] #app-view {
   color: var(--muted);
   font-size: 0.76rem;
   font-weight: 900;
+}
+
+.sprint-automation-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sprint-automation-card {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sprint-automation-card.is-enabled {
+  border-color: var(--green);
+  box-shadow: inset 3px 0 0 var(--green);
+}
+
+.sprint-automation-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.sprint-automation-card-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.sprint-automation-card-header strong,
+.sprint-automation-card-header span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sprint-automation-card-header span,
+.sprint-automation-meta span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.sprint-automation-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sprint-automation-meta span {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  padding: 0 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.sprint-automation-preview {
+  display: grid;
+  gap: 6px;
 }
 
 .sprint-closeout-actions {
@@ -9856,6 +9931,7 @@ body[data-density="compact"] .main-content {
   .sprint-closeout-grid,
   .scrum-master-grid,
   .sprint-roadmap-grid,
+  .sprint-automation-grid,
   .sprint-scenario-grid,
   .sprint-scenario-metrics,
   .sprint-sync-grid,

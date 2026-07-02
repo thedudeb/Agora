@@ -509,6 +509,7 @@ const integrationEventOptions = ["task.updated", "approval.requested", "comment.
 const automationTriggerOptions = [
   { id: "task_due_soon", label: "Task due soon" },
   { id: "task_blocked", label: "Task is blocked" },
+  { id: "sprint_close", label: "Sprint closes" },
   { id: "board_card_moved", label: "Board card moved" },
   { id: "board_card_added", label: "Board card added" },
   { id: "board_review_ready", label: "Card enters review" },
@@ -540,7 +541,8 @@ const automationActionOptions = [
   { id: "add_activity", label: "Record activity" },
   { id: "draft_update", label: "Draft client update" },
   { id: "notify_channel", label: "Notify integration channel" },
-  { id: "schedule_reminder", label: "Schedule reminder" }
+  { id: "schedule_reminder", label: "Schedule reminder" },
+  { id: "create_retro_action", label: "Create retro action" }
 ];
 
 const aiPermissionDefaults = {
@@ -3263,6 +3265,7 @@ function triggerKindFromText(value = "") {
   if (text.includes("portal") && text.includes("feature")) return "portal_feature_request";
   if (text.includes("portal") && text.includes("approval")) return "portal_approval";
   if (text.includes("portal") && text.includes("comment")) return "portal_comment";
+  if (text.includes("sprint") && text.includes("close")) return "sprint_close";
   if (text.includes("import")) return "import_completed";
   if (text.includes("board") && text.includes("added")) return "board_card_added";
   if (text.includes("review")) return "board_review_ready";
@@ -3283,6 +3286,7 @@ function actionKindFromText(value = "") {
   if (text.includes("reminder")) return "schedule_reminder";
   if (text.includes("update")) return "draft_update";
   if (text.includes("notify")) return "notify_channel";
+  if (text.includes("retro")) return "create_retro_action";
   if (text.includes("activity") || text.includes("alert")) return "add_activity";
   return "create_task";
 }
@@ -21130,6 +21134,118 @@ function renderSprintCloseoutPanel(tasks, scrum, metrics) {
   `;
 }
 
+const sprintAutomationDefinitions = [
+  {
+    id: "blocked-standup",
+    name: "Blocked story standup",
+    description: "When a sprint story is blocked, add a standup-facing activity note for the owner.",
+    triggerKind: "task_blocked",
+    conditionKind: "tag",
+    conditionValue: "sprint",
+    actionKind: "add_activity",
+    actionTarget: "standup"
+  },
+  {
+    id: "carryover-risk",
+    name: "Sprint due-date carryover",
+    description: "When open sprint work is at or past the sprint due window, flag it as carryover risk.",
+    triggerKind: "task_due_soon",
+    conditionKind: "status",
+    conditionValue: "open",
+    actionKind: "add_tag",
+    actionTarget: "carryover-risk"
+  },
+  {
+    id: "review-reminder",
+    name: "Review reminder",
+    description: "When sprint work sits in review, schedule a review reminder before the next standup.",
+    triggerKind: "board_review_ready",
+    conditionKind: "status",
+    conditionValue: "review",
+    actionKind: "schedule_reminder",
+    actionTarget: "review"
+  },
+  {
+    id: "close-retro-actions",
+    name: "Close sprint retro actions",
+    description: "When a sprint closes, convert retro insights into follow-up action items.",
+    triggerKind: "sprint_close",
+    conditionKind: "any",
+    conditionValue: "",
+    actionKind: "create_retro_action",
+    actionTarget: "retro"
+  }
+];
+
+function sprintAutomationRuleId(definitionId) {
+  return `sprint-automation-${definitionId}`;
+}
+
+function sprintAutomationRule(definition) {
+  return state.automations.find((automation) => automation.id === sprintAutomationRuleId(definition.id));
+}
+
+function sprintAutomationPreview(definition, tasks, scrum, metrics) {
+  if (definition.id === "blocked-standup") return metrics.blocked;
+  if (definition.id === "carryover-risk") return tasks.filter((task) => task.status !== "done" && (!task.dueDate || task.dueDate <= scrum.endDate));
+  if (definition.id === "review-reminder") return tasks.filter((task) => task.status === "review");
+  if (definition.id === "close-retro-actions") {
+    const retroTasks = new Map();
+    metrics.blocked.forEach((task) => retroTasks.set(task.id, task));
+    tasks.filter((task) => task.status === "review").forEach((task) => retroTasks.set(task.id, task));
+    metrics.scopeAdded.forEach((task) => retroTasks.set(task.id, task));
+    return Array.from(retroTasks.values());
+  }
+  return [];
+}
+
+function renderSprintAutomationPanel(tasks, scrum, metrics) {
+  return `
+    <section class="panel sprint-automation-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Sprint automation</p>
+          <h2>Preview sprint rules before enabling</h2>
+        </div>
+        <span class="status-pill inbox-blue">${sprintAutomationDefinitions.filter((definition) => sprintAutomationRule(definition)?.enabled).length}/${sprintAutomationDefinitions.length} enabled</span>
+      </div>
+      <div class="sprint-automation-grid">
+        ${sprintAutomationDefinitions.map((definition) => {
+          const rule = sprintAutomationRule(definition);
+          const previewTasks = sprintAutomationPreview(definition, tasks, scrum, metrics);
+          return `
+            <article class="sprint-automation-card ${rule?.enabled ? "is-enabled" : ""}">
+              <div class="sprint-automation-card-header">
+                <div>
+                  <strong>${escapeHtml(definition.name)}</strong>
+                  <span>${escapeHtml(definition.description)}</span>
+                </div>
+                <span class="status-pill ${rule?.enabled ? "inbox-green" : "inbox-neutral"}">${rule?.enabled ? "Enabled" : "Preview"}</span>
+              </div>
+              <div class="sprint-automation-meta">
+                <span>${escapeHtml(automationTriggerLabel(definition.triggerKind))}</span>
+                <span>${escapeHtml(automationActionLabel(definition.actionKind))}</span>
+                <span>${previewTasks.length} affected</span>
+              </div>
+              <div class="sprint-automation-preview">
+                ${previewTasks.length ? previewTasks.slice(0, 4).map((task) => `
+                  <button class="table-task-button" type="button" data-edit-task="${escapeHtml(task.id)}">
+                    <strong>${escapeHtml(task.title)}</strong>
+                    <span>${escapeHtml(`${taskStoryPoints(task)} pts - ${statusLabel(task.status)} - ${memberName(task.assignee)}`)}</span>
+                  </button>
+                `).join("") : emptyState("No matching sprint work right now.")}
+              </div>
+              <button class="button ${rule?.enabled ? "button-secondary" : "button-primary"} compact-button" type="button" data-sprint-automation-enable="${escapeHtml(definition.id)}" ${canWrite("projects:write") ? "" : "disabled"}>
+                ${rule?.enabled ? "Update Rule" : "Enable Rule"}
+              </button>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function sprintPlanningForecast(tasks, scrum) {
   const targetPoints = scrum.velocityPoints;
   const committedPoints = tasks.reduce((sum, task) => sum + taskStoryPoints(task), 0);
@@ -22061,6 +22177,7 @@ function renderSprintCommandCenter() {
       ${renderSprintScenarioPanel(tasks, scrum, metrics)}
       ${renderSprintExternalSyncPanel(tasks, scrum)}
       ${renderSprintCloseoutPanel(tasks, scrum, metrics)}
+      ${renderSprintAutomationPanel(tasks, scrum, metrics)}
 
       <section class="panel sprint-burndown-panel">
         <div class="panel-header">
@@ -28176,6 +28293,42 @@ function deleteRoadmapSprint(sprintId) {
   showToast("Roadmap sprint removed", "success");
 }
 
+function enableSprintAutomation(definitionId) {
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot manage sprint automations", "info");
+    return;
+  }
+  const definition = sprintAutomationDefinitions.find((item) => item.id === definitionId);
+  if (!definition) return;
+  const existing = sprintAutomationRule(definition);
+  const rule = normalizeAutomationRule({
+    id: sprintAutomationRuleId(definition.id),
+    name: `Sprint: ${definition.name}`,
+    trigger: automationTriggerLabel(definition.triggerKind),
+    action: automationActionLabel(definition.actionKind),
+    triggerKind: definition.triggerKind,
+    conditionKind: definition.conditionKind,
+    conditionValue: definition.conditionValue,
+    actionKind: definition.actionKind,
+    actionTarget: definition.actionTarget,
+    enabled: true,
+    lastRun: existing?.lastRun || "",
+    runCount: existing?.runCount || 0,
+    marketplacePackId: existing?.marketplacePackId || "",
+    source: "sprint",
+    creatorName: existing?.creatorName || "Agora sprint automation",
+    installedAt: existing?.installedAt || new Date().toISOString(),
+    license: existing?.license || "Workspace rule"
+  });
+  state.automations = existing
+    ? state.automations.map((automation) => automation.id === rule.id ? rule : automation)
+    : [rule, ...state.automations].slice(0, 50);
+  saveState();
+  render();
+  showToast(`${definition.name} enabled`, "success");
+  syncAutomationRuleToApi(rule, existing ? "Sprint automation updated in API" : "Sprint automation enabled in API", false);
+}
+
 function openProjectFromBacklog(projectId) {
   if (!byId(state.projects, projectId)) return;
   state.selectedProject = projectId;
@@ -32397,6 +32550,12 @@ document.addEventListener("click", (event) => {
   const sprintRoadmapDeleteButton = event.target.closest("[data-sprint-roadmap-delete]");
   if (sprintRoadmapDeleteButton) {
     deleteRoadmapSprint(sprintRoadmapDeleteButton.dataset.sprintRoadmapDelete);
+    return;
+  }
+
+  const sprintAutomationEnableButton = event.target.closest("[data-sprint-automation-enable]");
+  if (sprintAutomationEnableButton) {
+    enableSprintAutomation(sprintAutomationEnableButton.dataset.sprintAutomationEnable);
     return;
   }
 
