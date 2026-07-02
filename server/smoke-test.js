@@ -1180,6 +1180,46 @@ async function testAccountAuth() {
     assert(validatedPortalLink.portalSnapshot.documents.every((item) => !item.body), "public portal snapshot leaked document bodies");
     assert(!JSON.stringify(validatedPortalLink.portalSnapshot).includes("Other Company"), "public portal snapshot leaked another company");
 
+    const portalApprovalAction = await request(`${baseUrl}/api/portal-links/actions/${encodeURIComponent(portalLink.token)}`, {
+      method: "POST",
+      body: {
+        action: "approval",
+        approvalId: "approval-record",
+        status: "approved",
+        note: "Looks good from the hosted portal."
+      }
+    });
+    assert(portalApprovalAction.action.type === "approval", "hosted portal approval action did not return action type");
+    assert(portalApprovalAction.portalSnapshot.approvals.some((item) => item.id === "approval-record" && item.status === "approved"), "hosted portal approval action did not update snapshot");
+    assert(portalApprovalAction.action.notification.kind === "portal-approval", "hosted portal approval action did not create notification history");
+
+    const portalCommentAction = await request(`${baseUrl}/api/portal-links/actions/${encodeURIComponent(portalLink.token)}`, {
+      method: "POST",
+      body: {
+        action: "comment",
+        taskId: "portal-task-record",
+        body: "Can you share timing from the hosted portal?"
+      }
+    });
+    assert(portalCommentAction.action.type === "comment", "hosted portal comment action did not return action type");
+    assert(portalCommentAction.portalSnapshot.updates.some((item) => item.message === "Can you share timing from the hosted portal?"), "hosted portal comment did not appear in refreshed snapshot");
+
+    const portalFeatureAction = await request(`${baseUrl}/api/portal-links/actions/${encodeURIComponent(portalLink.token)}`, {
+      method: "POST",
+      body: {
+        action: "feature-request",
+        projectId: "project-record",
+        title: "Portal requested timeline",
+        details: "Please show milestone timing in the portal.",
+        requester: "Client Person",
+        email: "client-person@example.test",
+        impact: "workflow-blocker"
+      }
+    });
+    assert(portalFeatureAction.action.type === "feature-request", "hosted portal feature request did not return action type");
+    assert(portalFeatureAction.portalSnapshot.tasks.some((task) => task.title === "Feature request: Portal requested timeline"), "hosted portal feature request did not create visible task");
+    assert(portalFeatureAction.action.notification.kind === "portal-feature-request", "hosted portal feature request did not create notification history");
+
     const copiedPortalLink = await request(`${baseUrl}/api/portal-links/${encodeURIComponent(portalLink.portalLink.id)}/events`, {
       method: "POST",
       token: signup.token,

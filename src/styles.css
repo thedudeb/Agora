@@ -4008,6 +4008,27 @@ body[data-tutorial-target="view"] #app-view {
   grid-column: 1 / -1;
 }
 
+.portal-inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+  margin-top: 12px;
+}
+
+.portal-inline-form label,
+.portal-feature-form .wide-field {
+  min-width: 0;
+}
+
+.portal-inline-form input {
+  width: 100%;
+}
+
+.portal-feature-form {
+  margin-top: 14px;
+}
+
 .toggle-row {
   display: flex;
   gap: 10px;

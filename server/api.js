@@ -633,6 +633,15 @@ function createServer(options = {}) {
         return;
       }
 
+      const publicPortalActionMatch = url.pathname.match(/^\/api\/portal-links\/actions\/([^/]+)$/);
+      if (publicPortalActionMatch && request.method === "POST") {
+        assertRateLimit(request, "public-portal-action", PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS, PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS);
+        const body = await readJsonBody(request, PUBLIC_FEATURE_BODY_LIMIT_BYTES);
+        const result = await handlePortalLinkAction(storage, decodeURIComponent(publicPortalActionMatch[1]), body);
+        sendJson(response, 201, result);
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/public/feature-requests") {
         if (!publicFeatureRequestsEnabled()) {
           sendError(response, 404, "Public feature requests are disabled");
@@ -3828,14 +3837,7 @@ async function recordPortalLinkEvent(storage, linkId, event, session) {
 }
 
 async function validatePortalLink(storage, token) {
-  const tokenHash = hashPortalToken(token);
-  if (!tokenHash) publicError(404, "Portal link not found");
-  const links = await storage.loadRecords("clientPortalLinks", { tokenHash });
-  const link = links.find((item) => item.tokenHash === tokenHash);
-  if (!link) publicError(404, "Portal link not found");
-  const status = portalLinkStatus(link);
-  if (status !== "active") publicError(status === "expired" ? 410 : 403, `Portal link is ${status}`);
-
+  const link = await activePortalLinkFromToken(storage, token);
   const now = new Date().toISOString();
   const savedLink = await storage.upsertRecord("clientPortalLinks", normalizeClientPortalLinkRecord({
     ...link,
@@ -3858,6 +3860,275 @@ async function validatePortalLink(storage, token) {
     portalLink: publicPortalLink(savedLink),
     portalSnapshot: await publicPortalSnapshotForLink(storage, savedLink)
   };
+}
+
+async function activePortalLinkFromToken(storage, token) {
+  const tokenHash = hashPortalToken(token);
+  if (!tokenHash) publicError(404, "Portal link not found");
+  const links = await storage.loadRecords("clientPortalLinks", { tokenHash });
+  const link = links.find((item) => item.tokenHash === tokenHash);
+  if (!link) publicError(404, "Portal link not found");
+  const status = portalLinkStatus(link);
+  if (status !== "active") publicError(status === "expired" ? 410 : 403, `Portal link is ${status}`);
+  return normalizeClientPortalLinkRecord(link);
+}
+
+async function handlePortalLinkAction(storage, token, body = {}) {
+  const link = await activePortalLinkFromToken(storage, token);
+  const action = cleanString(body.action || body.type);
+  if (action === "approval") {
+    return portalApprovalAction(storage, link, body);
+  }
+  if (action === "comment") {
+    return portalCommentAction(storage, link, body);
+  }
+  if (action === "feature-request") {
+    return portalFeatureRequestAction(storage, link, body);
+  }
+  publicError(400, "Portal action is invalid");
+}
+
+async function portalApprovalAction(storage, link, body = {}) {
+  const approvalId = cleanString(body.approvalId);
+  const status = cleanString(body.status);
+  if (!approvalId || !["approved", "needs-changes", "requested"].includes(status)) {
+    publicError(400, "Portal approval action requires approvalId and a valid status");
+  }
+
+  const approval = await portalApprovalRecord(storage, link.companyId, approvalId);
+  const now = new Date().toISOString();
+  const savedApproval = await storage.upsertRecord("approvals", normalizeApproval({
+    ...approval,
+    status,
+    updatedAt: now
+  }), {
+    storage: storage.driver || "json-file",
+    updatedBy: "portal-link",
+    action: "client_portal_approval_action"
+  });
+  const note = cleanString(body.note).slice(0, 1200);
+  let comment = null;
+  if (note && approval.taskId) {
+    comment = await storage.upsertRecord("comments", normalizeComment({
+      id: `portal-comment-${crypto.randomUUID()}`,
+      taskId: approval.taskId,
+      author: "portal-link",
+      body: note,
+      kind: status === "approved" ? "decision" : "comment",
+      createdAt: now,
+      updatedAt: now
+    }), {
+      storage: storage.driver || "json-file",
+      updatedBy: "portal-link",
+      action: "client_portal_comment"
+    });
+  }
+  const activity = await portalActivity(storage, {
+    projectId: approval.projectId,
+    taskId: approval.taskId,
+    type: "approval",
+    message: `${status === "approved" ? "approved" : status === "needs-changes" ? "requested changes for" : "reopened"} ${approval.title}`
+  });
+  const notification = await recordPortalNotification(storage, link, {
+    kind: "portal-approval",
+    title: `Portal approval ${status === "approved" ? "approved" : status === "needs-changes" ? "needs changes" : "reopened"}`,
+    message: `${approval.title} was updated from a hosted portal link.`,
+    reason: note || "Client used a hosted portal action."
+  });
+  await storage.appendAuditEvent({
+    actorId: "portal-link",
+    action: "client_portal_approval_action",
+    workspaceId: workspace.id,
+    detail: `Hosted portal ${status} ${approval.title}`,
+    metadata: { companyId: link.companyId, linkId: link.id, tokenId: link.tokenId, approvalId: approval.id, status }
+  });
+  return portalActionResponse(storage, link, {
+    type: "approval",
+    approval: publicPortalApproval(savedApproval, [], [], []),
+    comment,
+    activity,
+    notification
+  });
+}
+
+async function portalCommentAction(storage, link, body = {}) {
+  const taskId = cleanString(body.taskId);
+  const text = cleanString(body.body || body.comment).slice(0, 1200);
+  if (!taskId || !text) publicError(400, "Portal comment requires taskId and body");
+  const task = await portalTaskRecord(storage, link.companyId, taskId);
+  const now = new Date().toISOString();
+  const comment = await storage.upsertRecord("comments", normalizeComment({
+    id: `portal-comment-${crypto.randomUUID()}`,
+    taskId: task.id,
+    author: "portal-link",
+    body: text,
+    kind: "comment",
+    createdAt: now,
+    updatedAt: now
+  }), {
+    storage: storage.driver || "json-file",
+    updatedBy: "portal-link",
+    action: "client_portal_comment"
+  });
+  const activity = await portalActivity(storage, {
+    projectId: task.projectId,
+    taskId: task.id,
+    type: "comment",
+    message: `commented on ${task.title}`
+  });
+  const notification = await recordPortalNotification(storage, link, {
+    kind: "portal-comment",
+    title: "Portal comment",
+    message: `A client commented on ${task.title}.`,
+    reason: text
+  });
+  await storage.appendAuditEvent({
+    actorId: "portal-link",
+    action: "client_portal_comment",
+    workspaceId: workspace.id,
+    detail: `Hosted portal comment on ${task.title}`,
+    metadata: { companyId: link.companyId, linkId: link.id, tokenId: link.tokenId, taskId: task.id }
+  });
+  return portalActionResponse(storage, link, { type: "comment", comment, activity, notification });
+}
+
+async function portalFeatureRequestAction(storage, link, body = {}) {
+  const title = cleanString(body.title).slice(0, 120);
+  const details = cleanString(body.details || body.description).slice(0, 1200);
+  if (!title) publicError(400, "Portal feature request requires a title");
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const projects = (Array.isArray(snapshot.projects) ? snapshot.projects : [])
+    .map(normalizeProject)
+    .filter((project) => project.companyId === link.companyId && !project.archivedAt);
+  if (!projects.length) publicError(503, "No shared project is available for portal feature requests");
+  const requestedProjectId = cleanString(body.projectId);
+  const project = projects.find((item) => item.id === requestedProjectId) || projects[0];
+  const now = new Date().toISOString();
+  const requester = cleanString(body.requester).slice(0, 80) || "Portal client";
+  const requesterEmail = cleanString(body.email).slice(0, 120);
+  const impact = cleanString(body.impact).slice(0, 80) || "nice-to-have";
+  const task = normalizeTask({
+    id: `feature-${crypto.randomUUID()}`,
+    projectId: project.id,
+    title: `Feature request: ${title}`,
+    description: [
+      details,
+      "",
+      `Requested from hosted portal by ${requester}${requesterEmail ? ` <${requesterEmail}>` : ""}.`
+    ].join("\n").trim(),
+    status: "todo",
+    priority: impact === "workflow-blocker" || impact === "bug-regression" ? "urgent" : impact === "revenue-risk" ? "high" : "normal",
+    tags: ["feature-request", "portal"],
+    visibility: "shared",
+    customFields: {
+      requestType: "feature-request",
+      source: "portal",
+      requester,
+      requesterEmail,
+      impact,
+      featureStatus: "new",
+      clientVisibility: "Shared"
+    },
+    createdAt: now,
+    updatedAt: now
+  });
+  const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks : [];
+  await storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    tasks: [task, ...tasks.filter((item) => item.id !== task.id)]
+  }, {
+    storage: storage.driver || "json-file",
+    updatedBy: "portal-link",
+    action: "client_portal_feature_request"
+  });
+  const activity = await portalActivity(storage, {
+    projectId: task.projectId,
+    taskId: task.id,
+    type: "feature-request",
+    message: `submitted ${task.title}`
+  });
+  const notification = await recordPortalNotification(storage, link, {
+    kind: "portal-feature-request",
+    title: "Portal feature request",
+    message: `${requester} submitted ${title}.`,
+    reason: details || "Client submitted a hosted portal feature request."
+  });
+  await storage.appendAuditEvent({
+    actorId: "portal-link",
+    action: "client_portal_feature_request",
+    workspaceId: workspace.id,
+    detail: `Hosted portal feature request ${title}`,
+    metadata: { companyId: link.companyId, linkId: link.id, tokenId: link.tokenId, taskId: task.id, projectId: project.id }
+  });
+  return portalActionResponse(storage, link, { type: "feature-request", task, activity, notification });
+}
+
+async function portalActionResponse(storage, link, action) {
+  return {
+    ok: true,
+    portalLink: publicPortalLink(link),
+    portalSnapshot: await publicPortalSnapshotForLink(storage, link),
+    action
+  };
+}
+
+async function portalApprovalRecord(storage, companyId, approvalId) {
+  const approvals = await storage.loadRecords("approvals", {});
+  const approval = approvals.map(normalizeApproval).find((item) => item.id === approvalId);
+  if (!approval) publicError(404, "Portal approval not found");
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const project = (Array.isArray(snapshot.projects) ? snapshot.projects : []).map(normalizeProject).find((item) => item.id === approval.projectId);
+  if (approval.companyId !== companyId && project?.companyId !== companyId) publicError(403, "Portal approval is outside this company");
+  if (!isPortalVisibleRecord(approval, "approval")) publicError(403, "Portal approval is not client visible");
+  return approval;
+}
+
+async function portalTaskRecord(storage, companyId, taskId) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const projects = (Array.isArray(snapshot.projects) ? snapshot.projects : []).map(normalizeProject);
+  const task = (Array.isArray(snapshot.tasks) ? snapshot.tasks : []).map(normalizeTask).find((item) => item.id === taskId);
+  const project = task ? projects.find((item) => item.id === task.projectId) : null;
+  if (!task || !project) publicError(404, "Portal task not found");
+  if (project.companyId !== companyId) publicError(403, "Portal task is outside this company");
+  if (!isPortalVisibleRecord(task, "task")) publicError(403, "Portal task is not client visible");
+  return task;
+}
+
+async function portalActivity(storage, input = {}) {
+  const now = new Date().toISOString();
+  return storage.upsertRecord("activities", normalizeActivity({
+    id: `portal-activity-${crypto.randomUUID()}`,
+    projectId: input.projectId,
+    taskId: input.taskId || "",
+    memberId: "portal-link",
+    type: input.type || "portal",
+    message: input.message || "used the hosted portal",
+    createdAt: now
+  }), {
+    storage: storage.driver || "json-file",
+    updatedBy: "portal-link",
+    action: "client_portal_activity"
+  });
+}
+
+async function recordPortalNotification(storage, link, input = {}) {
+  const now = new Date().toISOString();
+  return storage.upsertRecord("notificationHistory", normalizeNotificationHistoryEvent({
+    id: `notification-history-${crypto.randomUUID()}`,
+    memberId: "",
+    kind: input.kind || "portal-action",
+    title: input.title || "Hosted portal action",
+    message: input.message || "A client used a hosted portal link.",
+    reason: input.reason || `Portal link ${link.tokenId}`,
+    count: input.count || 1,
+    channel: "hosted portal",
+    createdAt: now,
+    updatedAt: now
+  }), {
+    storage: storage.driver || "json-file",
+    updatedBy: "portal-link",
+    action: "client_portal_notification"
+  });
 }
 
 async function getPortalLinkRecord(storage, linkId, session) {

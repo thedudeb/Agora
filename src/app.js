@@ -16403,6 +16403,7 @@ function renderClientPortal() {
         <div class="portal-list">
           ${featureRequests.length ? featureRequests.map(renderClientFeatureRequestSummary).join("") : emptyState("No feature requests are visible yet.")}
         </div>
+        ${renderHostedFeatureRequestForm(snapshot)}
       </section>
 
       <section class="panel">
@@ -16563,6 +16564,10 @@ function renderHostedApprovalRow(approval) {
         <p>${escapeHtml(approval.summary)}</p>
         <small>${escapeHtml(approval.projectName || "Shared project")} / due ${formatDate(approval.dueDate)} / reviewer ${escapeHtml(approval.reviewerName || approval.reviewer || "Client")}</small>
       </div>
+      <div class="approval-actions">
+        ${approval.status !== "approved" ? `<button class="button button-primary compact-button" type="button" data-hosted-approval-action="approved" data-hosted-approval-id="${escapeHtml(approval.id)}">Approve</button>` : ""}
+        ${approval.status !== "needs-changes" ? `<button class="button button-secondary compact-button" type="button" data-hosted-approval-action="needs-changes" data-hosted-approval-id="${escapeHtml(approval.id)}">Changes</button>` : ""}
+      </div>
     </article>
   `;
 }
@@ -16611,6 +16616,13 @@ function renderHostedClientTaskSummary(task) {
           <span>${formatDate(task.dueDate)}</span>
         </div>
       </div>
+      <form class="portal-inline-form" data-hosted-comment-form="${escapeHtml(task.id)}">
+        <label>
+          <span>Comment</span>
+          <input name="comment" maxlength="600" placeholder="Ask a question or add context">
+        </label>
+        <button class="button button-secondary compact-button" type="submit">Send</button>
+      </form>
     </article>
   `;
 }
@@ -16625,6 +16637,110 @@ function renderHostedPortalUpdateRow(update) {
       <small>${formatTimestamp(update.createdAt)}</small>
     </article>
   `;
+}
+
+function renderHostedFeatureRequestForm(snapshot) {
+  return `
+    <form class="settings-form portal-feature-form" id="hosted-feature-request-form">
+      <label>
+        <span>New request</span>
+        <input id="hosted-feature-title" maxlength="120" placeholder="What should we add or change?">
+      </label>
+      <label>
+        <span>Impact</span>
+        <select id="hosted-feature-impact">
+          <option value="nice-to-have">Nice to have</option>
+          <option value="workflow-blocker">Workflow blocker</option>
+          <option value="revenue-risk">Revenue risk</option>
+          <option value="bug-regression">Bug or regression</option>
+        </select>
+      </label>
+      <label>
+        <span>Your name</span>
+        <input id="hosted-feature-requester" maxlength="80" placeholder="Your name">
+      </label>
+      <label>
+        <span>Email</span>
+        <input id="hosted-feature-email" type="email" maxlength="120" placeholder="you@example.com">
+      </label>
+      <label class="wide-field">
+        <span>Details</span>
+        <textarea id="hosted-feature-details" rows="3" placeholder="What problem would this solve?"></textarea>
+      </label>
+      <label>
+        <span>Project</span>
+        <select id="hosted-feature-project">
+          ${snapshot.projects.map((project) => `<option value="${escapeHtml(project.id)}">${escapeHtml(project.name)}</option>`).join("")}
+        </select>
+      </label>
+      <button class="button button-primary" type="submit" ${snapshot.projects.length ? "" : "disabled"}>Send Request</button>
+    </form>
+  `;
+}
+
+async function submitHostedPortalAction(body = {}) {
+  const token = state.selectedClientPortalToken;
+  if (!token) {
+    showToast("Portal link token is missing", "info");
+    return null;
+  }
+  try {
+    const result = await apiRequest(`/api/portal-links/actions/${encodeURIComponent(token)}`, {
+      method: "POST",
+      body
+    });
+    if (result.portalLink) mergeClientPortalLink({ ...result.portalLink, token }, token);
+    if (result.action?.notification) {
+      state.notificationHistory = normalizeNotificationHistory([result.action.notification, ...(state.notificationHistory || [])]);
+    }
+    state.hostedPortalSnapshot = normalizeHostedPortalSnapshot(result.portalSnapshot);
+    saveState();
+    render();
+    return result;
+  } catch (error) {
+    showToast(`Portal action failed: ${error.message}`, "info");
+    return null;
+  }
+}
+
+async function submitHostedApprovalAction(approvalId, status) {
+  const note = status === "needs-changes" ? window.prompt("What needs to change?") || "" : "";
+  const result = await submitHostedPortalAction({
+    action: "approval",
+    approvalId,
+    status,
+    note
+  });
+  if (result) showToast(status === "approved" ? "Approval sent" : "Change request sent", "success");
+}
+
+async function submitHostedComment(form) {
+  const taskId = form?.dataset.hostedCommentForm || "";
+  const body = form?.querySelector('[name="comment"]')?.value.trim() || "";
+  if (!taskId || !body) {
+    showToast("Comment needs a message", "info");
+    return;
+  }
+  const result = await submitHostedPortalAction({ action: "comment", taskId, body });
+  if (result) showToast("Comment sent", "success");
+}
+
+async function submitHostedFeatureRequest() {
+  const title = document.querySelector("#hosted-feature-title")?.value.trim() || "";
+  if (!title) {
+    showToast("Feature request needs a title", "info");
+    return;
+  }
+  const result = await submitHostedPortalAction({
+    action: "feature-request",
+    title,
+    projectId: document.querySelector("#hosted-feature-project")?.value || "",
+    impact: document.querySelector("#hosted-feature-impact")?.value || "nice-to-have",
+    requester: document.querySelector("#hosted-feature-requester")?.value.trim() || "",
+    email: document.querySelector("#hosted-feature-email")?.value.trim() || "",
+    details: document.querySelector("#hosted-feature-details")?.value.trim() || ""
+  });
+  if (result) showToast("Feature request sent", "success");
 }
 
 function renderPortalUpdateRow(update) {
@@ -20085,6 +20201,7 @@ function renderSettings() {
 
       ${activeSettingsTab === "security" ? `
       ${renderCurrentAccessPanel()}
+      ${renderPortalSecurityPanel()}
       ${renderSessionManagementPanel()}
       ${renderOfflineDataSecurityPanel()}
       ${renderPermissionMatrix()}
@@ -21059,6 +21176,7 @@ function permissionsAuditRows() {
 function permissionRiskFlags(rows = permissionsAuditRows()) {
   const permissions = operatorPermissions();
   const ai = aiSettings();
+  const portal = portalSecurityStats();
   return [
     {
       label: "Admins",
@@ -21083,8 +21201,92 @@ function permissionRiskFlags(rows = permissionsAuditRows()) {
       value: aiProviderLabel(),
       tone: ai.provider === "local" ? "green" : "amber",
       detail: ai.provider === "local" ? "Local deterministic operator only." : `${aiProviderLabel()} runs through the API server.`
+    },
+    {
+      label: "Portal links",
+      value: portal.activeLinks,
+      tone: portal.staleLinks || portal.expiredLinks ? "amber" : "green",
+      detail: `${portal.hostedLinks} hosted, ${portal.localLinks} device-local, ${portal.portalActions} recent actions.`
     }
   ];
+}
+
+function portalSecurityStats() {
+  const links = Array.isArray(state.clientPortalLinks) ? state.clientPortalLinks : [];
+  const statuses = links.map((link) => ({ ...link, computedStatus: clientPortalLinkStatus(link) }));
+  const portalActions = [...(state.notificationHistory || []), ...(state.auditEvents || []), ...(auditEvents || [])]
+    .filter((event) => String(event.kind || event.action || "").includes("portal"))
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+  return {
+    links: statuses,
+    activeLinks: statuses.filter((link) => link.computedStatus === "active").length,
+    hostedLinks: statuses.filter((link) => link.source === "api").length,
+    localLinks: statuses.filter((link) => link.source !== "api").length,
+    staleLinks: statuses.filter((link) => link.computedStatus === "stale").length,
+    expiredLinks: statuses.filter((link) => link.computedStatus === "expired").length,
+    revokedLinks: statuses.filter((link) => link.computedStatus === "revoked").length,
+    portalActions: portalActions.length,
+    recentActions: portalActions.slice(0, 5)
+  };
+}
+
+function renderPortalSecurityPanel() {
+  const stats = portalSecurityStats();
+  return `
+    <section class="panel permissions-audit-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Portal access</p>
+          <h2>Hosted links and client actions</h2>
+        </div>
+        <div class="portal-actions">
+          <button class="button button-secondary compact-button" type="button" data-route="visibility">Review Visibility</button>
+          <button class="button button-secondary compact-button" type="button" data-route="audit">Open Audit</button>
+        </div>
+      </div>
+      <div class="permissions-risk-grid">
+        <article>
+          <span class="status-pill inbox-${stats.activeLinks ? "blue" : "neutral"}">Active</span>
+          <strong>${stats.activeLinks}</strong>
+          <small>${stats.hostedLinks} hosted, ${stats.localLinks} device-local</small>
+        </article>
+        <article>
+          <span class="status-pill inbox-${stats.staleLinks || stats.expiredLinks ? "amber" : "green"}">Review</span>
+          <strong>${stats.staleLinks + stats.expiredLinks}</strong>
+          <small>${stats.staleLinks} stale, ${stats.expiredLinks} expired, ${stats.revokedLinks} revoked</small>
+        </article>
+        <article>
+          <span class="status-pill inbox-neutral">Actions</span>
+          <strong>${stats.portalActions}</strong>
+          <small>Approval, comment, feature request, link view, copy, email, and revoke events</small>
+        </article>
+      </div>
+      <div class="permissions-member-list">
+        ${stats.links.length ? stats.links.slice(0, 6).map((link) => `
+          <article>
+            <div>
+              <strong>${escapeHtml(companyName(link.companyId))}</strong>
+              <span>${escapeHtml(clientPortalLinkSourceLabel(link))}${link.tokenId ? ` - ${escapeHtml(link.tokenId)}` : ""}</span>
+            </div>
+            <span class="status-pill inbox-${link.computedStatus === "active" ? "green" : link.computedStatus === "stale" || link.computedStatus === "expired" ? "amber" : "neutral"}">${escapeHtml(link.computedStatus)}</span>
+            <span>${link.expiresAt ? `Expires ${escapeHtml(formatFullDate(link.expiresAt))}` : "No expiry"}</span>
+            <small>${Number(link.viewCount || 0)} view${Number(link.viewCount || 0) === 1 ? "" : "s"}</small>
+          </article>
+        `).join("") : emptyState("No client portal links have been generated yet.")}
+      </div>
+      <div class="audit-list compact-audit-list">
+        ${stats.recentActions.length ? stats.recentActions.map((event) => `
+          <article class="audit-event audit-impact-${auditImpactLevel(event)}">
+            <div>
+              <strong>${escapeHtml(event.title || event.action || event.kind || "Portal action")}</strong>
+              <p>${escapeHtml(event.message || event.detail || event.reason || "")}</p>
+              <small>${escapeHtml(formatTimestamp(event.createdAt))}</small>
+            </div>
+          </article>
+        `).join("") : emptyState("No hosted portal actions have been recorded yet.")}
+      </div>
+    </section>
+  `;
 }
 
 function renderPermissionsAudit() {
@@ -21163,6 +21365,8 @@ function renderPermissionsAudit() {
         `).join("")}
       </div>
     </section>
+
+    ${renderPortalSecurityPanel()}
 
     <section class="panel permissions-audit-panel">
       <div class="panel-header">
@@ -27349,6 +27553,15 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const hostedApprovalActionButton = event.target.closest("[data-hosted-approval-action]");
+  if (hostedApprovalActionButton) {
+    submitHostedApprovalAction(
+      hostedApprovalActionButton.dataset.hostedApprovalId,
+      hostedApprovalActionButton.dataset.hostedApprovalAction
+    );
+    return;
+  }
+
   const companyUpdateButton = event.target.closest("[data-company-update]");
   if (companyUpdateButton) {
     draftCompanyUpdate(companyUpdateButton.dataset.companyUpdate);
@@ -28244,6 +28457,15 @@ els.appView.addEventListener("submit", (event) => {
   if (event.target.closest("#public-feature-request-form")) {
     event.preventDefault();
     submitPublicFeatureRequest();
+  }
+  const hostedCommentForm = event.target.closest("[data-hosted-comment-form]");
+  if (hostedCommentForm) {
+    event.preventDefault();
+    submitHostedComment(hostedCommentForm);
+  }
+  if (event.target.closest("#hosted-feature-request-form")) {
+    event.preventDefault();
+    submitHostedFeatureRequest();
   }
 });
 
