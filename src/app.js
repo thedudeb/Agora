@@ -758,6 +758,7 @@ const routes = {
   operator: "Operator",
   collaboration: "Collaboration",
   reports: "Reports",
+  decisions: "Decisions",
   goals: "Goals",
   marketplace: "Marketplace",
   templates: "Templates",
@@ -2760,6 +2761,11 @@ function normalizeRaidItems(items = []) {
         severity,
         status,
         mitigation: String(item.mitigation || "").trim().slice(0, 280),
+        visibility: ["internal", "shared", "client"].includes(item.visibility) ? item.visibility : "internal",
+        linkType: ["task", "document", "approval", "chat", "whiteboard", "project", ""].includes(item.linkType) ? item.linkType : "",
+        linkId: String(item.linkId || ""),
+        sourceType: ["chat", "whiteboard", "manual", "import", ""].includes(item.sourceType) ? item.sourceType : "",
+        sourceId: String(item.sourceId || ""),
         dueDate: item.dueDate || "",
         createdAt: item.createdAt || new Date().toISOString(),
         updatedAt: item.updatedAt || item.createdAt || new Date().toISOString()
@@ -4127,6 +4133,7 @@ function canAccessRoute(route) {
     data: "workspace:import",
     settings: "workspace:read",
     reports: "workspace:read",
+    decisions: "workspace:read",
     goals: "workspace:read",
     marketplace: "projects:write",
     templates: "projects:write",
@@ -5050,8 +5057,62 @@ function createBetaWorkspaceState(options = {}) {
         severity: "medium",
         status: "decided",
         mitigation: "Keep risk detail linked from the portal update instead of putting it all in the headline.",
+        visibility: "client",
+        linkType: "task",
+        linkId: "beta-task-portal-status",
         dueDate: day(5),
         createdAt: at(-1, 15)
+      },
+      {
+        id: "beta-decision-approval-owner",
+        type: "decision",
+        projectId,
+        companyId,
+        title: "Jordan owns kickoff agenda approval",
+        detail: "Client approvals route through Jordan for kickoff scope, agenda, and first-week readiness.",
+        owner: "sam",
+        severity: "medium",
+        status: "open",
+        mitigation: "Confirm backup reviewer before the stakeholder review.",
+        visibility: "shared",
+        linkType: "approval",
+        linkId: "beta-approval-kickoff-agenda",
+        dueDate: day(3),
+        createdAt: at(0, 9)
+      },
+      {
+        id: "beta-decision-weekly-portal",
+        type: "decision",
+        projectId,
+        companyId,
+        title: "Portal status is the weekly source of truth",
+        detail: "The team will publish weekly status in the client portal before sending any separate recap.",
+        owner: "mara",
+        severity: "medium",
+        status: "open",
+        mitigation: "Use the weekly status report task to keep email and portal summaries aligned.",
+        visibility: "client",
+        linkType: "task",
+        linkId: "beta-task-weekly-report",
+        dueDate: day(7),
+        createdAt: at(0, 10)
+      },
+      {
+        id: "beta-decision-request-digest",
+        type: "decision",
+        projectId,
+        companyId,
+        title: "Digest emails wait until requester-update flow is verified",
+        detail: "Do not promise portal digest emails until requester updates and SMTP diagnostics pass.",
+        owner: "eli",
+        severity: "high",
+        status: "open",
+        mitigation: "Track the request on the feature board and use manual status updates during beta.",
+        visibility: "internal",
+        linkType: "task",
+        linkId: "beta-request-portal-digest",
+        dueDate: day(9),
+        createdAt: at(0, 11)
       }
     ],
     memberships: [
@@ -11891,6 +11952,82 @@ function handleBetaExportAction(action) {
   }
 }
 
+function addDecisionFromSource(decision) {
+  const existing = state.raidItems.some((item) => item.id === decision.id);
+  if (existing) {
+    showToast("Decision is already logged", "info");
+    return;
+  }
+  state.raidItems = normalizeRaidItems([decision, ...state.raidItems]);
+  addActivity({
+    projectId: decision.projectId,
+    type: "decision",
+    message: `logged decision ${decision.title}`
+  });
+  saveState();
+  render();
+  showToast("Decision logged", "success");
+}
+
+function promoteChatMessageToDecision(messageId) {
+  const message = state.chatMessages.find((item) => item.id === messageId);
+  if (!message) {
+    showToast("Chat message not found", "info");
+    return;
+  }
+  const projectId = message.projectId || activeProjects()[0]?.id || "";
+  const companyId = projectId ? projectCompany(projectId)?.id || "" : "";
+  addDecisionFromSource({
+    id: `decision-chat-${message.id}`,
+    type: "decision",
+    projectId,
+    companyId,
+    title: message.body.slice(0, 96),
+    detail: `Promoted from #${message.channel} by ${memberName(message.author)}.`,
+    owner: message.author || activeMemberId(),
+    severity: "medium",
+    status: "open",
+    mitigation: message.body,
+    visibility: message.channel === "client" ? "client" : "shared",
+    linkType: "chat",
+    linkId: message.id,
+    sourceType: "chat",
+    sourceId: message.id,
+    dueDate: shiftDate(todayKey(), 7),
+    createdAt: new Date().toISOString()
+  });
+}
+
+function promoteWhiteboardItemToDecision(itemId) {
+  const board = state.whiteboards.find((candidate) => candidate.items.some((item) => item.id === itemId));
+  const item = board?.items.find((candidate) => candidate.id === itemId);
+  if (!board || !item) {
+    showToast("Whiteboard note not found", "info");
+    return;
+  }
+  const projectId = board.projectId || activeProjects()[0]?.id || "";
+  const companyId = projectId ? projectCompany(projectId)?.id || "" : "";
+  addDecisionFromSource({
+    id: `decision-whiteboard-${item.id}`,
+    type: "decision",
+    projectId,
+    companyId,
+    title: item.text.slice(0, 96),
+    detail: `Promoted from ${board.title}.`,
+    owner: activeMemberId(),
+    severity: item.color === "amber" ? "high" : "medium",
+    status: "open",
+    mitigation: item.text,
+    visibility: "shared",
+    linkType: "whiteboard",
+    linkId: item.id,
+    sourceType: "whiteboard",
+    sourceId: item.id,
+    dueDate: shiftDate(todayKey(), 7),
+    createdAt: new Date().toISOString()
+  });
+}
+
 function handleOnboardingAction(action) {
   const wizardSteps = onboardingWizardSteps();
   const wizardIndex = clamp(Number(state.onboarding?.wizardStep || 0), 0, wizardSteps.length - 1);
@@ -12370,6 +12507,7 @@ function render() {
     operator: renderOperatorCenter,
     collaboration: renderCollaborationHub,
     reports: renderReports,
+    decisions: renderDecisionLog,
     goals: renderGoals,
     marketplace: renderMarketplaceHub,
     templates: renderTemplates,
@@ -12412,7 +12550,7 @@ function render() {
 function sidebarGroupForRoute(route) {
   if (["landing", "dashboard", "command-center", "launch", "portal", "daily", "inbox"].includes(route)) return "home";
   if (["board", "list", "calendar", "my-work", "time", "operator", "collaboration"].includes(route)) return "work";
-  if (["reports", "goals", "marketplace", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
+  if (["reports", "decisions", "goals", "marketplace", "templates", "automations", "docs", "intake", "fields", "companies", "company"].includes(route)) return "manage";
   if (["audit", "permissions", "beta", "readiness", "data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
   if (route === "invite") return "";
@@ -12921,6 +13059,7 @@ function renderCollaborationHub() {
 
 function renderWorkspaceChatMessage(message) {
   const linkLabel = discussionLinkLabel(message);
+  const decisionLogged = state.raidItems.some((item) => item.id === `decision-chat-${message.id}`);
   return `
     <article class="workspace-chat-message">
       <span class="avatar">${memberName(message.author).split(" ").map((part) => part[0]).join("")}</span>
@@ -12931,6 +13070,9 @@ function renderWorkspaceChatMessage(message) {
         </div>
         <p>${renderCommentBody(message.body)}</p>
         ${linkLabel ? `<span class="discussion-link-pill">${escapeHtml(message.linkType)}: ${escapeHtml(linkLabel)}</span>` : ""}
+        <div class="feature-request-actions">
+          <button class="button button-secondary compact-button" type="button" data-promote-chat-decision="${escapeHtml(message.id)}" ${decisionLogged ? "disabled" : ""}>${decisionLogged ? "Decision Logged" : "Log Decision"}</button>
+        </div>
       </div>
     </article>
   `;
@@ -12953,10 +13095,12 @@ function renderProjectDiscussionRow(row) {
 }
 
 function renderWhiteboardItem(item) {
+  const decisionLogged = state.raidItems.some((raidItem) => raidItem.id === `decision-whiteboard-${item.id}`);
   return `
     <article class="whiteboard-note whiteboard-${item.color} whiteboard-${item.type}" style="left: ${item.x}%; top: ${item.y}%;">
       <span>${escapeHtml(item.type)}</span>
       <strong>${escapeHtml(item.text)}</strong>
+      ${item.type === "decision" ? `<button class="button button-secondary compact-button" type="button" data-promote-whiteboard-decision="${escapeHtml(item.id)}" ${decisionLogged ? "disabled" : ""}>${decisionLogged ? "Logged" : "Log"}</button>` : ""}
     </article>
   `;
 }
@@ -13592,8 +13736,11 @@ function pmCommandCenterData() {
     .filter((approval) => projectIds.has(approval.projectId) && approval.status !== "approved")
     .sort((a, b) => cleanString(a.dueDate || "9999-12-31").localeCompare(cleanString(b.dueDate || "9999-12-31")));
   const raidItems = normalizeRaidItems(state.raidItems)
-    .filter((item) => projectIds.has(item.projectId) && item.status !== "closed")
+    .filter((item) => projectIds.has(item.projectId) && item.status !== "closed" && item.type !== "decision")
     .sort((a, b) => raidSeverityScore(b) - raidSeverityScore(a) || cleanString(a.dueDate).localeCompare(cleanString(b.dueDate)));
+  const decisions = decisionLogItems().filter((decision) => !decision.projectId || projectIds.has(decision.projectId));
+  const openDecisions = decisions.filter((decision) => !decisionIsResolved(decision));
+  const overdueDecisions = decisions.filter(decisionIsOverdue);
   const requests = featureRequestTasks().filter((task) => projectIds.has(task.projectId));
   const requestsNeedingResponse = requests.filter(featureRequestNeedsRequesterResponse);
   const capacity = capacityRows(scoped.tasks, scoped.timeEntries).sort((a, b) => b.utilization - a.utilization);
@@ -13630,6 +13777,13 @@ function pmCommandCenterData() {
       detail: `${task.customFields?.requester || "Requester"} needs an update / ${featureRequestStatusLabel(featureRequestStatus(task))}`,
       taskId: task.id
     })),
+    ...openDecisions.map((decision) => ({
+      tone: decisionIsOverdue(decision) ? "red" : "amber",
+      type: "Decision",
+      title: decision.title,
+      detail: `${projectName(decision.projectId)} / owner ${memberName(decision.owner)} / ${decisionVisibilityLabel(decision.visibility)}${decision.dueDate ? ` / due ${formatDate(decision.dueDate)}` : ""}`,
+      projectId: decision.projectId
+    })),
     ...raidItems.slice(0, 4).map((item) => ({
       tone: raidTone(item),
       type: raidTypeLabel(item.type),
@@ -13648,6 +13802,9 @@ function pmCommandCenterData() {
     projectRows,
     approvals,
     raidItems,
+    decisions,
+    openDecisions,
+    overdueDecisions,
     requests,
     requestsNeedingResponse,
     capacity,
@@ -13682,6 +13839,7 @@ function renderPmCommandCenter() {
       ${metric("Overdue", center.overdueTasks.length)}
       ${metric("Blocked", center.blockedTasks.length)}
       ${metric("Approvals", center.approvals.length)}
+      ${metric("Open decisions", center.openDecisions.length)}
       ${metric("Needs response", center.requestsNeedingResponse.length)}
       ${metric("Overloaded", overloaded.length)}
     </div>
@@ -13755,8 +13913,21 @@ function renderPmCommandCenter() {
       <section class="panel">
         <div class="panel-header">
           <div>
+            <p class="eyebrow">Decision follow-up</p>
+            <h2>Open decisions</h2>
+          </div>
+          <button class="button button-secondary compact-button" type="button" data-route="decisions">Open Decisions</button>
+        </div>
+        <div class="readiness-list compact-readiness">
+          ${center.openDecisions.length ? center.openDecisions.slice(0, 5).map(renderDecisionLogRow).join("") : emptyState("No open decisions need follow-up.")}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
             <p class="eyebrow">Decisions and RAID</p>
-            <h2>Control points</h2>
+            <h2>RAID control points</h2>
           </div>
           <button class="button button-secondary compact-button" type="button" data-route="collaboration">Open Collab</button>
         </div>
@@ -13915,6 +14086,109 @@ function renderDashboardDueSoonWidget(dueSoonTasks) {
         )}
       </div>
     </section>
+  `;
+}
+
+function decisionLogItems() {
+  return normalizeRaidItems(state.raidItems)
+    .filter((item) => item.type === "decision")
+    .filter((item) => !item.projectId || activeProjects().some((project) => project.id === item.projectId))
+    .sort((a, b) => {
+      const openSort = Number(decisionIsResolved(a)) - Number(decisionIsResolved(b));
+      if (openSort !== 0) return openSort;
+      return cleanString(a.dueDate || "9999-12-31").localeCompare(cleanString(b.dueDate || "9999-12-31"));
+    });
+}
+
+function decisionIsResolved(decision) {
+  return ["decided", "closed"].includes(decision.status);
+}
+
+function decisionIsOverdue(decision) {
+  return !decisionIsResolved(decision) && Boolean(decision.dueDate) && decision.dueDate < todayKey();
+}
+
+function decisionVisibilityLabel(visibility) {
+  return {
+    internal: "Internal",
+    shared: "Shared",
+    client: "Client-visible"
+  }[visibility] || "Internal";
+}
+
+function decisionLinkLabel(decision) {
+  if (decision.linkType === "task") return byId(state.tasks, decision.linkId)?.title || "Linked task";
+  if (decision.linkType === "document") return byId(state.documents, decision.linkId)?.title || "Linked document";
+  if (decision.linkType === "approval") return byId(state.approvals, decision.linkId)?.title || "Linked approval";
+  if (decision.linkType === "project") return projectName(decision.linkId);
+  if (decision.linkType === "chat") return "Workspace chat";
+  if (decision.linkType === "whiteboard") return "Whiteboard note";
+  return "No linked object";
+}
+
+function decisionTone(decision) {
+  if (decisionIsOverdue(decision)) return "red";
+  if (!decisionIsResolved(decision)) return "amber";
+  if (decision.visibility === "client") return "blue";
+  return "green";
+}
+
+function renderDecisionLog() {
+  const decisions = decisionLogItems();
+  const openDecisions = decisions.filter((decision) => !decisionIsResolved(decision));
+  const overdueDecisions = decisions.filter(decisionIsOverdue);
+  const clientVisible = decisions.filter((decision) => decision.visibility === "client");
+  const linked = decisions.filter((decision) => decision.linkType && decision.linkId);
+
+  els.appView.innerHTML = `
+    ${renderRouteHeader({
+      eyebrow: "Decision log",
+      title: "Durable project decisions",
+      description: "Track decisions that should not disappear into chat, meetings, whiteboards, or comments.",
+      actions: [
+        { label: "Open Collaboration", route: "collaboration", primary: true },
+        { label: "Open Command Center", route: "command-center" }
+      ]
+    })}
+
+    <div class="metric-grid">
+      ${metric("Open decisions", openDecisions.length)}
+      ${metric("Overdue", overdueDecisions.length)}
+      ${metric("Client-visible", clientVisible.length)}
+      ${metric("Linked", linked.length)}
+      ${metric("Resolved", decisions.filter(decisionIsResolved).length)}
+    </div>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Decision register</p>
+          <h2>Decision Log 1.0</h2>
+        </div>
+        <span class="status-pill ${overdueDecisions.length ? "inbox-red" : openDecisions.length ? "inbox-amber" : "inbox-green"}">${openDecisions.length} open</span>
+      </div>
+      <div class="readiness-list compact-readiness">
+        ${decisions.length ? decisions.map(renderDecisionLogRow).join("") : emptyState("No decisions have been logged yet.", { label: "Open Collaboration", route: "collaboration" })}
+      </div>
+    </section>
+  `;
+}
+
+function renderDecisionLogRow(decision) {
+  return `
+    <article class="readiness-item ${decisionIsResolved(decision) ? "is-done" : "is-pending"}">
+      <span>${decisionIsResolved(decision) ? "OK" : "Next"}</span>
+      <div>
+        <strong>${escapeHtml(decision.title)}</strong>
+        <p>${escapeHtml(decision.detail || decision.mitigation || "No detail captured yet.")}</p>
+        <small>${escapeHtml(projectName(decision.projectId))} / owner ${escapeHtml(memberName(decision.owner))} / ${escapeHtml(decisionVisibilityLabel(decision.visibility))} / ${escapeHtml(decisionLinkLabel(decision))}</small>
+        <small>${decision.dueDate ? `Due ${escapeHtml(formatDate(decision.dueDate))}` : "No due date"} / status ${escapeHtml(raidSeverityLabel(decision.severity))} ${escapeHtml(decision.status)}</small>
+      </div>
+      <div class="feature-request-actions">
+        ${decision.projectId ? `<button class="button button-secondary compact-button" type="button" data-project-id="${escapeHtml(decision.projectId)}">Project</button>` : ""}
+        ${decision.linkType === "task" ? `<button class="button button-secondary compact-button" type="button" data-edit-task="${escapeHtml(decision.linkId)}">Task</button>` : ""}
+      </div>
+    </article>
   `;
 }
 
@@ -25425,6 +25699,18 @@ document.addEventListener("click", (event) => {
   const copyFeatureLinkButton = event.target.closest("[data-copy-feature-request-link]");
   if (copyFeatureLinkButton) {
     copyFeatureRequestLink();
+    return;
+  }
+
+  const promoteChatDecisionButton = event.target.closest("[data-promote-chat-decision]");
+  if (promoteChatDecisionButton) {
+    promoteChatMessageToDecision(promoteChatDecisionButton.dataset.promoteChatDecision);
+    return;
+  }
+
+  const promoteWhiteboardDecisionButton = event.target.closest("[data-promote-whiteboard-decision]");
+  if (promoteWhiteboardDecisionButton) {
+    promoteWhiteboardItemToDecision(promoteWhiteboardDecisionButton.dataset.promoteWhiteboardDecision);
     return;
   }
 

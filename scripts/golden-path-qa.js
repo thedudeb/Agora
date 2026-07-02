@@ -89,8 +89,39 @@ const routeChecks = [
       "Next best actions",
       "Client promises",
       "Team load",
+      "Decision follow-up",
+      "Open decisions",
       "Decisions and RAID",
       "Feedback loop"
+    ]
+  },
+  {
+    name: "Decision log",
+    suite: "workspace",
+    route: "decisions",
+    width: 1265,
+    height: 712,
+    required: [
+      "Decision log",
+      "Durable project decisions",
+      "Decision Log 1.0",
+      "Open decisions",
+      "Client-visible",
+      "Decision register"
+    ]
+  },
+  {
+    name: "Collaboration decision promotion",
+    suite: "workspace",
+    route: "collaboration",
+    width: 1265,
+    height: 712,
+    required: [
+      "Collaboration",
+      "Workspace channels",
+      "Whiteboard",
+      "Log Decision",
+      "Log"
     ]
   },
   {
