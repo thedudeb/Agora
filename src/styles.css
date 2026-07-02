@@ -7197,6 +7197,11 @@ th {
   line-height: 1.45;
 }
 
+.empty-state small {
+  max-width: 42rem;
+  line-height: 1.45;
+}
+
 .empty-state-actions {
   display: flex;
   flex-wrap: wrap;

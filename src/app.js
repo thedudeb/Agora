@@ -18152,7 +18152,10 @@ function renderProjectOverview(project, details) {
           <button class="button button-secondary" type="button" data-project-tab="tasks">Open tasks</button>
         </div>
         <div class="task-stack">
-          ${filteredProjectTasks.filter((task) => task.status !== "done").slice(0, 5).map(renderTaskCard).join("") || emptyState("No open tasks match the current filters.")}
+          ${filteredProjectTasks.filter((task) => task.status !== "done").slice(0, 5).map(renderTaskCard).join("") || emptyState("No open tasks match the current filters.", [
+            { label: "Create Task", id: "new-task-button-project", detail: "Capture one concrete next step, assign an owner, and set a due date." },
+            { label: "Clear Filters", route: "project" }
+          ])}
         </div>
       </section>
 
@@ -18164,7 +18167,7 @@ function renderProjectOverview(project, details) {
           </div>
           <button class="button button-secondary" type="button" data-project-tab="milestones">View milestones</button>
         </div>
-        ${nextMilestone ? renderMilestoneCard(nextMilestone) : emptyState(`${project.name} does not have an active milestone yet.`)}
+        ${nextMilestone ? renderMilestoneCard(nextMilestone) : emptyState(`${project.name} does not have an active milestone yet.`, { label: "Add Milestone", projectTab: "timeline", detail: "Anchor the delivery plan with a dated milestone before the team starts execution." })}
       </section>
 
       <section class="panel">
@@ -18402,7 +18405,7 @@ function renderProjectRaidLog(project, items) {
         <span class="status-pill ${items.some((item) => item.severity === "critical" || item.severity === "high") ? "inbox-red" : items.length ? "inbox-amber" : "inbox-green"}">${items.filter((item) => item.status !== "closed").length} open</span>
       </div>
       <div class="project-raid-list">
-        ${items.length ? items.map(renderRaidItem).join("") : emptyState(`${project.name} has no RAID items yet.`)}
+        ${items.length ? items.map(renderRaidItem).join("") : emptyState(`${project.name} has no RAID items yet.`, { label: "Open Decisions", route: "decisions", detail: "Track risks, assumptions, issues, decisions, and changes before they surprise the project." })}
       </div>
     </div>
   `;
@@ -18449,7 +18452,10 @@ function renderProjectTasks(tasks) {
             </tbody>
           </table>
         </div>
-      ` : emptyState("No project tasks match those filters.")}
+      ` : emptyState("No project tasks match those filters.", [
+        { label: "Create Task", id: "new-task-button-project", detail: "Start with the next owner-driven task, then schedule it from the timeline." },
+        { label: "Open Board", projectTab: "board" }
+      ])}
     </section>
   `;
 }
@@ -18958,7 +18964,7 @@ function renderBoardColumn(column, tasks) {
           <button class="button button-secondary compact-button" type="submit">Add</button>
         </form>
         <div class="task-stack" data-drop-status="${column.id}">
-          ${columnTasks.length ? columnTasks.map(renderTaskCard).join("") : emptyState("No tasks here.")}
+          ${columnTasks.length ? columnTasks.map(renderTaskCard).join("") : emptyState("No tasks here.", { label: "Add a card", detail: "Use the quick-add field above to capture the next piece of work for this lane." })}
         </div>
       `}
     </section>
@@ -19079,7 +19085,10 @@ function renderProjectTimeline(project, tasks, milestones) {
       ${gantt}
 
       <div class="timeline-list">
-        ${timelineItems.length ? timelineItems.map(renderTimelineItem).join("") : emptyState("Add dates to tasks or milestones to build this timeline.")}
+        ${timelineItems.length ? timelineItems.map(renderTimelineItem).join("") : emptyState("Add dates to tasks or milestones to build this timeline.", [
+          { label: "Add Milestone", detail: "Create a dated milestone above, or add due dates to project tasks." },
+          { label: "Open Tasks", projectTab: "tasks" }
+        ])}
       </div>
 
       ${undatedTasks.length ? `
@@ -19210,7 +19219,10 @@ function renderGanttZoomControls() {
 
 function renderProjectGantt(project, tasks, milestones) {
   const scheduledTasks = tasks.filter((task) => task.dueDate);
-  if (!scheduledTasks.length) return emptyState("Add task start and due dates to build a Gantt chart.");
+  if (!scheduledTasks.length) return emptyState("Add task start and due dates to build a Gantt chart.", [
+    { label: "Open Tasks", projectTab: "tasks", detail: "A useful Gantt starts with at least one task that has start and due dates." },
+    { label: "Add Milestone", projectTab: "timeline" }
+  ]);
 
   const dates = [
     project.startDate,
@@ -19351,7 +19363,7 @@ function renderProjectMilestones(milestones) {
         </div>
       </div>
       <div class="milestone-list">
-        ${milestones.length ? milestones.map(renderMilestoneCard).join("") : emptyState("No milestones have been planned for this project.")}
+        ${milestones.length ? milestones.map(renderMilestoneCard).join("") : emptyState("No milestones have been planned for this project.", { label: "Open Timeline", projectTab: "timeline", detail: "Add launch, review, approval, and delivery dates from the timeline composer." })}
       </div>
     </section>
   `;
@@ -23608,7 +23620,7 @@ function renderProjectDocs(project) {
           </div>
         </div>
         <div class="doc-list">
-          ${documents.length ? documents.map(renderDocumentCard).join("") : emptyState("No docs have been added to this project yet.")}
+          ${documents.length ? documents.map(renderDocumentCard).join("") : emptyState("No docs have been added to this project yet.", { label: "Open Docs & Files", route: "docs", detail: "Add a brief, decision note, spec, or reusable handoff document from the docs workspace." })}
         </div>
       </section>
       <section class="panel">
@@ -23619,7 +23631,7 @@ function renderProjectDocs(project) {
           </div>
         </div>
         <div class="file-list">
-          ${files.length ? files.map(renderFileCard).join("") : emptyState("No files have been added to this project yet.")}
+          ${files.length ? files.map(renderFileCard).join("") : emptyState("No files have been added to this project yet.", { label: "Open Docs & Files", route: "docs", detail: "Attach client assets, briefs, exports, or delivery files from the docs workspace." })}
         </div>
       </section>
     </div>
@@ -24308,19 +24320,23 @@ function selectControl(field, taskId, value, options) {
 }
 
 function emptyState(message, action = null) {
+  const actions = Array.isArray(action) ? action : action ? [action] : [];
+  const detail = actions.find((item) => item.detail)?.detail || "";
   return `
-    <div class="empty-state">
+    <div class="empty-state ${actions.length ? "has-actions" : ""}">
       <span>${escapeHtml(message)}</span>
-      ${action ? `
+      ${detail ? `<small>${escapeHtml(detail)}</small>` : ""}
+      ${actions.length ? `
         <div class="empty-state-actions">
-          <button
+          ${actions.map((item) => `<button
             class="button button-secondary compact-button"
             type="button"
-            ${action.commandId ? `data-command-id="${escapeHtml(action.commandId)}"` : ""}
-            ${action.route ? `data-route="${escapeHtml(action.route)}"` : ""}
-            ${action.id ? `id="${escapeHtml(action.id)}"` : ""}
-            ${action.disabled ? "disabled" : ""}
-          >${escapeHtml(action.label)}</button>
+            ${item.commandId ? `data-command-id="${escapeHtml(item.commandId)}"` : ""}
+            ${item.route ? `data-route="${escapeHtml(item.route)}"` : ""}
+            ${item.projectTab ? `data-project-tab="${escapeHtml(item.projectTab)}"` : ""}
+            ${item.id ? `id="${escapeHtml(item.id)}"` : ""}
+            ${item.disabled ? "disabled" : ""}
+          >${escapeHtml(item.label)}</button>`).join("")}
         </div>
       ` : ""}
     </div>
