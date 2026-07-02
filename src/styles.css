@@ -5644,6 +5644,11 @@ body[data-tutorial-target="view"] #app-view {
   line-height: 1.45;
 }
 
+.portal-status-card code {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .portal-decision-room {
   align-content: start;
 }

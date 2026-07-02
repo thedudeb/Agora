@@ -848,7 +848,9 @@ const seedData = {
   selectedProject: "all",
   selectedCompany: "all",
   clientPortalPreviewCompanyId: "",
+  selectedClientPortalToken: "",
   selectedInviteToken: "",
+  clientPortalLinks: [],
   selectedProjectTab: "overview",
   selectedSettingsTab: "account",
   selectedCalendarMonth: "2026-07",
@@ -2422,6 +2424,8 @@ function normalizeState(nextState) {
     invitations: Array.isArray(nextState.invitations) ? nextState.invitations : [],
     auditEvents: Array.isArray(nextState.auditEvents) ? nextState.auditEvents : seedData.auditEvents,
     clientPortalPreviewCompanyId: byId(companies, nextState.clientPortalPreviewCompanyId) ? nextState.clientPortalPreviewCompanyId : "",
+    selectedClientPortalToken: typeof nextState.selectedClientPortalToken === "string" ? nextState.selectedClientPortalToken : "",
+    clientPortalLinks: normalizeClientPortalLinks(nextState.clientPortalLinks, companies),
     savedViews: normalizeSavedViews(nextState.savedViews),
     dailyNotes: Object.prototype.hasOwnProperty.call(nextState, "dailyNotes") ? nextState.dailyNotes || {} : seedData.dailyNotes,
     dailyPlans: Object.prototype.hasOwnProperty.call(nextState, "dailyPlans") ? nextState.dailyPlans || {} : seedData.dailyPlans,
@@ -2650,6 +2654,29 @@ function normalizeNotificationHistory(history = []) {
       createdAt: event.createdAt || new Date().toISOString()
     }))
     .slice(0, 50);
+}
+
+function normalizeClientPortalLinks(links = [], companies = seedData.companies) {
+  const companyIds = new Set((Array.isArray(companies) ? companies : []).map((company) => company.id));
+  return (Array.isArray(links) ? links : [])
+    .filter((link) => link && typeof link === "object" && companyIds.has(link.companyId))
+    .map((link) => ({
+      id: link.id || uid("portal-link"),
+      companyId: link.companyId,
+      token: String(link.token || uid("portal-token")).trim(),
+      status: ["active", "revoked"].includes(link.status) ? link.status : "active",
+      createdBy: link.createdBy || currentMemberId,
+      createdAt: link.createdAt || new Date().toISOString(),
+      expiresAt: link.expiresAt || shiftDate(todayKey(), 14),
+      revokedAt: link.revokedAt || "",
+      copiedAt: link.copiedAt || "",
+      emailedAt: link.emailedAt || "",
+      viewedAt: link.viewedAt || "",
+      viewCount: Number(link.viewCount || 0),
+      packetSignature: String(link.packetSignature || "")
+    }))
+    .filter((link) => link.token)
+    .slice(0, 100);
 }
 
 function normalizeNotificationReminders(reminders = []) {
@@ -4119,6 +4146,9 @@ function isClientSession() {
 }
 
 function clientCompanyId() {
+  const portalLink = clientPortalLinkByToken(state.selectedClientPortalToken);
+  if (portalLink && clientPortalLinkStatus(portalLink) === "active") return portalLink.companyId;
+  if (state.selectedClientPortalToken) return "";
   if (!isClientSession() && byId(state.companies, state.clientPortalPreviewCompanyId)) return state.clientPortalPreviewCompanyId;
   return apiSession?.membership?.companyId || apiSession?.user?.companyId || state.companies.find((company) => company.type === "Client")?.id || state.companies[0]?.id || "";
 }
@@ -10821,6 +10851,51 @@ function clientShareEmailDraft(companyId) {
   return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(portalSharePacket(companyId))}`;
 }
 
+function clientPacketSignature(companyId) {
+  const readiness = clientShareReadiness(companyId);
+  return JSON.stringify({
+    items: readiness.visibleItems.map((item) => ({
+      kind: item.kind,
+      id: item.id,
+      visibility: item.visibility,
+      updatedAt: item.record?.updatedAt || item.record?.createdAt || ""
+    })),
+    warnings: readiness.warnings.map((item) => `${item.id}:${item.warning}`)
+  });
+}
+
+function clientPortalLinkStatus(link) {
+  if (!link) return "missing";
+  if (link.status === "revoked" || link.revokedAt) return "revoked";
+  if (link.expiresAt && link.expiresAt < todayKey()) return "expired";
+  if (link.packetSignature && link.packetSignature !== clientPacketSignature(link.companyId)) return "stale";
+  return "active";
+}
+
+function activeClientPortalLink(companyId) {
+  return (state.clientPortalLinks || [])
+    .filter((link) => link.companyId === companyId)
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .find((link) => clientPortalLinkStatus(link) === "active") || null;
+}
+
+function latestClientPortalLink(companyId) {
+  return (state.clientPortalLinks || [])
+    .filter((link) => link.companyId === companyId)
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
+}
+
+function clientPortalLinkUrl(link) {
+  if (!link?.token) return "";
+  return `${window.location.origin}${window.location.pathname}#portal/${encodeURIComponent(link.token)}`;
+}
+
+function clientPortalLinkByToken(token) {
+  const cleanToken = String(token || "").trim();
+  if (!cleanToken) return null;
+  return (state.clientPortalLinks || []).find((link) => link.token === cleanToken) || null;
+}
+
 function portalDecisionItems(companyId) {
   const portal = companyPortalSnapshot(companyId);
   return portal.pendingApprovals.slice(0, 5).map((approval) => {
@@ -11648,6 +11723,7 @@ function setRoute(route) {
   if (route !== "project") state.selectedProjectTab = "overview";
   if (state.selectedRoute === "settings") state.selectedSettingsTab = settingsTabFallback(state.selectedSettingsTab);
   if (state.selectedRoute !== "portal") state.clientPortalPreviewCompanyId = "";
+  if (state.selectedRoute !== "portal") state.selectedClientPortalToken = "";
   if (route !== "company") state.selectedCompany = "all";
   openSidebarGroupForRoute(state.selectedRoute);
   saveState();
@@ -12463,6 +12539,53 @@ function inviteTokenFromLocation() {
   return decodeURIComponent(hash.slice("invite/".length)).trim();
 }
 
+function portalTokenFromLocation() {
+  const queryToken = new URLSearchParams(window.location.search).get("portalToken");
+  if (queryToken) return queryToken.trim();
+
+  const hash = window.location.hash.replace(/^#\/?/, "");
+  if (!hash.startsWith("portal/")) return "";
+  return decodeURIComponent(hash.slice("portal/".length)).trim();
+}
+
+function routePortalFromLocation({ shouldRender = false } = {}) {
+  const token = portalTokenFromLocation();
+  if (!token) return false;
+  const link = clientPortalLinkByToken(token);
+  if (!link || clientPortalLinkStatus(link) !== "active") {
+    state.selectedRoute = "portal";
+    state.selectedClientPortalToken = token;
+    state.clientPortalPreviewCompanyId = "";
+    saveState();
+    if (shouldRender) render();
+    return true;
+  }
+
+  const now = new Date().toISOString();
+  state.clientPortalLinks = state.clientPortalLinks.map((item) => item.id === link.id ? {
+    ...item,
+    viewedAt: now,
+    viewCount: Number(item.viewCount || 0) + 1
+  } : item);
+  addAuditEvent({
+    action: "client_portal_link_view",
+    detail: `Client portal link viewed for ${companyName(link.companyId)}`,
+    targetType: "company",
+    targetId: link.companyId,
+    impact: "medium",
+    restoreHint: "Revoke or rotate the portal link if this access was unexpected.",
+    metadata: { companyId: link.companyId, linkId: link.id, token: link.token }
+  });
+  state.selectedRoute = "portal";
+  state.selectedClientPortalToken = token;
+  state.clientPortalPreviewCompanyId = "";
+  state.selectedProject = "all";
+  state.selectedCompany = "all";
+  saveState();
+  if (shouldRender) render();
+  return true;
+}
+
 function routeInviteFromLocation({ shouldRender = false } = {}) {
   const token = inviteTokenFromLocation();
   if (!token) return false;
@@ -12581,6 +12704,15 @@ function startClientPortalPreview(companyId = selectedVisibilityReviewCompanyId(
   showToast(`Previewing ${company.name} as a client`, "success");
 }
 
+function exitClientPortalLinkSession() {
+  if (!state.selectedClientPortalToken) return;
+  state.selectedClientPortalToken = "";
+  state.selectedRoute = "landing";
+  saveState();
+  render();
+  showToast("Portal link session closed", "info");
+}
+
 function exitClientPortalPreview() {
   if (!state.clientPortalPreviewCompanyId) return;
   state.clientPortalPreviewCompanyId = "";
@@ -12589,6 +12721,132 @@ function exitClientPortalPreview() {
   saveState();
   render();
   showToast("Client preview closed", "info");
+}
+
+function generateClientPortalLink(companyId, options = {}) {
+  const company = byId(state.companies, companyId);
+  if (!company) return null;
+  const readiness = clientShareReadiness(companyId);
+  if (!readiness.ready) {
+    showToast("Fix visibility warnings before generating a portal link", "info");
+    return null;
+  }
+  const now = new Date().toISOString();
+  const activeLink = activeClientPortalLink(companyId);
+  if (activeLink && !options.rotate) {
+    showToast("An active portal link already exists", "info");
+    return activeLink;
+  }
+  const revokedLinks = options.rotate
+    ? (state.clientPortalLinks || []).map((link) => link.companyId === companyId && clientPortalLinkStatus(link) === "active"
+      ? { ...link, status: "revoked", revokedAt: now }
+      : link)
+    : (state.clientPortalLinks || []);
+  const link = {
+    id: uid("portal-link"),
+    companyId,
+    token: uid("portal-token"),
+    status: "active",
+    createdBy: activeMemberId(),
+    createdAt: now,
+    expiresAt: shiftDate(todayKey(), 14),
+    revokedAt: "",
+    copiedAt: "",
+    emailedAt: "",
+    viewedAt: "",
+    viewCount: 0,
+    packetSignature: clientPacketSignature(companyId)
+  };
+  state.clientPortalLinks = [link, ...revokedLinks].slice(0, 100);
+  addAuditEvent({
+    action: options.rotate ? "client_portal_link_rotate" : "client_portal_link_generate",
+    detail: `${options.rotate ? "Rotated" : "Generated"} client portal link for ${company.name}`,
+    targetType: "company",
+    targetId: companyId,
+    impact: "medium",
+    restoreHint: "Revoke or rotate the portal link from Client Visibility review.",
+    metadata: { companyId, linkId: link.id, expiresAt: link.expiresAt }
+  });
+  saveState();
+  render();
+  showToast(options.rotate ? "Portal link rotated" : "Portal link generated", "success");
+  return link;
+}
+
+async function copyClientPortalLink(companyId) {
+  const link = activeClientPortalLink(companyId) || generateClientPortalLink(companyId);
+  if (!link) return;
+  if (!navigator.clipboard?.writeText) {
+    showToast("Clipboard is not available in this browser", "info");
+    return;
+  }
+  const now = new Date().toISOString();
+  await navigator.clipboard.writeText(clientPortalLinkUrl(link));
+  state.clientPortalLinks = state.clientPortalLinks.map((item) => item.id === link.id ? { ...item, copiedAt: now } : item);
+  addAuditEvent({
+    action: "client_portal_link_copy",
+    detail: `Copied client portal link for ${companyName(companyId)}`,
+    targetType: "company",
+    targetId: companyId,
+    impact: "medium",
+    restoreHint: "Revoke or rotate the portal link if it was copied by mistake.",
+    metadata: { companyId, linkId: link.id }
+  });
+  saveState();
+  render();
+  showToast("Portal link copied", "success");
+}
+
+function emailClientPortalLink(companyId) {
+  const link = activeClientPortalLink(companyId) || generateClientPortalLink(companyId);
+  if (!link) return;
+  const now = new Date().toISOString();
+  const company = byId(state.companies, companyId);
+  const body = [
+    `Hi,`,
+    "",
+    `Here is your ${company?.name || "client"} portal link:`,
+    clientPortalLinkUrl(link),
+    "",
+    `This link expires ${formatFullDate(link.expiresAt)}.`,
+    "",
+    portalSharePacket(companyId)
+  ].join("\n");
+  state.clientPortalLinks = state.clientPortalLinks.map((item) => item.id === link.id ? { ...item, emailedAt: now } : item);
+  addAuditEvent({
+    action: "client_portal_link_email_draft",
+    detail: `Opened client portal link email draft for ${companyName(companyId)}`,
+    targetType: "company",
+    targetId: companyId,
+    impact: "medium",
+    restoreHint: "Revoke or rotate the portal link if the email draft was opened by mistake.",
+    metadata: { companyId, linkId: link.id }
+  });
+  saveState();
+  window.location.href = `mailto:?subject=${encodeURIComponent(`${company?.name || "Client"} portal link`)}&body=${encodeURIComponent(body)}`;
+  showToast("Portal link email draft opened", "success");
+}
+
+function revokeClientPortalLink(companyId) {
+  const link = activeClientPortalLink(companyId) || latestClientPortalLink(companyId);
+  if (!link || clientPortalLinkStatus(link) === "revoked") {
+    showToast("No active portal link to revoke", "info");
+    return;
+  }
+  const now = new Date().toISOString();
+  state.clientPortalLinks = state.clientPortalLinks.map((item) => item.id === link.id ? { ...item, status: "revoked", revokedAt: now } : item);
+  addAuditEvent({
+    action: "client_portal_link_revoke",
+    detail: `Revoked client portal link for ${companyName(companyId)}`,
+    targetType: "company",
+    targetId: companyId,
+    impact: "high",
+    restoreHint: "Generate a new portal link if this client should regain access.",
+    metadata: { companyId, linkId: link.id }
+  });
+  saveState();
+  render();
+  showToast("Portal link revoked", "success");
 }
 
 function updateClientVisibility(kind, id, value) {
@@ -15804,6 +16062,8 @@ function renderClientShareComposer(companyId) {
             <button class="button button-primary compact-button" type="button" data-email-portal-packet="${escapeHtml(companyId)}" ${readiness.ready ? "" : "disabled"}>Email Draft</button>
           </div>
         </article>
+
+        ${renderClientPortalLinkPanel(companyId)}
       </div>
       <div class="project-summary-meta">
         <span>Approvals: ${nextApprovals.length ? nextApprovals.map((approval) => escapeHtml(approval.title)).join(", ") : "none pending"}</span>
@@ -15814,20 +16074,55 @@ function renderClientShareComposer(companyId) {
   `;
 }
 
+function renderClientPortalLinkPanel(companyId) {
+  const readiness = clientShareReadiness(companyId);
+  const link = activeClientPortalLink(companyId) || latestClientPortalLink(companyId);
+  const status = clientPortalLinkStatus(link);
+  const active = status === "active";
+  const statusLabel = {
+    active: "Active",
+    stale: "Packet changed",
+    expired: "Expired",
+    revoked: "Revoked",
+    missing: "No link"
+  }[status] || "No link";
+  const tone = active ? "green" : status === "stale" || status === "expired" ? "amber" : "neutral";
+  return `
+    <article class="portal-status-card">
+      <span class="status-pill inbox-${tone}">${escapeHtml(statusLabel)}</span>
+      <h3>Client portal link</h3>
+      <p>${active ? `Expires ${formatFullDate(link.expiresAt)}. ${link.viewCount ? `${link.viewCount} view${link.viewCount === 1 ? "" : "s"}.` : "No views yet."}` : status === "stale" ? "The visible packet changed. Rotate the link before sending it again." : "Generate a company-scoped portal link when the packet is ready."}</p>
+      ${link ? `<small>Created ${escapeHtml(formatTimestamp(link.createdAt))} by ${escapeHtml(memberName(link.createdBy))}</small>` : "<small>No client access link has been generated.</small>"}
+      ${active ? `<code>${escapeHtml(clientPortalLinkUrl(link))}</code>` : ""}
+      <div class="portal-actions">
+        <button class="button button-secondary compact-button" type="button" data-generate-portal-link="${escapeHtml(companyId)}" ${readiness.ready && !active ? "" : "disabled"}>Generate Link</button>
+        <button class="button button-secondary compact-button" type="button" data-copy-portal-link="${escapeHtml(companyId)}" ${active ? "" : "disabled"}>Copy Link</button>
+        <button class="button button-secondary compact-button" type="button" data-email-portal-link="${escapeHtml(companyId)}" ${active ? "" : "disabled"}>Email Link</button>
+        <button class="button button-secondary compact-button" type="button" data-rotate-portal-link="${escapeHtml(companyId)}" ${readiness.ready && link ? "" : "disabled"}>Rotate</button>
+        <button class="button button-secondary compact-button" type="button" data-revoke-portal-link="${escapeHtml(companyId)}" ${active ? "" : "disabled"}>Revoke</button>
+      </div>
+    </article>
+  `;
+}
+
 function renderClientPortal() {
   const companyId = clientCompanyId();
   const company = byId(state.companies, companyId);
   const previewing = !isClientSession() && Boolean(state.clientPortalPreviewCompanyId);
+  const linkedAccess = Boolean(state.selectedClientPortalToken);
   if (!company) {
+    const link = clientPortalLinkByToken(state.selectedClientPortalToken);
+    const status = clientPortalLinkStatus(link);
     els.appView.innerHTML = `
       <section class="panel">
         <div class="panel-header">
           <div>
             <p class="eyebrow">Client portal</p>
-            <h2>Portal unavailable</h2>
+            <h2>${linkedAccess ? "Portal link unavailable" : "Portal unavailable"}</h2>
           </div>
+          ${linkedAccess ? `<button class="button button-secondary" type="button" data-client-link-exit>Exit Portal</button>` : ""}
         </div>
-        ${emptyState("No company is assigned to this client account yet.")}
+        ${emptyState(linkedAccess ? `This portal link is ${escapeHtml(status)}. Ask the project manager for a new link.` : "No company is assigned to this client account yet.")}
       </section>
     `;
     return;
@@ -15852,6 +16147,16 @@ function renderClientPortal() {
           <button class="button button-secondary" type="button" data-client-preview-exit>Exit Preview</button>
         </div>
       </section>
+    ` : linkedAccess ? `
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Secure portal link</p>
+            <h2>You are viewing the client portal from a company-scoped link</h2>
+          </div>
+          <button class="button button-secondary" type="button" data-client-link-exit>Exit Portal</button>
+        </div>
+      </section>
     ` : ""}
 
     <section class="project-hero portal-hero">
@@ -15869,7 +16174,7 @@ function renderClientPortal() {
         <span>Portal status</span>
         <strong>${portal.pendingApprovals.length ? "Needs review" : "On track"}</strong>
         <span>${portal.updatedAt ? `Updated ${formatTimestamp(portal.updatedAt)}` : "No recent updates"}</span>
-        <button class="button button-secondary" type="button" ${previewing ? "data-client-preview-exit" : "id=\"api-disconnect\""}>${previewing ? "Exit Preview" : "Sign Out"}</button>
+        <button class="button button-secondary" type="button" ${previewing ? "data-client-preview-exit" : linkedAccess ? "data-client-link-exit" : "id=\"api-disconnect\""}>${previewing ? "Exit Preview" : linkedAccess ? "Exit Portal" : "Sign Out"}</button>
       </div>
     </section>
 
@@ -17678,6 +17983,7 @@ function portalSharePacket(companyId) {
   if (!company) return "";
   const portal = companyPortalSnapshot(companyId);
   const readiness = clientShareReadiness(companyId);
+  const link = activeClientPortalLink(companyId);
   const openTasks = portal.openTasks.slice(0, 6);
   const approvals = portal.pendingApprovals.slice(0, 6);
   const decisions = portalDecisionItems(companyId).slice(0, 6);
@@ -17688,6 +17994,7 @@ function portalSharePacket(companyId) {
     `# ${company.name} Portal Update`,
     "",
     readiness.ready ? "Send status: Ready to send." : `Send status: Not ready (${readiness.blockers.length} blocker${readiness.blockers.length === 1 ? "" : "s"}).`,
+    link ? `Portal link: ${clientPortalLinkUrl(link)} (expires ${formatFullDate(link.expiresAt)}).` : "Portal link: Not generated yet.",
     "",
     `Progress: ${portal.progress}% complete across ${portal.projects.length} ${portal.projects.length === 1 ? "project" : "projects"}.`,
     `Open work: ${portal.openTasks.length}. Pending approvals: ${portal.pendingApprovals.length}. Shared assets: ${portal.documents.length + portal.files.length}.`,
@@ -26375,6 +26682,36 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const generatePortalLinkButton = event.target.closest("[data-generate-portal-link]");
+  if (generatePortalLinkButton) {
+    generateClientPortalLink(generatePortalLinkButton.dataset.generatePortalLink);
+    return;
+  }
+
+  const copyPortalLinkButton = event.target.closest("[data-copy-portal-link]");
+  if (copyPortalLinkButton) {
+    copyClientPortalLink(copyPortalLinkButton.dataset.copyPortalLink);
+    return;
+  }
+
+  const emailPortalLinkButton = event.target.closest("[data-email-portal-link]");
+  if (emailPortalLinkButton) {
+    emailClientPortalLink(emailPortalLinkButton.dataset.emailPortalLink);
+    return;
+  }
+
+  const rotatePortalLinkButton = event.target.closest("[data-rotate-portal-link]");
+  if (rotatePortalLinkButton) {
+    generateClientPortalLink(rotatePortalLinkButton.dataset.rotatePortalLink, { rotate: true });
+    return;
+  }
+
+  const revokePortalLinkButton = event.target.closest("[data-revoke-portal-link]");
+  if (revokePortalLinkButton) {
+    revokeClientPortalLink(revokePortalLinkButton.dataset.revokePortalLink);
+    return;
+  }
+
   const dashboardSaveLayoutButton = event.target.closest("#dashboard-save-layout");
   if (dashboardSaveLayoutButton) {
     saveDashboardLayout();
@@ -26944,6 +27281,12 @@ document.addEventListener("click", (event) => {
   const clientPreviewExitButton = event.target.closest("[data-client-preview-exit]");
   if (clientPreviewExitButton) {
     exitClientPortalPreview();
+    return;
+  }
+
+  const clientLinkExitButton = event.target.closest("[data-client-link-exit]");
+  if (clientLinkExitButton) {
+    exitClientPortalLinkSession();
     return;
   }
 
@@ -27716,7 +28059,7 @@ els.companyForm.addEventListener("submit", (event) => {
 });
 
 window.addEventListener("hashchange", () => {
-  if (!routeInviteFromLocation({ shouldRender: true })) {
+  if (!routePortalFromLocation({ shouldRender: true }) && !routeInviteFromLocation({ shouldRender: true })) {
     routeFeedbackFromLocation({ shouldRender: true });
   }
 });
@@ -27782,7 +28125,7 @@ window.setInterval(() => {
   refreshLiveCollaborationFromApi();
 }, 15000);
 
-if (!routeInviteFromLocation() && !routeFeedbackFromLocation() && !routeFromLocation()) {
+if (!routePortalFromLocation() && !routeInviteFromLocation() && !routeFeedbackFromLocation() && !routeFromLocation()) {
   openSidebarGroupForRoute(state.selectedRoute);
 }
 render();

@@ -124,6 +124,8 @@ const routeChecks = [
       "Preview as Client",
       "Share packet composer",
       "Ready to send checklist",
+      "Client portal link",
+      "Generate Link",
       "Email Draft",
       "Visible packet",
       "Visibility warnings",
