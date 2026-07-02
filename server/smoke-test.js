@@ -103,6 +103,10 @@ async function run() {
     assert(backendHealth.productionGates.some((item) => item.id === "public-app-url"), "backend health did not include public app URL gate");
     assert(backendHealth.productionGates.some((item) => item.id === "public-feature-abuse"), "backend health did not include public feature abuse gate");
     assert(backendHealth.readiness.some((item) => item.id === "password-reset-delivery"), "backend readiness did not include reset delivery gate");
+    assert(backendHealth.readiness.some((item) => item.id === "notification-delivery-map"), "backend readiness did not include notification delivery map");
+    assert(Array.isArray(backendHealth.notificationDelivery?.matrix), "backend health did not expose notification delivery matrix");
+    assert(backendHealth.notificationDelivery.matrix.some((item) => item.id === "portal-action"), "notification delivery matrix missed portal actions");
+    assert(backendHealth.notificationDelivery.blockers.some((item) => item.id === "public-feature-request"), "notification delivery matrix did not flag unconfigured feature request email");
     assert(["smtp", "not-configured"].includes(backendHealth.email?.portalActions?.mode), "backend health did not expose portal action email status");
     assert(backendHealth.observability && Number.isFinite(backendHealth.observability.total), "backend health did not include observability metrics");
     assert(backendHealth.jobs && Array.isArray(backendHealth.jobs.recent), "backend health did not include job metrics");
@@ -175,6 +179,25 @@ async function run() {
     assert(accepted.token, "accepted invite did not create a session");
     assert(accepted.user.email === "jordan@example.test", "accepted invite did not return invited user");
     assert(accepted.membership.role === "member", "accepted invite did not use invited role");
+
+    const blockedMemberEmailTest = await requestError(`${baseUrl}/api/notifications/test-email`, {
+      method: "POST",
+      token: accepted.token,
+      body: { to: "jordan@example.test" }
+    });
+    assert(blockedMemberEmailTest.status === 403, "member should not send server notification test email");
+    const notificationEmailTest = await request(`${baseUrl}/api/notifications/test-email`, {
+      method: "POST",
+      token: login.token,
+      body: { to: "owner@example.test" }
+    });
+    assert(notificationEmailTest.email.mode === "not-configured", "test email should report missing SMTP locally");
+    const invalidNotificationEmailTest = await requestError(`${baseUrl}/api/notifications/test-email`, {
+      method: "POST",
+      token: login.token,
+      body: { to: "not-an-email" }
+    });
+    assert(invalidNotificationEmailTest.status === 400, "invalid test email recipient should be rejected");
 
     const emailLogin = await request(`${baseUrl}/api/auth/login`, {
       method: "POST",

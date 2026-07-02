@@ -762,6 +762,17 @@ function createServer(options = {}) {
         return;
       }
 
+      if (request.method === "POST" && url.pathname === "/api/notifications/test-email") {
+        if (!hasPermission(session, "notifications:write")) {
+          sendError(response, 403, "Missing notification write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const email = await sendNotificationTestEmail(body, session);
+        sendJson(response, 200, { email });
+        return;
+      }
+
       if (request.method === "POST" && url.pathname === "/api/automations/run") {
         if (!hasPermission(session, "scheduler:run")) {
           sendError(response, 403, "Missing scheduler run permission");
@@ -1380,6 +1391,7 @@ async function buildBackendHealth(storage, session) {
   const publicAppUrlHosted = /^https:\/\//i.test(publicAppUrl) && !/localhost|127\.0\.0\.1|\[::1\]/i.test(publicAppUrl);
   const publicFeatureBodyLimitKb = Math.round(PUBLIC_FEATURE_BODY_LIMIT_BYTES / 1024);
   const email = emailDeliveryDiagnostics();
+  const notificationDelivery = notificationDeliveryAudit(email);
   const snapshotDocument = await storage.loadWorkspace();
   const snapshot = snapshotDocument?.snapshot || {};
   const collectionReports = await Promise.all(Object.entries(recordCollections).map(async ([key, config]) => {
@@ -1551,6 +1563,22 @@ async function buildBackendHealth(storage, session) {
       fix: "Use AGORA_SCHEDULER_ENABLED=true for the API worker, or call the scheduler endpoint from trusted cron."
     },
     {
+      id: "notification-delivery-map",
+      label: "Notification delivery map",
+      done: notificationDelivery.matrix.length >= 8,
+      detail: `${notificationDelivery.matrix.length} notification route${notificationDelivery.matrix.length === 1 ? "" : "s"} mapped across in-app, scheduler, and email delivery`,
+      fix: "Keep this route map current whenever a new notification event or email workflow is added."
+    },
+    {
+      id: "notification-email-routes",
+      label: "Notification email routes",
+      done: !productionTarget || notificationDelivery.ready,
+      detail: notificationDelivery.ready
+        ? "Production email routes have their required SMTP and recipient settings"
+        : `${notificationDelivery.blockers.length} email route${notificationDelivery.blockers.length === 1 ? "" : "s"} need configuration`,
+      fix: notificationDelivery.blockers[0]?.fix || "Set SMTP and owner-recipient environment variables before relying on external notification email."
+    },
+    {
       id: "record-query-api",
       label: "Record query API",
       done: true,
@@ -1612,6 +1640,7 @@ async function buildBackendHealth(storage, session) {
     records: collectionReports,
     readiness,
     email,
+    notificationDelivery,
     observability: requestMetricsSnapshot(),
     jobs: backgroundJobSnapshot(),
     generatedAt: new Date().toISOString()
@@ -3215,6 +3244,159 @@ function emailDeliveryDiagnostics() {
     },
     jobs: backgroundJobSnapshot()
   };
+}
+
+function notificationDeliveryAudit(email = emailDeliveryDiagnostics()) {
+  const smtpReady = Boolean(email.smtp?.configured);
+  const inviteReady = Boolean(email.invitations?.configured);
+  const featureReady = Boolean(email.featureRequests?.configured);
+  const portalReady = Boolean(email.portalActions?.configured);
+  const route = ({ id, label, trigger, audience, inApp = true, emailMode = "none", ready = true, detail, fix = "", productionCritical = false }) => ({
+    id,
+    label,
+    trigger,
+    audience,
+    inApp,
+    emailMode,
+    ready,
+    productionCritical,
+    detail,
+    fix
+  });
+  const matrix = [
+    route({
+      id: "assignment",
+      label: "Task assignment",
+      trigger: "Task owner or assignee changes",
+      audience: "Assigned workspace member",
+      emailMode: "in-app",
+      detail: "Inbox and browser notification preferences cover assignment signals."
+    }),
+    route({
+      id: "mention-comment",
+      label: "Mentions and comments",
+      trigger: "Workspace comment or watched task activity",
+      audience: "Mentioned or watching members",
+      emailMode: "in-app",
+      detail: "Comment, mention, and watched-task signals are routed through the in-app inbox."
+    }),
+    route({
+      id: "due-reminder",
+      label: "Due dates and reminders",
+      trigger: "Manual reminder, due-soon, or overdue scheduler run",
+      audience: "Responsible member",
+      emailMode: "scheduler",
+      detail: "Server scheduler writes reminder history and keeps due work visible."
+    }),
+    route({
+      id: "approval-request",
+      label: "Approval request",
+      trigger: "Approval moves into requested or needs-changes",
+      audience: "Project owner and review participants",
+      emailMode: "in-app",
+      detail: "Approval signals appear in the inbox and client approval digest."
+    }),
+    route({
+      id: "portal-action",
+      label: "Hosted portal action",
+      trigger: "Client approves, comments, requests a feature, or opens a portal link",
+      audience: "Workspace owner recipient",
+      emailMode: portalReady ? "smtp" : "not-configured",
+      ready: portalReady,
+      productionCritical: true,
+      detail: portalReady ? "Portal action owner email is ready." : email.portalActions?.detail || "Portal action email is not configured.",
+      fix: "Set AGORA_SMTP_HOST and AGORA_PORTAL_ACTION_EMAIL or AGORA_OWNER_EMAIL."
+    }),
+    route({
+      id: "public-feature-request",
+      label: "Public feature request",
+      trigger: "Public request form creates a task",
+      audience: "Workspace owner recipient",
+      emailMode: featureReady ? "smtp" : "not-configured",
+      ready: featureReady,
+      productionCritical: true,
+      detail: featureReady ? "Public feature requests queue owner email." : email.featureRequests?.detail || "Feature request owner email is not configured.",
+      fix: "Set AGORA_SMTP_HOST and AGORA_FEATURE_REQUEST_EMAIL or AGORA_OWNER_EMAIL."
+    }),
+    route({
+      id: "feature-request-update",
+      label: "Requester update",
+      trigger: "Feature request status update includes a requester email",
+      audience: "External requester",
+      emailMode: smtpReady ? "smtp" : "not-configured",
+      ready: smtpReady,
+      productionCritical: true,
+      detail: smtpReady ? "Requester updates can be emailed when the task has a requester email." : "SMTP is required to send requester updates.",
+      fix: "Set AGORA_SMTP_HOST and AGORA_EMAIL_FROM before sending requester updates."
+    }),
+    route({
+      id: "invitation",
+      label: "Workspace invitation",
+      trigger: "Admin invites or resends a member invite",
+      audience: "Invited user",
+      emailMode: inviteReady ? "smtp" : "not-configured",
+      ready: inviteReady,
+      productionCritical: true,
+      detail: inviteReady ? "Invitation email can be queued through SMTP." : email.invitations?.detail || "Invitation email is not configured.",
+      fix: "Set AGORA_SMTP_HOST and AGORA_EMAIL_FROM before inviting real teams."
+    }),
+    route({
+      id: "digest-handoff",
+      label: "Digest handoff",
+      trigger: "Manual, daily, or weekly digest run",
+      audience: "Configured workspace delivery recipient",
+      emailMode: "handoff",
+      detail: "The app prepares digest payloads for browser, webhook, and email handoff delivery."
+    })
+  ];
+  const blockers = matrix
+    .filter((item) => item.productionCritical && !item.ready)
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      detail: item.detail,
+      fix: item.fix
+    }));
+  return {
+    ready: blockers.length === 0,
+    blockers,
+    matrix
+  };
+}
+
+async function sendNotificationTestEmail(body = {}, session) {
+  const providedRecipient = cleanString(body.to);
+  if (providedRecipient && !isValidEmailAddress(providedRecipient)) {
+    publicError(400, "Test email recipient is invalid");
+  }
+  const to = optionalEmail(providedRecipient) || optionalEmail(session.user.email);
+  if (!to) {
+    return { mode: "not-configured", delivered: false, reason: "Set an email recipient before sending a test notification." };
+  }
+  const email = emailDeliveryDiagnostics();
+  if (!email.smtp.configured) {
+    return { mode: "not-configured", delivered: false, reason: "Set AGORA_SMTP_HOST to send test notification emails." };
+  }
+
+  try {
+    await sendSmtpMail({
+      to,
+      from: cleanString(process.env.AGORA_EMAIL_FROM || process.env.SMTP_FROM || "Agora <no-reply@localhost>"),
+      subject: "Agora notification test",
+      text: [
+        "This is a test notification from Agora.",
+        "",
+        `Workspace: ${workspace.name}`,
+        `Sent by: ${session.user.name || session.user.email}`,
+        `Generated: ${new Date().toISOString()}`,
+        "",
+        "If you received this, SMTP delivery is working for Agora notification email."
+      ].join("\n")
+    });
+    return { mode: "smtp", delivered: true };
+  } catch (error) {
+    return { mode: "smtp", delivered: false, reason: error.publicMessage || error.message || "SMTP test delivery failed." };
+  }
 }
 
 function featureRequestPayload({ task, request, session, to }) {

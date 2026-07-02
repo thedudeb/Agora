@@ -7744,6 +7744,11 @@ function renderIntegrationsHubPanel() {
 function renderNotificationDeliveryIntegrationPanel() {
   const settings = notificationSettings();
   const canManageNotifications = canWrite("notifications:write");
+  const health = backendHealth || apiSession?.backendHealth || {};
+  const smtp = health.email?.smtp;
+  const emailStatus = smtp?.configured
+    ? `SMTP ${smtp.host || "configured"}:${smtp.port || ""}`
+    : apiSession ? "SMTP not configured" : "Connect API for SMTP status";
   const payloadPreview = {
     source: "agora",
     type: "notification_digest",
@@ -7774,11 +7779,12 @@ function renderNotificationDeliveryIntegrationPanel() {
           <span>Include resolved items in delivery payloads</span>
         </label>
         <button class="button button-primary compact-button" type="button" id="notification-save-delivery" ${canManageNotifications ? "" : "disabled"}>Save Delivery</button>
+        <button class="button button-secondary compact-button" type="button" id="notification-test-email" ${apiSession && canManageNotifications ? "" : "disabled"}>Send Test Email</button>
       </div>
       <div class="notification-delivery-preview">
         <div>
           <strong>Server handoff contract</strong>
-          <p>Agora prepares webhook and email payloads locally. A self-hosted worker can POST the copied payload or mail it through your provider.</p>
+          <p>${escapeHtml(emailStatus)}. Agora prepares webhook and email payloads locally, and the API can send a live SMTP test when configured.</p>
         </div>
         <pre>${escapeHtml(JSON.stringify(payloadPreview, null, 2))}</pre>
       </div>
@@ -16931,6 +16937,76 @@ function notificationDeliveryChannels(settings = notificationSettings()) {
   return channels.join(" + ");
 }
 
+function notificationDeliveryAudit() {
+  const health = backendHealth || apiSession?.backendHealth || {};
+  const audit = health.notificationDelivery || {};
+  if (Array.isArray(audit.matrix) && audit.matrix.length) return audit;
+  return {
+    ready: false,
+    blockers: [{ id: "backend-health", label: "Backend health", detail: "Refresh backend health to load the server delivery map." }],
+    matrix: [
+      {
+        id: "local-assignment",
+        label: "Task assignment",
+        trigger: "Task owner or assignee changes",
+        audience: "Assigned member",
+        inApp: true,
+        emailMode: "in-app",
+        ready: true,
+        detail: "Local preferences cover in-app and browser delivery."
+      },
+      {
+        id: "local-digest-handoff",
+        label: "Digest handoff",
+        trigger: "Manual digest run",
+        audience: "Configured recipient",
+        inApp: true,
+        emailMode: "handoff",
+        ready: Boolean(notificationSettings().delivery.emailAddress || notificationSettings().delivery.webhookUrl),
+        detail: "Connect the API and refresh health for production SMTP route status."
+      }
+    ]
+  };
+}
+
+function notificationRouteStatusClass(route) {
+  if (route.ready) return "inbox-green";
+  if (route.emailMode === "not-configured") return "inbox-amber";
+  return "inbox-neutral";
+}
+
+function renderNotificationDeliveryAuditPanel() {
+  const audit = notificationDeliveryAudit();
+  const rows = Array.isArray(audit.matrix) ? audit.matrix : [];
+  const blockers = Array.isArray(audit.blockers) ? audit.blockers : [];
+  return `
+    <div class="notification-route-audit">
+      <div class="notification-route-audit-header">
+        <div>
+          <strong>Delivery route audit</strong>
+          <p>${escapeHtml(blockers.length ? `${blockers.length} production email route${blockers.length === 1 ? "" : "s"} need configuration.` : "In-app and production email routes are mapped.")}</p>
+        </div>
+        <button class="button button-secondary compact-button" type="button" data-backend-health-refresh ${apiSession ? "" : "disabled"}>Refresh</button>
+      </div>
+      <div class="notification-route-list">
+        ${rows.map((route) => `
+          <article>
+            <div>
+              <span class="status-pill ${notificationRouteStatusClass(route)}">${escapeHtml(route.ready ? "Ready" : route.emailMode || "Review")}</span>
+              <strong>${escapeHtml(route.label)}</strong>
+              <p>${escapeHtml(route.trigger || route.detail || "")}</p>
+            </div>
+            <div>
+              <small>${escapeHtml(route.audience || "Workspace")}</small>
+              <small>${escapeHtml(route.inApp ? `in-app + ${route.emailMode || "none"}` : route.emailMode || "none")}</small>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
 function notificationDigestPayload(row) {
   return {
     source: "agora",
@@ -17065,6 +17141,7 @@ function renderNotificationPreferencesPanel() {
         <span>${escapeHtml(settings.delivery.emailAddress || "No email handoff")}</span>
         <button class="button button-secondary compact-button" type="button" data-open-settings-tab="integrations" ${canManageNotifications ? "" : "disabled"}>Manage Delivery</button>
       </div>
+      ${renderNotificationDeliveryAuditPanel()}
     </section>
   `;
 }
@@ -29364,6 +29441,39 @@ function saveNotificationDeliverySettings() {
   showToast("Delivery settings saved", "success");
 }
 
+async function sendServerNotificationTestEmail() {
+  if (!apiSession) {
+    showToast("Connect to the API before sending a server email test", "info");
+    return;
+  }
+  if (!canWrite("notifications:write")) {
+    showToast("Your role cannot test notification email", "info");
+    return;
+  }
+  const settings = notificationSettings();
+  const to = document.querySelector("#notification-email-address")?.value.trim() || settings.delivery.emailAddress || "";
+  try {
+    const result = await apiRequest("/api/notifications/test-email", {
+      method: "POST",
+      body: { to }
+    });
+    const email = result.email || {};
+    logNotificationHistory({
+      kind: "email-test",
+      title: "Server email test",
+      message: email.delivered ? "SMTP test email delivered." : email.reason || "SMTP test email did not send.",
+      reason: "Manual notification delivery test.",
+      channel: email.mode || "server",
+      email
+    });
+    saveState();
+    render();
+    showToast(email.delivered ? "Test email delivered" : email.reason || "Test email did not send", email.delivered ? "success" : "info");
+  } catch (error) {
+    showToast(`Test email failed: ${error.message}`, "info");
+  }
+}
+
 function runNotificationDigest(digestId) {
   const row = notificationDigestRows().find((digest) => digest.id === digestId);
   if (!row || !row.enabled) {
@@ -29984,6 +30094,12 @@ document.addEventListener("click", (event) => {
   const notificationSaveDeliveryButton = event.target.closest("#notification-save-delivery");
   if (notificationSaveDeliveryButton) {
     saveNotificationDeliverySettings();
+    return;
+  }
+
+  const notificationTestEmailButton = event.target.closest("#notification-test-email");
+  if (notificationTestEmailButton) {
+    sendServerNotificationTestEmail();
     return;
   }
 

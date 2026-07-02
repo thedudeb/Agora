@@ -2531,6 +2531,66 @@ body[data-tutorial-target="view"] #app-view {
   overflow-wrap: anywhere;
 }
 
+.notification-route-audit {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.notification-route-audit-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.notification-route-audit-header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.notification-route-list {
+  display: grid;
+  gap: 8px;
+}
+
+.notification-route-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(130px, auto);
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.notification-route-list article > div {
+  min-width: 0;
+}
+
+.notification-route-list strong {
+  display: block;
+  margin-top: 6px;
+}
+
+.notification-route-list p,
+.notification-route-list small {
+  margin: 3px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.notification-route-list article > div:last-child {
+  display: grid;
+  gap: 4px;
+  text-align: right;
+}
+
 .notification-delivery-integration {
   display: grid;
   gap: 12px;
@@ -8356,8 +8416,13 @@ body[data-density="compact"] .main-content {
 
   .notification-delivery-grid,
   .notification-delivery-preview,
+  .notification-route-list article,
   .reminder-row {
     grid-template-columns: 1fr;
+  }
+
+  .notification-route-list article > div:last-child {
+    text-align: left;
   }
 
   .operator-center-grid .wide-panel {
