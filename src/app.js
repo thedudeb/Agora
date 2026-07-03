@@ -7586,6 +7586,68 @@ function renderSyncConflictComparison(conflict) {
   `;
 }
 
+function renderConflictResolutionCenter(queueSummary = apiSyncQueueSummary()) {
+  const conflicts = normalizeApiSyncQueue(apiSyncQueue)
+    .filter((item) => item.status === "conflict")
+    .slice(0, 8);
+  const waiting = normalizeApiSyncQueue(apiSyncQueue)
+    .filter((item) => item.status !== "conflict")
+    .slice(0, 4);
+  return `
+    <section class="conflict-center-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Team trust</p>
+          <h3>Conflict center</h3>
+        </div>
+        <span class="status-pill ${queueSummary.conflicts ? "inbox-red" : queueSummary.total ? "inbox-amber" : "inbox-green"}">${queueSummary.conflicts ? `${queueSummary.conflicts} needs review` : queueSummary.total ? `${queueSummary.total} queued` : "Clear"}</span>
+      </div>
+      <div class="conflict-center-grid">
+        <article>
+          <span>Conflicts</span>
+          <strong>${queueSummary.conflicts}</strong>
+          <small>${queueSummary.conflicts ? "Pick local, server, merge fields, or drop the queued write." : "No teammate changes are blocking sync."}</small>
+        </article>
+        <article>
+          <span>Pending writes</span>
+          <strong>${queueSummary.pending}</strong>
+          <small>${queueSummary.offline ? `${queueSummary.offline} waiting on network.` : "Pending writes can retry when the API is ready."}</small>
+        </article>
+        <article>
+          <span>Merge policy</span>
+          <strong>Field-aware</strong>
+          <small>Merge keeps server fields, overlays local edits, and unions tags/custom fields.</small>
+        </article>
+        <article>
+          <span>Oldest local change</span>
+          <strong>${queueSummary.oldestAt ? escapeHtml(formatTimestamp(queueSummary.oldestAt)) : "None"}</strong>
+          <small>Local work remains usable while PMs review sync state.</small>
+        </article>
+      </div>
+      <div class="conflict-center-body">
+        <div>
+          <div class="mini-section-header">
+            <strong>Needs decision</strong>
+            <span>Resolve collisions before retrying the queue.</span>
+          </div>
+          <div class="sync-queue-list conflict-center-list">
+            ${conflicts.length ? conflicts.map(renderApiSyncQueueItem).join("") : emptyState("No conflicts waiting for review.")}
+          </div>
+        </div>
+        <div>
+          <div class="mini-section-header">
+            <strong>Waiting to retry</strong>
+            <span>Network/API blocked writes that are not conflicted.</span>
+          </div>
+          <div class="sync-queue-list conflict-center-list">
+            ${waiting.length ? waiting.map(renderApiSyncQueueItem).join("") : emptyState("No retryable writes are queued.")}
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function renderApiSyncPanel() {
   const queueSummary = apiSyncQueueSummary();
   return `
@@ -7597,6 +7659,7 @@ function renderApiSyncPanel() {
         </div>
         <span class="status-pill ${apiConnectionTone()}">${escapeHtml(apiStatusLabel())}</span>
       </div>
+      ${renderConflictResolutionCenter(queueSummary)}
       <div class="api-sync-card">
         <div>
           <strong>${escapeHtml(apiConnectionLabel())}</strong>
@@ -12107,6 +12170,34 @@ function liveEditingSignals(limit = 5) {
     }))
     .filter((item) => item.member && item.task)
     .slice(0, limit);
+}
+
+function taskEditLockSignals(taskId = "") {
+  return livePresenceRecords({ taskId })
+    .map((presence) => ({
+      presence,
+      member: byId(workspaceMembers(), presence.memberId) || { id: presence.memberId, name: memberName(presence.memberId), role: "Member" }
+    }))
+    .slice(0, 4);
+}
+
+function renderTaskEditLockStrip(taskId = "") {
+  const editors = taskEditLockSignals(taskId);
+  if (!taskId) return "";
+  const latest = editors[0]?.presence;
+  const label = editors.length
+    ? `${editors.length} collaborator${editors.length === 1 ? "" : "s"} active`
+    : "No active editors";
+  return `
+    <div class="edit-lock-strip ${editors.length ? "is-active" : ""}">
+      <div>
+        <strong>Soft edit lock</strong>
+        <span>${editors.length ? `${editors.map(({ member }) => member.name).join(", ")} ${editors.length === 1 ? "is" : "are"} viewing this task now.` : "No one else is viewing this task right now."}</span>
+        <small>${latest ? `Fresh ${escapeHtml(formatTimestamp(latest.lastActiveAt || latest.updatedAt))}` : "Presence refreshes automatically when the API is connected."}</small>
+      </div>
+      <span class="status-pill ${editors.length ? "inbox-amber" : "inbox-green"}">${escapeHtml(label)}</span>
+    </div>
+  `;
 }
 
 function recentMentionSignals(limit = 5) {
@@ -20178,6 +20269,7 @@ function renderTaskCollaboration(taskId = "") {
       <button class="button button-secondary compact-button" type="button" data-toggle-watch-task="${taskId}">${watching ? "Watching" : "Watch"}</button>
       <small>${watcherCount} watcher${watcherCount === 1 ? "" : "s"}</small>
     </div>
+    ${renderTaskEditLockStrip(taskId)}
     <div class="collaboration-grid">
       <section>
         <div class="collaboration-header">

@@ -6940,6 +6940,58 @@ body[data-tutorial-target="view"] #app-view {
   margin-top: 10px;
 }
 
+.conflict-center-panel {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.conflict-center-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.conflict-center-grid article {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.conflict-center-grid span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.conflict-center-grid strong {
+  font-size: 1.2rem;
+}
+
+.conflict-center-grid small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.conflict-center-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+}
+
+.conflict-center-list {
+  display: grid;
+  gap: 8px;
+}
+
 .sync-queue-list article {
   display: grid;
   justify-content: stretch;
@@ -9016,6 +9068,36 @@ th {
   line-height: 1.35;
 }
 
+.edit-lock-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.edit-lock-strip.is-active {
+  border-color: rgba(160, 113, 33, 0.42);
+  background: rgba(160, 113, 33, 0.08);
+}
+
+.edit-lock-strip strong,
+.edit-lock-strip span,
+.edit-lock-strip small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.edit-lock-strip span,
+.edit-lock-strip small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .collaboration-grid {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(240px, 0.9fr);
@@ -9689,6 +9771,8 @@ body[data-density="compact"] .main-content {
   .operator-center-grid,
   .collab-hub-grid,
   .live-collaboration-grid,
+  .conflict-center-grid,
+  .conflict-center-body,
   .audit-risk-grid,
   .payment-plan-grid,
   .switcher-report-grid,
@@ -9726,6 +9810,10 @@ body[data-density="compact"] .main-content {
   .onboarding-grid,
   .project-hero {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .edit-lock-strip {
+    grid-template-columns: 1fr;
   }
 
   .settings-section-account,
@@ -10143,6 +10231,8 @@ body[data-density="compact"] .main-content {
   .form-grid,
   .collaboration-grid,
   .collab-hub-grid,
+  .conflict-center-grid,
+  .conflict-center-body,
   .task-time-grid,
   .time-entry-form,
   .sprint-settings-form,

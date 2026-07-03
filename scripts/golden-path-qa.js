@@ -414,6 +414,8 @@ const routeChecks = [
     height: 712,
     required: [
       "Backend health",
+      "Conflict center",
+      "Merge policy",
       "Offline apps",
       "Desktop and mobile readiness",
       "Local workspace",
