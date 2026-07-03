@@ -3063,6 +3063,53 @@ function latestExtractionPreviewForCapture(captureId) {
     .find((preview) => preview.captureId === captureId);
 }
 
+function projectMemoryTimelineItems() {
+  const captures = normalizeUpdateCaptures(state.updateCaptures);
+  const previews = normalizeUpdateExtractionPreviews(state.updateExtractionPreviews);
+  const captureById = new Map(captures.map((capture) => [capture.id, capture]));
+  const items = [
+    ...captures.map((capture) => ({
+      id: `capture-${capture.id}`,
+      kind: "Captured",
+      tone: "blue",
+      title: capture.title,
+      detail: `${updateCaptureSourceLabel(capture.source)} captured by ${memberName(capture.capturedBy)}.`,
+      sourceSnippet: capture.body.slice(0, 220),
+      projectId: capture.projectId,
+      createdAt: capture.createdAt
+    })),
+    ...previews.map((preview) => {
+      const capture = captureById.get(preview.captureId);
+      return {
+        id: `preview-${preview.id}`,
+        kind: "Previewed",
+        tone: "amber",
+        title: capture?.title || "Structured extraction preview",
+        detail: `${preview.proposals.length} proposals / ${preview.confidence}% confidence.`,
+        sourceSnippet: preview.proposals.slice(0, 3).map((proposal) => `${proposal.type}: ${proposal.title}`).join(" / "),
+        projectId: preview.projectId || capture?.projectId || "",
+        createdAt: preview.createdAt
+      };
+    }),
+    ...previews.flatMap((preview) => preview.proposals
+      .filter((proposal) => proposal.status === "applied")
+      .map((proposal) => ({
+        id: `applied-${proposal.id}`,
+        kind: "Applied",
+        tone: "green",
+        title: proposal.title,
+        detail: `Applied as ${proposal.type.replace("_", " ")} from Project Memory.`,
+        sourceSnippet: proposal.sourceText || proposal.summary,
+        projectId: proposal.projectId || preview.projectId,
+        createdAt: preview.createdAt
+      })))
+  ];
+  return items
+    .filter((item) => item.title)
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 50);
+}
+
 function projectUpdateProposalType(line) {
   const text = line.toLowerCase();
   if (/\b(blocked|blocker|waiting on|stuck|dependency)\b/.test(text)) return "blocker";
@@ -32075,6 +32122,7 @@ function renderFileCard(file) {
 function renderProjectMemory() {
   const captures = normalizeUpdateCaptures(state.updateCaptures);
   const previews = normalizeUpdateExtractionPreviews(state.updateExtractionPreviews);
+  const timeline = projectMemoryTimelineItems();
   const latestPreview = previews[0];
   const sourceCounts = ["meeting", "email", "slack", "github", "client"].map((source) => ({
     source,
@@ -32170,6 +32218,20 @@ function renderProjectMemory() {
           ${latestPreview ? latestPreview.proposals.map((proposal) => renderExtractionProposalCard(proposal, latestPreview)).join("") : emptyState("Preview a captured update to see structured project changes here.")}
         </div>
       </section>
+
+      <section class="panel project-memory-timeline-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Project Memory Timeline</p>
+            <h2>Important updates, decisions, and outcomes</h2>
+          </div>
+          <span class="status-pill inbox-neutral">${timeline.length} events</span>
+        </div>
+        <p class="panel-note">The timeline keeps source snippets, structured previews, and applied outcomes together so the project narrative stays inspectable.</p>
+        <div class="project-memory-timeline">
+          ${timeline.length ? timeline.map(renderProjectMemoryTimelineItem).join("") : emptyState("Capture and preview updates to build a memory timeline for each project.")}
+        </div>
+      </section>
     </div>
   `;
 }
@@ -32216,6 +32278,24 @@ function renderExtractionProposalCard(proposal, preview) {
         <button class="button button-secondary compact-button" type="button" data-memory-review="accepted" data-memory-preview-id="${escapeHtml(preview.id)}" data-memory-proposal-id="${escapeHtml(proposal.id)}" ${applied || rejected ? "disabled" : ""}>Accept</button>
         <button class="button button-secondary compact-button" type="button" data-memory-review="rejected" data-memory-preview-id="${escapeHtml(preview.id)}" data-memory-proposal-id="${escapeHtml(proposal.id)}" ${applied || rejected ? "disabled" : ""}>Reject</button>
         <button class="button button-primary compact-button" type="button" data-memory-apply="${escapeHtml(preview.id)}" data-memory-proposal-id="${escapeHtml(proposal.id)}" ${applied || rejected ? "disabled" : ""}>Apply</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderProjectMemoryTimelineItem(item) {
+  return `
+    <article class="project-memory-timeline-item">
+      <span class="project-memory-timeline-dot inbox-${item.tone}"></span>
+      <div>
+        <div class="project-memory-card-chips">
+          <span class="status-pill inbox-${item.tone}">${escapeHtml(item.kind)}</span>
+          <span class="status-pill inbox-neutral">${escapeHtml(item.projectId ? projectName(item.projectId) : "Workspace")}</span>
+          <span class="status-pill inbox-neutral">${escapeHtml(formatTimestamp(item.createdAt))}</span>
+        </div>
+        <h3>${escapeHtml(item.title)}</h3>
+        <p>${escapeHtml(item.detail)}</p>
+        ${item.sourceSnippet ? `<small>${escapeHtml(item.sourceSnippet)}</small>` : ""}
       </div>
     </article>
   `;

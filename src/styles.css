@@ -2691,6 +2691,10 @@ body[data-tutorial-target="view"] #app-view {
   grid-column: 1 / -1;
 }
 
+.project-memory-timeline-panel {
+  grid-column: 1 / -1;
+}
+
 .project-memory-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2699,7 +2703,8 @@ body[data-tutorial-target="view"] #app-view {
 
 .project-memory-source-grid,
 .project-memory-list,
-.project-memory-preview-list {
+.project-memory-preview-list,
+.project-memory-timeline {
   display: grid;
   gap: 10px;
 }
@@ -2789,6 +2794,59 @@ body[data-tutorial-target="view"] #app-view {
   flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
+}
+
+.project-memory-timeline {
+  position: relative;
+}
+
+.project-memory-timeline-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.project-memory-timeline-dot {
+  width: 12px;
+  height: 12px;
+  margin-top: 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px rgba(36, 90, 88, 0.1);
+}
+
+.project-memory-timeline-dot.inbox-green {
+  background: #2e7d5a;
+}
+
+.project-memory-timeline-dot.inbox-amber {
+  background: #c48924;
+}
+
+.project-memory-timeline-dot.inbox-blue {
+  background: #2c6f9f;
+}
+
+.project-memory-timeline-item h3 {
+  margin: 8px 0 4px;
+  font-size: 1rem;
+}
+
+.project-memory-timeline-item p,
+.project-memory-timeline-item small {
+  display: block;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.project-memory-timeline-item small {
+  margin-top: 6px;
 }
 
 .operator-center-grid {

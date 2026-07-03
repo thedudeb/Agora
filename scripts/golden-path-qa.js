@@ -156,6 +156,9 @@ const routeChecks = [
       "Structured Extraction Preview",
       "Human Review + Apply",
       "tasks, blockers, decisions, risks, approvals, date changes, and comments",
+      "Project Memory Timeline",
+      "Important updates, decisions, and outcomes",
+      "source snippets, structured previews, and applied outcomes",
       "Meeting notes",
       "Capture Update"
     ]
