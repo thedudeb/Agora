@@ -2916,9 +2916,14 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .autopilot-hero-proof,
-.autopilot-drift-list {
+.autopilot-drift-list,
+.autopilot-scenario-grid {
   display: grid;
   gap: 10px;
+}
+
+.autopilot-scenario-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .autopilot-hero-proof {
@@ -2926,7 +2931,8 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .autopilot-hero-proof article,
-.autopilot-drift-card {
+.autopilot-drift-card,
+.autopilot-scenario-card {
   min-width: 0;
   padding: 12px;
   background: var(--surface-strong);
@@ -2955,13 +2961,21 @@ body[data-tutorial-target="view"] #app-view {
   line-height: 1.4;
 }
 
-.autopilot-drift-card h3 {
+.autopilot-drift-card h3,
+.autopilot-scenario-card h3 {
   margin: 8px 0;
   font-size: 1rem;
 }
 
+.autopilot-scenario-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .autopilot-chip-row,
-.autopilot-evidence-list {
+.autopilot-evidence-list,
+.autopilot-change-list {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -2984,7 +2998,8 @@ body[data-tutorial-target="view"] #app-view {
   color: var(--text);
 }
 
-.autopilot-evidence-list span {
+.autopilot-evidence-list span,
+.autopilot-change-list span {
   min-width: 0;
   padding: 6px 8px;
   color: var(--muted);
@@ -2994,6 +3009,10 @@ body[data-tutorial-target="view"] #app-view {
   font-size: 0.76rem;
   font-weight: 800;
   overflow-wrap: anywhere;
+}
+
+.autopilot-change-list {
+  margin-top: 10px;
 }
 
 .operator-center-grid {
@@ -11950,6 +11969,7 @@ body[data-density="compact"] .main-content {
   .trust-grid,
   .command-inbox-brief,
   .autopilot-hero-proof,
+  .autopilot-scenario-grid,
   .project-memory-form,
   .project-memory-source-grid,
   .project-memory-contract-grid,

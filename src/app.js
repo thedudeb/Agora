@@ -21825,8 +21825,127 @@ function projectAutopilotDriftCards() {
   ].filter(Boolean);
 }
 
+function projectAutopilotRecoveryScenarios(drifts = projectAutopilotDriftCards()) {
+  return drifts.flatMap((drift) => {
+    const projectId = drift.projectId || activeProjects()[0]?.id || "";
+    const base = {
+      driftId: drift.id,
+      driftTitle: drift.title,
+      projectId,
+      severity: drift.severity
+    };
+    if (drift.id === "schedule-drift") {
+      return [
+        {
+          ...base,
+          id: "schedule-reset",
+          title: "Reset dates around the real critical path",
+          strategy: "Move deadline",
+          summary: "Shift the most overdue work forward, keep evidence attached, and ask the PM to confirm the new delivery window.",
+          proposedChanges: ["Move overdue tasks by 3 business days", "Add recovery note to affected tasks", "Log date reset in audit"],
+          confidence: 84
+        },
+        {
+          ...base,
+          id: "schedule-scope-trim",
+          title: "Protect the date by trimming scope",
+          strategy: "Reduce scope",
+          summary: "Keep the external date steady by creating a decision record for deferrable scope.",
+          proposedChanges: ["Create scope decision", "Tag lower-priority tasks as defer candidates", "Prepare client/internal update"],
+          confidence: 76
+        }
+      ];
+    }
+    if (drift.id === "blocker-drift") {
+      return [
+        {
+          ...base,
+          id: "blocker-swarm",
+          title: "Create an unblocker swarm",
+          strategy: "Split task",
+          summary: "Create focused unblocker work and route it to the current owner before the next standup.",
+          proposedChanges: ["Create high-priority unblocker task", "Link blocker evidence", "Plan it for Today"],
+          confidence: 86
+        },
+        {
+          ...base,
+          id: "blocker-escalate",
+          title: "Escalate unresolved dependencies",
+          strategy: "Escalate blocker",
+          summary: "Log the dependency as an issue and prepare an escalation note for the project lead.",
+          proposedChanges: ["Create RAID issue", "Set mitigation owner", "Add escalation note"],
+          confidence: 79
+        }
+      ];
+    }
+    if (drift.id === "approval-drift") {
+      return [
+        {
+          ...base,
+          id: "approval-chase",
+          title: "Chase approvals with a clear ask",
+          strategy: "Escalate approval",
+          summary: "Draft an approval follow-up and create a same-day task for the requester.",
+          proposedChanges: ["Create approval chase task", "Keep approval status unchanged", "Audit the follow-up"],
+          confidence: 83
+        },
+        {
+          ...base,
+          id: "approval-reset",
+          title: "Reset approval expectations",
+          strategy: "Create decision record",
+          summary: "Record the approval risk as a decision/RAID item so delivery can continue with explicit tradeoffs.",
+          proposedChanges: ["Create decision record", "Link pending approval", "Prepare stakeholder update"],
+          confidence: 72
+        }
+      ];
+    }
+    if (drift.id === "workload-drift") {
+      return [
+        {
+          ...base,
+          id: "workload-rebalance",
+          title: "Rebalance the hottest owner",
+          strategy: "Reassign owner",
+          summary: "Move one due-soon task from the most loaded owner to an available teammate.",
+          proposedChanges: ["Select rebalance candidate", "Reassign owner", "Audit capacity reason"],
+          confidence: 78
+        }
+      ];
+    }
+    if (drift.id === "scope-drift") {
+      return [
+        {
+          ...base,
+          id: "scope-triage",
+          title: "Triage new scope before it becomes commitment",
+          strategy: "Add decision gate",
+          summary: "Create a scope review decision and move open requests into an explicit triage path.",
+          proposedChanges: ["Create scope decision", "Tag memory/request signals", "Add owner follow-up"],
+          confidence: 77
+        }
+      ];
+    }
+    if (drift.id === "client-promise-drift") {
+      return [
+        {
+          ...base,
+          id: "client-reset",
+          title: "Prepare a client expectation reset",
+          strategy: "Notify client",
+          summary: "Draft an internal client update with blockers, approval status, and the proposed recovery plan.",
+          proposedChanges: ["Create client update task", "Link risks and approvals", "Keep update internal until approved"],
+          confidence: 81
+        }
+      ];
+    }
+    return [];
+  });
+}
+
 function renderProjectAutopilot() {
   const drifts = projectAutopilotDriftCards();
+  const scenarios = projectAutopilotRecoveryScenarios(drifts);
   const critical = drifts.filter((drift) => ["critical", "high"].includes(drift.severity));
   const averageConfidence = drifts.length ? Math.round(drifts.reduce((sum, drift) => sum + drift.confidence, 0) / drifts.length) : 0;
 
@@ -21870,6 +21989,20 @@ function renderProjectAutopilot() {
         ${drifts.length ? drifts.map(renderAutopilotDriftCard).join("") : emptyState("No schedule, scope, approval, blocker, workload, or client promise drift detected.")}
       </div>
     </section>
+
+    <section class="panel autopilot-scenario-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Recovery Scenario Builder</p>
+          <h2>Autopilot recovery proposals</h2>
+        </div>
+        <span class="status-pill inbox-blue">${scenarios.length} options</span>
+      </div>
+      <p class="panel-note">Each option is still proposal-only: Autopilot names the likely recovery path before impact simulation or apply controls appear. Strategies include Move deadline, Reduce scope, Reassign owner, Escalate approval, Split task, and Notify client.</p>
+      <div class="autopilot-scenario-grid">
+        ${scenarios.length ? scenarios.map(renderAutopilotScenarioCard).join("") : emptyState("No recovery scenarios are needed while drift is clear.")}
+      </div>
+    </section>
   `;
 }
 
@@ -21892,6 +22025,24 @@ function renderAutopilotDriftCard(drift) {
         <div class="autopilot-evidence-list">
           ${(drift.evidence.length ? drift.evidence : ["No detailed evidence available."]).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
         </div>
+      </div>
+    </article>
+  `;
+}
+
+function renderAutopilotScenarioCard(scenario) {
+  const tone = autopilotSeverityTone(scenario.severity);
+  return `
+    <article class="autopilot-scenario-card">
+      <div class="autopilot-chip-row">
+        <span class="status-pill inbox-${tone}">${escapeHtml(scenario.strategy)}</span>
+        <span class="status-pill inbox-neutral">${escapeHtml(scenario.driftTitle)}</span>
+        <span class="status-pill inbox-blue">${scenario.confidence}% confidence</span>
+      </div>
+      <h3>${escapeHtml(scenario.title)}</h3>
+      <p>${escapeHtml(scenario.summary)}</p>
+      <div class="autopilot-change-list">
+        ${scenario.proposedChanges.map((change) => `<span>${escapeHtml(change)}</span>`).join("")}
       </div>
     </article>
   `;

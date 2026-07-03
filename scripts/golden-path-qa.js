@@ -182,6 +182,10 @@ const routeChecks = [
       "schedule, scope, approvals, blockers, workload, and client promises",
       "Reality sources",
       "Human approval",
+      "Recovery Scenario Builder",
+      "Autopilot recovery proposals",
+      "proposal-only",
+      "Move deadline",
       "Plan:",
       "Reality:"
     ]
