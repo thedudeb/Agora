@@ -2672,6 +2672,86 @@ body[data-tutorial-target="view"] #app-view {
   align-content: start;
 }
 
+.project-memory-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.65fr);
+  gap: 16px;
+}
+
+.project-memory-capture,
+.project-memory-list-panel {
+  align-content: start;
+}
+
+.project-memory-list-panel {
+  grid-column: 1 / -1;
+}
+
+.project-memory-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.project-memory-source-grid,
+.project-memory-list {
+  display: grid;
+  gap: 10px;
+}
+
+.project-memory-source-grid article,
+.project-memory-card {
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.project-memory-source-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.project-memory-source-grid strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.5rem;
+}
+
+.project-memory-source-grid small,
+.project-memory-card small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.project-memory-card {
+  display: grid;
+  gap: 8px;
+}
+
+.project-memory-card h3 {
+  margin: 8px 0 4px;
+  font-size: 1rem;
+}
+
+.project-memory-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.project-memory-card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .operator-center-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 0.75fr);
@@ -11572,6 +11652,7 @@ body[data-density="compact"] .main-content {
   .recovery-confidence-grid,
   .team-launch-list,
   .command-center-grid,
+  .project-memory-grid,
   .operator-center-grid,
   .collab-hub-grid,
   .live-collaboration-grid,
@@ -11623,6 +11704,8 @@ body[data-density="compact"] .main-content {
   .trust-mode-grid,
   .trust-grid,
   .command-inbox-brief,
+  .project-memory-form,
+  .project-memory-source-grid,
   .open-ownership-grid,
   .mobile-roadmap-list,
   .native-mobile-grid,

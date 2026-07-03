@@ -140,6 +140,24 @@ const routeChecks = [
     ]
   },
   {
+    name: "Project Memory capture",
+    suite: "workspace",
+    route: "memory",
+    width: 1265,
+    height: 712,
+    required: [
+      "Project Memory",
+      "Universal Update Capture",
+      "Paste reality into Agora",
+      "Offline-first capture",
+      "Raw project memory inbox",
+      "Captured updates",
+      "Ready to parse",
+      "Meeting notes",
+      "Capture Update"
+    ]
+  },
+  {
     name: "Portfolio resource planning",
     suite: "workspace",
     route: "portfolio",

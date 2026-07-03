@@ -1076,6 +1076,7 @@ const routes = {
   templates: "Templates",
   automations: "Automations",
   docs: "Docs & Files",
+  memory: "Project Memory",
   "project-backlog": "Project Backlog",
   intake: "Intake",
   "feature-requests": "Feature Requests",
@@ -1222,6 +1223,7 @@ const seedData = {
     "task-2": { date: "2026-06-27", lane: "next" },
     "task-7": { date: "2026-06-27", lane: "later" }
   },
+  updateCaptures: [],
   dashboardWidgets: [
     { id: "projects", visible: true },
     { id: "goals", visible: true },
@@ -2955,6 +2957,7 @@ function normalizeState(nextState) {
     customFields: Array.isArray(nextState.customFields) ? nextState.customFields : seedData.customFields,
     documents: Array.isArray(nextState.documents) ? nextState.documents : seedData.documents,
     files: Array.isArray(nextState.files) ? nextState.files : seedData.files,
+    updateCaptures: normalizeUpdateCaptures(nextState.updateCaptures),
     projectBacklog: normalizeProjectBacklog(Array.isArray(nextState.projectBacklog) ? nextState.projectBacklog : seedData.projectBacklog),
     intakeForms: Array.isArray(nextState.intakeForms) ? nextState.intakeForms : seedData.intakeForms,
     intakeSubmissions: Array.isArray(nextState.intakeSubmissions) ? nextState.intakeSubmissions : seedData.intakeSubmissions,
@@ -2978,6 +2981,47 @@ function normalizePluginSettings(value = {}) {
       .map(String)
       .filter((id) => knownIds.has(id))))
   };
+}
+
+function normalizeUpdateCaptures(captures = []) {
+  const validSources = new Set(["meeting", "email", "slack", "github", "client", "doc", "transcript", "csv", "other"]);
+  return (Array.isArray(captures) ? captures : [])
+    .filter((capture) => capture && typeof capture === "object")
+    .map((capture) => ({
+      id: String(capture.id || uid("capture")),
+      source: validSources.has(capture.source) ? capture.source : "other",
+      sourceLabel: String(capture.sourceLabel || updateCaptureSourceLabel(capture.source)).slice(0, 80),
+      projectId: String(capture.projectId || ""),
+      companyId: String(capture.companyId || ""),
+      title: String(capture.title || updateCaptureTitle(capture)).slice(0, 160),
+      body: String(capture.body || "").slice(0, 12000),
+      capturedBy: String(capture.capturedBy || activeMemberId()),
+      createdAt: capture.createdAt || new Date().toISOString(),
+      status: ["captured", "previewed", "reviewed", "applied", "archived"].includes(capture.status) ? capture.status : "captured"
+    }))
+    .filter((capture) => capture.body.trim())
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 120);
+}
+
+function updateCaptureSourceLabel(source) {
+  return {
+    meeting: "Meeting notes",
+    email: "Email thread",
+    slack: "Slack / chat",
+    github: "GitHub",
+    client: "Client feedback",
+    doc: "Document",
+    transcript: "Call transcript",
+    csv: "CSV / export",
+    other: "Other update"
+  }[source] || "Other update";
+}
+
+function updateCaptureTitle(capture = {}) {
+  const text = String(capture.body || "").trim();
+  if (!text) return "Captured update";
+  return text.split(/\n+/).map((line) => line.trim()).find(Boolean)?.slice(0, 90) || "Captured update";
 }
 
 function pluginContributionEntries(plugin) {
@@ -10818,6 +10862,7 @@ function offlineStorageContract() {
       "activities",
       "documents",
       "files",
+      "updateCaptures",
       "projectBacklog",
       "approvals",
       "timeEntries",
@@ -11166,6 +11211,7 @@ function portableWorkspaceManifest() {
       templates: projectTemplates.length,
       documents: documents.length,
       files: files.length,
+      updateCaptures: normalizeUpdateCaptures(state.updateCaptures).length,
       timeEntries: timeEntries.length,
       operatorActions: recentOperatorActions(50).length,
       operatorReviewQueue: operatorReviewQueueItems().length
@@ -17249,6 +17295,7 @@ function render() {
     templates: renderTemplates,
     automations: renderAutomations,
     docs: renderDocsAndFiles,
+    memory: renderProjectMemory,
     "project-backlog": renderProjectBacklog,
     intake: renderIntake,
     "feature-requests": renderFeatureRequests,
@@ -17290,7 +17337,7 @@ function sidebarGroupForRoute(route) {
   if (["board", "list", "calendar", "sprint", "my-work", "time", "collaboration"].includes(route)) return "work";
   if (["reports", "portfolio", "decisions", "goals", "operator", "automations"].includes(route)) return "control";
   if (["visibility", "portal", "project-backlog", "intake", "feature-requests", "companies", "company"].includes(route)) return "clients";
-  if (["marketplace", "templates", "docs", "fields"].includes(route)) return "library";
+  if (["marketplace", "templates", "docs", "memory", "fields"].includes(route)) return "library";
   if (["audit", "permissions", "release", "beta", "readiness", "data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
   if (route === "invite") return "";
@@ -31741,6 +31788,145 @@ function renderFileCard(file) {
   `;
 }
 
+function renderProjectMemory() {
+  const captures = normalizeUpdateCaptures(state.updateCaptures);
+  const latest = captures[0];
+  const sourceCounts = ["meeting", "email", "slack", "github", "client"].map((source) => ({
+    source,
+    label: updateCaptureSourceLabel(source),
+    count: captures.filter((capture) => capture.source === source).length
+  }));
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Captured updates", captures.length)}
+      ${metric("Projects touched", new Set(captures.map((capture) => capture.projectId).filter(Boolean)).size)}
+      ${metric("Latest source", latest ? updateCaptureSourceLabel(latest.source) : "None")}
+      ${metric("Ready to parse", captures.filter((capture) => capture.status === "captured").length)}
+    </div>
+
+    <div class="project-memory-grid">
+      <section class="panel project-memory-capture">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Universal Update Capture</p>
+            <h2>Paste reality into Agora</h2>
+          </div>
+          <span class="status-pill inbox-blue">Offline-first capture</span>
+        </div>
+        <p class="panel-note">Capture emails, meeting notes, chat snippets, GitHub updates, client feedback, docs, transcripts, or CSV notes before turning them into project memory.</p>
+        <div class="project-memory-form">
+          <label>
+            <span>Source</span>
+            <select id="memory-capture-source">
+              ${["meeting", "email", "slack", "github", "client", "doc", "transcript", "csv", "other"].map((source) => `<option value="${source}">${escapeHtml(updateCaptureSourceLabel(source))}</option>`).join("")}
+            </select>
+          </label>
+          <label>
+            <span>Project</span>
+            <select id="memory-capture-project">
+              <option value="">Workspace memory</option>
+              ${activeProjects().map((project) => `<option value="${project.id}" ${project.id === state.selectedProject ? "selected" : ""}>${escapeHtml(project.name)}</option>`).join("")}
+            </select>
+          </label>
+          <label class="wide-field">
+            <span>Title</span>
+            <input id="memory-capture-title" placeholder="Client kickoff notes, Slack thread, GitHub release update">
+          </label>
+          <label class="wide-field">
+            <span>Raw update</span>
+            <textarea id="memory-capture-body" rows="10" placeholder="Paste the messy update here. Extraction preview comes next, but capture is already durable and local."></textarea>
+          </label>
+          <button class="button button-primary" type="button" id="memory-capture-save">Capture Update</button>
+        </div>
+      </section>
+
+      <section class="panel project-memory-sources">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Source mix</p>
+            <h2>Where updates are coming from</h2>
+          </div>
+        </div>
+        <div class="project-memory-source-grid">
+          ${sourceCounts.map((row) => `
+            <article>
+              <span>${escapeHtml(row.label)}</span>
+              <strong>${row.count}</strong>
+              <small>${row.count ? "captured and ready for extraction" : "no captures yet"}</small>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+
+      <section class="panel project-memory-list-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Captured updates</p>
+            <h2>Raw project memory inbox</h2>
+          </div>
+          <span class="status-pill inbox-neutral">${captures.length} total</span>
+        </div>
+        <div class="project-memory-list">
+          ${captures.length ? captures.slice(0, 12).map(renderUpdateCaptureCard).join("") : emptyState("No updates captured yet. Paste a meeting note, email, or chat thread to start building project memory.")}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderUpdateCaptureCard(capture) {
+  return `
+    <article class="project-memory-card">
+      <div>
+        <div class="project-memory-card-chips">
+          <span class="status-pill inbox-blue">${escapeHtml(updateCaptureSourceLabel(capture.source))}</span>
+          <span class="status-pill inbox-neutral">${escapeHtml(capture.status)}</span>
+          <span class="status-pill inbox-neutral">${escapeHtml(capture.projectId ? projectName(capture.projectId) : "Workspace")}</span>
+        </div>
+        <h3>${escapeHtml(capture.title)}</h3>
+        <p>${escapeHtml(capture.body.slice(0, 260))}${capture.body.length > 260 ? "..." : ""}</p>
+        <small>${escapeHtml(memberName(capture.capturedBy))} / ${escapeHtml(formatTimestamp(capture.createdAt))}</small>
+      </div>
+    </article>
+  `;
+}
+
+function captureProjectUpdate() {
+  const body = document.querySelector("#memory-capture-body")?.value.trim() || "";
+  if (!body) {
+    showToast("Paste an update before capturing", "info");
+    return;
+  }
+  const projectId = document.querySelector("#memory-capture-project")?.value || "";
+  const project = projectId ? byId(state.projects, projectId) : null;
+  const source = document.querySelector("#memory-capture-source")?.value || "other";
+  const title = document.querySelector("#memory-capture-title")?.value.trim() || updateCaptureTitle({ body });
+  const capture = {
+    id: uid("capture"),
+    source,
+    sourceLabel: updateCaptureSourceLabel(source),
+    projectId,
+    companyId: project?.companyId || "",
+    title,
+    body,
+    capturedBy: activeMemberId(),
+    createdAt: new Date().toISOString(),
+    status: "captured"
+  };
+  state.updateCaptures = normalizeUpdateCaptures([capture, ...(state.updateCaptures || [])]);
+  addAuditEvent({
+    action: "project_memory_capture",
+    detail: `Captured ${updateCaptureSourceLabel(source).toLowerCase()} for ${project ? project.name : "workspace memory"}`,
+    targetType: "updateCapture",
+    targetId: capture.id,
+    metadata: { source, projectId }
+  });
+  saveState();
+  render();
+  showToast("Update captured into Project Memory", "success");
+}
+
 function renderProjectDocs(project) {
   const documents = state.documents.filter((document) => document.projectId === project.id);
   const files = state.files.filter((file) => file.projectId === project.id);
@@ -38727,6 +38913,12 @@ document.addEventListener("click", (event) => {
 
   const routeButton = event.target.closest("[data-route]");
   if (routeButton) setRoute(routeButton.dataset.route);
+
+  const memoryCaptureButton = event.target.closest("#memory-capture-save");
+  if (memoryCaptureButton) {
+    captureProjectUpdate();
+    return;
+  }
 
   const projectBacklogPromoteButton = event.target.closest("[data-promote-project-backlog]");
   if (projectBacklogPromoteButton) {
