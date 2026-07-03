@@ -361,7 +361,47 @@ const settingsTabs = [
   { id: "payments", label: "Payments" },
   { id: "sync", label: "Sync" },
   { id: "security", label: "Security" },
+  { id: "plugins", label: "Plugins" },
   { id: "developer", label: "Developer" }
+];
+
+const bundledPluginManifests = [
+  {
+    type: "agora.plugin",
+    manifestVersion: 1,
+    id: "example-importer",
+    name: "Example Importer",
+    version: "0.1.0",
+    description: "Reference plugin manifest for a local importer and command contribution.",
+    author: { name: "Agora Community" },
+    permissions: ["workspace:read", "projects:write", "tasks:write"],
+    runtime: { mode: "none" },
+    contributes: {
+      commands: [
+        {
+          id: "example-importer.open",
+          title: "Open Example Importer",
+          description: "Show how a plugin command can route users to an importer flow."
+        }
+      ],
+      importers: [
+        {
+          id: "example-importer.csv",
+          title: "Example CSV Importer",
+          source: "example-csv",
+          formats: ["csv"],
+          description: "Maps title, project, assignee, status, priority, due date, and description fields."
+        }
+      ],
+      mcpTools: [
+        {
+          id: "example-importer.preview",
+          title: "Preview Example Import",
+          description: "Future MCP bridge point for previewing this plugin's import mapping."
+        }
+      ]
+    }
+  }
 ];
 
 const paymentProviderOptions = [
@@ -980,6 +1020,9 @@ const seedData = {
   clientPortalLinks: [],
   selectedProjectTab: "overview",
   selectedSettingsTab: "account",
+  plugins: {
+    enabled: []
+  },
   selectedCalendarMonth: "2026-07",
   selectedDailyDate: "2026-06-27",
   selectedGanttZoom: "month",
@@ -2649,6 +2692,7 @@ function normalizeState(nextState) {
     migrationHistory: normalizeMigrationHistory(nextState.migrationHistory),
     selectedInviteToken: nextState.selectedInviteToken || "",
     selectedSettingsTab: nextState.selectedSettingsTab || seedData.selectedSettingsTab,
+    plugins: normalizePluginSettings(nextState.plugins),
     selectedCalendarMonth: nextState.selectedCalendarMonth || seedData.selectedCalendarMonth,
     selectedDailyDate: nextState.selectedDailyDate || todayKey(),
     selectedGanttZoom: ["week", "month", "quarter"].includes(nextState.selectedGanttZoom) ? nextState.selectedGanttZoom : seedData.selectedGanttZoom,
@@ -2735,6 +2779,163 @@ function normalizeState(nextState) {
     goals: normalizeGoals(nextState.goals, projects, companies),
     tasks: tasks.map(normalizeTaskRecord)
   };
+}
+
+function normalizePluginSettings(value = {}) {
+  const knownIds = new Set(bundledPluginManifests.map((plugin) => plugin.id));
+  return {
+    enabled: Array.from(new Set((Array.isArray(value.enabled) ? value.enabled : [])
+      .map(String)
+      .filter((id) => knownIds.has(id))))
+  };
+}
+
+function pluginContributionEntries(plugin) {
+  const contributes = plugin.contributes || {};
+  return Object.entries(contributes)
+    .flatMap(([type, entries]) => (Array.isArray(entries) ? entries : []).map((entry) => ({ ...entry, type })));
+}
+
+function pluginContributionCounts(plugin) {
+  const contributes = plugin.contributes || {};
+  return Object.fromEntries(Object.entries(contributes).map(([type, entries]) => [type, Array.isArray(entries) ? entries.length : 0]));
+}
+
+function pluginContributionTotal(plugin) {
+  return pluginContributionEntries(plugin).length;
+}
+
+function enabledPluginIds() {
+  return new Set(state.plugins?.enabled || []);
+}
+
+function isPluginEnabled(pluginId) {
+  return enabledPluginIds().has(pluginId);
+}
+
+function canManagePlugins() {
+  const role = currentWorkspaceRole();
+  return role === "admin" || role === "manager";
+}
+
+function pluginValidationSummary(plugin) {
+  const errors = [];
+  if (plugin.type !== "agora.plugin") errors.push("Manifest type must be agora.plugin.");
+  if (plugin.manifestVersion !== 1) errors.push("Manifest version must be 1.");
+  if (!plugin.id || !plugin.name || !plugin.version) errors.push("Manifest needs id, name, and version.");
+  if (!Array.isArray(plugin.permissions)) errors.push("Permissions must be declared.");
+  if (!plugin.runtime?.mode || !["none", "api", "iframe"].includes(plugin.runtime.mode)) errors.push("Runtime mode must be none, api, or iframe.");
+  if (!pluginContributionTotal(plugin)) errors.push("Plugin must contribute at least one extension point.");
+  return {
+    ok: errors.length === 0,
+    errors
+  };
+}
+
+function pluginPermissionLabel(permission) {
+  const labels = {
+    "workspace:read": "Read workspace",
+    "projects:read": "Read projects",
+    "projects:write": "Write projects",
+    "tasks:read": "Read tasks",
+    "tasks:write": "Write tasks",
+    "comments:write": "Write comments",
+    "activity:write": "Write activity",
+    "attachments:write": "Write attachments",
+    "approvals:write": "Write approvals",
+    "notifications:write": "Write notifications",
+    "integrations:write": "Write integrations",
+    "scheduler:run": "Run scheduler"
+  };
+  return labels[permission] || permission;
+}
+
+function enabledPluginContributions() {
+  const enabled = enabledPluginIds();
+  return bundledPluginManifests
+    .filter((plugin) => enabled.has(plugin.id))
+    .flatMap((plugin) => pluginContributionEntries(plugin).map((entry) => ({ ...entry, plugin })));
+}
+
+function pluginCommandPaletteItems() {
+  return enabledPluginContributions()
+    .filter((entry) => entry.type === "commands")
+    .map((entry) => ({
+      id: `plugin:${entry.plugin.id}:${entry.id}`,
+      title: entry.title || entry.id,
+      detail: entry.description || `${entry.plugin.name} plugin command`,
+      group: "Plugin",
+      keywords: `${entry.plugin.name} ${entry.type} ${entry.id}`
+    }));
+}
+
+function togglePluginEnabled(pluginId) {
+  const plugin = bundledPluginManifests.find((item) => item.id === pluginId);
+  if (!plugin) return;
+  if (!canManagePlugins()) {
+    showToast("Your role cannot manage plugins", "info");
+    return;
+  }
+  const validation = pluginValidationSummary(plugin);
+  if (!validation.ok) {
+    showToast("Plugin manifest must validate before enabling", "info");
+    return;
+  }
+  const enabled = enabledPluginIds();
+  const shouldEnable = !enabled.has(plugin.id);
+  if (shouldEnable) enabled.add(plugin.id);
+  else enabled.delete(plugin.id);
+  state.plugins = normalizePluginSettings({
+    enabled: Array.from(enabled)
+  });
+  const contributionCounts = pluginContributionCounts(plugin);
+  addAuditEvent({
+    action: shouldEnable ? "plugin_enabled" : "plugin_disabled",
+    detail: `${shouldEnable ? "Enabled" : "Disabled"} ${plugin.name}`,
+    targetType: "plugin",
+    targetId: plugin.id,
+    impact: "medium",
+    reversible: true,
+    restoreHint: "Return to Settings > Plugins and toggle the plugin back.",
+    metadata: {
+      pluginId: plugin.id,
+      version: plugin.version,
+      runtime: plugin.runtime?.mode || "none",
+      permissions: plugin.permissions || [],
+      contributions: contributionCounts
+    }
+  });
+  saveState();
+  render();
+  showToast(`${plugin.name} ${shouldEnable ? "enabled" : "disabled"}`, "success");
+}
+
+function runPluginCommand(commandId) {
+  const [, pluginId, ...commandParts] = commandId.split(":");
+  const commandEntryId = commandParts.join(":");
+  const plugin = bundledPluginManifests.find((item) => item.id === pluginId);
+  const command = pluginContributionEntries(plugin || {}).find((entry) => entry.type === "commands" && entry.id === commandEntryId);
+  if (!plugin || !command || !isPluginEnabled(plugin.id)) return;
+  addAuditEvent({
+    action: "plugin_command",
+    detail: `Ran ${command.title || command.id} from ${plugin.name}`,
+    targetType: "plugin",
+    targetId: plugin.id,
+    impact: "low",
+    reversible: true,
+    metadata: {
+      pluginId: plugin.id,
+      commandId: command.id
+    }
+  });
+  if (pluginContributionEntries(plugin).some((entry) => entry.type === "importers")) {
+    setRoute("data");
+    showToast(`${plugin.name} importer contribution is ready in Migration Studio`, "success");
+    return;
+  }
+  saveState();
+  render();
+  showToast(`${plugin.name} command ran`, "success");
 }
 
 function saveState() {
@@ -4763,7 +4964,7 @@ function canUseSettingsTab(tabId) {
   if (tabId === "members" || tabId === "security") return role === "admin";
   if (tabId === "integrations") return hasApiPermission("integrations:write") || hasApiPermission("notifications:write");
   if (tabId === "payments") return hasApiPermission("payments:write");
-  if (tabId === "workspace" || tabId === "sync" || tabId === "developer" || tabId === "trust") return role === "admin" || role === "manager";
+  if (tabId === "workspace" || tabId === "sync" || tabId === "developer" || tabId === "trust" || tabId === "plugins") return role === "admin" || role === "manager";
   return true;
 }
 
@@ -4803,6 +5004,7 @@ function renderSettingsSectionIntro(activeTab) {
     payments: ["Marketplace payments", "Configure provider planning, spend caps, entitlements, and audit events."],
     sync: ["Backend sync", "Save, load, repair, and verify API/Supabase health."],
     security: ["Access controls", "Inspect current access, roles, permissions, and operator guardrails."],
+    plugins: ["Plugin registry", "Enable local extension manifests, review permissions, and inspect contribution points."],
     developer: ["Developer readiness", "Inspect backend health, records, queues, and launch checks."]
   };
   const [title, detail] = sections[activeTab] || sections.account;
@@ -10374,6 +10576,7 @@ function commandPaletteItems() {
   const haystackQuery = query.toLowerCase();
   const items = [
     ...commandPaletteBaseItems(),
+    ...pluginCommandPaletteItems(),
     ...commandPaletteContextItems(),
     ...commandPaletteRouteItems(),
     ...commandPaletteSearchItems(query)
@@ -10388,6 +10591,7 @@ function commandPaletteItems() {
 function commandPaletteAllItems() {
   return [
     ...commandPaletteBaseItems(),
+    ...pluginCommandPaletteItems(),
     ...commandPaletteContextItems(),
     ...commandPaletteRouteItems(),
     ...commandPaletteSearchItems(els.commandInput?.value.trim() || "")
@@ -10726,6 +10930,11 @@ function executeCommand(commandId) {
     openSidebarGroupForRoute("visibility");
     saveState();
     render();
+    return;
+  }
+
+  if (commandId.startsWith("plugin:")) {
+    runPluginCommand(commandId);
     return;
   }
 
@@ -24612,6 +24821,132 @@ function renderWorkspaceGovernancePanel() {
   `;
 }
 
+function renderPluginSettingsPanel() {
+  const enabled = enabledPluginIds();
+  const enabledPlugins = bundledPluginManifests.filter((plugin) => enabled.has(plugin.id));
+  const contributions = enabledPluginContributions();
+  const canManage = canManagePlugins();
+  const recentPluginEvents = (state.auditEvents || [])
+    .filter((event) => String(event.action || "").startsWith("plugin_"))
+    .slice(0, 5);
+  return `
+    <section class="panel plugin-registry-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Plugin registry</p>
+          <h2>Local extension manifests</h2>
+        </div>
+        <span class="status-pill ${enabledPlugins.length ? "inbox-green" : "inbox-neutral"}">${enabledPlugins.length}/${bundledPluginManifests.length} enabled</span>
+      </div>
+      <div class="plugin-readiness-strip">
+        <article>
+          <span>Contract</span>
+          <strong>Manifest v1</strong>
+          <small>Declarative commands, views, importers, templates, automation packs, MCP tools, and settings panels.</small>
+        </article>
+        <article>
+          <span>Runtime</span>
+          <strong>Local first</strong>
+          <small>Remote runtime URLs stay blocked until sandbox, CSP, and signing boundaries are settled.</small>
+        </article>
+        <article>
+          <span>Control</span>
+          <strong>Admin gated</strong>
+          <small>Enable/disable actions create audit events with permissions and contribution summaries.</small>
+        </article>
+      </div>
+      <div class="plugin-card-grid">
+        ${bundledPluginManifests.map((plugin) => renderPluginCard(plugin, canManage)).join("")}
+      </div>
+    </section>
+
+    <section class="panel plugin-contribution-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Contribution registry</p>
+          <h2>Enabled plugin contributions</h2>
+        </div>
+        <span class="status-pill inbox-blue">${contributions.length} active</span>
+      </div>
+      <div class="plugin-contribution-list">
+        ${contributions.length ? contributions.map(renderPluginContributionRow).join("") : emptyState("Enable a plugin to register commands, importers, templates, automations, MCP tools, or settings panels.")}
+      </div>
+    </section>
+
+    <section class="panel plugin-audit-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Audit trail</p>
+          <h2>Plugin changes</h2>
+        </div>
+        <button class="button button-secondary compact-button" type="button" data-route="audit">Open Audit</button>
+      </div>
+      <div class="plugin-audit-list">
+        ${recentPluginEvents.length ? recentPluginEvents.map((event) => `
+          <article>
+            <span class="status-pill inbox-neutral">${escapeHtml(event.action)}</span>
+            <strong>${escapeHtml(event.detail || "Plugin setting changed")}</strong>
+            <small>${escapeHtml(formatTimestamp(event.createdAt))}</small>
+          </article>
+        `).join("") : emptyState("Plugin enable/disable events will appear here.")}
+      </div>
+    </section>
+  `;
+}
+
+function renderPluginCard(plugin, canManage) {
+  const enabled = isPluginEnabled(plugin.id);
+  const validation = pluginValidationSummary(plugin);
+  const counts = pluginContributionCounts(plugin);
+  return `
+    <article class="plugin-card ${enabled ? "is-enabled" : ""}">
+      <div class="plugin-card-header">
+        <div>
+          <span class="status-pill ${enabled ? "inbox-green" : "inbox-neutral"}">${enabled ? "Enabled" : "Disabled"}</span>
+          <span class="status-pill ${validation.ok ? "inbox-blue" : "inbox-red"}">${validation.ok ? "Validated" : "Invalid"}</span>
+        </div>
+        <button
+          class="button ${enabled ? "button-secondary" : "button-primary"} compact-button"
+          type="button"
+          data-plugin-toggle="${escapeHtml(plugin.id)}"
+          ${canManage && validation.ok ? "" : "disabled"}
+        >${enabled ? "Disable" : "Enable"}</button>
+      </div>
+      <div>
+        <h3>${escapeHtml(plugin.name)}</h3>
+        <p>${escapeHtml(plugin.description)}</p>
+      </div>
+      <div class="plugin-meta-grid">
+        <span>v${escapeHtml(plugin.version)}</span>
+        <span>${escapeHtml(plugin.runtime?.mode || "none")} runtime</span>
+        <span>${pluginContributionTotal(plugin)} contributions</span>
+      </div>
+      <div class="plugin-permission-list">
+        ${(plugin.permissions || []).map((permission) => `<span>${escapeHtml(pluginPermissionLabel(permission))}</span>`).join("")}
+      </div>
+      <div class="plugin-contribution-summary">
+        ${Object.entries(counts).filter(([, count]) => count > 0).map(([type, count]) => `<span>${escapeHtml(type)}: ${count}</span>`).join("")}
+      </div>
+      ${validation.errors.length ? `<div class="plugin-error-list">${validation.errors.map((error) => `<span>${escapeHtml(error)}</span>`).join("")}</div>` : ""}
+    </article>
+  `;
+}
+
+function renderPluginContributionRow(entry) {
+  const title = entry.title || entry.name || entry.id;
+  const detail = entry.description || entry.source || entry.id;
+  return `
+    <article>
+      <div>
+        <span class="status-pill inbox-blue">${escapeHtml(entry.type)}</span>
+        <strong>${escapeHtml(title)}</strong>
+        <p>${escapeHtml(detail)}</p>
+      </div>
+      <small>${escapeHtml(entry.plugin.name)}</small>
+    </article>
+  `;
+}
+
 function renderSettings() {
   const roleById = Object.fromEntries(workspaceRoles.map((role) => [role.id, role]));
   const teamMembers = workspaceMembers();
@@ -24931,6 +25266,10 @@ function renderSettings() {
       ${renderSessionManagementPanel()}
       ${renderOfflineDataSecurityPanel()}
       ${renderPermissionMatrix()}
+      ` : ""}
+
+      ${activeSettingsTab === "plugins" ? `
+      ${renderPluginSettingsPanel()}
       ` : ""}
 
       ${activeSettingsTab === "developer" ? `
@@ -33690,6 +34029,12 @@ document.addEventListener("click", (event) => {
     saveState();
     render();
     if (state.selectedSettingsTab === "security") maybeRefreshApiSessionsForSecurity();
+    return;
+  }
+
+  const pluginToggleButton = event.target.closest("[data-plugin-toggle]");
+  if (pluginToggleButton && !pluginToggleButton.disabled) {
+    togglePluginEnabled(pluginToggleButton.dataset.pluginToggle);
     return;
   }
 

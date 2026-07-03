@@ -406,6 +406,7 @@ const routeChecks = [
       "Workspace",
       "Auto",
       "Members",
+      "Plugins",
       "Sync",
       "Trust"
     ]
@@ -464,6 +465,23 @@ const routeChecks = [
       "Public submit link",
       "Open Feature Requests",
       "Submit Internal Request"
+    ]
+  },
+  {
+    name: "Settings plugin registry",
+    suite: "admin",
+    route: "settings",
+    query: { settingsTab: "plugins" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Plugin registry",
+      "Local extension manifests",
+      "Example Importer",
+      "Contribution registry",
+      "Enabled plugin contributions",
+      "Plugin changes",
+      "Manifest v1"
     ]
   },
   {

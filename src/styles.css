@@ -6190,6 +6190,103 @@ body[data-tutorial-target="view"] #app-view {
   border-color: color-mix(in srgb, var(--green), var(--line) 45%);
 }
 
+.plugin-registry-panel,
+.plugin-contribution-panel,
+.plugin-audit-panel {
+  grid-column: 1 / -1;
+}
+
+.plugin-readiness-strip,
+.plugin-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.plugin-readiness-strip {
+  margin-bottom: 12px;
+}
+
+.plugin-readiness-strip article,
+.plugin-card,
+.plugin-contribution-list article,
+.plugin-audit-list article {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.plugin-card.is-enabled {
+  border-color: color-mix(in srgb, var(--green), var(--line) 35%);
+}
+
+.plugin-card-header,
+.plugin-contribution-list article,
+.plugin-audit-list article {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plugin-card-header > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.plugin-card h3,
+.plugin-card p {
+  margin: 0;
+}
+
+.plugin-readiness-strip span,
+.plugin-meta-grid span,
+.plugin-contribution-summary span,
+.plugin-permission-list span,
+.plugin-card p,
+.plugin-readiness-strip small,
+.plugin-contribution-list p,
+.plugin-contribution-list small,
+.plugin-audit-list small {
+  color: var(--muted);
+}
+
+.plugin-meta-grid,
+.plugin-permission-list,
+.plugin-contribution-summary,
+.plugin-error-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.plugin-meta-grid span,
+.plugin-permission-list span,
+.plugin-contribution-summary span,
+.plugin-error-list span {
+  padding: 5px 7px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.plugin-error-list span {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red), var(--line) 45%);
+}
+
+.plugin-contribution-list,
+.plugin-audit-list {
+  display: grid;
+  gap: 8px;
+}
+
 .member-role-list,
 .backend-checklist,
 .backend-record-list,
@@ -9978,6 +10075,8 @@ body[data-density="compact"] .main-content {
   .conflict-center-body,
   .workspace-health-grid,
   .notification-role-grid,
+  .plugin-readiness-strip,
+  .plugin-card-grid,
   .audit-risk-grid,
   .payment-plan-grid,
   .switcher-wizard-shell,
@@ -10444,6 +10543,8 @@ body[data-density="compact"] .main-content {
   .conflict-center-body,
   .workspace-health-grid,
   .notification-role-grid,
+  .plugin-readiness-strip,
+  .plugin-card-grid,
   .task-time-grid,
   .time-entry-form,
   .sprint-settings-form,
