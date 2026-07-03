@@ -12,6 +12,7 @@ const packageJson = require("../package.json");
 loadEnvFile();
 
 const PORT = Number(process.env.AGORA_API_PORT || 8787);
+const HOST = process.env.AGORA_API_HOST || "127.0.0.1";
 const BODY_LIMIT_BYTES = 15 * 1024 * 1024;
 const PUBLIC_FEATURE_BODY_LIMIT_BYTES = positiveNumber(process.env.AGORA_PUBLIC_FEATURE_BODY_LIMIT_BYTES, 24 * 1024);
 const UPLOAD_LIMIT_BYTES = 10 * 1024 * 1024;
@@ -7944,8 +7945,8 @@ if (require.main === module) {
       });
     }, intervalMs);
   }
-  server.listen(PORT, "127.0.0.1", () => {
-    console.log(`Agora API listening at http://127.0.0.1:${PORT}`);
+  server.listen(PORT, HOST, () => {
+    console.log(`Agora API listening at http://${HOST}:${PORT}`);
   });
 }
 

@@ -18,6 +18,7 @@ const checkFiles = [
   "server/migration-importer-test.js",
   "server/supabase-verify.js",
   "server/portable-fixtures-test.js",
+  "scripts/agora-setup.js",
   "scripts/recovery-stress-test.js",
   "scripts/disaster-recovery-drill.js",
   "scripts/capture-screenshots.js",
@@ -50,6 +51,10 @@ const commands = {
   fixtures: {
     summary: "Validate portable workspace and automation pack fixtures",
     run: async () => runStep("fixture validation", [process.execPath, [path.join(ROOT, "server", "portable-fixtures-test.js")]])
+  },
+  setup: {
+    summary: "Create a local, Docker, or hosted starter environment",
+    run: async (args) => runStep("Agora setup", [process.execPath, [path.join(ROOT, "scripts", "agora-setup.js"), ...args]])
   },
   recovery: {
     summary: "Stress-test backup, portable import, and restore semantics",
@@ -231,6 +236,7 @@ Usage:
 Commands:
   verify [--quick] [--supabase]  Run check + fixtures + recovery + API smoke
   check                         Syntax-check project files
+  setup                         Create local, Docker, or hosted starter env
   fixtures                      Validate portable fixtures
   recovery                      Stress-test backup/import/restore semantics
   recovery-drill                Run disaster recovery drill from a server backup
@@ -258,6 +264,7 @@ Options:
 
 Examples:
   npm run agora -- verify
+  npm run agora -- setup --profile docker --dry-run
   npm run agora -- verify --quick
   npm run agora -- verify --supabase
   npm run agora -- recovery

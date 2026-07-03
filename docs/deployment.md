@@ -5,7 +5,7 @@ This guide covers the blessed production path for Agora: Vercel/static app hosti
 ## Local First Run
 
 ```sh
-cp .env.example .env
+npm run setup
 npm run dev
 npm run dev:api
 ```
@@ -26,6 +26,8 @@ Browser -> Vercel/static Agora app -> hosted Node API -> Supabase Postgres/Auth/
 ```
 
 The browser app should only know the Agora API URL entered in Settings. Keep Supabase service-role keys, SMTP credentials, AI provider keys, payment keys, webhook secrets, and backup paths on the API server.
+
+For local setup, Docker Compose, and hosted environment bootstrap, see [`install.md`](./install.md). `npm run setup -- --profile hosted` creates the production-shaped `.env` scaffold without filling secrets.
 
 Recommended first production sequence:
 
