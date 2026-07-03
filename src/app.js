@@ -15692,6 +15692,8 @@ function renderDashboard() {
       ${metric("Progress", `${completionRate}%`)}
     </div>
 
+    ${renderWorkspaceHealthPanel()}
+
     ${renderPortfolioGantt(visibleProjects)}
 
     <div class="dashboard-support-grid">
@@ -15705,6 +15707,94 @@ function renderDashboard() {
     <div class="dashboard-grid">
       ${renderDashboardWidgets({ visibleProjects, dueSoonTasks, tasks, timeEntries: getFilteredTimeEntries() })}
     </div>
+  `;
+}
+
+function workspaceHealthSignals() {
+  const queue = apiSyncQueueSummary();
+  const health = backendHealth || apiSession?.backendHealth || {};
+  const jobs = health.jobs || {};
+  const recentJobs = Array.isArray(jobs.recent) ? jobs.recent : [];
+  const failedJobs = recentJobs.filter((job) => ["failed", "rejected"].includes(job.status)).length;
+  const pendingInvites = state.invitations.filter((invitation) => invitation.status === "pending");
+  const staleInvites = pendingInvites.filter((invitation) => invitation.expiresAt && invitation.expiresAt < new Date().toISOString());
+  const notificationAudit = notificationDeliveryAudit();
+  const notificationBlockers = Array.isArray(notificationAudit.blockers) ? notificationAudit.blockers.length : 0;
+  const adminCount = permissionsAuditRows().filter((row) => row.roleId === "admin").length;
+  const portalStats = portalSecurityStats();
+  return [
+    {
+      label: "Sync conflicts",
+      value: queue.conflicts,
+      done: queue.conflicts === 0,
+      tone: queue.conflicts ? "red" : queue.total ? "amber" : "green",
+      detail: queue.conflicts ? "Open Settings > Sync to resolve local/server collisions." : queue.total ? `${queue.total} queued writes waiting to retry.` : "No local writes are blocked."
+    },
+    {
+      label: "Failed jobs",
+      value: failedJobs,
+      done: failedJobs === 0,
+      tone: failedJobs ? "amber" : "green",
+      detail: failedJobs ? "Review backend jobs before relying on automations." : "No failed background jobs are visible."
+    },
+    {
+      label: "Stale invites",
+      value: staleInvites.length,
+      done: staleInvites.length === 0,
+      tone: staleInvites.length ? "amber" : pendingInvites.length ? "blue" : "green",
+      detail: pendingInvites.length ? `${pendingInvites.length} pending invite${pendingInvites.length === 1 ? "" : "s"}; ${staleInvites.length} stale.` : "No pending invites need follow-up."
+    },
+    {
+      label: "Notification routes",
+      value: notificationBlockers,
+      done: notificationBlockers === 0,
+      tone: notificationBlockers ? "amber" : "green",
+      detail: notificationBlockers ? "Production email/webhook routes need configuration." : "Notification delivery routes are mapped."
+    },
+    {
+      label: "Admins",
+      value: adminCount,
+      done: adminCount <= 2,
+      tone: adminCount > 2 ? "amber" : "green",
+      detail: adminCount > 2 ? "Review admin count before rollout." : "Admin count is intentionally small."
+    },
+    {
+      label: "Portal links",
+      value: portalStats.staleLinks + portalStats.expiredLinks,
+      done: portalStats.staleLinks + portalStats.expiredLinks === 0,
+      tone: portalStats.staleLinks + portalStats.expiredLinks ? "amber" : "green",
+      detail: `${portalStats.activeLinks} active, ${portalStats.expiredLinks} expired, ${portalStats.staleLinks} stale.`
+    }
+  ];
+}
+
+function renderWorkspaceHealthPanel() {
+  const signals = workspaceHealthSignals();
+  const openSignals = signals.filter((signal) => !signal.done);
+  return `
+    <section class="panel workspace-health-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Admin command center</p>
+          <h2>Workspace health</h2>
+        </div>
+        <span class="status-pill ${openSignals.length ? "inbox-amber" : "inbox-green"}">${openSignals.length ? `${openSignals.length} review` : "Healthy"}</span>
+      </div>
+      <div class="workspace-health-grid">
+        ${signals.map((signal) => `
+          <article>
+            <span class="status-pill inbox-${signal.tone}">${escapeHtml(signal.label)}</span>
+            <strong>${escapeHtml(signal.value)}</strong>
+            <small>${escapeHtml(signal.detail)}</small>
+          </article>
+        `).join("")}
+      </div>
+      <div class="workspace-health-actions">
+        <button class="button button-secondary compact-button" type="button" data-open-settings-tab="sync">Open Sync</button>
+        <button class="button button-secondary compact-button" type="button" data-route="permissions">Open Permissions</button>
+        <button class="button button-secondary compact-button" type="button" data-route="audit">Open Audit</button>
+      </div>
+    </section>
   `;
 }
 
@@ -17474,6 +17564,67 @@ function notificationDeliveryChannels(settings = notificationSettings()) {
   return channels.join(" + ");
 }
 
+function notificationRoleProfiles() {
+  return [
+    {
+      role: "admin",
+      label: "Admin",
+      digests: ["My work", "Approvals", "Blockers", "Quiet projects"],
+      events: ["mentions", "failed syncs", "portal activity", "billing/admin changes"],
+      detail: "Best for owners watching adoption, risk, and operational delivery."
+    },
+    {
+      role: "manager",
+      label: "PM / Manager",
+      digests: ["My work", "Approvals", "Blockers", "Quiet projects"],
+      events: ["assignments", "overdue work", "client approvals", "blocked tasks"],
+      detail: "Best for delivery leads who need fewer pings and stronger daily digests."
+    },
+    {
+      role: "member",
+      label: "Member",
+      digests: ["My work", "Blockers"],
+      events: ["assignments", "mentions", "watched tasks", "due soon"],
+      detail: "Best for contributors who need owned work, mentions, and blocker signals."
+    },
+    {
+      role: "client",
+      label: "Client",
+      digests: ["Approvals"],
+      events: ["portal approvals", "portal comments", "feature request updates"],
+      detail: "Best for external reviewers with scoped portal-facing updates only."
+    }
+  ];
+}
+
+function renderNotificationRoleDefaultsPanel() {
+  const activeRole = currentWorkspaceRole();
+  return `
+    <section class="panel notification-role-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Role defaults</p>
+          <h2>Notification defaults by role</h2>
+        </div>
+        <span class="status-pill inbox-blue">${escapeHtml(workspaceRoles.find((role) => role.id === activeRole)?.label || activeRole)}</span>
+      </div>
+      <div class="notification-role-grid">
+        ${notificationRoleProfiles().map((profile) => `
+          <article class="${profile.role === activeRole ? "is-current" : ""}">
+            <div>
+              <span class="status-pill ${profile.role === activeRole ? "inbox-green" : "inbox-neutral"}">${profile.role === activeRole ? "Current role" : "Reference"}</span>
+              <strong>${escapeHtml(profile.label)}</strong>
+              <p>${escapeHtml(profile.detail)}</p>
+            </div>
+            <small>Digests: ${escapeHtml(profile.digests.join(", "))}</small>
+            <small>Events: ${escapeHtml(profile.events.join(", "))}</small>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function notificationDeliveryAudit() {
   const health = backendHealth || apiSession?.backendHealth || {};
   const audit = health.notificationDelivery || {};
@@ -17846,6 +17997,7 @@ function renderInbox() {
       </section>
 
       ${renderNotificationDigestPanel()}
+      ${renderNotificationRoleDefaultsPanel()}
       ${renderNotificationPreferencesPanel()}
       ${renderNotificationRemindersPanel()}
       ${renderInboxIntelligencePanel(items)}

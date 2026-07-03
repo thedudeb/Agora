@@ -1961,6 +1961,44 @@ body[data-tutorial-target="view"] #app-view {
   margin-bottom: 16px;
 }
 
+.workspace-health-panel {
+  margin-bottom: 16px;
+}
+
+.workspace-health-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.workspace-health-grid article {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.workspace-health-grid strong {
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.workspace-health-grid small {
+  color: var(--muted);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.workspace-health-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
 .team-launch-panel {
   margin-bottom: 16px;
 }
@@ -2412,11 +2450,46 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .notification-digest-panel,
+.notification-role-panel,
 .notification-preferences-panel,
 .notification-reminders-panel,
 .notification-intelligence-panel,
 .notification-history-panel {
   align-content: start;
+}
+
+.notification-role-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.notification-role-grid article {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.notification-role-grid article.is-current {
+  border-color: rgba(78, 139, 97, 0.42);
+  background: rgba(78, 139, 97, 0.08);
+}
+
+.notification-role-grid strong,
+.notification-role-grid p,
+.notification-role-grid small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.notification-role-grid p,
+.notification-role-grid small {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.35;
 }
 
 .digest-list,
@@ -9814,6 +9887,8 @@ body[data-density="compact"] .main-content {
   .live-collaboration-grid,
   .conflict-center-grid,
   .conflict-center-body,
+  .workspace-health-grid,
+  .notification-role-grid,
   .audit-risk-grid,
   .payment-plan-grid,
   .switcher-report-grid,
@@ -10274,6 +10349,8 @@ body[data-density="compact"] .main-content {
   .collab-hub-grid,
   .conflict-center-grid,
   .conflict-center-body,
+  .workspace-health-grid,
+  .notification-role-grid,
   .task-time-grid,
   .time-entry-form,
   .sprint-settings-form,
@@ -10380,6 +10457,10 @@ body[data-density="compact"] .main-content {
 
   .change-history-list article {
     grid-template-columns: 1fr;
+  }
+
+  .workspace-health-actions {
+    justify-content: flex-start;
   }
 
   .backend-job-meta,

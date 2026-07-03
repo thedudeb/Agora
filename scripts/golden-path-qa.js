@@ -57,6 +57,7 @@ const routeChecks = [
       "Create the client onboarding project",
       "Install the agency handoff workflow",
       "Export the recovery bundle",
+      "Workspace health",
       "Workspace setup"
     ]
   },
