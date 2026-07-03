@@ -1,0 +1,93 @@
+{
+  "type": "agora.extension-registry",
+  "version": 1,
+  "updatedAt": "2026-07-03",
+  "extensionPoints": [
+    {
+      "key": "commands",
+      "label": "Commands",
+      "surface": "Command palette and UI actions",
+      "permissionDefault": "workspace:read",
+      "status": "manifest-ready"
+    },
+    {
+      "key": "connectors",
+      "label": "Connectors",
+      "surface": "Settings > Integrations and API sync jobs",
+      "permissionDefault": "integrations:write",
+      "status": "manifest-ready"
+    },
+    {
+      "key": "views",
+      "label": "Views",
+      "surface": "Future local iframe or native app panels",
+      "permissionDefault": "workspace:read",
+      "status": "planned"
+    },
+    {
+      "key": "importers",
+      "label": "Importers",
+      "surface": "Migration concierge and Data imports",
+      "permissionDefault": "workspace:import",
+      "status": "manifest-ready"
+    },
+    {
+      "key": "templates",
+      "label": "Templates",
+      "surface": "Templates and marketplace",
+      "permissionDefault": "projects:write",
+      "status": "manifest-ready"
+    },
+    {
+      "key": "automationPacks",
+      "label": "Automation packs",
+      "surface": "Automations and marketplace",
+      "permissionDefault": "scheduler:run",
+      "status": "manifest-ready"
+    },
+    {
+      "key": "mcpTools",
+      "label": "MCP tools",
+      "surface": "Local MCP server and agent clients",
+      "permissionDefault": "workspace:read",
+      "status": "guarded"
+    },
+    {
+      "key": "settingsPanels",
+      "label": "Settings panels",
+      "surface": "Settings extension registry",
+      "permissionDefault": "workspace:read",
+      "status": "planned"
+    }
+  ],
+  "mcpSurfaces": {
+    "tools": [
+      "get_session",
+      "get_workspace_health",
+      "list_projects",
+      "list_tasks",
+      "get_task",
+      "get_project_status",
+      "search_workspace",
+      "get_inbox_signals",
+      "create_task",
+      "update_task_status",
+      "add_task_comment"
+    ],
+    "resources": [
+      "agora://workspace/summary",
+      "agora://backend/health",
+      "agora://projects",
+      "agora://tasks",
+      "agora://inbox/signals"
+    ],
+    "prompts": [
+      "standup_digest",
+      "project_risk_review"
+    ]
+  },
+  "examplePlugins": [
+    "plugins/example-importer",
+    "plugins/github-connector"
+  ]
+}

@@ -53,6 +53,8 @@ npm run test:plugins
 
 The validator checks required fields, version format, supported permissions, runtime mode, local iframe entries, contribution keys, and whether the plugin contributes at least one extension point.
 
+The ecosystem registry in [`../ecosystem/extension-points.json`](../ecosystem/extension-points.json) keeps the plugin and MCP extension story machine-readable. Run `npm run ecosystem` to confirm documented extension points, example plugins, and MCP surfaces stay aligned.
+
 Connector contributions are declarative provider bridges. They should name the provider, supported sync modes, subscribed events, required external scopes, and the API or MCP handoff that will perform the real sync. Agora can list disabled connector manifests in Settings > Integrations, then register them as active connectors once an admin enables the plugin.
 
 Machine-readable output:

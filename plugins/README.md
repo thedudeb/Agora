@@ -6,6 +6,7 @@ Validate all plugin manifests:
 
 ```sh
 npm run test:plugins
+npm run ecosystem
 ```
 
 Validate one plugin:

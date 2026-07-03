@@ -21,6 +21,7 @@ const checkFiles = [
   "scripts/agora-setup.js",
   "scripts/demo-links.js",
   "scripts/migration-concierge.js",
+  "scripts/ecosystem-check.js",
   "scripts/recovery-stress-test.js",
   "scripts/disaster-recovery-drill.js",
   "scripts/capture-screenshots.js",
@@ -71,6 +72,10 @@ const commands = {
   concierge: {
     summary: "Run guided migration preflight",
     run: async (args) => runStep("migration concierge", [process.execPath, [path.join(ROOT, "scripts", "migration-concierge.js"), ...args]])
+  },
+  ecosystem: {
+    summary: "Validate plugin and MCP ecosystem registry",
+    run: async (args) => runStep("ecosystem registry check", [process.execPath, [path.join(ROOT, "scripts", "ecosystem-check.js"), ...args]])
   },
   recovery: {
     summary: "Stress-test backup, portable import, and restore semantics",
@@ -255,6 +260,7 @@ Commands:
   setup                         Create local, Docker, or hosted starter env
   demo links                    Generate hosted demo tour links
   concierge                     Run guided migration preflight
+  ecosystem                     Validate plugin/MCP ecosystem registry
   fixtures                      Validate portable fixtures
   recovery                      Stress-test backup/import/restore semantics
   recovery-drill                Run disaster recovery drill from a server backup
@@ -285,6 +291,7 @@ Examples:
   npm run agora -- setup --profile docker --dry-run
   npm run agora -- demo links --base https://demo.example.com --markdown
   npm run agora -- concierge tests/fixtures/trello-board.json --source trello-json --workspace tests/fixtures/workspace.json
+  npm run agora -- ecosystem
   npm run agora -- verify --quick
   npm run agora -- verify --supabase
   npm run agora -- recovery

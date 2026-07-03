@@ -106,6 +106,7 @@ npm run start:api # start the API for a host/runtime
 npm run setup     # create .env and local persistent directories
 npm run demo:links # generate shareable demo tour links
 npm run migrate:concierge -- tests/fixtures/trello-board.json --source trello-json --workspace tests/fixtures/workspace.json
+npm run ecosystem # validate plugin/MCP extension registry
 npm run mcp       # start the local stdio MCP server for power-user clients
 npm run plugins   # validate local plugin manifests
 npm run check     # syntax-check app and server files
@@ -127,6 +128,7 @@ npm run agora -- verify # power-user CLI: check + fixtures + API smoke
 npm run agora -- qa # power-user CLI: release QA gate
 npm run agora -- demo links --base https://demo.example.com --markdown
 npm run agora -- concierge tests/fixtures/trello-board.json --source trello-json --workspace tests/fixtures/workspace.json
+npm run agora -- ecosystem
 npm run agora -- upgrade check --backup tests/fixtures/server-backups/agora-workspace-backup-demo.json
 npm run agora -- recovery-drill --fixture
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
@@ -149,6 +151,8 @@ For hosted evaluation, generate scenario-specific demo links with `npm run demo:
 For migration work, the CLI can preview and apply Trello JSON or generic CSV exports before you touch a real workspace. Start with `npm run migrate:concierge -- <export-file> --workspace <workspace.json> --backup <backup.json>` for a guided readiness report, then use `npm run agora -- migrate preview/apply` when the warnings are understood. See [`docs/migration-tool.md`](./docs/migration-tool.md) for the adapter contract, safety model, mapping tables, and examples.
 
 For plugin experiments, start with [`plugins/example-importer/plugin.json`](./plugins/example-importer/plugin.json), validate with `npm run test:plugins`, and read the [plugin architecture contract](./docs/plugin-architecture.md). The first plugin layer is declarative and local-first, so contributors can safely propose commands, views, importers, templates, automation packs, MCP tools, and settings panels before Agora enables runtime loading.
+
+For the platform story across plugins, MCP, connectors, templates, automations, and marketplace artifacts, see [`docs/ecosystem.md`](./docs/ecosystem.md) and validate the registry with `npm run ecosystem`.
 
 For production upgrades, run `npm run verify:upgrade` before applying migrations or rolling a new API build, then run `npm run drill:recovery -- --backup <server-backup.json>` to prove restore mechanics in isolation. See [`docs/upgrade-checklist.md`](./docs/upgrade-checklist.md) and [`docs/disaster-recovery-drill.md`](./docs/disaster-recovery-drill.md) for the operator sequence and rollback trigger.
 
