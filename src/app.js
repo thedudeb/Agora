@@ -14827,6 +14827,120 @@ function recordTaskChanges(previous, next) {
   }
 }
 
+function historyEventTime(event = {}) {
+  return event.createdAt || event.updatedAt || event.changedAt || "";
+}
+
+function formatHistoryEvent(event = {}) {
+  return {
+    ...event,
+    createdAt: historyEventTime(event),
+    actor: event.actor || memberName(event.memberId || event.actorId || event.author || activeMemberId()),
+    detail: event.detail || event.message || event.title || "Updated record",
+    source: event.source || event.type || event.action || "activity"
+  };
+}
+
+function taskHistoryEvents(taskId = "") {
+  const task = byId(state.tasks, taskId);
+  if (!task) return [];
+  const activityEvents = (Array.isArray(state.activities) ? state.activities : [])
+    .filter((activity) => activity.taskId === taskId)
+    .map((activity) => formatHistoryEvent({
+      ...activity,
+      source: "activity",
+      detail: activity.message,
+      actor: memberName(activity.memberId)
+    }));
+  const auditEventsForTask = (Array.isArray(state.auditEvents) ? state.auditEvents : [])
+    .filter((event) => event.targetId === taskId || event.metadata?.taskId === taskId)
+    .map((event) => formatHistoryEvent({
+      ...event,
+      source: "audit",
+      detail: event.detail,
+      actor: memberName(event.actorId)
+    }));
+  const lifecycleEvents = [
+    formatHistoryEvent({
+      id: `${task.id}-created`,
+      source: "created",
+      detail: `Created ${task.title}`,
+      actor: memberName(task.assignee),
+      createdAt: task.createdAt
+    }),
+    task.updatedAt && task.updatedAt !== task.createdAt ? formatHistoryEvent({
+      id: `${task.id}-updated`,
+      source: "latest revision",
+      detail: `Latest revision ${formatTimestamp(task.updatedAt)}`,
+      actor: memberName(task.assignee),
+      createdAt: task.updatedAt
+    }) : null
+  ].filter(Boolean);
+  return [...activityEvents, ...auditEventsForTask, ...lifecycleEvents]
+    .filter((event) => event.createdAt)
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 10);
+}
+
+function projectHistoryEvents(projectId = "") {
+  const project = byId(state.projects, projectId);
+  if (!project) return [];
+  const projectTaskIds = new Set(getProjectTasks(projectId, false).map((task) => task.id));
+  const activityEvents = (Array.isArray(state.activities) ? state.activities : [])
+    .filter((activity) => activity.projectId === projectId)
+    .map((activity) => formatHistoryEvent({
+      ...activity,
+      source: activity.taskId ? "task activity" : "project activity",
+      detail: activity.message,
+      actor: memberName(activity.memberId)
+    }));
+  const auditEventsForProject = (Array.isArray(state.auditEvents) ? state.auditEvents : [])
+    .filter((event) => event.targetId === projectId || projectTaskIds.has(event.targetId) || event.metadata?.projectId === projectId)
+    .map((event) => formatHistoryEvent({
+      ...event,
+      source: "audit",
+      detail: event.detail,
+      actor: memberName(event.actorId)
+    }));
+  const lifecycleEvents = [
+    formatHistoryEvent({
+      id: `${project.id}-created`,
+      source: "created",
+      detail: `Created project ${project.name}`,
+      actor: memberName(project.owner),
+      createdAt: project.createdAt
+    }),
+    project.updatedAt && project.updatedAt !== project.createdAt ? formatHistoryEvent({
+      id: `${project.id}-updated`,
+      source: "latest revision",
+      detail: `Latest project revision ${formatTimestamp(project.updatedAt)}`,
+      actor: memberName(project.owner),
+      createdAt: project.updatedAt
+    }) : null
+  ].filter(Boolean);
+  return [...activityEvents, ...auditEventsForProject, ...lifecycleEvents]
+    .filter((event) => event.createdAt)
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 12);
+}
+
+function renderHistoryTimeline(events = [], fallback = "No change history yet.") {
+  if (!events.length) return emptyState(fallback);
+  return `
+    <div class="change-history-list">
+      ${events.map((event) => `
+        <article>
+          <span>${escapeHtml(event.source || "change")}</span>
+          <div>
+            <strong>${escapeHtml(event.detail || "Updated record")}</strong>
+            <small>${escapeHtml(event.actor || "Workspace")} - ${escapeHtml(formatTimestamp(event.createdAt))}</small>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
 function render() {
   applyWorkspaceTheme();
   const allowedRoute = routeFallback(state.selectedRoute);
@@ -18950,6 +19064,17 @@ function renderProjectOverview(project, details) {
         </div>
         ${renderActivityList(getProjectActivity(project.id, 5))}
       </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Audit trail</p>
+            <h2>Change history</h2>
+          </div>
+          <span class="status-pill inbox-neutral">${projectHistoryEvents(project.id).length} events</span>
+        </div>
+        ${renderHistoryTimeline(projectHistoryEvents(project.id), "No changes have been recorded for this project yet.")}
+      </section>
     </div>
   `;
 }
@@ -20323,6 +20448,10 @@ function renderTaskCollaboration(taskId = "") {
       <section>
         <p class="eyebrow">Activity</p>
         ${renderActivityList(activities)}
+      </section>
+      <section>
+        <p class="eyebrow">Change history</p>
+        ${renderHistoryTimeline(taskHistoryEvents(taskId), "No changes have been recorded for this task yet.")}
       </section>
     </div>
   `;

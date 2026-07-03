@@ -161,6 +161,7 @@ const routeChecks = [
       "Project command center",
       "Project health",
       "Action queue",
+      "Change history",
       "What to do next",
       "Timeline slip",
       "Client visibility",
