@@ -6,6 +6,7 @@ Use this runbook when moving Agora from a local pilot to a hosted workspace with
 
 - Confirm the GitHub Actions `QA` workflow is green for the release commit.
 - Run `npm run verify:hosted`.
+- Run `npm run rehearse:hosted`.
 - Run `npm run qa`.
 - Run `npm run verify`.
 - Run `npm run launch:check`.

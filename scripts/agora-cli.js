@@ -27,6 +27,7 @@ const checkFiles = [
   "scripts/agora-mcp-server.js",
   "scripts/agora-plugin-check.js",
   "scripts/hosted-env-verify.js",
+  "scripts/hosted-deploy-rehearsal.js",
   "desktop/electron/main.cjs",
   "desktop/electron/preload.cjs"
 ];
@@ -79,6 +80,10 @@ const commands = {
   hosted: {
     summary: "Verify hosted production environment configuration",
     run: async (args) => runStep("hosted environment verification", [process.execPath, [path.join(ROOT, "scripts", "hosted-env-verify.js"), ...args]])
+  },
+  "rehearse-hosted": {
+    summary: "Run hosted deploy rehearsal checks",
+    run: async (args) => runStep("hosted deploy rehearsal", [process.execPath, [path.join(ROOT, "scripts", "hosted-deploy-rehearsal.js"), ...args]])
   },
   qa: {
     summary: "Run release QA: quick verification plus browser golden paths",
@@ -219,6 +224,7 @@ Commands:
   screenshots                   Refresh launch screenshots
   golden                        Run onboarding/golden-path browser QA
   hosted [--json]               Verify hosted production environment config
+  rehearse-hosted [--quick]     Run hosted deploy rehearsal checks
   bundle inspect <file> [--json] Inspect a portable workspace bundle
   launch check <bundle>         Check first-client launch readiness
   marketplace validate <file>   Validate marketplace/template/automation JSON
@@ -241,6 +247,7 @@ Examples:
   npm run agora -- golden
   npm run agora -- hosted
   npm run agora -- hosted --require-github
+  npm run agora -- rehearse-hosted --env tests/fixtures/hosted-production.env --quick --skip-audit
   npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
   npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json --json
   npm run agora -- launch check tests/fixtures/portable-workspace-bundle.json --strict

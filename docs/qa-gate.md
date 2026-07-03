@@ -24,6 +24,14 @@ The same gate is available to power users through:
 npm run agora -- qa
 ```
 
+For hosted deploy rehearsal, run:
+
+```sh
+npm run rehearse:hosted
+```
+
+Use `--quick --skip-audit` for a local dry run when network access or browser QA is not needed.
+
 ## CI Gate
 
 GitHub Actions runs the same release QA gate on pushes to `main`, pull requests into `main`, and manual workflow dispatches.
