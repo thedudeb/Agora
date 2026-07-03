@@ -43,6 +43,7 @@ Confirm the GitHub Actions `QA` workflow is green for the commit being released.
 ```sh
 npm run qa
 npm run verify
+npm run verify:upgrade
 npm run launch:check
 ```
 
@@ -56,7 +57,7 @@ npm run test:golden
 npm run test:api
 ```
 
-Fix any failure before releasing. `qa` runs quick verification plus browser golden-path QA. `launch:check` remains the shorter launch-focused gate. `test:importers` checks generic CSV and Trello JSON migration planning/apply behavior. `test:golden` browser-checks the app shell, PWA/offline fallback, first-run dashboard, template-to-project path, marketplace automation path, Data recovery/schema/offline readiness, Settings sync/security/feedback tabs, feature request triage, and mobile/public feedback paths. `test:api` covers auth, permissions, structured records, payments, marketplace publishing, scheduler behavior, audit logs, and API persistence.
+Fix any failure before releasing. `qa` runs quick verification plus browser golden-path QA. `verify:upgrade` checks migration-file presence and latest server-backup validity before production upgrades. `launch:check` remains the shorter launch-focused gate. `test:importers` checks generic CSV and Trello JSON migration planning/apply behavior. `test:golden` browser-checks the app shell, PWA/offline fallback, first-run dashboard, template-to-project path, marketplace automation path, Data recovery/schema/offline readiness, Settings sync/security/feedback tabs, feature request triage, and mobile/public feedback paths. `test:api` covers auth, permissions, structured records, payments, marketplace publishing, scheduler behavior, audit logs, and API persistence.
 
 ## 5. Security Gate
 
@@ -85,3 +86,4 @@ Fix any failure before releasing. `qa` runs quick verification plus browser gold
 - Keep the previous deployment available until API sync, auth, file upload, marketplace, and workspace load checks pass.
 - If a release corrupts workspace state, restore from the latest portable bundle or local/API backup.
 - If a migration fails, stop the API, restore Supabase from backup, and redeploy the previous release.
+- Before retrying the upgrade, rerun `npm run verify:upgrade` and confirm the backup artifact is fresh.

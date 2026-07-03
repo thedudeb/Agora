@@ -34,7 +34,7 @@ Recommended first production sequence:
 3. Configure Supabase storage/auth and run migrations `001`, `002`, and `003`.
 4. Configure SMTP or password-reset webhook delivery.
 5. Sign in, open Settings > Account, and use Hosted onboarding to complete owner, API sync, invite, email, feedback, and recovery checks.
-6. Run `npm run verify:hosted`, `npm run rehearse:hosted`, refresh Backend Health, and confirm production gates, email diagnostics, background jobs, structured records, backups, and Supabase mode are green.
+6. Before upgrades or migration changes, run `npm run verify:upgrade`; for new launches, run `npm run verify:hosted` and `npm run rehearse:hosted`, refresh Backend Health, and confirm production gates, email diagnostics, background jobs, structured records, backups, and Supabase mode are green.
 7. Run `npm run security`, `npm run qa`, and confirm the GitHub Actions `QA + Security` workflow passes for the release commit.
 
 ## Required Production Environment
@@ -126,6 +126,16 @@ AGORA_VERIFY_WORKSPACE_ID=agora-verify-your-name
 ```
 
 The verification script is non-destructive. It does not delete existing rows and does not touch the main `AGORA_WORKSPACE_ID` unless you explicitly set `AGORA_VERIFY_WORKSPACE_ID` to the same value.
+
+## Upgrade Safety
+
+Before changing production API code, applying migrations, or switching storage/auth drivers, run:
+
+```sh
+npm run verify:upgrade
+```
+
+This confirms the release contains the required migration files and that the API has a fresh, parseable server workspace backup. For the full maintenance sequence, see [`upgrade-checklist.md`](./upgrade-checklist.md).
 
 ## Backend Scheduler
 

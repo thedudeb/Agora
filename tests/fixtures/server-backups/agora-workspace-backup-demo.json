@@ -1,0 +1,71 @@
+{
+  "type": "agora.workspace-backup",
+  "version": 1,
+  "generatedAt": "2026-07-03T00:00:00.000Z",
+  "source": "fixture",
+  "workspace": {
+    "id": "workspace-acme",
+    "name": "Acme Launch Studio",
+    "slug": "acme-launch-studio"
+  },
+  "metadata": {
+    "storage": "json-file",
+    "snapshotUpdatedAt": "2026-07-03T00:00:00.000Z",
+    "requestedBy": "Fixture"
+  },
+  "counts": {
+    "companies": 1,
+    "projects": 1,
+    "tasks": 2,
+    "users": 1,
+    "memberships": 1,
+    "auditEvents": 0
+  },
+  "snapshot": {
+    "schemaVersion": 2,
+    "workspace": {
+      "id": "workspace-acme",
+      "name": "Acme Launch Studio",
+      "slug": "acme-launch-studio"
+    },
+    "companies": [
+      {
+        "id": "company-acme",
+        "name": "Acme"
+      }
+    ],
+    "projects": [
+      {
+        "id": "project-launch",
+        "name": "Launch"
+      }
+    ],
+    "tasks": [
+      {
+        "id": "task-plan",
+        "title": "Plan release",
+        "status": "todo"
+      },
+      {
+        "id": "task-ship",
+        "title": "Ship release",
+        "status": "todo"
+      }
+    ],
+    "users": [
+      {
+        "id": "user-owner",
+        "name": "Owner",
+        "email": "owner@example.com"
+      }
+    ],
+    "memberships": [
+      {
+        "id": "membership-owner",
+        "userId": "user-owner",
+        "role": "admin"
+      }
+    ],
+    "auditEvents": []
+  }
+}

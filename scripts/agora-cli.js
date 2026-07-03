@@ -28,6 +28,7 @@ const checkFiles = [
   "scripts/agora-plugin-check.js",
   "scripts/hosted-env-verify.js",
   "scripts/hosted-deploy-rehearsal.js",
+  "scripts/upgrade-safety-check.js",
   "desktop/electron/main.cjs",
   "desktop/electron/preload.cjs"
 ];
@@ -84,6 +85,16 @@ const commands = {
   "rehearse-hosted": {
     summary: "Run hosted deploy rehearsal checks",
     run: async (args) => runStep("hosted deploy rehearsal", [process.execPath, [path.join(ROOT, "scripts", "hosted-deploy-rehearsal.js"), ...args]])
+  },
+  upgrade: {
+    summary: "Check production upgrade and migration safety",
+    run: async (args) => {
+      const [subcommand, ...checkArgs] = args;
+      if (subcommand !== "check") {
+        throw new Error("Usage: npm run agora -- upgrade check [--env .env] [--backup backup.json] [--max-age-hours 48] [--allow-missing-backup] [--json]");
+      }
+      await runStep("upgrade safety check", [process.execPath, [path.join(ROOT, "scripts", "upgrade-safety-check.js"), ...checkArgs]]);
+    }
   },
   qa: {
     summary: "Run release QA: quick verification plus browser golden paths",
@@ -225,6 +236,7 @@ Commands:
   golden                        Run onboarding/golden-path browser QA
   hosted [--json]               Verify hosted production environment config
   rehearse-hosted [--quick]     Run hosted deploy rehearsal checks
+  upgrade check [--backup file]  Check production upgrade/migration safety
   bundle inspect <file> [--json] Inspect a portable workspace bundle
   launch check <bundle>         Check first-client launch readiness
   marketplace validate <file>   Validate marketplace/template/automation JSON
@@ -248,6 +260,7 @@ Examples:
   npm run agora -- hosted
   npm run agora -- hosted --require-github
   npm run agora -- rehearse-hosted --env tests/fixtures/hosted-production.env --quick --skip-audit
+  npm run agora -- upgrade check --backup tests/fixtures/server-backups/agora-workspace-backup-demo.json --max-age-hours 999999
   npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
   npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json --json
   npm run agora -- launch check tests/fixtures/portable-workspace-bundle.json --strict
