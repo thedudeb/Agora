@@ -1224,6 +1224,7 @@ const seedData = {
     "task-7": { date: "2026-06-27", lane: "later" }
   },
   updateCaptures: [],
+  updateExtractionPreviews: [],
   dashboardWidgets: [
     { id: "projects", visible: true },
     { id: "goals", visible: true },
@@ -2958,6 +2959,7 @@ function normalizeState(nextState) {
     documents: Array.isArray(nextState.documents) ? nextState.documents : seedData.documents,
     files: Array.isArray(nextState.files) ? nextState.files : seedData.files,
     updateCaptures: normalizeUpdateCaptures(nextState.updateCaptures),
+    updateExtractionPreviews: normalizeUpdateExtractionPreviews(nextState.updateExtractionPreviews),
     projectBacklog: normalizeProjectBacklog(Array.isArray(nextState.projectBacklog) ? nextState.projectBacklog : seedData.projectBacklog),
     intakeForms: Array.isArray(nextState.intakeForms) ? nextState.intakeForms : seedData.intakeForms,
     intakeSubmissions: Array.isArray(nextState.intakeSubmissions) ? nextState.intakeSubmissions : seedData.intakeSubmissions,
@@ -3022,6 +3024,147 @@ function updateCaptureTitle(capture = {}) {
   const text = String(capture.body || "").trim();
   if (!text) return "Captured update";
   return text.split(/\n+/).map((line) => line.trim()).find(Boolean)?.slice(0, 90) || "Captured update";
+}
+
+function normalizeUpdateExtractionPreviews(previews = []) {
+  const validTypes = new Set(["task", "blocker", "decision", "risk", "approval", "date_change", "comment"]);
+  return (Array.isArray(previews) ? previews : [])
+    .filter((preview) => preview && typeof preview === "object")
+    .map((preview) => ({
+      id: String(preview.id || uid("extraction-preview")),
+      captureId: String(preview.captureId || ""),
+      projectId: String(preview.projectId || ""),
+      source: String(preview.source || "local"),
+      confidence: clamp(Number(preview.confidence || 55), 0, 100),
+      createdAt: preview.createdAt || new Date().toISOString(),
+      status: ["preview", "reviewed", "applied", "archived"].includes(preview.status) ? preview.status : "preview",
+      proposals: (Array.isArray(preview.proposals) ? preview.proposals : [])
+        .filter((proposal) => proposal && typeof proposal === "object")
+        .map((proposal) => ({
+          id: String(proposal.id || uid("proposal")),
+          type: validTypes.has(proposal.type) ? proposal.type : "comment",
+          title: String(proposal.title || "Project update").slice(0, 180),
+          summary: String(proposal.summary || "").slice(0, 420),
+          confidence: clamp(Number(proposal.confidence || preview.confidence || 55), 0, 100),
+          sourceText: String(proposal.sourceText || "").slice(0, 500),
+          projectId: String(proposal.projectId || preview.projectId || ""),
+          affectedRecords: Array.isArray(proposal.affectedRecords) ? proposal.affectedRecords.map(String).slice(0, 8) : [],
+          status: ["proposed", "accepted", "rejected", "applied"].includes(proposal.status) ? proposal.status : "proposed"
+        }))
+        .slice(0, 40)
+    }))
+    .filter((preview) => preview.captureId && preview.proposals.length)
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 120);
+}
+
+function latestExtractionPreviewForCapture(captureId) {
+  return normalizeUpdateExtractionPreviews(state.updateExtractionPreviews)
+    .find((preview) => preview.captureId === captureId);
+}
+
+function projectUpdateProposalType(line) {
+  const text = line.toLowerCase();
+  if (/\b(blocked|blocker|waiting on|stuck|dependency)\b/.test(text)) return "blocker";
+  if (/\b(decided|decision|approved|we will|we agreed)\b/.test(text)) return "decision";
+  if (/\b(risk|concern|slip|delay|at risk|might miss)\b/.test(text)) return "risk";
+  if (/\b(approve|approval|sign[- ]?off|needs review)\b/.test(text)) return "approval";
+  if (/\b(due|deadline|date|by \d|moved to|push(ed)? to)\b/.test(text)) return "date_change";
+  if (/^(\s*[-*]|\d+\.)?\s*(todo|task|action|next|follow up|follow-up|owner):/i.test(line)) return "task";
+  if (/\b(need to|please|can someone|assign|todo|follow up)\b/.test(text)) return "task";
+  return "comment";
+}
+
+function cleanProposalTitle(line, type) {
+  const cleaned = String(line || "")
+    .replace(/^(\s*[-*]|\d+\.)\s*/, "")
+    .replace(/^(todo|task|action|next|follow up|follow-up|owner|decision|risk|blocker|approval):\s*/i, "")
+    .trim();
+  if (cleaned) return cleaned.slice(0, 120);
+  return {
+    task: "Create follow-up task",
+    blocker: "Review blocker",
+    decision: "Record decision",
+    risk: "Track risk",
+    approval: "Request approval",
+    date_change: "Review date change",
+    comment: "Add project note"
+  }[type] || "Project update";
+}
+
+function proposalConfidence(line, type, source) {
+  let score = 54;
+  if (/^(\s*[-*]|\d+\.)/.test(line)) score += 8;
+  if (type !== "comment") score += 12;
+  if (/\b(today|tomorrow|friday|monday|due|owner|approved|blocked)\b/i.test(line)) score += 8;
+  if (["meeting", "github", "client"].includes(source)) score += 4;
+  return clamp(score, 45, 92);
+}
+
+function extractUpdatePreview(capture) {
+  const lines = capture.body
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.length >= 8)
+    .slice(0, 24);
+  const selectedLines = lines.filter((line) => projectUpdateProposalType(line) !== "comment").slice(0, 16);
+  const fallbackLines = selectedLines.length ? [] : lines.slice(0, 4);
+  const proposalLines = [...selectedLines, ...fallbackLines].slice(0, 18);
+  const proposals = proposalLines.map((line, index) => {
+    const type = projectUpdateProposalType(line);
+    const confidence = proposalConfidence(line, type, capture.source);
+    return {
+      id: `${capture.id}-proposal-${index + 1}`,
+      type,
+      title: cleanProposalTitle(line, type),
+      summary: line,
+      confidence,
+      sourceText: line,
+      projectId: capture.projectId,
+      affectedRecords: capture.projectId ? [`Project: ${projectName(capture.projectId)}`] : ["Workspace memory"],
+      status: "proposed"
+    };
+  });
+  return {
+    id: uid("extraction-preview"),
+    captureId: capture.id,
+    projectId: capture.projectId,
+    source: "local-heuristic",
+    confidence: proposals.length
+      ? Math.round(proposals.reduce((sum, proposal) => sum + proposal.confidence, 0) / proposals.length)
+      : 0,
+    createdAt: new Date().toISOString(),
+    status: "preview",
+    proposals
+  };
+}
+
+function previewProjectUpdateExtraction(captureId) {
+  const capture = normalizeUpdateCaptures(state.updateCaptures).find((item) => item.id === captureId);
+  if (!capture) {
+    showToast("Captured update not found", "info");
+    return;
+  }
+  const preview = extractUpdatePreview(capture);
+  if (!preview.proposals.length) {
+    showToast("No structured changes were found in that update", "info");
+    return;
+  }
+  state.updateExtractionPreviews = normalizeUpdateExtractionPreviews([
+    preview,
+    ...(state.updateExtractionPreviews || []).filter((item) => item.captureId !== capture.id)
+  ]);
+  state.updateCaptures = normalizeUpdateCaptures(state.updateCaptures).map((item) => item.id === capture.id ? { ...item, status: "previewed" } : item);
+  addAuditEvent({
+    action: "project_memory_extraction_preview",
+    detail: `Previewed ${preview.proposals.length} structured project memory proposal${preview.proposals.length === 1 ? "" : "s"}`,
+    targetType: "updateCapture",
+    targetId: capture.id,
+    metadata: { projectId: capture.projectId, confidence: preview.confidence }
+  });
+  saveState();
+  render();
+  showToast(`${preview.proposals.length} project memory proposal${preview.proposals.length === 1 ? "" : "s"} previewed`, "success");
 }
 
 function pluginContributionEntries(plugin) {
@@ -10863,6 +11006,7 @@ function offlineStorageContract() {
       "documents",
       "files",
       "updateCaptures",
+      "updateExtractionPreviews",
       "projectBacklog",
       "approvals",
       "timeEntries",
@@ -11212,6 +11356,7 @@ function portableWorkspaceManifest() {
       documents: documents.length,
       files: files.length,
       updateCaptures: normalizeUpdateCaptures(state.updateCaptures).length,
+      updateExtractionPreviews: normalizeUpdateExtractionPreviews(state.updateExtractionPreviews).length,
       timeEntries: timeEntries.length,
       operatorActions: recentOperatorActions(50).length,
       operatorReviewQueue: operatorReviewQueueItems().length
@@ -31790,7 +31935,8 @@ function renderFileCard(file) {
 
 function renderProjectMemory() {
   const captures = normalizeUpdateCaptures(state.updateCaptures);
-  const latest = captures[0];
+  const previews = normalizeUpdateExtractionPreviews(state.updateExtractionPreviews);
+  const latestPreview = previews[0];
   const sourceCounts = ["meeting", "email", "slack", "github", "client"].map((source) => ({
     source,
     label: updateCaptureSourceLabel(source),
@@ -31800,8 +31946,8 @@ function renderProjectMemory() {
   els.appView.innerHTML = `
     <div class="metric-grid">
       ${metric("Captured updates", captures.length)}
+      ${metric("Extraction previews", previews.length)}
       ${metric("Projects touched", new Set(captures.map((capture) => capture.projectId).filter(Boolean)).size)}
-      ${metric("Latest source", latest ? updateCaptureSourceLabel(latest.source) : "None")}
       ${metric("Ready to parse", captures.filter((capture) => capture.status === "captured").length)}
     </div>
 
@@ -31871,11 +32017,26 @@ function renderProjectMemory() {
           ${captures.length ? captures.slice(0, 12).map(renderUpdateCaptureCard).join("") : emptyState("No updates captured yet. Paste a meeting note, email, or chat thread to start building project memory.")}
         </div>
       </section>
+
+      <section class="panel project-memory-preview-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Structured Extraction Preview</p>
+            <h2>Proposed project memory</h2>
+          </div>
+          <span class="status-pill ${latestPreview ? "inbox-blue" : "inbox-neutral"}">${latestPreview ? `${latestPreview.confidence}% confidence` : "No preview"}</span>
+        </div>
+        <p class="panel-note">Agora turns raw updates into proposed tasks, blockers, decisions, risks, approvals, date changes, and comments before anything is applied.</p>
+        <div class="project-memory-preview-list">
+          ${latestPreview ? latestPreview.proposals.map(renderExtractionProposalCard).join("") : emptyState("Preview a captured update to see structured project changes here.")}
+        </div>
+      </section>
     </div>
   `;
 }
 
 function renderUpdateCaptureCard(capture) {
+  const preview = latestExtractionPreviewForCapture(capture.id);
   return `
     <article class="project-memory-card">
       <div>
@@ -31886,7 +32047,28 @@ function renderUpdateCaptureCard(capture) {
         </div>
         <h3>${escapeHtml(capture.title)}</h3>
         <p>${escapeHtml(capture.body.slice(0, 260))}${capture.body.length > 260 ? "..." : ""}</p>
-        <small>${escapeHtml(memberName(capture.capturedBy))} / ${escapeHtml(formatTimestamp(capture.createdAt))}</small>
+        <small>${escapeHtml(memberName(capture.capturedBy))} / ${escapeHtml(formatTimestamp(capture.createdAt))}${preview ? ` / ${preview.proposals.length} proposals` : ""}</small>
+      </div>
+      <div class="project-memory-card-actions">
+        <button class="button button-primary compact-button" type="button" data-memory-preview="${escapeHtml(capture.id)}">${preview ? "Refresh Preview" : "Preview Extraction"}</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderExtractionProposalCard(proposal) {
+  const tone = proposal.confidence >= 78 ? "green" : proposal.confidence >= 62 ? "blue" : "amber";
+  return `
+    <article class="project-memory-proposal">
+      <div>
+        <div class="project-memory-card-chips">
+          <span class="status-pill inbox-${tone}">${proposal.confidence}% confidence</span>
+          <span class="status-pill inbox-neutral">${escapeHtml(proposal.type.replace("_", " "))}</span>
+          ${proposal.affectedRecords.map((record) => `<span class="status-pill inbox-neutral">${escapeHtml(record)}</span>`).join("")}
+        </div>
+        <h3>${escapeHtml(proposal.title)}</h3>
+        <p>${escapeHtml(proposal.summary)}</p>
+        <small>Source: ${escapeHtml(proposal.sourceText)}</small>
       </div>
     </article>
   `;
@@ -38917,6 +39099,12 @@ document.addEventListener("click", (event) => {
   const memoryCaptureButton = event.target.closest("#memory-capture-save");
   if (memoryCaptureButton) {
     captureProjectUpdate();
+    return;
+  }
+
+  const memoryPreviewButton = event.target.closest("[data-memory-preview]");
+  if (memoryPreviewButton) {
+    previewProjectUpdateExtraction(memoryPreviewButton.dataset.memoryPreview);
     return;
   }
 

@@ -153,6 +153,9 @@ const routeChecks = [
       "Raw project memory inbox",
       "Captured updates",
       "Ready to parse",
+      "Structured Extraction Preview",
+      "Proposed project memory",
+      "tasks, blockers, decisions, risks, approvals, date changes, and comments",
       "Meeting notes",
       "Capture Update"
     ]
