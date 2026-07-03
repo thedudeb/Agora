@@ -43,11 +43,12 @@ Do not use `--allow-missing-backup` for production upgrades.
 2. Run `POST /api/backups/run` or click Run Server Backup from Backend Health.
 3. Confirm Backend Health reports the new backup and no failing production gates.
 4. Run `npm run verify:upgrade`.
-5. Run any pending Supabase migrations in numeric order.
-6. Deploy the API and static app release.
-7. Run `npm run verify:hosted`, `npm run rehearse:hosted`, and refresh Backend Health.
-8. Test sign-in, workspace load, task save, file access, feature request intake, and one rollbackable automation preview.
-9. Keep the previous deploy available until the first real team session is stable.
+5. Run `npm run drill:recovery -- --backup <server-backup.json>` and save the result with release notes.
+6. Run any pending Supabase migrations in numeric order.
+7. Deploy the API and static app release.
+8. Run `npm run verify:hosted`, `npm run rehearse:hosted`, and refresh Backend Health.
+9. Test sign-in, workspace load, task save, file access, feature request intake, and one rollbackable automation preview.
+10. Keep the previous deploy available until the first real team session is stable.
 
 ## Rollback Trigger
 

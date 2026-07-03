@@ -135,7 +135,7 @@ Before changing production API code, applying migrations, or switching storage/a
 npm run verify:upgrade
 ```
 
-This confirms the release contains the required migration files and that the API has a fresh, parseable server workspace backup. For the full maintenance sequence, see [`upgrade-checklist.md`](./upgrade-checklist.md).
+This confirms the release contains the required migration files and that the API has a fresh, parseable server workspace backup. Then run `npm run drill:recovery -- --backup <server-backup.json>` to prove an isolated restore. For the full maintenance sequence, see [`upgrade-checklist.md`](./upgrade-checklist.md) and [`disaster-recovery-drill.md`](./disaster-recovery-drill.md).
 
 ## Backend Scheduler
 

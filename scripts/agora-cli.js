@@ -19,6 +19,7 @@ const checkFiles = [
   "server/supabase-verify.js",
   "server/portable-fixtures-test.js",
   "scripts/recovery-stress-test.js",
+  "scripts/disaster-recovery-drill.js",
   "scripts/capture-screenshots.js",
   "scripts/golden-path-qa.js",
   "scripts/admin-security-regression.js",
@@ -53,6 +54,10 @@ const commands = {
   recovery: {
     summary: "Stress-test backup, portable import, and restore semantics",
     run: async () => runStep("recovery stress test", [process.execPath, [path.join(ROOT, "scripts", "recovery-stress-test.js")]])
+  },
+  "recovery-drill": {
+    summary: "Run an isolated disaster recovery drill from a server backup",
+    run: async (args) => runStep("disaster recovery drill", [process.execPath, [path.join(ROOT, "scripts", "disaster-recovery-drill.js"), ...args]])
   },
   api: {
     summary: "Run the dependency-free API smoke test",
@@ -228,6 +233,7 @@ Commands:
   check                         Syntax-check project files
   fixtures                      Validate portable fixtures
   recovery                      Stress-test backup/import/restore semantics
+  recovery-drill                Run disaster recovery drill from a server backup
   api                           Run API smoke test
   mcp                           Run MCP integration test
   importers                     Validate migration importer behavior
@@ -255,6 +261,7 @@ Examples:
   npm run agora -- verify --quick
   npm run agora -- verify --supabase
   npm run agora -- recovery
+  npm run agora -- recovery-drill --fixture
   npm run agora -- screenshots
   npm run agora -- golden
   npm run agora -- hosted

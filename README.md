@@ -111,6 +111,7 @@ npm run launch:check # quick verification + browser golden-path QA
 npm run test:api  # run the dependency-free API smoke test
 npm run test:fixtures # validate portable workspace and automation pack fixtures
 npm run test:recovery # stress-test backup, portable import, and restore behavior
+npm run drill:recovery -- --fixture # run an isolated disaster recovery drill
 npm run test:golden # browser-check onboarding, marketplace, templates, and portable recovery
 npm run test:plugins # validate plugin manifest contracts
 npm run test:supabase # verify a real Supabase project end to end
@@ -120,6 +121,7 @@ npm run screenshots # refresh launch screenshots with local Chrome/Chromium
 npm run agora -- verify # power-user CLI: check + fixtures + API smoke
 npm run agora -- qa # power-user CLI: release QA gate
 npm run agora -- upgrade check --backup tests/fixtures/server-backups/agora-workspace-backup-demo.json
+npm run agora -- recovery-drill --fixture
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json --json
 npm run agora -- launch check tests/fixtures/portable-workspace-bundle.json
@@ -137,7 +139,7 @@ For migration work, the CLI can preview and apply Trello JSON or generic CSV exp
 
 For plugin experiments, start with [`plugins/example-importer/plugin.json`](./plugins/example-importer/plugin.json), validate with `npm run test:plugins`, and read the [plugin architecture contract](./docs/plugin-architecture.md). The first plugin layer is declarative and local-first, so contributors can safely propose commands, views, importers, templates, automation packs, MCP tools, and settings panels before Agora enables runtime loading.
 
-For production upgrades, run `npm run verify:upgrade` before applying migrations or rolling a new API build. See [`docs/upgrade-checklist.md`](./docs/upgrade-checklist.md) for the operator sequence and rollback trigger.
+For production upgrades, run `npm run verify:upgrade` before applying migrations or rolling a new API build, then run `npm run drill:recovery -- --backup <server-backup.json>` to prove restore mechanics in isolation. See [`docs/upgrade-checklist.md`](./docs/upgrade-checklist.md) and [`docs/disaster-recovery-drill.md`](./docs/disaster-recovery-drill.md) for the operator sequence and rollback trigger.
 
 For power users and self-hosters, the lightweight CLI wraps common project operations:
 
