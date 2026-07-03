@@ -116,6 +116,7 @@ async function run() {
     assert(backendHealth.productionGates.some((item) => item.id === "allowed-origins"), "backend health did not include production gates");
     assert(backendHealth.productionGates.some((item) => item.id === "public-app-url"), "backend health did not include public app URL gate");
     assert(backendHealth.productionGates.some((item) => item.id === "public-feature-abuse"), "backend health did not include public feature abuse gate");
+    assert(backendHealth.productionGates.some((item) => item.id === "strict-csp"), "backend health did not include strict CSP gate");
     assert(backendHealth.readiness.some((item) => item.id === "password-reset-delivery"), "backend readiness did not include reset delivery gate");
     assert(backendHealth.readiness.some((item) => item.id === "notification-delivery-map"), "backend readiness did not include notification delivery map");
     assert(Array.isArray(backendHealth.notificationDelivery?.matrix), "backend health did not expose notification delivery matrix");

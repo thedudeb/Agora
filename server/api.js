@@ -1691,6 +1691,7 @@ async function buildBackendHealth(storage, session) {
   const demoAuthEnabled = envFlag("AGORA_DEMO_AUTH", false);
   const passwordlessAuthEnabled = envFlag("AGORA_PASSWORDLESS_AUTH", false);
   const trustProxy = envFlag("AGORA_TRUST_PROXY", false);
+  const strictCsp = envFlag("AGORA_STRICT_CSP", false) || cleanString(process.env.NODE_ENV).toLowerCase() === "production";
   const publicAppUrl = cleanString(process.env.AGORA_PUBLIC_APP_URL || process.env.AGORA_APP_URL);
   const publicAppUrlHosted = /^https:\/\//i.test(publicAppUrl) && !/localhost|127\.0\.0\.1|\[::1\]/i.test(publicAppUrl);
   const publicFeatureBodyLimitKb = Math.round(PUBLIC_FEATURE_BODY_LIMIT_BYTES / 1024);
@@ -1785,6 +1786,15 @@ async function buildBackendHealth(storage, session) {
         ? `${PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS} IP attempts, ${PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS} email attempts, ${publicFeatureBodyLimitKb}KB body cap`
         : "Public feature requests are disabled",
       fix: "Keep public request body, IP, and email rate limits low before sharing the public feedback URL."
+    },
+    {
+      id: "strict-csp",
+      label: "Strict CSP",
+      done: !productionTarget || strictCsp,
+      detail: strictCsp
+        ? "Strict production CSP mode is enabled"
+        : productionTarget ? "Strict CSP is not enabled for this hosted target" : "Development CSP allows local tooling",
+      fix: "Set AGORA_STRICT_CSP=true or NODE_ENV=production for hosted app/static servers."
     },
     {
       id: "proxy-rate-limit-source",

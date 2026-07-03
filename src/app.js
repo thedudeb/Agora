@@ -17058,6 +17058,215 @@ function productionAuditAccessItems() {
   ];
 }
 
+function backendHealthForReadiness() {
+  return backendHealth || apiSession?.backendHealth || {};
+}
+
+function readinessBackendItemsById() {
+  const health = backendHealthForReadiness();
+  const productionGates = Array.isArray(health.productionGates) ? health.productionGates : [];
+  const readiness = Array.isArray(health.readiness) ? health.readiness : [];
+  return Object.fromEntries([...productionGates, ...readiness].map((item) => [item.id, item]));
+}
+
+function hostedSetupWizardItems() {
+  const health = backendHealthForReadiness();
+  const byId = readinessBackendItemsById();
+  const recovery = portableRecoveryStatus();
+  const hasOwner = Boolean(apiSession?.user || workspaceMembers().length);
+  const hasLaunchProject = launchWorkspaceItems().filter((item) => item.done).length >= 3;
+  const publicSurface = byId["public-app-url"];
+  const origins = byId["allowed-origins"];
+  const resetDelivery = byId["password-reset-delivery"];
+  const strictCsp = byId["strict-csp"];
+  const email = byId["email-delivery"] || byId["team-email"];
+  const featureLimits = byId["public-feature-abuse"];
+  const githubWebhook = byId["github-webhook-secret"] || byId["github-webhook-intake"];
+  return [
+    {
+      label: "Create owner and first workspace",
+      done: hasOwner && hasLaunchProject,
+      detail: hasLaunchProject ? "First client workspace has project, workflow, recovery, and invite shape." : "Run Launch Flow before exposing a hosted workspace.",
+      commandId: "launch:workspace"
+    },
+    {
+      label: "Connect Supabase storage and auth",
+      done: Boolean(health.productionMode),
+      detail: health.storage && health.auth ? `${health.storage} storage / ${health.auth} auth` : "Refresh Backend Health after setting hosted drivers.",
+      commandId: "settings:sync"
+    },
+    {
+      label: "Lock hosted origins and public URL",
+      done: Boolean(origins?.done && publicSurface?.done),
+      detail: publicSurface?.detail || origins?.detail || "Set exact browser origins and HTTPS public app URL.",
+      commandId: "route:data"
+    },
+    {
+      label: "Configure email and password reset",
+      done: Boolean(email?.done && resetDelivery?.done),
+      detail: resetDelivery?.detail || email?.detail || "SMTP/webhook delivery should be ready before inviting real users.",
+      commandId: "settings:feedback"
+    },
+    {
+      label: "Harden public intake",
+      done: Boolean(featureLimits?.done && strictCsp?.done),
+      detail: strictCsp?.detail || featureLimits?.detail || "Strict CSP and public feature limits protect the hosted surface.",
+      commandId: "route:data"
+    },
+    {
+      label: "Secure integration webhooks",
+      done: Boolean(githubWebhook?.done),
+      detail: githubWebhook?.detail || "Set GitHub webhook signing secrets before enabling production intake.",
+      commandId: "settings:integrations"
+    },
+    {
+      label: "Export and restore proof",
+      done: recovery.score >= Math.max(3, recovery.total - 1),
+      detail: `${recovery.score}/${recovery.total} recovery checks ready with ${recovery.files.length} bundle files.`,
+      commandId: "route:data"
+    }
+  ];
+}
+
+function environmentDiagnosticsItems() {
+  const health = backendHealthForReadiness();
+  const byId = readinessBackendItemsById();
+  const supabase = byId["supabase-environment"];
+  const strictCsp = byId["strict-csp"];
+  const publicUrl = byId["public-app-url"];
+  const origins = byId["allowed-origins"];
+  const reset = byId["password-reset-delivery"];
+  const email = byId["email-delivery"] || byId["team-email"];
+  const featureLimits = byId["public-feature-abuse"];
+  const github = byId["github-webhook-secret"] || byId["github-webhook-intake"];
+  const healthChecked = Boolean(health.generatedAt);
+  return [
+    {
+      label: "SUPABASE_URL / ANON / SERVICE_ROLE",
+      done: Boolean(supabase?.done),
+      detail: supabase?.detail || (healthChecked ? "Supabase credentials are not required for local JSON mode." : "Refresh Backend Health to verify server-side Supabase variables.")
+    },
+    {
+      label: "AGORA_ALLOWED_ORIGINS",
+      done: Boolean(origins?.done),
+      detail: origins?.detail || "Missing until Backend Health checks hosted browser origins."
+    },
+    {
+      label: "AGORA_PUBLIC_APP_URL",
+      done: Boolean(publicUrl?.done),
+      detail: publicUrl?.detail || "Missing until Backend Health checks invite, reset, and portal links."
+    },
+    {
+      label: "AGORA_PASSWORD_RESET_DELIVERY",
+      done: Boolean(reset?.done),
+      detail: reset?.detail || "Use smtp or webhook for hosted password reset delivery."
+    },
+    {
+      label: "AGORA_EMAIL_FROM / OWNER EMAILS",
+      done: Boolean(email?.done),
+      detail: email?.detail || "Configure sender, invite, feature request, and portal action recipients."
+    },
+    {
+      label: "AGORA_STRICT_CSP",
+      done: Boolean(strictCsp?.done),
+      detail: strictCsp?.detail || "Strict CSP status is available after Backend Health refresh."
+    },
+    {
+      label: "AGORA_PUBLIC_FEATURE_REQUESTS",
+      done: Boolean(featureLimits?.done),
+      detail: featureLimits?.detail || "Public feature requests are off unless explicitly enabled with rate limits."
+    },
+    {
+      label: "AGORA_GITHUB_WEBHOOK_SECRET",
+      done: Boolean(github?.done),
+      detail: github?.detail || "Required when GitHub repository intake is mapped for production."
+    },
+    {
+      label: "Dependency audit",
+      done: true,
+      detail: "Run npm run security before deploy; CI also runs npm run audit."
+    }
+  ];
+}
+
+function productionReadinessExportPayload() {
+  const sections = productionAuditSections();
+  const wizard = hostedSetupWizardItems();
+  const diagnostics = environmentDiagnosticsItems();
+  const allItems = [...sections.flatMap((section) => section.items), ...wizard, ...diagnostics];
+  const score = readinessScore(allItems);
+  const health = backendHealthForReadiness();
+  return {
+    generatedAt: new Date().toISOString(),
+    workspace: {
+      id: state.workspace.id,
+      name: state.workspace.name,
+      storage: apiBackendLabel(),
+      theme: state.workspace.theme?.preset || "default"
+    },
+    score,
+    status: readinessTone(score),
+    backend: {
+      connected: Boolean(apiSession),
+      generatedAt: health.generatedAt || "",
+      storage: health.storage || apiSession?.storageDriver || "browser-local",
+      auth: health.auth || apiSession?.apiHealth?.auth || "local",
+      productionMode: Boolean(health.productionMode),
+      failedGates: (Array.isArray(health.productionGates) ? health.productionGates : []).filter((gate) => !gate.done).map((gate) => gate.id)
+    },
+    hostedSetupWizard: wizard.map((item) => ({ label: item.label, done: item.done, detail: item.detail })),
+    environmentDiagnostics: diagnostics.map((item) => ({ label: item.label, done: item.done, detail: item.detail })),
+    sections: sections.map((section) => ({
+      id: section.id,
+      title: section.title,
+      score: readinessScore(section.items),
+      items: section.items.map((item) => ({ label: item.label, done: item.done, detail: item.detail }))
+    }))
+  };
+}
+
+function productionReadinessMarkdown() {
+  const report = productionReadinessExportPayload();
+  const sectionLines = report.sections.flatMap((section) => [
+    "",
+    `## ${section.title}`,
+    `Score: ${section.score.done}/${section.score.total}`,
+    ...section.items.map((item) => `- ${item.done ? "[x]" : "[ ]"} ${item.label}: ${item.detail || ""}`)
+  ]);
+  return [
+    `# Agora Production Readiness Report`,
+    "",
+    `Generated: ${report.generatedAt}`,
+    `Workspace: ${report.workspace.name}`,
+    `Overall: ${report.score.done}/${report.score.total} (${report.status})`,
+    `Backend: ${report.backend.connected ? `${report.backend.storage} / ${report.backend.auth}` : "not connected"}`,
+    `Production mode: ${report.backend.productionMode ? "yes" : "no"}`,
+    "",
+    "## Hosted setup wizard",
+    ...report.hostedSetupWizard.map((item) => `- ${item.done ? "[x]" : "[ ]"} ${item.label}: ${item.detail || ""}`),
+    "",
+    "## Environment diagnostics",
+    ...report.environmentDiagnostics.map((item) => `- ${item.done ? "[x]" : "[ ]"} ${item.label}: ${item.detail || ""}`),
+    ...sectionLines,
+    ""
+  ].join("\n");
+}
+
+function exportProductionReadinessReport(format) {
+  const base = `${slugFromName(state.workspace.name)}-production-readiness-${todayKey()}`;
+  if (format === "copy") {
+    copyCommandText(productionReadinessMarkdown(), "Production readiness report copied");
+    return;
+  }
+  if (format === "json") {
+    downloadJsonFile(`${base}.json`, JSON.stringify(productionReadinessExportPayload(), null, 2));
+    showToast("Production readiness JSON downloaded", "success");
+    return;
+  }
+  downloadTextFile(`${base}.md`, productionReadinessMarkdown(), "text/markdown");
+  showToast("Production readiness Markdown downloaded", "success");
+}
+
 function productionAuditSections() {
   return [
     {
@@ -17146,6 +17355,113 @@ function renderProductionAuditSection(section) {
   `;
 }
 
+function renderHostedSetupWizardPanel() {
+  const items = hostedSetupWizardItems();
+  const score = readinessScore(items);
+  const tone = readinessTone(score);
+  return `
+    <section class="panel readiness-audit-section readiness-audit-hosted-setup">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Hosted setup wizard</p>
+          <h2>Hosted launch golden path</h2>
+        </div>
+        <span class="status-pill inbox-${tone}">${score.done}/${score.total}</span>
+      </div>
+      <div class="readiness-audit-list">
+        ${items.map((item, index) => `
+          <article class="readiness-audit-item ${item.done ? "is-done" : "is-open"}">
+            <span>${item.done ? "OK" : index + 1}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail || "")}</p>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+      <div class="readiness-audit-actions">
+        <button class="button button-primary compact-button" type="button" data-command-id="launch:workspace">Open Launch Flow</button>
+        <button class="button button-secondary compact-button" type="button" data-backend-health-refresh ${apiSession ? "" : "disabled"}>Refresh Health</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderEnvironmentDiagnosticsPanel() {
+  const items = environmentDiagnosticsItems();
+  const score = readinessScore(items);
+  const tone = readinessTone(score);
+  return `
+    <section class="panel readiness-audit-section readiness-audit-environment">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Environment diagnostics</p>
+          <h2>Server config without secrets</h2>
+        </div>
+        <span class="status-pill inbox-${tone}">${score.done}/${score.total}</span>
+      </div>
+      <div class="readiness-audit-list">
+        ${items.map((item) => `
+          <article class="readiness-audit-item ${item.done ? "is-done" : "is-open"}">
+            <span>${item.done ? "OK" : "Check"}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail || "")}</p>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+      <div class="readiness-audit-actions">
+        <button class="button button-secondary compact-button" type="button" data-backend-health-refresh ${apiSession ? "" : "disabled"}>Refresh Health</button>
+        <button class="button button-secondary compact-button" type="button" data-command-id="settings:sync">Open Sync</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderProductionReadinessExportPanel() {
+  const report = productionReadinessExportPayload();
+  return `
+    <section class="panel readiness-audit-section readiness-audit-export">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Production readiness export</p>
+          <h2>One-click launch evidence</h2>
+        </div>
+        <span class="status-pill inbox-${readinessTone(report.score)}">${report.score.done}/${report.score.total}</span>
+      </div>
+      <div class="readiness-audit-list">
+        <article class="readiness-audit-item is-done">
+          <span>JSON</span>
+          <div>
+            <strong>Download JSON</strong>
+            <p>Machine-readable report for issue trackers, release archives, or CI artifacts.</p>
+          </div>
+        </article>
+        <article class="readiness-audit-item is-done">
+          <span>MD</span>
+          <div>
+            <strong>Download Markdown</strong>
+            <p>Human-readable launch report for a pull request, runbook, or client handoff.</p>
+          </div>
+        </article>
+        <article class="readiness-audit-item is-done">
+          <span>Copy</span>
+          <div>
+            <strong>Copy Report</strong>
+            <p>Paste the latest readiness summary directly into release notes.</p>
+          </div>
+        </article>
+      </div>
+      <div class="readiness-audit-actions">
+        <button class="button button-primary compact-button" type="button" data-readiness-export="json">Download JSON</button>
+        <button class="button button-secondary compact-button" type="button" data-readiness-export="markdown">Download Markdown</button>
+        <button class="button button-secondary compact-button" type="button" data-readiness-export="copy">Copy Report</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderReadinessCliPanel() {
   return `
     <section class="panel readiness-cli-panel">
@@ -17196,6 +17512,9 @@ function renderProductionReadinessAudit() {
     ${renderWorkspaceTrustStrip()}
 
     <div class="readiness-audit-grid">
+      ${renderHostedSetupWizardPanel()}
+      ${renderEnvironmentDiagnosticsPanel()}
+      ${renderProductionReadinessExportPanel()}
       ${sections.map(renderProductionAuditSection).join("")}
       ${renderReadinessCliPanel()}
     </div>
@@ -37314,6 +37633,12 @@ document.addEventListener("click", (event) => {
   const backendHealthRefreshButton = event.target.closest("[data-backend-health-refresh], #backend-health-refresh");
   if (backendHealthRefreshButton) {
     refreshBackendHealth();
+    return;
+  }
+
+  const readinessExportButton = event.target.closest("[data-readiness-export]");
+  if (readinessExportButton) {
+    exportProductionReadinessReport(readinessExportButton.dataset.readinessExport);
     return;
   }
 

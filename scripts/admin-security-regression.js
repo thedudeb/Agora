@@ -75,6 +75,8 @@ assert(api.includes('validateRequiredStringRecords(snapshot.tasks, "tasks", ["id
 assert(staticServer.includes("function isProductionCsp()"), "static server must expose production CSP mode");
 assert(staticServer.includes("AGORA_STRICT_CSP"), "static server must support strict CSP flag");
 assert(staticServer.includes("const connectSrc = production") && staticServer.includes('"https://*.supabase.co"') && staticServer.includes('"https:"'), "static server must split production and development connect sources");
+assert(api.includes('id: "strict-csp"'), "backend health must expose strict CSP as a production gate");
+assert(api.includes('Set AGORA_STRICT_CSP=true or NODE_ENV=production'), "strict CSP gate must include a concrete hosted fix");
 assert(desktopMain.includes("function isProductionCsp()"), "desktop shell must expose production CSP mode");
 assert(desktopMain.includes('envFlag("AGORA_STRICT_CSP", app.isPackaged)'), "packaged desktop builds must default to strict CSP");
 

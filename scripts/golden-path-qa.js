@@ -308,12 +308,20 @@ const routeChecks = [
     height: 712,
     required: [
       "Production readiness audit",
+      "Hosted setup wizard",
+      "Environment diagnostics",
+      "Production readiness export",
       "First client workspace",
       "Hosted launch gates",
       "API and sync health",
       "Portable restore path",
       "Access and audit controls",
-      "Power-user checks"
+      "Power-user checks",
+      "Strict CSP",
+      "Dependency audit",
+      "Download JSON",
+      "Download Markdown",
+      "Copy Report"
     ]
   },
   {

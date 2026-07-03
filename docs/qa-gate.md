@@ -12,6 +12,7 @@ This runs:
 
 - syntax checks for app, server, scripts, MCP, and desktop wrapper files;
 - dependency audit for the root and desktop package lockfiles;
+- admin security regression checks, including hosted strict-CSP health gates;
 - portable fixture validation;
 - recovery stress tests;
 - migration importer tests;
@@ -36,7 +37,7 @@ The CI job uses Node.js 22 and the runner's installed Chrome/Chromium. If depend
 `npm run test:golden` starts the local static app and checks:
 
 - app shell, PWA manifest, offline fallback, and security headers;
-- dashboard, launch flow, readiness, templates, marketplace, Data, Settings, feature request triage, and public feedback routes;
+- dashboard, launch flow, readiness, hosted setup diagnostics, readiness exports, templates, marketplace, Data, Settings, feature request triage, and public feedback routes;
 - mobile dashboard and public feedback widths;
 - Data recovery, offline app readiness, workspace schema, settings sync, settings security, and feedback intake copy.
 
