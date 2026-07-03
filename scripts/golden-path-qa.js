@@ -99,6 +99,29 @@ const routeChecks = [
     ]
   },
   {
+    name: "Portfolio resource planning",
+    suite: "workspace",
+    route: "portfolio",
+    width: 1265,
+    height: 712,
+    required: [
+      "Portfolio",
+      "Resource Planning",
+      "Decide what work should exist",
+      "Portfolio command center",
+      "Health, dates, owners, confidence",
+      "Capacity",
+      "Team workload plan",
+      "Scenario planning",
+      "What-if tradeoffs",
+      "Capacity planning",
+      "Team availability by owner",
+      "Priority scoring",
+      "What should we prioritize?",
+      "Backlog candidates"
+    ]
+  },
+  {
     name: "Power-user Kanban board",
     suite: "workspace",
     route: "board",
