@@ -567,6 +567,9 @@ const routeChecks = [
     height: 712,
     required: [
       "Connected tools",
+      "Integration launch plan",
+      "Priority connector playbooks",
+      "Launch risk",
       "Connector registry",
       "Plugin connector bridge",
       "Auth, scopes, direction, and health",

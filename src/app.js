@@ -521,63 +521,135 @@ const integrationCatalog = [
     name: "Slack",
     category: "Chat",
     description: "Route inbox alerts, watched task mentions, and project status changes into team channels.",
-    signals: ["Mentions", "Task updates", "Daily digest"]
+    signals: ["Mentions", "Task updates", "Daily digest"],
+    auth: "Bot token + signing secret",
+    scopes: ["chat:write", "channels:read", "commands"],
+    direction: "Outbound alerts now, inbound actions planned",
+    objects: ["Channels", "Mentions", "Digest messages"],
+    defaultEvents: ["task.updated", "comment.created", "daily.digest"],
+    priority: "P1",
+    risk: "Channel sprawl and notification fatigue",
+    setupSteps: ["Create Slack app", "Store bot token", "Pick default channels", "Send test digest"]
   },
   {
     id: "github",
     name: "GitHub",
     category: "Development",
     description: "Link issues, pull requests, release milestones, and engineering task status.",
-    signals: ["Issues", "Pull requests", "Releases"]
+    signals: ["Issues", "Pull requests", "Releases"],
+    auth: "GitHub App + webhook secret",
+    scopes: ["Issues", "Pull requests", "Metadata"],
+    direction: "Two-way issue and pull request sync",
+    objects: ["Issues", "Pull requests", "Releases"],
+    defaultEvents: ["github.issue.opened", "github.pr.opened", "github.pr.merged"],
+    priority: "P0",
+    risk: "Field conflicts during two-way sync",
+    setupSteps: ["Install GitHub App", "Map repos to projects", "Configure webhook secret", "Replay test event"]
   },
   {
     id: "jira",
     name: "Jira",
     category: "Delivery",
     description: "Sync sprint scope, issue status, story points, and delivery blockers with Jira projects.",
-    signals: ["Issues", "Sprints", "Story points"]
+    signals: ["Issues", "Sprints", "Story points"],
+    auth: "OAuth 2.0 or API token",
+    scopes: ["read:jira-work", "write:jira-work"],
+    direction: "Two-way sprint and issue updates",
+    objects: ["Issues", "Epics", "Sprints"],
+    defaultEvents: ["jira.issue.updated", "jira.sprint.closed", "task.updated"],
+    priority: "P1",
+    risk: "Status mapping drift across Jira workflows",
+    setupSteps: ["Connect Jira site", "Map projects", "Map statuses and points", "Run dry sync"]
   },
   {
     id: "linear",
     name: "Linear",
     category: "Delivery",
     description: "Mirror sprint cycles, issue ownership, labels, estimates, and release readiness with Linear.",
-    signals: ["Cycles", "Issues", "Estimates"]
+    signals: ["Cycles", "Issues", "Estimates"],
+    auth: "OAuth 2.0",
+    scopes: ["read", "write", "issues:create"],
+    direction: "Two-way cycle and issue updates",
+    objects: ["Issues", "Cycles", "Teams"],
+    defaultEvents: ["linear.issue.updated", "linear.cycle.completed", "task.updated"],
+    priority: "P1",
+    risk: "Duplicate ownership when teams use both boards daily",
+    setupSteps: ["Authorize workspace", "Map teams", "Map cycles to sprints", "Preview ownership changes"]
   },
   {
     id: "google-drive",
     name: "Google Drive",
     category: "Files",
     description: "Attach shared files and keep project docs discoverable from the workspace.",
-    signals: ["Files", "Docs", "Folders"]
+    signals: ["Files", "Docs", "Folders"],
+    auth: "Google OAuth",
+    scopes: ["drive.file", "drive.metadata.readonly"],
+    direction: "Inbound file picker with outbound links",
+    objects: ["Files", "Folders", "Permissions"],
+    defaultEvents: ["file.shared", "document.linked", "approval.requested"],
+    priority: "P1",
+    risk: "Sharing permissions may expose client material",
+    setupSteps: ["Create OAuth client", "Restrict Drive scopes", "Choose shared folders", "Verify permission preview"]
   },
   {
     id: "google-calendar",
     name: "Google Calendar",
     category: "Calendar",
     description: "Mirror due dates, milestones, review meetings, and focus blocks.",
-    signals: ["Due dates", "Milestones", "Focus time"]
+    signals: ["Due dates", "Milestones", "Focus time"],
+    auth: "Google OAuth",
+    scopes: ["calendar.events", "calendar.readonly"],
+    direction: "Outbound milestone and review events",
+    objects: ["Events", "Milestones", "Focus blocks"],
+    defaultEvents: ["calendar.event.created", "milestone.due", "task.updated"],
+    priority: "P1",
+    risk: "Calendar noise if task events are too broad",
+    setupSteps: ["Create OAuth client", "Select calendars", "Map milestone rules", "Publish test event"]
   },
   {
     id: "zapier",
     name: "Zapier",
     category: "Automation",
     description: "Send Agora events into no-code automations and receive intake triggers from other apps.",
-    signals: ["Webhooks", "Intake", "Automation"]
+    signals: ["Webhooks", "Intake", "Automation"],
+    auth: "Webhook URL + shared secret",
+    scopes: ["Webhook trigger", "Intake action"],
+    direction: "Outbound events with inbound intake triggers",
+    objects: ["Zaps", "Intake payloads", "Task events"],
+    defaultEvents: ["intake.submitted", "task.updated", "approval.requested"],
+    priority: "P2",
+    risk: "No-code automations can fork source-of-truth logic",
+    setupSteps: ["Create Zap trigger", "Store signing secret", "Choose event allowlist", "Inspect delivery history"]
   },
   {
     id: "webhooks",
     name: "Custom Webhooks",
     category: "API",
     description: "Publish workspace events to a self-hosted endpoint with a signing-secret workflow.",
-    signals: ["Outbound events", "Signed payloads", "Retries"]
+    signals: ["Outbound events", "Signed payloads", "Retries"],
+    auth: "HMAC signing secret",
+    scopes: ["Workspace events"],
+    direction: "Outbound signed events",
+    objects: ["Event payloads", "Retry jobs", "Receipts"],
+    defaultEvents: ["task.updated", "approval.requested", "comment.created"],
+    priority: "P0",
+    risk: "Endpoint failures can backlog sync jobs",
+    setupSteps: ["Add endpoint URL", "Generate signing secret", "Pick retry policy", "Send signed test event"]
   },
   {
     id: "api",
     name: "Agora API",
     category: "API",
     description: "Use authenticated API access for internal tools, reporting scripts, and custom adapters.",
-    signals: ["Records", "Snapshots", "Audit log"]
+    signals: ["Records", "Snapshots", "Audit log"],
+    auth: "Scoped API token",
+    scopes: ["read:workspace", "write:tasks", "read:audit"],
+    direction: "Programmatic read/write access",
+    objects: ["Records", "Snapshots", "Audit events"],
+    defaultEvents: ["api.token.created", "workspace.snapshot.exported", "audit.event.created"],
+    priority: "P0",
+    risk: "Over-scoped tokens expand blast radius",
+    setupSteps: ["Create scoped token", "Set expiry", "Attach owner", "Review audit trail"]
   }
 ];
 
@@ -595,7 +667,28 @@ const integrationSyncModes = [
   { id: "two-way", label: "Two-way" }
 ];
 
-const integrationEventOptions = ["task.updated", "approval.requested", "comment.created", "file.shared", "daily.digest", "intake.submitted", "github.issue.opened", "github.issue.closed", "github.pr.opened", "github.pr.merged"];
+const integrationEventOptions = [
+  "task.updated",
+  "approval.requested",
+  "comment.created",
+  "file.shared",
+  "daily.digest",
+  "intake.submitted",
+  "github.issue.opened",
+  "github.issue.closed",
+  "github.pr.opened",
+  "github.pr.merged",
+  "jira.issue.updated",
+  "jira.sprint.closed",
+  "linear.issue.updated",
+  "linear.cycle.completed",
+  "document.linked",
+  "calendar.event.created",
+  "milestone.due",
+  "api.token.created",
+  "workspace.snapshot.exported",
+  "audit.event.created"
+];
 
 const automationTriggerOptions = [
   { id: "task_due_soon", label: "Task due soon" },
@@ -3473,7 +3566,7 @@ function normalizeIntegrationConnection(connection = {}) {
   const memberIds = new Set(members.map((member) => member.id));
   const events = Array.isArray(connection.events)
     ? connection.events.filter((eventName) => integrationEventOptions.includes(eventName))
-    : catalogItem.signals.slice(0, 2).map((signal) => signal.toLowerCase().replace(/[^a-z0-9]+/g, ".")).filter((eventName) => integrationEventOptions.includes(eventName));
+    : (catalogItem.defaultEvents || ["task.updated"]).filter((eventName) => integrationEventOptions.includes(eventName));
   return {
     id: catalogItem.id,
     status: integrationStatuses.some((option) => option.id === connection.status) ? connection.status : "planned",
@@ -3482,7 +3575,7 @@ function normalizeIntegrationConnection(connection = {}) {
     notes: String(connection.notes || "").trim().slice(0, 180),
     lastSyncedAt: connection.lastSyncedAt || "",
     health: ["healthy", "planned", "needs-config", "error"].includes(connection.health) ? connection.health : connection.status === "connected" ? "healthy" : "planned",
-    events: events.length ? events : ["task.updated"],
+    events: events.length ? events : (catalogItem.defaultEvents || ["task.updated"]).filter((eventName) => integrationEventOptions.includes(eventName)).slice(0, 3),
     secretStatus: ["configured", "missing", "not-required"].includes(connection.secretStatus) ? connection.secretStatus : catalogItem.id === "api" || catalogItem.id === "google-calendar" ? "not-required" : "missing"
   };
 }
@@ -5736,7 +5829,7 @@ function createRoleStarterWorkspaceState(profileId, options = {}) {
     owner: "eli",
     health: config.integrations.includes(catalogItem.id) ? "needs-config" : "planned",
     secretStatus: ["api", "google-calendar"].includes(catalogItem.id) ? "not-required" : "missing",
-    events: catalogItem.signals.slice(0, 2).map((signal) => signal.toLowerCase().replace(/[^a-z0-9]+/g, ".")).filter((eventName) => integrationEventOptions.includes(eventName))
+    events: (catalogItem.defaultEvents || ["task.updated"]).filter((eventName) => integrationEventOptions.includes(eventName)).slice(0, 3)
   }));
 
   return normalizeState({
@@ -9210,6 +9303,100 @@ function integrationSyncLabel(syncMode) {
   return integrationSyncModes.find((option) => option.id === syncMode)?.label || "No sync";
 }
 
+function integrationReadinessSteps(catalogItem, connection = {}) {
+  const events = Array.isArray(connection.events) ? connection.events : [];
+  const secretReady = connection.secretStatus === "configured" || connection.secretStatus === "not-required";
+  return [
+    {
+      label: "Owner assigned",
+      done: Boolean(connection.owner || integrationSettings().defaultOwner),
+      detail: connection.owner ? memberName(connection.owner) : "Default integration owner"
+    },
+    {
+      label: "Auth model selected",
+      done: secretReady || connection.status === "connected",
+      detail: catalogItem.auth
+    },
+    {
+      label: "Event allowlist",
+      done: events.length > 1,
+      detail: `${events.length || 0} events selected`
+    },
+    {
+      label: "Launch test",
+      done: connection.health === "healthy",
+      detail: connection.health === "healthy" ? "Healthy" : catalogItem.setupSteps?.at(-1) || "Run a test sync"
+    }
+  ];
+}
+
+function renderIntegrationPlaybookPanel(integrations) {
+  const launchOrder = ["github", "webhooks", "slack", "google-calendar", "google-drive", "jira"];
+  const playbooks = launchOrder
+    .map((id) => {
+      const catalogItem = integrationCatalog.find((item) => item.id === id);
+      const connection = integrations.connections.find((item) => item.id === id) || {};
+      if (!catalogItem) return null;
+      const steps = integrationReadinessSteps(catalogItem, connection);
+      const complete = steps.filter((step) => step.done).length;
+      return { catalogItem, connection, steps, complete };
+    })
+    .filter(Boolean);
+
+  return `
+    <section class="integration-playbook-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Integration launch plan</p>
+          <h2>Priority connector playbooks</h2>
+        </div>
+        <span class="status-pill inbox-blue">${playbooks.length} launch tracks</span>
+      </div>
+      <p class="panel-note">Each playbook captures auth, scopes, sync direction, launch risk, and the production setup steps needed before teams depend on the connector.</p>
+      <div class="integration-playbook-grid">
+        ${playbooks.map(({ catalogItem, connection, steps, complete }) => `
+          <article>
+            <div class="integration-playbook-head">
+              <div>
+                <span>${escapeHtml(catalogItem.priority)}</span>
+                <h3>${escapeHtml(catalogItem.name)}</h3>
+              </div>
+              <strong>${complete}/${steps.length}</strong>
+            </div>
+            <dl>
+              <div>
+                <dt>Auth</dt>
+                <dd>${escapeHtml(catalogItem.auth)}</dd>
+              </div>
+              <div>
+                <dt>Direction</dt>
+                <dd>${escapeHtml(catalogItem.direction)}</dd>
+              </div>
+              <div>
+                <dt>Scopes</dt>
+                <dd>${escapeHtml(catalogItem.scopes.join(", "))}</dd>
+              </div>
+            </dl>
+            <div class="integration-playbook-risk">
+              <span>Launch risk</span>
+              <p>${escapeHtml(catalogItem.risk)}</p>
+            </div>
+            <div class="integration-playbook-steps">
+              ${steps.map((step) => `
+                <div class="${step.done ? "is-done" : ""}">
+                  <span>${step.done ? "Done" : "Next"}</span>
+                  <p><strong>${escapeHtml(step.label)}</strong><small>${escapeHtml(step.detail)}</small></p>
+                </div>
+              `).join("")}
+            </div>
+            <small>${escapeHtml(integrationStatusLabel(connection.status || "planned"))} / ${escapeHtml(integrationSyncLabel(connection.syncMode || "none"))}</small>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderIntegrationsHubPanel() {
   const integrations = integrationSettings();
   const canManageIntegrations = canWrite("integrations:write");
@@ -9253,6 +9440,7 @@ function renderIntegrationsHubPanel() {
         </label>
       </div>
       ${renderNotificationDeliveryIntegrationPanel()}
+      ${renderIntegrationPlaybookPanel(integrations)}
       ${renderConnectorRegistryPanel(integrations)}
       ${renderGitHubIntegrationPanel(integrations)}
       <div class="integration-grid">
@@ -9758,6 +9946,11 @@ function renderIntegrationCard(catalogItem, connection = {}) {
         <span class="status-pill ${healthClass}">${escapeHtml(connection.health || "planned")}</span>
         <span>${escapeHtml(connection.secretStatus || "missing")} secret</span>
         <span>${events.length} events</span>
+      </div>
+      <div class="integration-implementation-row">
+        <span>${escapeHtml(catalogItem.auth)}</span>
+        <span>${escapeHtml(catalogItem.direction)}</span>
+        <span>${escapeHtml((catalogItem.objects || []).slice(0, 3).join(", "))}</span>
       </div>
       <div class="integration-signal-list">
         ${catalogItem.signals.map((signal) => `<span>${escapeHtml(signal)}</span>`).join("")}

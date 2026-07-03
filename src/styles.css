@@ -5951,6 +5951,7 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .connector-registry-panel,
+.integration-playbook-panel,
 .github-connector-panel {
   display: grid;
   gap: 12px;
@@ -5958,6 +5959,113 @@ body[data-tutorial-target="view"] #app-view {
   background: var(--surface-strong);
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+
+.integration-playbook-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.integration-playbook-grid article {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.integration-playbook-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.integration-playbook-head span,
+.integration-playbook-risk span,
+.integration-playbook-grid dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.integration-playbook-head h3,
+.integration-playbook-risk p,
+.integration-playbook-steps p {
+  margin: 0;
+}
+
+.integration-playbook-grid dl {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.integration-playbook-grid dl div {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.integration-playbook-grid dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.integration-playbook-risk {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.integration-playbook-steps {
+  display: grid;
+  gap: 6px;
+}
+
+.integration-playbook-steps div {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.integration-playbook-steps span {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 44px;
+  padding: 2px 5px;
+  color: var(--muted);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.integration-playbook-steps .is-done span {
+  color: #0f5132;
+  background: #d8f3df;
+  border-color: #99d7ad;
+}
+
+.integration-playbook-steps strong {
+  display: block;
+  color: var(--text);
+}
+
+.integration-playbook-grid small {
+  color: var(--muted);
 }
 
 .connector-registry-list,
@@ -6270,6 +6378,24 @@ body[data-tutorial-target="view"] #app-view {
   color: var(--muted);
   font-size: 0.8rem;
   font-weight: 800;
+}
+
+.integration-implementation-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.integration-implementation-row span {
+  min-width: 0;
+  padding: 7px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
 }
 
 .integration-signal-list span {
@@ -11003,6 +11129,7 @@ body[data-density="compact"] .main-content {
   .github-mapping-grid,
   .github-webhook-grid,
   .sync-mapping-grid,
+  .integration-playbook-grid,
   .project-backlog-grid,
   .intake-grid,
   .fields-grid,
@@ -11015,6 +11142,7 @@ body[data-density="compact"] .main-content {
   .real-project-grid,
   .integration-grid,
   .integration-summary-grid,
+  .integration-implementation-row,
   .capacity-summary-grid,
   .goals-grid,
   .goal-meta-grid,
@@ -11518,6 +11646,8 @@ body[data-density="compact"] .main-content {
   .admin-action-list article,
   .integration-grid,
   .integration-summary-grid,
+  .integration-playbook-grid,
+  .integration-implementation-row,
   .github-connector-grid,
   .github-mapping-grid,
   .github-webhook-grid,
