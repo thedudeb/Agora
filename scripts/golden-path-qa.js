@@ -58,7 +58,12 @@ const routeChecks = [
       "Install the agency handoff workflow",
       "Export the recovery bundle",
       "Workspace health",
-      "Workspace setup"
+      "Workspace setup",
+      "10 minute launch",
+      "Agency PM",
+      "Software lead",
+      "Pick your launch path",
+      "Create recovery proof"
     ]
   },
   {

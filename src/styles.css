@@ -1316,6 +1316,92 @@ body[data-tutorial-target="view"] #app-view {
   color: var(--muted);
 }
 
+.activation-loop {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.activation-loop-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.activation-loop-header h3 {
+  margin: 0;
+}
+
+.role-profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.role-profile-card {
+  display: grid;
+  gap: 6px;
+  min-height: 132px;
+  padding: 11px;
+  color: var(--text);
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.role-profile-card:hover,
+.role-profile-card.is-selected {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-soft);
+}
+
+.role-profile-card span,
+.launch-checklist article > span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.role-profile-card small,
+.launch-checklist small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.launch-checklist {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+}
+
+.launch-checklist article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-content: start;
+  min-height: 150px;
+  padding: 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.launch-checklist article.is-done {
+  border-color: color-mix(in srgb, var(--green) 40%, var(--line));
+}
+
+.launch-checklist .button {
+  justify-self: start;
+}
+
 .first-run-command-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

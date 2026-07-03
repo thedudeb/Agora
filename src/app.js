@@ -6184,6 +6184,13 @@ function onboardingItems() {
   const hasRecovery = loadWorkspaceBackups().length > 0 || Boolean(state.switcherImportRollback?.backupId);
   return [
     {
+      id: "role",
+      label: "Role preset",
+      detail: onboardingRoleProfile()?.label || "Choose your launch role",
+      done: Boolean(state.onboarding?.roleProfile),
+      action: "role"
+    },
+    {
       id: "data",
       label: "Data mode",
       detail: state.onboarding?.sampleMode === "clean"
@@ -6241,7 +6248,7 @@ function onboardingItems() {
       action: "backup"
     },
     {
-      id: "recovery",
+      id: "notifications",
       label: "Notifications",
       detail: state.onboarding?.notificationsReviewed ? "Preferences reviewed" : "Choose alerts and delivery",
       done: Boolean(state.onboarding?.notificationsReviewed),
@@ -6257,13 +6264,121 @@ function onboardingItems() {
   ];
 }
 
+function onboardingRoleProfiles() {
+  return [
+    {
+      id: "agency",
+      label: "Agency PM",
+      value: "Client launch",
+      detail: "Client portal, approvals, weekly status, reusable handoff workflow.",
+      action: "templates"
+    },
+    {
+      id: "software",
+      label: "Software lead",
+      value: "Sprint delivery",
+      detail: "Backlog, sprint timeline, burndown, GitHub/Jira/Linear handoff.",
+      route: "sprint"
+    },
+    {
+      id: "scrum",
+      label: "Scrum master",
+      value: "Team cadence",
+      detail: "Planning, capacity, carryover, closeout, and standup briefs.",
+      route: "sprint"
+    },
+    {
+      id: "consultant",
+      label: "Consultant",
+      value: "Solo-to-client",
+      detail: "Clean workspace, first project, recovery bundle, client visibility.",
+      action: "start-clean"
+    },
+    {
+      id: "self-hosted",
+      label: "Self-hoster",
+      value: "Trust proof",
+      detail: "Backend health, backups, portability, packaging, and release evidence.",
+      route: "readiness"
+    }
+  ];
+}
+
+function onboardingRoleProfile() {
+  return onboardingRoleProfiles().find((profile) => profile.id === state.onboarding?.roleProfile) || null;
+}
+
+function onboardingLaunchChecklist() {
+  const items = Object.fromEntries(onboardingItems().map((item) => [item.id, item]));
+  return [
+    {
+      id: "role",
+      minute: "1 min",
+      label: "Pick your launch path",
+      detail: items.role?.detail || "Choose the role closest to this evaluation.",
+      done: Boolean(items.role?.done),
+      action: "role"
+    },
+    {
+      id: "start",
+      minute: "2 min",
+      label: "Start with real shape",
+      detail: items.data?.done ? items.data.detail : "Use beta, demo, clean, import, or template mode.",
+      done: Boolean(items.data?.done),
+      action: "start-beta"
+    },
+    {
+      id: "project",
+      minute: "3 min",
+      label: "Create the first project",
+      detail: items.project?.done ? items.project.detail : "Add one project so board, Today, reports, and timeline become useful.",
+      done: Boolean(items.project?.done),
+      action: "project"
+    },
+    {
+      id: "workflow",
+      minute: "2 min",
+      label: "Choose starter workflow",
+      detail: items.templates?.done ? items.templates.detail : "Review templates or install the agency handoff workflow.",
+      done: Boolean(items.templates?.done),
+      action: "review-templates"
+    },
+    {
+      id: "people",
+      minute: "1 min",
+      label: "Invite or draft access",
+      detail: items.team?.done ? items.team.detail : "Add the teammate or client who should see the workspace.",
+      done: Boolean(items.team?.done),
+      action: "invite"
+    },
+    {
+      id: "recovery",
+      minute: "1 min",
+      label: "Create recovery proof",
+      detail: items.recovery?.done ? items.recovery.detail : "Make a backup before imports, sync, or launch.",
+      done: Boolean(items.recovery?.done),
+      action: "backup"
+    }
+  ];
+}
+
 function onboardingWizardSteps() {
   const items = Object.fromEntries(onboardingItems().map((item) => [item.id, item]));
   const storageMode = apiSession ? apiBackendLabel() : "Browser local storage";
   return [
     {
-      id: "data",
+      id: "role",
       eyebrow: "Step 1",
+      title: "Pick the launch path",
+      body: "Choose the role that best matches this workspace so Agora can prioritize the first actions around the way you plan to evaluate it.",
+      done: items.role?.done,
+      detail: items.role?.detail || "Choose your launch role",
+      primaryAction: "role",
+      primaryLabel: "Choose Role"
+    },
+    {
+      id: "data",
+      eyebrow: "Step 2",
       title: "Choose how this workspace starts",
       body: "Start with demo data, a clean workspace, an import, or a template. This controls the shape of the first project experience.",
       done: items.data?.done,
@@ -6275,7 +6390,7 @@ function onboardingWizardSteps() {
     },
     {
       id: "workspace",
-      eyebrow: "Step 2",
+      eyebrow: "Step 3",
       title: "Name the workspace and set defaults",
       body: "Set the workspace name, visibility, default role, theme, density, and backend target before inviting people in.",
       done: items.workspace?.done,
@@ -6285,7 +6400,7 @@ function onboardingWizardSteps() {
     },
     {
       id: "structure",
-      eyebrow: "Step 3",
+      eyebrow: "Step 4",
       title: "Create the first company and project",
       body: "Agora works best once it has a company scope and a real project. That unlocks reporting, templates, company views, and project dashboards.",
       done: Boolean(items.company?.done && items.project?.done),
@@ -6297,7 +6412,7 @@ function onboardingWizardSteps() {
     },
     {
       id: "team",
-      eyebrow: "Step 4",
+      eyebrow: "Step 5",
       title: "Invite the people who need access",
       body: "Add teammates or clients, review roles, and confirm company-scoped access before real work starts moving through Agora.",
       done: items.team?.done,
@@ -6307,7 +6422,7 @@ function onboardingWizardSteps() {
     },
     {
       id: "backend",
-      eyebrow: "Step 5",
+      eyebrow: "Step 6",
       title: "Connect storage and sync",
       body: "Use browser storage for solo exploration, or connect the API/Supabase path before a team depends on the workspace.",
       done: items.api?.done,
@@ -6316,8 +6431,8 @@ function onboardingWizardSteps() {
       primaryLabel: apiSession ? "Open Sync" : "Connect API"
     },
     {
-      id: "notifications",
-      eyebrow: "Step 6",
+      id: "recovery",
+      eyebrow: "Step 7",
       title: "Create a recovery point",
       body: "Before a team depends on the workspace, create a local backup or portable bundle so imports, API restores, and setup experiments have a clean recovery path.",
       done: items.recovery?.done,
@@ -6329,7 +6444,7 @@ function onboardingWizardSteps() {
     },
     {
       id: "notifications",
-      eyebrow: "Step 7",
+      eyebrow: "Step 8",
       title: "Review notification delivery",
       body: "Decide which alerts belong in the inbox, browser notifications, webhook payloads, or email handoff before launch.",
       done: items.notifications?.done,
@@ -6341,7 +6456,7 @@ function onboardingWizardSteps() {
     },
     {
       id: "templates",
-      eyebrow: "Step 8",
+      eyebrow: "Step 9",
       title: "Pick starter workflows",
       body: "Install or review templates for the kind of work this team runs: client delivery, software, finance, art, marketing, research, or internal ops.",
       done: items.templates?.done,
@@ -6430,6 +6545,7 @@ function renderOnboardingPanel() {
         </div>
         <button class="button button-primary compact-button" type="button" data-onboarding-action="${escapeHtml(nextAction.action || "wizard")}">${setupComplete ? "Review Sync" : "Continue"}</button>
       </div>
+      ${renderActivationLoop()}
       ${renderFirstRunCommandCenter()}
       ${renderFirstValuePath()}
       <div class="onboarding-choice-row">
@@ -6455,6 +6571,44 @@ function renderOnboardingPanel() {
         `).join("")}
       </div>
     </section>
+  `;
+}
+
+function renderActivationLoop() {
+  const selectedProfile = onboardingRoleProfile();
+  const checklist = onboardingLaunchChecklist();
+  const doneCount = checklist.filter((item) => item.done).length;
+  return `
+    <div class="activation-loop" aria-label="First value activation loop">
+      <div class="activation-loop-header">
+        <div>
+          <p class="eyebrow">10 minute launch</p>
+          <h3>${selectedProfile ? escapeHtml(selectedProfile.value) : "Pick the first win"}</h3>
+        </div>
+        <span class="status-pill ${doneCount === checklist.length ? "inbox-green" : "inbox-amber"}">${doneCount}/${checklist.length}</span>
+      </div>
+      <div class="role-profile-grid">
+        ${onboardingRoleProfiles().map((profile) => `
+          <button class="role-profile-card ${profile.id === state.onboarding?.roleProfile ? "is-selected" : ""}" type="button" data-onboarding-action="role:${escapeHtml(profile.id)}">
+            <span>${escapeHtml(profile.label)}</span>
+            <strong>${escapeHtml(profile.value)}</strong>
+            <small>${escapeHtml(profile.detail)}</small>
+          </button>
+        `).join("")}
+      </div>
+      <div class="launch-checklist">
+        ${checklist.map((item) => `
+          <article class="${item.done ? "is-done" : "is-open"}">
+            <span>${escapeHtml(item.minute)}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <small>${escapeHtml(item.detail)}</small>
+            </div>
+            <button class="button ${item.done ? "button-secondary" : "button-primary"} compact-button" type="button" data-onboarding-action="${escapeHtml(item.action)}">${item.done ? "Open" : "Start"}</button>
+          </article>
+        `).join("")}
+      </div>
+    </div>
   `;
 }
 
@@ -14298,6 +14452,28 @@ function promoteWhiteboardItemToDecision(itemId) {
 function handleOnboardingAction(action) {
   const wizardSteps = onboardingWizardSteps();
   const wizardIndex = clamp(Number(state.onboarding?.wizardStep || 0), 0, wizardSteps.length - 1);
+
+  if (action === "role") {
+    openOnboardingWizard(0);
+    return;
+  }
+
+  if (action.startsWith("role:")) {
+    const roleProfile = action.slice("role:".length);
+    const profile = onboardingRoleProfiles().find((item) => item.id === roleProfile);
+    if (!profile) return;
+    state.onboarding = {
+      ...state.onboarding,
+      dismissed: false,
+      wizardActive: true,
+      wizardStep: 1,
+      roleProfile: profile.id
+    };
+    saveState();
+    render();
+    showToast(`${profile.label} launch path selected`, "success");
+    return;
+  }
 
   if (action === "wizard") {
     state.onboarding = {
