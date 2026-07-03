@@ -1072,6 +1072,7 @@ const routes = {
   decisions: "Decisions",
   visibility: "Client Visibility",
   goals: "Goals",
+  autopilot: "Autopilot",
   marketplace: "Marketplace",
   templates: "Templates",
   automations: "Automations",
@@ -17673,6 +17674,7 @@ function render() {
     decisions: renderDecisionLog,
     visibility: renderClientVisibilityReview,
     goals: renderGoals,
+    autopilot: renderProjectAutopilot,
     marketplace: renderMarketplaceHub,
     templates: renderTemplates,
     automations: renderAutomations,
@@ -17717,7 +17719,7 @@ function render() {
 function sidebarGroupForRoute(route) {
   if (["landing", "dashboard", "command-center", "launch", "daily", "inbox"].includes(route)) return "home";
   if (["board", "list", "calendar", "sprint", "my-work", "time", "collaboration"].includes(route)) return "work";
-  if (["reports", "portfolio", "decisions", "goals", "operator", "automations"].includes(route)) return "control";
+  if (["reports", "portfolio", "decisions", "goals", "autopilot", "operator", "automations"].includes(route)) return "control";
   if (["visibility", "portal", "project-backlog", "intake", "feature-requests", "companies", "company"].includes(route)) return "clients";
   if (["marketplace", "templates", "docs", "memory", "fields"].includes(route)) return "library";
   if (["audit", "permissions", "release", "beta", "readiness", "data", "settings"].includes(route)) return "admin";
@@ -21709,6 +21711,189 @@ function renderNotificationHistoryPanel() {
         `).join("") : emptyState("Digest sends and browser alert tests will appear here.")}
       </div>
     </section>
+  `;
+}
+
+function autopilotSeverityTone(severity) {
+  if (severity === "critical") return "red";
+  if (severity === "high") return "amber";
+  if (severity === "medium") return "blue";
+  return "neutral";
+}
+
+function projectAutopilotDriftCards() {
+  const openTasks = activeTasks().filter((task) => task.status !== "done");
+  const overdue = openTasks.filter(isOverdue);
+  const blocked = openTasks.filter(isTaskBlocked);
+  const dueSoon = openTasks.filter((task) => task.dueDate && task.dueDate <= shiftDate(todayKey(), 7));
+  const pendingApprovals = state.approvals.filter((approval) => approval.status !== "approved" && projectMatchesContext(approval.projectId));
+  const featureRequests = featureRequestTasks().filter((task) => !["shipped", "declined"].includes(featureRequestStatus(task)));
+  const memorySignals = normalizeUpdateExtractionPreviews(state.updateExtractionPreviews)
+    .flatMap((preview) => preview.proposals.filter((proposal) => ["task", "blocker", "risk", "date_change"].includes(proposal.type)));
+  const loadByMember = members.map((member) => ({
+    member,
+    tasks: openTasks.filter((task) => task.assignee === member.id)
+  })).sort((a, b) => b.tasks.length - a.tasks.length);
+  const overloaded = loadByMember.find((row) => row.tasks.length >= 4);
+  const clientProjects = activeProjects().filter((project) => projectCompany(project.id)?.type === "Client");
+  const clientRisk = clientProjects
+    .map((project) => {
+      const projectTasks = getProjectTasks(project.id, false).filter((task) => task.status !== "done");
+      return {
+        project,
+        overdue: projectTasks.filter(isOverdue),
+        blocked: projectTasks.filter(isTaskBlocked),
+        approvals: pendingApprovals.filter((approval) => approval.projectId === project.id)
+      };
+    })
+    .find((row) => row.overdue.length || row.blocked.length || row.approvals.length);
+
+  return [
+    overdue.length ? {
+      id: "schedule-drift",
+      type: "Schedule",
+      severity: overdue.length > 2 ? "critical" : "high",
+      title: "Schedule drift detected",
+      plan: "Open work should stay inside committed due dates.",
+      reality: `${overdue.length} task${overdue.length === 1 ? "" : "s"} are overdue; ${dueSoon.length} are due within seven days.`,
+      evidence: overdue.slice(0, 4).map((task) => `${task.title} / ${projectName(task.projectId)} / due ${formatDate(task.dueDate)}`),
+      confidence: 92,
+      projectId: overdue[0]?.projectId || ""
+    } : null,
+    blocked.length ? {
+      id: "blocker-drift",
+      type: "Blockers",
+      severity: blocked.length > 2 ? "critical" : "high",
+      title: "Blocked work is diverging from plan",
+      plan: "Dependencies should clear before work reaches active delivery lanes.",
+      reality: `${blocked.length} active task${blocked.length === 1 ? " is" : "s are"} waiting on dependencies.`,
+      evidence: blocked.slice(0, 4).map((task) => `${task.title} waits on ${openTaskDependencies(task).map((dependency) => dependency.title).join(", ") || "unresolved work"}`),
+      confidence: 88,
+      projectId: blocked[0]?.projectId || ""
+    } : null,
+    pendingApprovals.length ? {
+      id: "approval-drift",
+      type: "Approvals",
+      severity: pendingApprovals.some((approval) => approval.status === "needs-changes") ? "high" : "medium",
+      title: "Approval path needs attention",
+      plan: "Client and internal approvals should not block active delivery.",
+      reality: `${pendingApprovals.length} approval${pendingApprovals.length === 1 ? "" : "s"} are still open.`,
+      evidence: pendingApprovals.slice(0, 4).map((approval) => `${approval.title} / ${approvalStatusLabel(approval.status)} / ${projectName(approval.projectId)}`),
+      confidence: 86,
+      projectId: pendingApprovals[0]?.projectId || ""
+    } : null,
+    overloaded ? {
+      id: "workload-drift",
+      type: "Workload",
+      severity: overloaded.tasks.length >= 6 ? "high" : "medium",
+      title: "Team load is out of balance",
+      plan: "Open work should be balanced enough that owners can clear priority tasks.",
+      reality: `${overloaded.member.name} owns ${overloaded.tasks.length} open tasks.`,
+      evidence: overloaded.tasks.slice(0, 4).map((task) => `${task.title} / ${projectName(task.projectId)} / ${priorityLabel(task.priority)}`),
+      confidence: 78,
+      projectId: overloaded.tasks[0]?.projectId || ""
+    } : null,
+    featureRequests.length || memorySignals.length ? {
+      id: "scope-drift",
+      type: "Scope",
+      severity: featureRequests.length + memorySignals.length > 6 ? "high" : "medium",
+      title: "Scope signals are growing outside the plan",
+      plan: "New requests and memory signals should be triaged before they change delivery commitments.",
+      reality: `${featureRequests.length} active feature request${featureRequests.length === 1 ? "" : "s"} and ${memorySignals.length} memory signal${memorySignals.length === 1 ? "" : "s"} need review.`,
+      evidence: [
+        ...featureRequests.slice(0, 2).map((task) => `Request: ${task.title.replace(/^Feature request:\s*/i, "")}`),
+        ...memorySignals.slice(0, 2).map((proposal) => `Memory: ${proposal.title}`)
+      ],
+      confidence: 74,
+      projectId: featureRequests[0]?.projectId || memorySignals[0]?.projectId || ""
+    } : null,
+    clientRisk ? {
+      id: "client-promise-drift",
+      type: "Client promises",
+      severity: clientRisk.overdue.length || clientRisk.blocked.length ? "high" : "medium",
+      title: "Client-facing promise may need reset",
+      plan: "Client projects should have clear dates, approvals, and visible blockers before updates go out.",
+      reality: `${clientRisk.project.name} has ${clientRisk.overdue.length} overdue, ${clientRisk.blocked.length} blocked, and ${clientRisk.approvals.length} approval signals.`,
+      evidence: [
+        ...clientRisk.overdue.slice(0, 2).map((task) => `Overdue: ${task.title}`),
+        ...clientRisk.blocked.slice(0, 2).map((task) => `Blocked: ${task.title}`),
+        ...clientRisk.approvals.slice(0, 2).map((approval) => `Approval: ${approval.title}`)
+      ],
+      confidence: 82,
+      projectId: clientRisk.project.id
+    } : null
+  ].filter(Boolean);
+}
+
+function renderProjectAutopilot() {
+  const drifts = projectAutopilotDriftCards();
+  const critical = drifts.filter((drift) => ["critical", "high"].includes(drift.severity));
+  const averageConfidence = drifts.length ? Math.round(drifts.reduce((sum, drift) => sum + drift.confidence, 0) / drifts.length) : 0;
+
+  els.appView.innerHTML = `
+    <div class="metric-grid">
+      ${metric("Drift cards", drifts.length)}
+      ${metric("High priority", critical.length)}
+      ${metric("Avg confidence", drifts.length ? `${averageConfidence}%` : "Clear")}
+      ${metric("Review mode", "Human approval")}
+    </div>
+
+    <section class="panel autopilot-hero">
+      <div>
+        <p class="eyebrow">Project Autopilot</p>
+        <h2>Reality vs Plan Engine</h2>
+        <p>Agora compares project reality against the plan across schedule, scope, approvals, blockers, workload, and client promises before proposing any recovery action.</p>
+      </div>
+      <div class="autopilot-hero-proof">
+        <article>
+          <span>Reality sources</span>
+          <strong>Tasks, memory, approvals, clients</strong>
+          <small>Signals stay inspectable before Autopilot suggests changes.</small>
+        </article>
+        <article>
+          <span>Control model</span>
+          <strong>Detect first</strong>
+          <small>Recovery proposals, impact simulation, and apply flow come after review.</small>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel autopilot-drift-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Reality vs Plan</p>
+          <h2>Project drift detector</h2>
+        </div>
+        <span class="status-pill ${critical.length ? "inbox-amber" : "inbox-green"}">${critical.length ? `${critical.length} need review` : "No major drift"}</span>
+      </div>
+      <div class="autopilot-drift-list">
+        ${drifts.length ? drifts.map(renderAutopilotDriftCard).join("") : emptyState("No schedule, scope, approval, blocker, workload, or client promise drift detected.")}
+      </div>
+    </section>
+  `;
+}
+
+function renderAutopilotDriftCard(drift) {
+  const tone = autopilotSeverityTone(drift.severity);
+  return `
+    <article class="autopilot-drift-card">
+      <div>
+        <div class="autopilot-chip-row">
+          <span class="status-pill inbox-${tone}">${escapeHtml(drift.severity)}</span>
+          <span class="status-pill inbox-neutral">${escapeHtml(drift.type)}</span>
+          <span class="status-pill inbox-blue">${drift.confidence}% confidence</span>
+          ${drift.projectId ? `<span class="status-pill inbox-neutral">${escapeHtml(projectName(drift.projectId))}</span>` : ""}
+        </div>
+        <h3>${escapeHtml(drift.title)}</h3>
+        <div class="autopilot-plan-reality">
+          <p><strong>Plan:</strong> ${escapeHtml(drift.plan)}</p>
+          <p><strong>Reality:</strong> ${escapeHtml(drift.reality)}</p>
+        </div>
+        <div class="autopilot-evidence-list">
+          ${(drift.evidence.length ? drift.evidence : ["No detailed evidence available."]).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+        </div>
+      </div>
+    </article>
   `;
 }
 

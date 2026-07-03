@@ -170,6 +170,23 @@ const routeChecks = [
     ]
   },
   {
+    name: "Project Autopilot drift detector",
+    suite: "workspace",
+    route: "autopilot",
+    width: 1265,
+    height: 712,
+    required: [
+      "Project Autopilot",
+      "Reality vs Plan Engine",
+      "Project drift detector",
+      "schedule, scope, approvals, blockers, workload, and client promises",
+      "Reality sources",
+      "Human approval",
+      "Plan:",
+      "Reality:"
+    ]
+  },
+  {
     name: "Portfolio resource planning",
     suite: "workspace",
     route: "portfolio",
