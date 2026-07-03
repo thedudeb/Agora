@@ -43,6 +43,9 @@ Before inviting a real team:
 - Do not paste service-role keys into browser settings, screenshots, issue reports, or exported bundles.
 - Set `AGORA_DEMO_AUTH=false` in production.
 - Set `AGORA_PASSWORDLESS_AUTH=false` unless intentionally enabled.
+- Keep `AGORA_PUBLIC_FEATURE_REQUESTS=false` until you intentionally accept public submissions and have tuned the public rate/body limits.
+- Run `npm run audit` before release and investigate any moderate-or-higher advisory.
+- Set `AGORA_STRICT_CSP=true` or `NODE_ENV=production` for hosted app/static servers, and keep `AGORA_CSP_CONNECT_SRC` limited to trusted API origins.
 - Limit `AGORA_ALLOWED_ORIGINS` to trusted app origins.
 - Use HTTPS in front of the app and API.
 - Run the Supabase migrations before enabling Supabase storage/auth.

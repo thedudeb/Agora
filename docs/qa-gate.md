@@ -11,6 +11,7 @@ npm run qa
 This runs:
 
 - syntax checks for app, server, scripts, MCP, and desktop wrapper files;
+- dependency audit for the root and desktop package lockfiles;
 - portable fixture validation;
 - recovery stress tests;
 - migration importer tests;
@@ -28,7 +29,7 @@ GitHub Actions runs the same release QA gate on pushes to `main`, pull requests 
 
 Workflow: `.github/workflows/qa.yml`
 
-The CI job uses Node.js 20 and the runner's installed Chrome/Chromium. If browser QA fails, the workflow uploads `qa-artifacts` with the failing route DOM, metadata, and a screenshot when Chrome can capture one.
+The CI job uses Node.js 22 and the runner's installed Chrome/Chromium. If dependency audit or browser QA fails, the workflow fails; browser failures upload `qa-artifacts` with the failing route DOM, metadata, and a screenshot when Chrome can capture one.
 
 ## Browser Coverage
 

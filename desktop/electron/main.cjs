@@ -25,14 +25,35 @@ const mimeTypes = {
   ".webmanifest": "application/manifest+json; charset=utf-8"
 };
 
+function envFlag(name, fallback = false) {
+  const value = String(process.env[name] || "").trim().toLowerCase();
+  if (!value) return fallback;
+  return ["1", "true", "yes", "on"].includes(value);
+}
+
+function cspList(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+}
+
+function isProductionCsp() {
+  return envFlag("AGORA_STRICT_CSP", app.isPackaged) || String(process.env.NODE_ENV || "").trim().toLowerCase() === "production";
+}
+
 function desktopSecurityHeaders() {
+  const production = isProductionCsp();
+  const connectSrc = production
+    ? ["'self'", "https://*.supabase.co", ...cspList(process.env.AGORA_CSP_CONNECT_SRC || process.env.AGORA_ALLOWED_ORIGINS)]
+    : ["'self'", "http://127.0.0.1:*", "http://localhost:*", "https://*.supabase.co", "https:"];
   return {
     "Content-Security-Policy": [
       "default-src 'self'",
       "script-src 'self'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data:",
-      "connect-src 'self' http://127.0.0.1:* http://localhost:* https://*.supabase.co https:",
+      `connect-src ${Array.from(new Set(connectSrc)).join(" ")}`,
       "font-src 'self'",
       "manifest-src 'self'",
       "base-uri 'self'",

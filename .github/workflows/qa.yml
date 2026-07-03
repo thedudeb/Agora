@@ -29,13 +29,16 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Show runtime
         run: |
           node --version
           npm --version
           google-chrome --version || chromium --version || chromium-browser --version
+
+      - name: Run dependency audit
+        run: npm run audit
 
       - name: Run release QA
         env:

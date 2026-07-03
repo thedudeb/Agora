@@ -6,6 +6,7 @@ const { createServer } = require("./api");
 const { createStorage, createSupabaseStorage } = require("./storage");
 
 async function run() {
+  process.env.AGORA_PUBLIC_FEATURE_REQUESTS = "true";
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-api-"));
   const storage = createStorage({ dataDir, driver: "json" });
   await storage.saveBackgroundJobs([
@@ -254,6 +255,26 @@ async function run() {
       }
     });
     assert(saved.snapshot.workspace.name === "Smoke Test Studio", "workspace save failed");
+
+    const malformedImport = await requestError(`${baseUrl}/api/workspace/import`, {
+      method: "POST",
+      token: login.token,
+      body: { snapshot: { workspace: { id: "workspace-acme", name: "Bad import" }, tasks: "not-an-array" } }
+    });
+    assert(malformedImport.status === 400, "workspace import should reject malformed array fields");
+
+    const unsafeImport = await requestError(`${baseUrl}/api/workspace/import`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        snapshot: {
+          workspace: { id: "workspace-acme", name: "Unsafe import" },
+          projects: [{ id: "project-unsafe", name: "Unsafe Project", constructor: "pollution" }],
+          tasks: []
+        }
+      }
+    });
+    assert(unsafeImport.status === 400, "workspace import should reject unsafe object keys");
 
     const paymentConfig = await request(`${baseUrl}/api/payments/config`, {
       token: login.token

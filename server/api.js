@@ -3892,7 +3892,7 @@ async function createPublicFeatureRequest(storage, body) {
 }
 
 function publicFeatureRequestsEnabled() {
-  return envFlag("AGORA_PUBLIC_FEATURE_REQUESTS", true);
+  return envFlag("AGORA_PUBLIC_FEATURE_REQUESTS", false);
 }
 
 async function updateFeatureRequestStatus(storage, taskId, body, session) {
@@ -7249,6 +7249,85 @@ function validateSnapshot(snapshot) {
     error.publicMessage = "Workspace snapshot must be an object";
     throw error;
   }
+  validateSafeJsonObject(snapshot, "snapshot", 0);
+  validateWorkspaceSnapshotShape(snapshot);
+}
+
+function validateSafeJsonObject(value, label, depth) {
+  if (depth > 12) publicError(400, `${label} is too deeply nested`);
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      if (item && typeof item === "object") validateSafeJsonObject(item, `${label}[${index}]`, depth + 1);
+    });
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  Object.keys(value).forEach((key) => {
+    if (["__proto__", "constructor", "prototype"].includes(key)) {
+      publicError(400, `${label} contains unsafe key ${key}`);
+    }
+    const nextValue = value[key];
+    if (nextValue && typeof nextValue === "object") validateSafeJsonObject(nextValue, `${label}.${key}`, depth + 1);
+  });
+}
+
+function validateWorkspaceSnapshotShape(snapshot) {
+  const arrayFields = {
+    companies: 1000,
+    projects: 5000,
+    tasks: 25000,
+    milestones: 10000,
+    comments: 50000,
+    activities: 50000,
+    timeEntries: 50000,
+    approvals: 10000,
+    documents: 10000,
+    files: 10000,
+    intakeForms: 5000,
+    intakeSubmissions: 25000,
+    users: 5000,
+    memberships: 5000,
+    invitations: 5000,
+    projectTemplates: 5000,
+    taskTemplates: 5000,
+    automationRules: 5000,
+    automationRuns: 25000,
+    notificationHistory: 25000,
+    notificationReminders: 10000,
+    raidItems: 10000,
+    goals: 5000,
+    projectBacklog: 10000,
+    chatMessages: 25000,
+    whiteboards: 5000,
+    dashboards: 1000,
+    savedViews: 1000,
+    auditEvents: 25000
+  };
+  Object.entries(arrayFields).forEach(([field, limit]) => {
+    if (snapshot[field] === undefined) return;
+    if (!Array.isArray(snapshot[field])) publicError(400, `Workspace snapshot ${field} must be an array`);
+    if (snapshot[field].length > limit) publicError(413, `Workspace snapshot ${field} exceeds ${limit} records`);
+    snapshot[field].forEach((item, index) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        publicError(400, `Workspace snapshot ${field}[${index}] must be an object`);
+      }
+    });
+  });
+  if (snapshot.workspace !== undefined && (!snapshot.workspace || typeof snapshot.workspace !== "object" || Array.isArray(snapshot.workspace))) {
+    publicError(400, "Workspace snapshot workspace must be an object");
+  }
+  validateRequiredStringRecords(snapshot.projects, "projects", ["id", "name"]);
+  validateRequiredStringRecords(snapshot.tasks, "tasks", ["id", "projectId", "title"]);
+  validateRequiredStringRecords(snapshot.companies, "companies", ["id", "name"]);
+}
+
+function validateRequiredStringRecords(records, field, keys) {
+  if (!Array.isArray(records)) return;
+  records.forEach((record, index) => {
+    keys.forEach((key) => {
+      if (!cleanString(record[key])) publicError(400, `Workspace snapshot ${field}[${index}].${key} is required`);
+    });
+  });
 }
 
 function publicError(statusCode, message) {

@@ -6,6 +6,12 @@ const assert = require("assert");
 
 const root = path.resolve(__dirname, "..");
 const app = fs.readFileSync(path.join(root, "src", "app.js"), "utf8");
+const api = fs.readFileSync(path.join(root, "server", "api.js"), "utf8");
+const staticServer = fs.readFileSync(path.join(root, "server", "static.js"), "utf8");
+const desktopMain = fs.readFileSync(path.join(root, "desktop", "electron", "main.cjs"), "utf8");
+const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "qa.yml"), "utf8");
+const rootPackage = fs.readFileSync(path.join(root, "package.json"), "utf8");
+const envExample = fs.readFileSync(path.join(root, ".env.example"), "utf8");
 
 function has(text) {
   assert(app.includes(text), `Missing expected admin security contract: ${text}`);
@@ -59,5 +65,21 @@ assert(/admin: \[[^\]]*"workspace:import"/.test(roleMapSource), "admin must keep
 assert(!/manager: \[[^\]]*"workspace:import"/.test(roleMapSource), "manager must not receive workspace import/export permission");
 assert(!/member: \[[^\]]*"payments:write"/.test(roleMapSource), "member must not receive payment admin permission");
 assert(!/client: \[[^\]]*"projects:write"/.test(roleMapSource), "client must not receive project admin permission");
+
+assert(api.includes('return envFlag("AGORA_PUBLIC_FEATURE_REQUESTS", false);'), "public feature requests must default to disabled");
+assert(envExample.includes("AGORA_PUBLIC_FEATURE_REQUESTS=false"), ".env.example must keep public feature requests opt-in");
+assert(api.includes('["__proto__", "constructor", "prototype"].includes(key)'), "workspace import must reject prototype pollution keys");
+assert(api.includes("validateWorkspaceSnapshotShape(snapshot);"), "workspace import must validate snapshot shape before persistence");
+assert(api.includes('validateRequiredStringRecords(snapshot.tasks, "tasks", ["id", "projectId", "title"])'), "workspace import must require core task fields");
+
+assert(staticServer.includes("function isProductionCsp()"), "static server must expose production CSP mode");
+assert(staticServer.includes("AGORA_STRICT_CSP"), "static server must support strict CSP flag");
+assert(staticServer.includes("const connectSrc = production") && staticServer.includes('"https://*.supabase.co"') && staticServer.includes('"https:"'), "static server must split production and development connect sources");
+assert(desktopMain.includes("function isProductionCsp()"), "desktop shell must expose production CSP mode");
+assert(desktopMain.includes('envFlag("AGORA_STRICT_CSP", app.isPackaged)'), "packaged desktop builds must default to strict CSP");
+
+assert(rootPackage.includes('"audit": "npm audit --audit-level=moderate && npm --prefix desktop audit --audit-level=moderate"'), "root package must expose dependency audit script");
+assert(workflow.includes("node-version: \"22\""), "CI must use a Node version supported by desktop security tooling");
+assert(workflow.includes("npm run audit"), "CI must run dependency audit");
 
 console.log("Admin security regression checks passed");
