@@ -73,6 +73,11 @@ async function run() {
     const tools = await readClient.call("tools/list");
     assert(tools.tools.some((item) => item.name === "list_tasks"), "mcp tools did not include list_tasks");
     assert(tools.tools.some((item) => item.name === "create_task"), "mcp tools did not include create_task");
+    assert(tools.tools.some((item) => item.name === "get_workspace_health"), "mcp tools did not include get_workspace_health");
+
+    const health = await readClient.tool("get_workspace_health");
+    assert(health.ok === true, "mcp workspace health did not report ok");
+    assert(typeof health.storage === "string" && health.storage, "mcp workspace health did not expose storage driver");
 
     const projects = await readClient.tool("list_projects", { query: "MCP Launch" });
     assert(projects.projects.some((item) => item.id === "mcp-project"), "mcp list_projects missed seeded project");
@@ -95,10 +100,25 @@ async function run() {
 
     const resources = await readClient.call("resources/list");
     assert(resources.resources.some((item) => item.uri === "agora://workspace/summary"), "mcp resources missing workspace summary");
+    assert(resources.resources.some((item) => item.uri === "agora://backend/health"), "mcp resources missing backend health");
 
     const summary = await readClient.call("resources/read", { uri: "agora://workspace/summary" });
     const summaryPayload = JSON.parse(summary.contents[0].text);
     assert(summaryPayload.writesEnabled === false, "read client unexpectedly enabled writes");
+
+    const healthResource = await readClient.call("resources/read", { uri: "agora://backend/health" });
+    const healthPayload = JSON.parse(healthResource.contents[0].text);
+    assert(healthPayload.ok === true, "mcp backend health resource did not return API health");
+
+    const prompts = await readClient.call("prompts/list");
+    assert(prompts.prompts.some((item) => item.name === "standup_digest"), "mcp prompts missing standup_digest");
+    assert(prompts.prompts.some((item) => item.name === "project_risk_review"), "mcp prompts missing project_risk_review");
+
+    const prompt = await readClient.call("prompts/get", {
+      name: "project_risk_review",
+      arguments: { projectId: "mcp-project" }
+    });
+    assert(prompt.messages?.[0]?.content?.text.includes("mcp-project"), "mcp project risk prompt missed project id");
 
     const blockedWrite = await readClient.call("tools/call", {
       name: "create_task",

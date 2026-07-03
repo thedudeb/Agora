@@ -100,6 +100,7 @@ If you run from the repo with `.env`, the MCP server loads `.env` automatically.
 Read tools:
 
 - `get_session`: returns the current user, role, permissions, and company scope.
+- `get_workspace_health`: returns authenticated backend health, storage/auth readiness, metrics, queue status, and production gates.
 - `list_projects`: lists visible projects.
 - `list_tasks`: lists visible tasks with filters for project, company, assignee, status, priority, tag, query, limit, and offset.
 - `get_task`: returns one task plus related comments and activity.
@@ -120,9 +121,15 @@ Successful write tools also attempt to create an `mcp_tool` activity record on t
 ## Resources
 
 - `agora://workspace/summary`
+- `agora://backend/health`
 - `agora://projects`
 - `agora://tasks`
 - `agora://inbox/signals`
+
+## Prompts
+
+- `standup_digest`: guides an MCP client to build a concise standup from health, inbox signals, projects, and tasks.
+- `project_risk_review`: guides an MCP client to review one project for blocked work, overdue work, approvals, recent activity, ownership gaps, and next actions.
 
 ## Security Notes
 

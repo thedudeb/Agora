@@ -25,6 +25,12 @@ const tools = [
     inputSchema: objectSchema({})
   },
   {
+    name: "get_workspace_health",
+    title: "Get Workspace Health",
+    description: "Return authenticated API health, storage/auth readiness, route metrics, queue status, and production gates.",
+    inputSchema: objectSchema({})
+  },
+  {
     name: "list_projects",
     title: "List Projects",
     description: "List Agora projects visible to the authenticated session.",
@@ -129,6 +135,12 @@ const resources = [
     mimeType: "application/json"
   },
   {
+    uri: "agora://backend/health",
+    name: "Backend Health",
+    description: "Authenticated backend health, storage/auth drivers, metrics, queue status, and production readiness gates.",
+    mimeType: "application/json"
+  },
+  {
     uri: "agora://projects",
     name: "Projects",
     description: "Projects visible to the authenticated Agora session.",
@@ -148,6 +160,33 @@ const resources = [
   }
 ];
 
+const prompts = [
+  {
+    name: "standup_digest",
+    title: "Standup Digest",
+    description: "Summarize blocked, overdue, due-soon, approval, mention, and recent-comment signals for a team standup.",
+    arguments: [
+      {
+        name: "focus",
+        description: "Optional team, project, or client focus.",
+        required: false
+      }
+    ]
+  },
+  {
+    name: "project_risk_review",
+    title: "Project Risk Review",
+    description: "Review one project for delivery risk, blocked work, pending approvals, and next actions.",
+    arguments: [
+      {
+        name: "projectId",
+        description: "Agora project id.",
+        required: true
+      }
+    ]
+  }
+];
+
 const handlers = {
   initialize: handleInitialize,
   ping: async () => ({}),
@@ -155,7 +194,8 @@ const handlers = {
   "tools/call": handleToolCall,
   "resources/list": async () => ({ resources }),
   "resources/read": handleResourceRead,
-  "prompts/list": async () => ({ prompts: [] })
+  "prompts/list": async () => ({ prompts }),
+  "prompts/get": handlePromptGet
 };
 
 const input = readline.createInterface({
@@ -229,7 +269,8 @@ async function handleInitialize(params = {}) {
     protocolVersion: negotiatedProtocolVersion(params.protocolVersion),
     capabilities: {
       tools: { listChanged: false },
-      resources: { subscribe: false, listChanged: false }
+      resources: { subscribe: false, listChanged: false },
+      prompts: { listChanged: false }
     },
     serverInfo: {
       name: "agora-mcp",
@@ -250,6 +291,7 @@ async function handleToolCall(params = {}) {
 
   const toolHandlers = {
     get_session: getSession,
+    get_workspace_health: getWorkspaceHealth,
     list_projects: listProjects,
     list_tasks: listTasks,
     get_task: getTask,
@@ -279,6 +321,7 @@ async function handleResourceRead(params = {}) {
   let payload;
 
   if (uri === "agora://workspace/summary") payload = await workspaceSummary();
+  else if (uri === "agora://backend/health") payload = await getWorkspaceHealth();
   else if (uri === "agora://projects") payload = await listProjects({ limit: 500 });
   else if (uri === "agora://tasks") payload = await listTasks({ limit: 500 });
   else if (uri === "agora://inbox/signals") payload = await getInboxSignals({ limit: 100 });
@@ -295,8 +338,40 @@ async function handleResourceRead(params = {}) {
   };
 }
 
+async function handlePromptGet(params = {}) {
+  const name = cleanString(params.name);
+  const args = params.arguments && typeof params.arguments === "object" ? params.arguments : {};
+
+  if (name === "standup_digest") {
+    const focus = cleanString(args.focus);
+    return promptResult("Standup Digest", [
+      "Use Agora MCP resources to prepare a concise standup digest.",
+      "Start with blocked and overdue work, then due-soon tasks, approvals, mentions, and recent comments.",
+      "Group by project when possible and end with owner-specific next actions.",
+      focus ? `Focus area: ${focus}.` : "If no focus is provided, cover the whole visible workspace.",
+      "Suggested context calls: get_workspace_health, get_inbox_signals, list_projects, list_tasks."
+    ]);
+  }
+
+  if (name === "project_risk_review") {
+    const projectId = requireString(args.projectId, "projectId");
+    return promptResult("Project Risk Review", [
+      `Review Agora project ${projectId} for execution risk.`,
+      "Summarize status, blocked work, overdue or due-soon work, pending approvals, recent activity, and unclear ownership.",
+      "Call get_project_status first, then search_workspace or list_tasks if more detail is needed.",
+      "End with a short risk rating and the next three actions."
+    ]);
+  }
+
+  throw new Error(`Unknown Agora prompt: ${name}`);
+}
+
 async function getSession() {
   return apiRequest("GET", "/api/session");
+}
+
+async function getWorkspaceHealth() {
+  return apiRequest("GET", "/api/backend/health");
 }
 
 async function listProjects(args = {}) {
@@ -661,6 +736,21 @@ function toolError(message) {
       {
         type: "text",
         text: message
+      }
+    ]
+  };
+}
+
+function promptResult(title, lines) {
+  return {
+    description: title,
+    messages: [
+      {
+        role: "user",
+        content: {
+          type: "text",
+          text: lines.join("\n")
+        }
       }
     ]
   };
