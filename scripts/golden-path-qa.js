@@ -480,6 +480,9 @@ const routeChecks = [
       "Auth, scopes, direction, and health",
       "GitHub Integration v1",
       "Issues and pull requests",
+      "Sync mapping layer",
+      "GitHub issue to Agora task",
+      "Queue GitHub Sync",
       "Linked work preview",
       "Repository"
     ]

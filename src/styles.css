@@ -5605,6 +5605,48 @@ body[data-tutorial-target="view"] #app-view {
   gap: 10px;
 }
 
+.sync-mapping-layer {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sync-mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sync-mapping-grid article {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sync-mapping-grid span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.sync-mapping-layer pre {
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px;
+  color: var(--text);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
 .integration-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -10153,6 +10195,7 @@ body[data-density="compact"] .main-content {
   .docs-grid,
   .github-connector-grid,
   .github-mapping-grid,
+  .sync-mapping-grid,
   .project-backlog-grid,
   .intake-grid,
   .fields-grid,
@@ -10670,6 +10713,7 @@ body[data-density="compact"] .main-content {
   .integration-summary-grid,
   .github-connector-grid,
   .github-mapping-grid,
+  .sync-mapping-grid,
   .sprint-signal-grid,
   .sprint-definition-list,
   .sprint-planning-row,

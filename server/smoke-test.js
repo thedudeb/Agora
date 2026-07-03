@@ -153,6 +153,29 @@ async function run() {
     const storedJobs = await storage.loadBackgroundJobs();
     assert(storedJobs.some((job) => job.id === "job-json-smoke" && job.payload.to === "owner@example.test"), "json background job persistence failed");
 
+    const integrationSync = await request(`${baseUrl}/api/integrations/sync`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        provider: "github",
+        direction: "inbound",
+        mapping: { issueTitle: "title", issueState: "status" },
+        records: [{ externalId: "thedudeb/Agora#123", agoraId: "task-smoke" }]
+      }
+    });
+    assert(integrationSync.job?.type === "integration-sync", "integration sync did not enqueue a job");
+    assert(integrationSync.job.metadata.provider === "github", "integration sync job missed provider metadata");
+    let integrationJobHealth = await request(`${baseUrl}/api/backend/health`, {
+      token: login.token
+    });
+    if (!integrationJobHealth.jobs.recent.some((job) => job.id === integrationSync.job.id)) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      integrationJobHealth = await request(`${baseUrl}/api/backend/health`, {
+        token: login.token
+      });
+    }
+    assert(integrationJobHealth.jobs.recent.some((job) => job.id === integrationSync.job.id), "backend health did not expose integration sync job");
+
     const aiOperator = await request(`${baseUrl}/api/ai/operator`, {
       method: "POST",
       token: login.token,

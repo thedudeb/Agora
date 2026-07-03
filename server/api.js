@@ -267,7 +267,19 @@ function backgroundJobHandler(job, fallbackHandler = null) {
   if (["feature-request-email", "feature-request-update-email", "invitation-email", "portal-action-email"].includes(job.type)) {
     return () => sendSmtpMail(job.payload || {});
   }
+  if (job.type === "integration-sync") {
+    return () => recordIntegrationSyncJob(job);
+  }
   return null;
+}
+
+async function recordIntegrationSyncJob(job) {
+  job.metadata = {
+    ...(job.metadata || {}),
+    processedAt: new Date().toISOString(),
+    simulated: true
+  };
+  return job;
 }
 
 function scheduleBackgroundDrain(delayMs = 0) {
@@ -519,6 +531,7 @@ function apiCapabilitiesDocument() {
     resources: {
       canonical: ["projects", "tasks"],
       structuredCollections: Object.keys(recordCollections),
+      integrationSync: "POST /api/integrations/sync",
       workspaceSnapshot: true,
       realtime: "GET /api/realtime/events"
     },
@@ -594,6 +607,9 @@ function openApiDocument() {
       },
       "/api/backend/health": {
         get: operation("Backend health", "Returns authenticated readiness, metrics, jobs, production gates, and session scope.")
+      },
+      "/api/integrations/sync": {
+        post: operation("Queue integration sync", "Queues an inbound, outbound, or two-way provider sync job for sessions with integration write permission.")
       }
     },
     components: {
@@ -952,6 +968,29 @@ function createServer(options = {}) {
           triggerKind: cleanString(body.triggerKind)
         });
         sendJson(response, 200, result);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/integrations/sync") {
+        if (!hasPermission(session, "integrations:write")) {
+          sendError(response, 403, "Missing integrations write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const provider = cleanString(body.provider || "github").toLowerCase() || "github";
+        const direction = ["inbound", "outbound", "two-way"].includes(cleanString(body.direction)) ? cleanString(body.direction) : "inbound";
+        const job = enqueueBackgroundJob("integration-sync", null, {
+          provider,
+          direction,
+          requestedBy: session.user.id,
+          workspaceId: storage.workspaceId || workspace.id
+        }, {
+          provider,
+          direction,
+          mapping: body.mapping && typeof body.mapping === "object" && !Array.isArray(body.mapping) ? body.mapping : {},
+          records: Array.isArray(body.records) ? body.records.slice(0, 100) : []
+        });
+        sendJson(response, job.status === "rejected" ? 202 : 201, { job, jobs: backgroundJobSnapshot() });
         return;
       }
 

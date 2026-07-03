@@ -8396,6 +8396,60 @@ function githubIntegrationPreviewRows(integrations) {
   }).slice(0, 8);
 }
 
+function githubSyncMappingPayload(integrations = integrationSettings()) {
+  const github = normalizeGitHubIntegration(integrations.github, state.projects);
+  const rows = githubIntegrationPreviewRows(integrations);
+  return {
+    provider: "github",
+    direction: "inbound",
+    generatedAt: new Date().toISOString(),
+    mapping: github.fieldMapping,
+    repositories: github.repositories.map((repo) => ({
+      fullName: repo.fullName,
+      projectId: repo.projectId,
+      syncIssues: repo.syncIssues,
+      syncPullRequests: repo.syncPullRequests,
+      closeOnDone: repo.closeOnDone
+    })),
+    records: rows.map((row) => ({
+      agoraId: row.task.id,
+      externalId: `${row.repo.fullName}#${row.issueNumber}`,
+      pullRequestId: row.prNumber ? `${row.repo.fullName}#${row.prNumber}` : "",
+      title: row.task.title,
+      issueState: row.issueState,
+      pullRequestState: row.prState,
+      status: row.task.status,
+      projectId: row.task.projectId,
+      assignee: row.task.assignee,
+      labels: [...new Set([...(row.task.tags || []), row.repo.labelPrefix].filter(Boolean))]
+    }))
+  };
+}
+
+function renderSyncMappingLayer(integrations) {
+  const payload = githubSyncMappingPayload(integrations);
+  return `
+    <div class="sync-mapping-layer">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Sync mapping layer</p>
+          <h3>GitHub issue to Agora task</h3>
+        </div>
+        <span class="status-pill inbox-blue">${payload.records.length} records</span>
+      </div>
+      <div class="sync-mapping-grid">
+        ${Object.entries(payload.mapping).map(([externalField, agoraField]) => `
+          <article>
+            <span>${escapeHtml(externalField)}</span>
+            <strong>${escapeHtml(agoraField)}</strong>
+          </article>
+        `).join("")}
+      </div>
+      <pre>${escapeHtml(JSON.stringify(payload, null, 2))}</pre>
+    </div>
+  `;
+}
+
 function renderGitHubIntegrationPanel(integrations) {
   const github = normalizeGitHubIntegration(integrations.github, state.projects);
   const connection = integrations.connections.find((item) => item.id === "github") || {};
@@ -8451,6 +8505,7 @@ function renderGitHubIntegrationPanel(integrations) {
           </article>
         `).join("")}
       </div>
+      ${renderSyncMappingLayer(integrations)}
       <div class="github-link-preview">
         <div class="mini-section-header">
           <strong>Linked work preview</strong>
@@ -8467,6 +8522,10 @@ function renderGitHubIntegrationPanel(integrations) {
             </article>
           `).join("") : emptyState("Pick a project with tasks to preview GitHub issue and PR links.")}
         </div>
+      </div>
+      <div class="integration-action-row">
+        <button class="button button-secondary" type="button" id="github-copy-sync-payload">Copy Sync Payload</button>
+        <button class="button button-primary" type="button" id="github-queue-sync" ${apiSession && canWrite("integrations:write") ? "" : "disabled"}>Queue GitHub Sync</button>
       </div>
     </section>
   `;
@@ -32079,6 +32138,67 @@ function recordIntegrationTestEvent() {
   showToast(connected.length ? "Integration test event logged" : "No connected integrations yet", connected.length ? "success" : "info");
 }
 
+async function copyGitHubSyncPayload() {
+  const payload = JSON.stringify(githubSyncMappingPayload(), null, 2);
+  await copyCommandText(payload, "GitHub sync payload copied");
+}
+
+async function queueGitHubIntegrationSync() {
+  if (!apiSession) {
+    showToast("Connect the API before queueing GitHub sync", "info");
+    return;
+  }
+  if (!requireAdminAction("integrations-update", { deniedMessage: "Your role cannot queue integration sync" })) return;
+  const payload = githubSyncMappingPayload();
+  try {
+    const result = await apiRequest("/api/integrations/sync", {
+      method: "POST",
+      body: payload
+    });
+    const integrations = integrationSettings();
+    state.workspace = {
+      ...state.workspace,
+      integrations: normalizeWorkspaceIntegrations({
+        ...integrations,
+        github: {
+          ...integrations.github,
+          repositories: integrations.github.repositories.map((repo) => ({
+            ...repo,
+            lastSyncedAt: new Date().toISOString(),
+            status: "syncing"
+          }))
+        },
+        connections: integrations.connections.map((connection) => connection.id === "github"
+          ? { ...connection, status: "connected", health: "healthy", lastSyncedAt: new Date().toISOString() }
+          : connection)
+      }, state.projects)
+    };
+    addAuditEvent({
+      action: "integration_sync_queued",
+      detail: `Queued GitHub sync job ${result.job?.id || ""}`.trim(),
+      targetType: "integrationSettings",
+      targetId: "github",
+      impact: "medium",
+      reversible: true,
+      restoreHint: "Cancel or clear the integration sync job from Backend Health if it has not run.",
+      metadata: {
+        provider: "github",
+        jobId: result.job?.id || "",
+        records: payload.records.length
+      }
+    });
+    backendHealth = {
+      ...(backendHealth || {}),
+      jobs: result.jobs || backendHealth?.jobs
+    };
+    saveState();
+    render();
+    showToast("GitHub sync queued", "success");
+  } catch (error) {
+    showToast(`GitHub sync failed: ${error.message}`, "info");
+  }
+}
+
 function savePaymentSettings() {
   if (!requireAdminAction("payment-settings", { deniedMessage: "Your role cannot manage payments" })) return;
   const provider = document.querySelector("#payment-provider")?.value || "none";
@@ -34865,6 +34985,18 @@ document.addEventListener("click", (event) => {
   const integrationTestButton = event.target.closest("#integration-test-event");
   if (integrationTestButton) {
     recordIntegrationTestEvent();
+    return;
+  }
+
+  const githubCopySyncPayloadButton = event.target.closest("#github-copy-sync-payload");
+  if (githubCopySyncPayloadButton) {
+    copyGitHubSyncPayload();
+    return;
+  }
+
+  const githubQueueSyncButton = event.target.closest("#github-queue-sync");
+  if (githubQueueSyncButton && !githubQueueSyncButton.disabled) {
+    queueGitHubIntegrationSync();
     return;
   }
 

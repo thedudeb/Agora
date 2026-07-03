@@ -62,6 +62,7 @@ Writes should be narrow and previewable:
 - `POST /api/records/:collection` for structured collaboration records.
 - `POST /api/feature-requests` for authenticated feature requests that should become tasks.
 - `POST /api/feature-requests/:id/updates` for feature-request pipeline updates and requester notifications.
+- `POST /api/integrations/sync` for previewed external sync handoffs such as GitHub issue and pull-request mapping jobs.
 
 Agents must ask for confirmation before:
 
