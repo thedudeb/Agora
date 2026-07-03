@@ -21963,6 +21963,139 @@ function autopilotScenarioImpact(scenario) {
   };
 }
 
+function createAutopilotTask({ projectId, title, summary, priority = "high", tags = [] }) {
+  const now = new Date().toISOString();
+  const task = normalizeTaskRecord({
+    id: uid("task"),
+    projectId,
+    title,
+    description: summary,
+    assignee: activeMemberId(),
+    status: "todo",
+    priority,
+    startDate: todayKey(),
+    dueDate: shiftDate(todayKey(), 3),
+    blockedBy: [],
+    tags: ["autopilot", ...tags],
+    subtasks: [],
+    customFields: { source: "Project Autopilot" },
+    createdAt: now,
+    updatedAt: now
+  });
+  state.tasks = [task, ...state.tasks];
+  return task;
+}
+
+function createAutopilotRaid({ projectId, title, detail, type = "decision", severity = "medium" }) {
+  const project = byId(state.projects, projectId);
+  const now = new Date().toISOString();
+  const item = {
+    id: uid("raid"),
+    type,
+    projectId,
+    companyId: project?.companyId || "",
+    title,
+    detail,
+    owner: activeMemberId(),
+    severity,
+    status: type === "decision" ? "decided" : "open",
+    mitigation: type === "decision" ? "Approved by Project Autopilot scenario." : "Review mitigation from the Autopilot recovery plan.",
+    visibility: "internal",
+    linkType: "project",
+    linkId: projectId,
+    sourceType: "import",
+    createdAt: now,
+    updatedAt: now
+  };
+  state.raidItems = normalizeRaidItems([item, ...(state.raidItems || [])]);
+  return item;
+}
+
+function applyAutopilotScenario(scenarioId) {
+  const scenario = projectAutopilotRecoveryScenarios().find((item) => item.id === scenarioId);
+  if (!scenario) {
+    showToast("Autopilot scenario is no longer available", "info");
+    return;
+  }
+  const projectId = scenario.projectId || activeProjects()[0]?.id || state.projects[0]?.id || "";
+  const openProjectTasks = projectId ? getProjectTasks(projectId, false).filter((task) => task.status !== "done") : activeTasks().filter((task) => task.status !== "done");
+  let appliedRecord = null;
+  let appliedType = "audit";
+
+  if (scenario.id === "schedule-reset") {
+    const overdueTasks = openProjectTasks.filter(isOverdue).slice(0, 3);
+    overdueTasks.forEach((task) => {
+      task.dueDate = shiftDate(task.dueDate || todayKey(), 3);
+      task.updatedAt = new Date().toISOString();
+      task.customFields = { ...(task.customFields || {}), autopilotRecovery: "Date reset +3d" };
+    });
+    appliedRecord = overdueTasks[0] || createAutopilotTask({ projectId, title: scenario.title, summary: scenario.summary, tags: ["schedule"] });
+    appliedType = overdueTasks.length ? "tasks" : "task";
+  } else if (scenario.id === "workload-rebalance") {
+    const loadByMember = members.map((member) => ({
+      member,
+      tasks: activeTasks().filter((task) => task.status !== "done" && task.assignee === member.id)
+    })).sort((a, b) => b.tasks.length - a.tasks.length);
+    const sender = loadByMember[0];
+    const receiver = loadByMember[loadByMember.length - 1];
+    const task = sender?.tasks.find((item) => item.projectId === projectId) || sender?.tasks[0];
+    if (task && receiver && sender.member.id !== receiver.member.id) {
+      task.assignee = receiver.member.id;
+      task.updatedAt = new Date().toISOString();
+      task.customFields = { ...(task.customFields || {}), autopilotRecovery: `Rebalanced from ${sender.member.name}` };
+      appliedRecord = task;
+      appliedType = "task";
+    } else {
+      appliedRecord = createAutopilotTask({ projectId, title: scenario.title, summary: scenario.summary, tags: ["capacity"] });
+      appliedType = "task";
+    }
+  } else if (["schedule-scope-trim", "approval-reset", "scope-triage"].includes(scenario.id)) {
+    appliedRecord = createAutopilotRaid({
+      projectId,
+      title: scenario.title,
+      detail: scenario.summary,
+      type: "decision",
+      severity: scenario.severity === "critical" ? "high" : "medium"
+    });
+    appliedType = "decision";
+  } else if (scenario.id === "blocker-escalate") {
+    appliedRecord = createAutopilotRaid({
+      projectId,
+      title: scenario.title,
+      detail: scenario.summary,
+      type: "issue",
+      severity: "high"
+    });
+    appliedType = "issue";
+  } else {
+    appliedRecord = createAutopilotTask({
+      projectId,
+      title: scenario.title,
+      summary: scenario.summary,
+      priority: scenario.severity === "critical" ? "urgent" : "high",
+      tags: ["recovery"]
+    });
+    appliedType = "task";
+  }
+
+  addAuditEvent({
+    action: "autopilot_scenario_applied",
+    detail: `Applied Autopilot scenario: ${scenario.title}`,
+    targetType: appliedType,
+    targetId: appliedRecord?.id || scenario.id,
+    metadata: {
+      scenarioId: scenario.id,
+      driftId: scenario.driftId,
+      projectId,
+      confidence: scenario.confidence,
+      proposedChanges: scenario.proposedChanges
+    }
+  });
+  saveState();
+  render();
+  showToast("Autopilot scenario applied with audit trail", "success");
+}
+
 function renderProjectAutopilot() {
   const drifts = projectAutopilotDriftCards();
   const scenarios = projectAutopilotRecoveryScenarios(drifts);
@@ -22018,7 +22151,7 @@ function renderProjectAutopilot() {
         </div>
         <span class="status-pill inbox-blue">${scenarios.length} options</span>
       </div>
-      <p class="panel-note">Each option is still proposal-only: Autopilot names the likely recovery path before impact simulation or apply controls appear. Strategies include Move deadline, Reduce scope, Reassign owner, Escalate approval, Split task, and Notify client.</p>
+      <p class="panel-note">Each option is review-first: Autopilot names the likely recovery path, simulates impact, then applies audited changes only after approval. Strategies include Move deadline, Reduce scope, Reassign owner, Escalate approval, Split task, and Notify client.</p>
       <div class="autopilot-scenario-grid">
         ${scenarios.length ? scenarios.map(renderAutopilotScenarioCard).join("") : emptyState("No recovery scenarios are needed while drift is clear.")}
       </div>
@@ -22075,6 +22208,10 @@ function renderAutopilotScenarioCard(scenario) {
           <span>Risk score <b>${impact.riskScore}</b></span>
           <span>Confidence <b>${impact.confidence}%</b></span>
         </div>
+      </div>
+      <div class="autopilot-scenario-actions">
+        <button class="button button-primary compact-button" type="button" data-autopilot-apply="${escapeHtml(scenario.id)}">Approve and Apply</button>
+        <button class="button button-secondary compact-button" type="button" data-project-id="${escapeHtml(scenario.projectId)}" ${scenario.projectId ? "" : "disabled"}>Open Project</button>
       </div>
     </article>
   `;
@@ -39767,6 +39904,12 @@ document.addEventListener("click", (event) => {
   const portfolioActionButton = event.target.closest("[data-portfolio-action]");
   if (portfolioActionButton) {
     handlePortfolioDecision(portfolioActionButton.dataset.portfolioProject, portfolioActionButton.dataset.portfolioAction);
+    return;
+  }
+
+  const autopilotApplyButton = event.target.closest("[data-autopilot-apply]");
+  if (autopilotApplyButton) {
+    applyAutopilotScenario(autopilotApplyButton.dataset.autopilotApply);
     return;
   }
 

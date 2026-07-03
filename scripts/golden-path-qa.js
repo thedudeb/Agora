@@ -184,12 +184,14 @@ const routeChecks = [
       "Human approval",
       "Recovery Scenario Builder",
       "Autopilot recovery proposals",
-      "proposal-only",
+      "review-first",
       "Move deadline",
       "Impact Simulator",
       "Downstream",
       "Client promises",
       "Risk score",
+      "Approve and Apply",
+      "applies audited changes",
       "Plan:",
       "Reality:"
     ]

@@ -3053,6 +3053,14 @@ body[data-tutorial-target="view"] #app-view {
   font-size: 0.84rem;
 }
 
+.autopilot-scenario-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
 .operator-center-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 0.75fr);
