@@ -192,6 +192,10 @@ const routeChecks = [
       "Risk score",
       "Approve and Apply",
       "applies audited changes",
+      "Autopilot Learning Log",
+      "Workspace preferences",
+      "Preferred strategy",
+      "Reject",
       "Plan:",
       "Reality:"
     ]

@@ -3061,6 +3061,67 @@ body[data-tutorial-target="view"] #app-view {
   margin-top: 12px;
 }
 
+.autopilot-learning-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.autopilot-learning-summary article,
+.autopilot-learning-row {
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.autopilot-learning-summary span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.autopilot-learning-summary strong {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.autopilot-learning-summary small,
+.autopilot-learning-row small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.autopilot-learning-list {
+  display: grid;
+  gap: 10px;
+}
+
+.autopilot-learning-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.autopilot-learning-row strong {
+  display: block;
+  margin-top: 6px;
+}
+
+.autopilot-learning-row p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .operator-center-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 0.75fr);
@@ -12016,6 +12077,7 @@ body[data-density="compact"] .main-content {
   .command-inbox-brief,
   .autopilot-hero-proof,
   .autopilot-scenario-grid,
+  .autopilot-learning-summary,
   .project-memory-form,
   .project-memory-source-grid,
   .project-memory-contract-grid,
@@ -12058,6 +12120,7 @@ body[data-density="compact"] .main-content {
 
   .project-memory-card,
   .project-memory-proposal,
+  .autopilot-learning-row,
   .autopilot-impact-simulator > div {
     grid-template-columns: 1fr;
   }

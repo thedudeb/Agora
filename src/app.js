@@ -1224,6 +1224,7 @@ const seedData = {
     "task-2": { date: "2026-06-27", lane: "next" },
     "task-7": { date: "2026-06-27", lane: "later" }
   },
+  autopilotLearningLog: [],
   updateCaptures: [],
   updateExtractionPreviews: [],
   dashboardWidgets: [
@@ -2933,6 +2934,7 @@ function normalizeState(nextState) {
     savedViews: normalizeSavedViews(nextState.savedViews),
     dailyNotes: Object.prototype.hasOwnProperty.call(nextState, "dailyNotes") ? nextState.dailyNotes || {} : seedData.dailyNotes,
     dailyPlans: Object.prototype.hasOwnProperty.call(nextState, "dailyPlans") ? nextState.dailyPlans || {} : seedData.dailyPlans,
+    autopilotLearningLog: normalizeAutopilotLearningLog(nextState.autopilotLearningLog),
     dashboardWidgets: normalizeDashboardWidgets(nextState.dashboardWidgets),
     dashboardLayouts: normalizeDashboardLayouts(nextState.dashboardLayouts),
     selectedDashboardLayoutId: normalizeSelectedDashboardLayoutId(nextState.selectedDashboardLayoutId, nextState.dashboardLayouts),
@@ -11234,6 +11236,7 @@ function offlineStorageContract() {
       "activities",
       "documents",
       "files",
+      "autopilotLearningLog",
       "updateCaptures",
       "updateExtractionPreviews",
       "projectBacklog",
@@ -11585,6 +11588,7 @@ function portableWorkspaceManifest() {
       templates: projectTemplates.length,
       documents: documents.length,
       files: files.length,
+      autopilotLearningLog: normalizeAutopilotLearningLog(state.autopilotLearningLog).length,
       updateCaptures: normalizeUpdateCaptures(state.updateCaptures).length,
       updateExtractionPreviews: normalizeUpdateExtractionPreviews(state.updateExtractionPreviews).length,
       timeEntries: timeEntries.length,
@@ -21721,6 +21725,55 @@ function autopilotSeverityTone(severity) {
   return "neutral";
 }
 
+function normalizeAutopilotLearningLog(entries = []) {
+  return (Array.isArray(entries) ? entries : [])
+    .filter((entry) => entry && typeof entry === "object")
+    .map((entry) => ({
+      id: String(entry.id || uid("autopilot-learning")),
+      scenarioId: String(entry.scenarioId || ""),
+      driftId: String(entry.driftId || ""),
+      projectId: String(entry.projectId || ""),
+      title: String(entry.title || "Autopilot scenario").slice(0, 180),
+      strategy: String(entry.strategy || "Recovery").slice(0, 80),
+      decision: ["applied", "rejected"].includes(entry.decision) ? entry.decision : "applied",
+      confidence: clamp(Number(entry.confidence || 0), 0, 100),
+      actorId: String(entry.actorId || activeMemberId()),
+      createdAt: entry.createdAt || new Date().toISOString()
+    }))
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 80);
+}
+
+function recordAutopilotLearning(scenario, decision) {
+  state.autopilotLearningLog = normalizeAutopilotLearningLog([
+    {
+      id: uid("autopilot-learning"),
+      scenarioId: scenario.id,
+      driftId: scenario.driftId,
+      projectId: scenario.projectId,
+      title: scenario.title,
+      strategy: scenario.strategy,
+      decision,
+      confidence: scenario.confidence,
+      actorId: activeMemberId(),
+      createdAt: new Date().toISOString()
+    },
+    ...(state.autopilotLearningLog || [])
+  ]);
+}
+
+function autopilotLearningStats() {
+  const log = normalizeAutopilotLearningLog(state.autopilotLearningLog);
+  const applied = log.filter((entry) => entry.decision === "applied");
+  const rejected = log.filter((entry) => entry.decision === "rejected");
+  const strategyCounts = log.reduce((counts, entry) => {
+    counts[entry.strategy] = (counts[entry.strategy] || 0) + 1;
+    return counts;
+  }, {});
+  const preferredStrategy = Object.entries(strategyCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || "No preference yet";
+  return { log, applied, rejected, preferredStrategy };
+}
+
 function projectAutopilotDriftCards() {
   const openTasks = activeTasks().filter((task) => task.status !== "done");
   const overdue = openTasks.filter(isOverdue);
@@ -22091,14 +22144,35 @@ function applyAutopilotScenario(scenarioId) {
       proposedChanges: scenario.proposedChanges
     }
   });
+  recordAutopilotLearning(scenario, "applied");
   saveState();
   render();
   showToast("Autopilot scenario applied with audit trail", "success");
 }
 
+function rejectAutopilotScenario(scenarioId) {
+  const scenario = projectAutopilotRecoveryScenarios().find((item) => item.id === scenarioId);
+  if (!scenario) {
+    showToast("Autopilot scenario is no longer available", "info");
+    return;
+  }
+  recordAutopilotLearning(scenario, "rejected");
+  addAuditEvent({
+    action: "autopilot_scenario_rejected",
+    detail: `Rejected Autopilot scenario: ${scenario.title}`,
+    targetType: "autopilot",
+    targetId: scenario.id,
+    metadata: { scenarioId: scenario.id, driftId: scenario.driftId, projectId: scenario.projectId, confidence: scenario.confidence }
+  });
+  saveState();
+  render();
+  showToast("Autopilot scenario rejected and learned", "success");
+}
+
 function renderProjectAutopilot() {
   const drifts = projectAutopilotDriftCards();
   const scenarios = projectAutopilotRecoveryScenarios(drifts);
+  const learning = autopilotLearningStats();
   const critical = drifts.filter((drift) => ["critical", "high"].includes(drift.severity));
   const averageConfidence = drifts.length ? Math.round(drifts.reduce((sum, drift) => sum + drift.confidence, 0) / drifts.length) : 0;
 
@@ -22156,6 +22230,24 @@ function renderProjectAutopilot() {
         ${scenarios.length ? scenarios.map(renderAutopilotScenarioCard).join("") : emptyState("No recovery scenarios are needed while drift is clear.")}
       </div>
     </section>
+
+    <section class="panel autopilot-learning-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Autopilot Learning Log</p>
+          <h2>Workspace preferences</h2>
+        </div>
+        <span class="status-pill inbox-blue">${learning.log.length} decisions</span>
+      </div>
+      <div class="autopilot-learning-summary">
+        <article><span>Applied</span><strong>${learning.applied.length}</strong><small>approved recovery paths</small></article>
+        <article><span>Rejected</span><strong>${learning.rejected.length}</strong><small>signals Autopilot should avoid</small></article>
+        <article><span>Preferred strategy</span><strong>${escapeHtml(learning.preferredStrategy)}</strong><small>based on recent PM choices</small></article>
+      </div>
+      <div class="autopilot-learning-list">
+        ${learning.log.length ? learning.log.slice(0, 8).map(renderAutopilotLearningRow).join("") : emptyState("Approve or reject scenarios to teach Autopilot how this workspace likes to recover.")}
+      </div>
+    </section>
   `;
 }
 
@@ -22211,8 +22303,22 @@ function renderAutopilotScenarioCard(scenario) {
       </div>
       <div class="autopilot-scenario-actions">
         <button class="button button-primary compact-button" type="button" data-autopilot-apply="${escapeHtml(scenario.id)}">Approve and Apply</button>
+        <button class="button button-secondary compact-button" type="button" data-autopilot-reject="${escapeHtml(scenario.id)}">Reject</button>
         <button class="button button-secondary compact-button" type="button" data-project-id="${escapeHtml(scenario.projectId)}" ${scenario.projectId ? "" : "disabled"}>Open Project</button>
       </div>
+    </article>
+  `;
+}
+
+function renderAutopilotLearningRow(entry) {
+  return `
+    <article class="autopilot-learning-row">
+      <div>
+        <span class="status-pill ${entry.decision === "applied" ? "inbox-green" : "inbox-red"}">${escapeHtml(entry.decision)}</span>
+        <strong>${escapeHtml(entry.title)}</strong>
+        <p>${escapeHtml(entry.strategy)} / ${escapeHtml(projectName(entry.projectId))} / ${entry.confidence}% confidence</p>
+      </div>
+      <small>${escapeHtml(memberName(entry.actorId))} / ${escapeHtml(formatTimestamp(entry.createdAt))}</small>
     </article>
   `;
 }
@@ -39910,6 +40016,12 @@ document.addEventListener("click", (event) => {
   const autopilotApplyButton = event.target.closest("[data-autopilot-apply]");
   if (autopilotApplyButton) {
     applyAutopilotScenario(autopilotApplyButton.dataset.autopilotApply);
+    return;
+  }
+
+  const autopilotRejectButton = event.target.closest("[data-autopilot-reject]");
+  if (autopilotRejectButton) {
+    rejectAutopilotScenario(autopilotRejectButton.dataset.autopilotReject);
     return;
   }
 
