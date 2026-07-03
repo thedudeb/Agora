@@ -3250,6 +3250,13 @@ body[data-tutorial-target="view"] #app-view {
   gap: 16px;
 }
 
+.portfolio-planning-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: 16px;
+  align-items: start;
+}
+
 .status-report-panel {
   display: grid;
   gap: 12px;
@@ -3264,6 +3271,8 @@ body[data-tutorial-target="view"] #app-view {
 
 .report-card-list,
 .portfolio-report-list,
+.portfolio-command-list,
+.portfolio-scenario-grid,
 .workload-report-list,
 .risk-list {
   display: grid;
@@ -3272,6 +3281,8 @@ body[data-tutorial-target="view"] #app-view {
 
 .report-card,
 .portfolio-report-row,
+.portfolio-command-row,
+.portfolio-scenario-card,
 .workload-report-row,
 .risk-item {
   padding: 12px;
@@ -3286,9 +3297,28 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .report-card-main,
-.portfolio-report-row {
+.portfolio-report-row,
+.portfolio-command-row,
+.portfolio-scenario-card {
   display: grid;
   gap: 10px;
+}
+
+.portfolio-command-center-panel,
+.portfolio-scenario-panel,
+.portfolio-capacity-panel {
+  align-content: start;
+}
+
+.portfolio-scenario-card p,
+.portfolio-scenario-card small {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.portfolio-scenario-card .status-pill {
+  justify-self: start;
 }
 
 .health-bar,
@@ -10686,6 +10716,7 @@ body[data-density="compact"] .main-content {
   .daily-layout,
   .time-grid,
   .reports-grid,
+  .portfolio-planning-grid,
   .sprint-grid,
   .templates-grid,
   .automation-grid,

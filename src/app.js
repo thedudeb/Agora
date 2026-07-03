@@ -963,6 +963,7 @@ const routes = {
   operator: "Operator",
   collaboration: "Collaboration",
   reports: "Reports",
+  portfolio: "Portfolio",
   decisions: "Decisions",
   visibility: "Client Visibility",
   goals: "Goals",
@@ -5048,6 +5049,7 @@ function canAccessRoute(route) {
     data: "workspace:import",
     settings: "workspace:read",
     reports: "workspace:read",
+    portfolio: "workspace:read",
     decisions: "workspace:read",
     visibility: "workspace:read",
     goals: "workspace:read",
@@ -10885,6 +10887,13 @@ function commandPaletteBaseItems() {
       keywords: "backup import export api sync"
     },
     {
+      id: "route:portfolio",
+      title: "Open Portfolio",
+      detail: "Review cross-project health, capacity, scenarios, and resource tradeoffs",
+      group: "Navigate",
+      keywords: "portfolio resource planning capacity scenario priority health"
+    },
+    {
       id: "migration:open",
       title: "Open Migration Studio",
       detail: "Preview Trello JSON or CSV imports with mapping, backup, and rollback checks",
@@ -15897,6 +15906,7 @@ function render() {
     operator: renderOperatorCenter,
     collaboration: renderCollaborationHub,
     reports: renderReports,
+    portfolio: renderPortfolioResourcePlanning,
     decisions: renderDecisionLog,
     visibility: renderClientVisibilityReview,
     goals: renderGoals,
@@ -15943,7 +15953,7 @@ function render() {
 function sidebarGroupForRoute(route) {
   if (["landing", "dashboard", "command-center", "launch", "daily", "inbox"].includes(route)) return "home";
   if (["board", "list", "calendar", "sprint", "my-work", "time", "collaboration"].includes(route)) return "work";
-  if (["reports", "decisions", "goals", "operator", "automations"].includes(route)) return "control";
+  if (["reports", "portfolio", "decisions", "goals", "operator", "automations"].includes(route)) return "control";
   if (["visibility", "portal", "project-backlog", "intake", "feature-requests", "companies", "company"].includes(route)) return "clients";
   if (["marketplace", "templates", "docs", "fields"].includes(route)) return "library";
   if (["audit", "permissions", "release", "beta", "readiness", "data", "settings"].includes(route)) return "admin";
@@ -24423,6 +24433,177 @@ function renderReports() {
           </div>
         </div>
         ${renderRiskQueue(overdueTasks, blockedTasks, openIntake)}
+      </section>
+    </div>
+  `;
+}
+
+function portfolioRows() {
+  const tasks = activeTasks();
+  const timeEntries = getFilteredTimeEntries();
+  const submissions = getVisibleIntakeSubmissions();
+  const releaseMap = new Map(releaseProjectCandidates().map((release) => [release.project.id, release]));
+  return activeProjects().map((project) => {
+    const report = projectReport(project, tasks, timeEntries, submissions);
+    const release = releaseMap.get(project.id);
+    const openRaid = normalizeRaidItems(state.raidItems).filter((item) => item.projectId === project.id && item.status !== "closed");
+    const trackedBudget = sumMinutes(timeEntries.filter((entry) => byId(state.tasks, entry.taskId)?.projectId === project.id));
+    const ownerLoad = capacityRows(tasks, timeEntries).find((row) => row.member.id === project.owner);
+    return {
+      project,
+      report,
+      release,
+      openRaid,
+      trackedBudget,
+      ownerLoad,
+      health: report.health,
+      releaseConfidence: release?.confidence || report.health,
+      blockers: report.blocked.length + openRaid.filter((item) => ["high", "critical"].includes(item.severity)).length,
+      targetDate: project.dueDate || release?.targetDate || ""
+    };
+  }).sort((a, b) => a.health - b.health || cleanString(a.targetDate || "9999-12-31").localeCompare(cleanString(b.targetDate || "9999-12-31")));
+}
+
+function portfolioScenarioPlans(rows, workloadRows) {
+  const overloaded = workloadRows.filter((row) => row.status === "overloaded").length;
+  const available = workloadRows.filter((row) => row.status === "available" || row.remainingMinutes > 240);
+  const riskiest = rows[0];
+  const nextBacklog = normalizeProjectBacklog(state.projectBacklog).find((item) => !["launched", "rejected"].includes(item.status));
+  const release = selectedReleaseRecord(releaseProjectCandidates());
+  return [
+    {
+      id: "add-project",
+      label: "Add one project",
+      detail: nextBacklog ? `Model ${nextBacklog.title} as a new ${nextBacklog.impact >= 4 ? "high-impact" : "standard"} project.` : "Model a new project with the current team.",
+      impact: available.length ? `${available[0].member.name} can absorb about ${formatDuration(Math.max(0, available[0].remainingMinutes))}.` : "No clearly available owner; expect load to rise.",
+      loadDelta: nextBacklog ? Math.max(360, nextBacklog.impact * 120) : 600,
+      risk: available.length ? "medium" : "high"
+    },
+    {
+      id: "move-release",
+      label: "Move release +2 weeks",
+      detail: release ? `Move ${release.project.name} from ${release.targetDate ? formatDate(release.targetDate) : "unscheduled"} by two weeks.` : "Select or date a release to model a schedule move.",
+      impact: release ? `${release.blockers.length} blocker${release.blockers.length === 1 ? "" : "s"} get more room; due-soon pressure drops.` : "No release selected.",
+      loadDelta: release ? -Math.round(release.scope.reduce((total, task) => total + taskPlannedMinutes(task), 0) * 0.2) : 0,
+      risk: release?.blockers.length ? "medium" : "low"
+    },
+    {
+      id: "rebalance-risk",
+      label: "Rebalance riskiest project",
+      detail: riskiest ? `Move due-soon work from ${riskiest.project.name} to the most available teammate.` : "No project is available to model.",
+      impact: available.length ? `Recommended receiver: ${available[0].member.name}. Current overloaded people: ${overloaded}.` : "No available teammate found; cut scope instead.",
+      loadDelta: -240,
+      risk: overloaded ? "medium" : "low"
+    }
+  ];
+}
+
+function renderPortfolioRow(row) {
+  return `
+    <article class="portfolio-command-row">
+      <button class="table-task-button" type="button" data-project-id="${escapeHtml(row.project.id)}">
+        <strong>${escapeHtml(row.project.name)}</strong>
+        <span>${escapeHtml(companyName(row.project.companyId))} / ${escapeHtml(memberName(row.project.owner))} / ${row.targetDate ? escapeHtml(formatDate(row.targetDate)) : "No target date"}</span>
+      </button>
+      ${renderHealthBar(row.health)}
+      <div class="portfolio-report-metrics">
+        <span>${row.report.openTasks.length} open</span>
+        <span>${row.blockers} blockers</span>
+        <span>${row.releaseConfidence}% release</span>
+        <span>${formatDuration(row.trackedBudget)}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderPortfolioScenarioCard(scenario) {
+  const projected = formatDuration(Math.abs(scenario.loadDelta));
+  return `
+    <article class="portfolio-scenario-card">
+      <span class="status-pill inbox-${scenario.risk === "high" ? "red" : scenario.risk === "medium" ? "amber" : "green"}">${escapeHtml(scenario.risk)} risk</span>
+      <strong>${escapeHtml(scenario.label)}</strong>
+      <p>${escapeHtml(scenario.detail)}</p>
+      <small>${escapeHtml(scenario.impact)}</small>
+      <div class="portfolio-report-metrics">
+        <span>${scenario.loadDelta >= 0 ? "+" : "-"}${projected}</span>
+        <span>${scenario.loadDelta >= 0 ? "added load" : "relieved load"}</span>
+      </div>
+    </article>
+  `;
+}
+
+function renderPortfolioResourcePlanning() {
+  const rows = portfolioRows();
+  const tasks = activeTasks();
+  const timeEntries = getFilteredTimeEntries();
+  const workloadRows = capacityRows(tasks, timeEntries).sort((a, b) => b.utilization - a.utilization);
+  const scenarios = portfolioScenarioPlans(rows, workloadRows);
+  const averageHealth = rows.length ? Math.round(rows.reduce((total, row) => total + row.health, 0) / rows.length) : 100;
+  const blocked = rows.reduce((total, row) => total + row.blockers, 0);
+  const overloaded = workloadRows.filter((row) => row.status === "overloaded");
+  const shippingSoon = rows.filter((row) => row.targetDate && row.targetDate <= shiftDate(todayKey(), 30)).length;
+
+  els.appView.innerHTML = `
+    ${renderRouteHeader({
+      eyebrow: "Portfolio & Resource Planning",
+      title: "Decide what work should exist",
+      description: "Cross-project health, release confidence, workload pressure, and scenario planning in one operating view.",
+      actions: [
+        { label: "Open Reports", route: "reports" },
+        { label: "Open Release", route: "release" },
+        { label: "Open Backlog", route: "project-backlog", primary: true }
+      ]
+    })}
+
+    <div class="metric-grid">
+      ${metric("Portfolio health", `${averageHealth}%`)}
+      ${metric("Projects", rows.length)}
+      ${metric("Shipping soon", shippingSoon)}
+      ${metric("Blockers", blocked)}
+      ${metric("Overloaded", overloaded.length)}
+      ${metric("Tracked time", formatDuration(sumMinutes(timeEntries)))}
+    </div>
+
+    <div class="portfolio-planning-grid">
+      <section class="panel portfolio-command-center-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Portfolio command center</p>
+            <h2>Health, dates, owners, confidence</h2>
+          </div>
+          <span class="status-pill ${blocked ? "inbox-amber" : "inbox-green"}">${blocked ? "Review" : "Clear"}</span>
+        </div>
+        <div class="portfolio-command-list">
+          ${rows.length ? rows.map(renderPortfolioRow).join("") : emptyState("No active projects are available for portfolio planning.")}
+        </div>
+      </section>
+
+      ${renderCapacityPlanningPanel(workloadRows)}
+
+      <section class="panel portfolio-scenario-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Scenario planning</p>
+            <h2>What-if tradeoffs</h2>
+          </div>
+          <span class="status-pill inbox-blue">${scenarios.length} scenarios</span>
+        </div>
+        <div class="portfolio-scenario-grid">
+          ${scenarios.map(renderPortfolioScenarioCard).join("")}
+        </div>
+      </section>
+
+      <section class="panel portfolio-capacity-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Capacity planning</p>
+            <h2>Team availability by owner</h2>
+          </div>
+          <button class="button button-secondary compact-button" type="button" data-route="settings">Capacity Settings</button>
+        </div>
+        <div class="workload-report-list">
+          ${workloadRows.map(renderWorkloadReportRow).join("")}
+        </div>
       </section>
     </div>
   `;
