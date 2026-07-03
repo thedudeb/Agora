@@ -511,6 +511,7 @@ const routeChecks = [
       "Merge policy",
       "Offline apps",
       "Desktop and mobile readiness",
+      "Native shell contract",
       "Local workspace",
       "Retry queue",
       "Portable restore"
@@ -655,6 +656,24 @@ const routeChecks = [
       "Start With Client Onboarding",
       "Review Agency Handoff Pack",
       "Open Recovery Plan"
+    ]
+  },
+  {
+    name: "Mobile app native offline plan",
+    suite: "mobile",
+    route: "settings",
+    query: { settingsTab: "mobile" },
+    width: 500,
+    height: 844,
+    required: [
+      "Mobile app",
+      "Install and alerts",
+      "Native wrapper plan",
+      "iOS and Android offline targets",
+      "Offline command center",
+      "Phone jobs that must work without internet",
+      "Desktop and mobile readiness",
+      "Native shell contract"
     ]
   },
   {

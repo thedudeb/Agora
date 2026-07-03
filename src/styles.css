@@ -7943,6 +7943,97 @@ body[data-tutorial-target="view"] #app-view {
   display: block;
 }
 
+.native-offline-contract,
+.native-mobile-matrix,
+.mobile-command-center {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.native-offline-contract {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.native-offline-contract p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.native-offline-contract span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.native-mobile-grid,
+.mobile-command-list {
+  display: grid;
+  gap: 8px;
+}
+
+.native-mobile-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.native-mobile-grid article,
+.mobile-command-list article {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.native-mobile-grid article div {
+  display: grid;
+  grid-template-columns: minmax(0, 0.45fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.native-mobile-grid span,
+.native-mobile-grid small,
+.mobile-command-list span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.native-mobile-grid p,
+.mobile-command-list p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.mobile-command-list article {
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: start;
+}
+
+.mobile-command-list span {
+  display: inline-flex;
+  justify-content: center;
+  min-height: 24px;
+  padding: 4px 6px;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  text-align: center;
+}
+
+.mobile-command-list strong {
+  display: block;
+}
+
 .invite-accept-panel {
   max-width: 760px;
   margin: 0 auto;
@@ -11149,6 +11240,7 @@ body[data-density="compact"] .main-content {
   .theme-option-grid,
   .trust-grid,
   .mobile-roadmap-list,
+  .native-mobile-grid,
   .automation-pack-list,
   .automation-pack-author-form,
   .automation-pack-selection,
@@ -11679,6 +11771,10 @@ body[data-density="compact"] .main-content {
   .project-command-grid,
   .real-project-grid,
   .mobile-roadmap-list,
+  .native-offline-contract,
+  .native-mobile-grid,
+  .native-mobile-grid article div,
+  .mobile-command-list article,
   .invite-form,
   .invite-accept-form,
   .intake-field-grid,

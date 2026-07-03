@@ -368,6 +368,7 @@ const settingsTabs = [
   { id: "feedback", label: "Feedback" },
   { id: "trust", label: "Trust" },
   { id: "members", label: "Members" },
+  { id: "mobile", label: "Mobile App" },
   { id: "integrations", label: "Integrations" },
   { id: "jobs", label: "Jobs" },
   { id: "payments", label: "Payments" },
@@ -5316,6 +5317,7 @@ function offlineAppReadinessItems() {
 function renderOfflineAppReadinessPanel() {
   const items = offlineAppReadinessItems();
   const doneCount = items.filter((item) => item.done).length;
+  const nativeTargets = nativeMobileShellTargets();
   return `
     <section class="panel offline-readiness-panel">
       <div class="panel-header">
@@ -5335,6 +5337,13 @@ function renderOfflineAppReadinessPanel() {
             </div>
           </article>
         `).join("")}
+      </div>
+      <div class="native-offline-contract">
+        <div>
+          <strong>Native shell contract</strong>
+          <p>iOS, Android, Mac, and Windows wrappers must launch the bundled app shell, keep workspace edits local, preserve the retry queue, and store sessions in platform keychain or keystore storage.</p>
+        </div>
+        <span>${nativeTargets.length} app targets</span>
       </div>
     </section>
   `;
@@ -17187,13 +17196,73 @@ function renderFilters() {
   if (els.pinViewButton) els.pinViewButton.textContent = pinnedView?.pinned ? "Unpin" : "Pin";
 }
 
+function nativeMobileShellTargets() {
+  const appShellReady = Boolean(window.AGORA_DESKTOP?.offlineCapable || "serviceWorker" in navigator);
+  return [
+    {
+      platform: "iOS",
+      status: appShellReady ? "PWA proven, wrapper ready to scope" : "Needs app shell verification",
+      shell: "Capacitor WebView",
+      storage: "WKWebView local store + Keychain session",
+      checks: ["Airplane launch", "Offline task edit", "Bundle export"]
+    },
+    {
+      platform: "Android",
+      status: appShellReady ? "PWA proven, wrapper ready to scope" : "Needs app shell verification",
+      shell: "Capacitor WebView or TWA",
+      storage: "App sandbox store + Android Keystore session",
+      checks: ["Home-screen launch", "Retry queue replay", "Share/export test"]
+    },
+    {
+      platform: "Tablet",
+      status: "Responsive workflows active",
+      shell: "PWA first, native later",
+      storage: "Local workspace snapshot + portable restore",
+      checks: ["Board review", "Gantt scan", "Settings sync"]
+    }
+  ];
+}
+
+function mobileOfflineCommandPaths() {
+  const queueSummary = apiSyncQueueSummary();
+  return [
+    {
+      title: "Today capture",
+      detail: "Create tasks, plan focus work, and log quick notes while offline.",
+      state: "Local-first"
+    },
+    {
+      title: "Board triage",
+      detail: "Move assigned cards, update priority, and keep WIP checks visible on phone.",
+      state: "Touch-ready"
+    },
+    {
+      title: "Inbox approvals",
+      detail: "Review client approvals, comments, and watched-task signals without leaving the app.",
+      state: "Short actions"
+    },
+    {
+      title: "Sync recovery",
+      detail: queueSummary.total ? `${queueSummary.total} queued write${queueSummary.total === 1 ? "" : "s"} visible before replay.` : "Failed writes stay inspectable before replay.",
+      state: "Durable queue"
+    },
+    {
+      title: "Leave with data",
+      detail: "Export workspace JSON and the offline storage contract from the device.",
+      state: "Portable"
+    }
+  ];
+}
+
 function renderMobileAppPanel() {
+  const nativeTargets = nativeMobileShellTargets();
+  const commandPaths = mobileOfflineCommandPaths();
   return `
     <section class="panel">
       <div class="panel-header">
         <div>
           <p class="eyebrow">Mobile app</p>
-          <h2>Install & alerts</h2>
+          <h2>Install and alerts</h2>
         </div>
         <span class="status-pill inbox-blue">${escapeHtml(pwaStatusLabel())}</span>
       </div>
@@ -17224,6 +17293,44 @@ function renderMobileAppPanel() {
             <strong>Offline capture</strong>
             <p>Queue tasks, comments, and time entries locally before syncing through the API.</p>
           </article>
+        </div>
+        <div class="native-mobile-matrix">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Native wrapper plan</p>
+              <h3>iOS and Android offline targets</h3>
+            </div>
+            <span class="status-pill inbox-blue">${nativeTargets.length} targets</span>
+          </div>
+          <div class="native-mobile-grid">
+            ${nativeTargets.map((target) => `
+              <article>
+                <div>
+                  <strong>${escapeHtml(target.platform)}</strong>
+                  <span>${escapeHtml(target.status)}</span>
+                </div>
+                <p>${escapeHtml(target.shell)} / ${escapeHtml(target.storage)}</p>
+                <small>${escapeHtml(target.checks.join(" / "))}</small>
+              </article>
+            `).join("")}
+          </div>
+        </div>
+        <div class="mobile-command-center">
+          <div>
+            <p class="eyebrow">Offline command center</p>
+            <h3>Phone jobs that must work without internet</h3>
+          </div>
+          <div class="mobile-command-list">
+            ${commandPaths.map((path) => `
+              <article>
+                <span>${escapeHtml(path.state)}</span>
+                <div>
+                  <strong>${escapeHtml(path.title)}</strong>
+                  <p>${escapeHtml(path.detail)}</p>
+                </div>
+              </article>
+            `).join("")}
+          </div>
         </div>
       </div>
     </section>
@@ -28199,7 +28306,9 @@ function renderSettings() {
           <button class="button button-primary" type="button" id="ai-save-settings">Save AI Settings</button>
         </div>
       </section>
+      ` : ""}
 
+      ${activeSettingsTab === "mobile" ? `
       ${renderMobileAppPanel()}
       ` : ""}
 

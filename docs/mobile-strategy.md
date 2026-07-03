@@ -19,7 +19,19 @@ Current iOS and Android coverage is the installable PWA. There is no native iOS 
 
 Android installability should be validated against Chrome's PWA path: manifest PNG icons, maskable launcher support, mobile screenshots, standalone launch, cached app shell, local workspace edits, offline export/import, and queued API sync after reconnect.
 
-## 2. Mobile task workflows
+## 2. Native wrapper readiness
+
+The app now treats iOS and Android as explicit offline targets, not just small browser widths. The first native build should be a thin wrapper around the proven web surface unless mobile usage justifies a peer native product.
+
+Recommended target matrix:
+
+- **iOS**: Capacitor WebView with bundled app assets, WKWebView local workspace storage, Keychain-backed API session storage, airplane-mode launch, offline task edit, and bundle export checks.
+- **Android**: Capacitor WebView or trusted web activity with bundled assets, app-sandbox workspace storage, Android Keystore-backed API session storage, home-screen launch, retry queue replay, and share/export checks.
+- **Tablet**: PWA-first support for board review, Gantt scanning, Settings sync review, and portable restore before a separate tablet shell is considered.
+
+Native wrappers should implement the machine-readable `offline-storage-contract.json` from portable exports. The contract is the source of truth for local stores, required collections, retry queue shape, restore files, and secret-handling requirements across web, desktop, iOS, and Android.
+
+## 3. Mobile task workflows
 
 The highest-value mobile use cases are short actions:
 
@@ -33,7 +45,9 @@ The highest-value mobile use cases are short actions:
 
 These should stay available in the PWA before a native app is considered.
 
-## 3. Notification groundwork
+The offline command center should stay focused on five jobs: Today capture, board triage, inbox approvals, sync recovery, and leaving with data. If those jobs work on a phone without internet, Agora has a credible native-mobile spine.
+
+## 4. Notification groundwork
 
 Agora now has the browser-side pieces needed for notification readiness:
 
@@ -44,11 +58,11 @@ Agora now has the browser-side pieces needed for notification readiness:
 
 The next backend step is a durable push subscription model tied to users and workspace memberships.
 
-## 4. Themes and density
+## 5. Themes and density
 
 Mobile usability should stay tied to the workspace theme system rather than a separate mobile skin. Theme presets control the accent and surface palette, while density lets teams pick a more compact task-heavy layout for tablets or a more comfortable layout for touch-heavy phone use.
 
-## 5. Dedicated app decision
+## 6. Dedicated app decision
 
 Move beyond the PWA when at least two of these are true:
 
@@ -64,7 +78,7 @@ Recommended paths:
 - **Expo / React Native**: best if mobile becomes a peer product with deeper native interaction.
 - **Swift/Kotlin**: only if Agora needs platform-specific performance or native-only capabilities.
 
-## 6. Offline acceptance checks
+## 7. Offline acceptance checks
 
 Before calling the mobile experience shippable:
 
@@ -81,3 +95,11 @@ Android-specific pass:
 - Confirm the install prompt shows Agora screenshots and app name correctly.
 - Confirm shortcuts for Today, Inbox, and New Task open the installed app.
 - Confirm Android Chrome can export a workspace JSON file while offline.
+
+Native wrapper pass:
+
+- Confirm the wrapper launches from a fully quit state with no network.
+- Confirm local workspace edits survive app force-quit and device restart.
+- Confirm queued API writes remain visible, retryable, and inspectable before replay.
+- Confirm API session secrets are stored in Keychain or Keystore, not exported in portable bundles.
+- Confirm `workspace.json` and `offline-storage-contract.json` can be exported from the app.
