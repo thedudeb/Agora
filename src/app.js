@@ -2390,6 +2390,17 @@ let backendHealth = apiSession?.backendHealth || null;
 let githubIntegrationStatus = apiSession?.githubIntegrationStatus || null;
 let auditEvents = [];
 let auditLoading = false;
+let auditFilters = {
+  query: "",
+  actor: "all",
+  action: "all",
+  impact: "all",
+  source: "all",
+  project: "all",
+  date: "all",
+  savedView: "all"
+};
+let selectedAuditEventKey = "";
 let activeApiSessions = [];
 let activeApiSessionsStatus = "";
 let activeApiSessionsLoading = false;
@@ -26804,15 +26815,208 @@ function renderSwitcherImportRollback() {
   `;
 }
 
+const auditSavedViews = [
+  {
+    id: "security",
+    label: "Security events",
+    matches: (event) => /auth|session|security|password|permission|invite|github|webhook|portal|payment/i.test(`${event.action || ""} ${event.detail || ""} ${event.targetType || ""}`)
+  },
+  {
+    id: "client-portal",
+    label: "Client portal activity",
+    matches: (event) => /portal|client|visibility/i.test(`${event.action || ""} ${event.detail || ""} ${event.targetType || ""}`)
+  },
+  {
+    id: "operator",
+    label: "AI/operator actions",
+    matches: (event) => /ai|operator|automation|rationale/i.test(`${event.action || ""} ${event.detail || ""} ${event.targetType || ""}`)
+  },
+  {
+    id: "integration-failures",
+    label: "Integration failures",
+    matches: (event) => /integration|github|sync|webhook/i.test(`${event.action || ""} ${event.detail || ""} ${event.targetType || ""}`) && /fail|reject|conflict|invalid|missing|error/i.test(`${event.action || ""} ${event.detail || ""} ${event.restoreHint || ""}`)
+  }
+];
+
+function allAuditEvents() {
+  const localEvents = Array.isArray(state.auditEvents) ? state.auditEvents : [];
+  const serverEvents = Array.isArray(auditEvents) ? auditEvents : [];
+  return mergeRecordsById(localEvents, serverEvents)
+    .map((event, index) => ({
+      ...event,
+      __auditKey: auditEventKey(event, index)
+    }))
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+}
+
+function auditEventKey(event, index = 0) {
+  return event?.id || [event?.action, event?.actorId, event?.targetType, event?.targetId, event?.createdAt, index].filter(Boolean).join(":") || `audit-event-${index}`;
+}
+
+function auditEventProjectId(event = {}) {
+  const metadata = event.metadata || {};
+  if (event.targetType === "project" && event.targetId) return event.targetId;
+  return metadata.projectId || metadata.project || metadata.targetProjectId || "";
+}
+
+function auditEventMatchesDate(event, dateFilter) {
+  if (!dateFilter || dateFilter === "all") return true;
+  const createdAt = Date.parse(event.createdAt || "");
+  if (!createdAt) return false;
+  const now = new Date();
+  if (dateFilter === "today") return new Date(createdAt).toISOString().slice(0, 10) === todayKey();
+  const days = Number(dateFilter);
+  return Number.isFinite(days) && createdAt >= now.getTime() - days * 24 * 60 * 60 * 1000;
+}
+
+function auditEventMatchesFilters(event) {
+  const filters = auditFilters || {};
+  const query = cleanString(filters.query).toLowerCase();
+  const haystack = [
+    event.id,
+    event.action,
+    event.detail,
+    event.actorId,
+    event.targetType,
+    event.targetId,
+    event.source,
+    event.restoreHint,
+    JSON.stringify(event.metadata || {})
+  ].join(" ").toLowerCase();
+  const savedView = auditSavedViews.find((view) => view.id === filters.savedView);
+  if (savedView && !savedView.matches(event)) return false;
+  if (query && !haystack.includes(query)) return false;
+  if (filters.actor !== "all" && cleanString(event.actorId || "system") !== filters.actor) return false;
+  if (filters.action !== "all" && cleanString(event.action || "event") !== filters.action) return false;
+  if (filters.impact !== "all" && auditImpactLevel(event) !== filters.impact) return false;
+  if (filters.source !== "all" && cleanString(event.source || "local") !== filters.source) return false;
+  if (filters.project !== "all" && auditEventProjectId(event) !== filters.project) return false;
+  if (!auditEventMatchesDate(event, filters.date)) return false;
+  return true;
+}
+
+function filteredAuditEvents(events = allAuditEvents()) {
+  return events.filter(auditEventMatchesFilters);
+}
+
+function renderAuditSelect(id, label, value, options) {
+  return `
+    <label>
+      <span>${escapeHtml(label)}</span>
+      <select data-audit-filter="${escapeHtml(id)}">
+        ${options.map((option) => `<option value="${escapeHtml(option.value)}" ${option.value === value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}
+      </select>
+    </label>
+  `;
+}
+
+function renderAuditFilters(events, filteredEvents) {
+  const actors = Array.from(new Set(events.map((event) => cleanString(event.actorId || "system")).filter(Boolean))).sort();
+  const actions = Array.from(new Set(events.map((event) => cleanString(event.action || "event")).filter(Boolean))).sort();
+  const sources = Array.from(new Set(events.map((event) => cleanString(event.source || "local")).filter(Boolean))).sort();
+  const projectIds = Array.from(new Set(events.map(auditEventProjectId).filter(Boolean))).sort();
+  const filters = auditFilters || {};
+  return `
+    <div class="audit-filter-panel">
+      <div class="audit-saved-view-row" aria-label="Audit saved views">
+        <button class="button ${filters.savedView === "all" ? "button-primary" : "button-secondary"} compact-button" type="button" data-audit-saved-view="all">All events</button>
+        ${auditSavedViews.map((view) => `
+          <button class="button ${filters.savedView === view.id ? "button-primary" : "button-secondary"} compact-button" type="button" data-audit-saved-view="${escapeHtml(view.id)}">${escapeHtml(view.label)}</button>
+        `).join("")}
+      </div>
+      <div class="audit-filter-grid">
+        <label>
+          <span>Search</span>
+          <input data-audit-filter="query" value="${escapeHtml(filters.query || "")}" placeholder="Actor, action, target, metadata">
+        </label>
+        ${renderAuditSelect("actor", "Actor", filters.actor || "all", [{ value: "all", label: "All actors" }, ...actors.map((actor) => ({ value: actor, label: memberName(actor) || actor }))])}
+        ${renderAuditSelect("action", "Action", filters.action || "all", [{ value: "all", label: "All actions" }, ...actions.map((action) => ({ value: action, label: action }))])}
+        ${renderAuditSelect("impact", "Impact", filters.impact || "all", [
+          { value: "all", label: "All impact" },
+          { value: "high", label: "High" },
+          { value: "medium", label: "Medium" },
+          { value: "low", label: "Low" }
+        ])}
+        ${renderAuditSelect("date", "Date", filters.date || "all", [
+          { value: "all", label: "All dates" },
+          { value: "today", label: "Today" },
+          { value: "7", label: "Last 7 days" },
+          { value: "30", label: "Last 30 days" }
+        ])}
+        ${renderAuditSelect("source", "Source", filters.source || "all", [{ value: "all", label: "All sources" }, ...sources.map((source) => ({ value: source, label: source }))])}
+        ${renderAuditSelect("project", "Project", filters.project || "all", [{ value: "all", label: "All projects" }, ...projectIds.map((projectId) => ({ value: projectId, label: projectName(projectId) || projectId }))])}
+      </div>
+      <div class="audit-filter-summary">
+        <span>${filteredEvents.length}/${events.length} events shown</span>
+        <button class="button button-secondary compact-button" type="button" id="audit-clear-filters">Clear Filters</button>
+      </div>
+    </div>
+  `;
+}
+
+function auditDetailRows(event) {
+  const metadata = event.metadata || {};
+  return [
+    ["Actor", memberName(event.actorId) || event.actorId || "System"],
+    ["Session", metadata.sessionId || metadata.session || event.sessionId || "Not recorded"],
+    ["Target", [event.targetType, event.targetId].filter(Boolean).join(":") || "workspace"],
+    ["Source", event.source || "local"],
+    ["Impact", `${auditImpactLevel(event)} impact`],
+    ["Restore", event.restoreHint || (event.reversible === false ? "Restore from backup if needed." : "Tracked as a reversible workspace change.")],
+    ["Created", formatTimestamp(event.createdAt)]
+  ];
+}
+
+function renderAuditDetailDrawer(event) {
+  if (!event) return "";
+  const metadata = event.metadata || {};
+  const before = event.before || metadata.before || metadata.previous || null;
+  const after = event.after || metadata.after || metadata.next || null;
+  return `
+    <aside class="audit-detail-drawer" aria-label="Audit event detail drawer">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Audit event detail drawer</p>
+          <h3>${escapeHtml(event.action || "Workspace event")}</h3>
+        </div>
+        <button class="icon-button" type="button" data-audit-detail-close aria-label="Close audit event detail">x</button>
+      </div>
+      <p class="panel-note">${escapeHtml(event.detail || "No event detail recorded.")}</p>
+      <div class="audit-detail-grid">
+        ${auditDetailRows(event).map(([label, value]) => `
+          <article>
+            <span>${escapeHtml(label)}</span>
+            <strong>${escapeHtml(value || "Empty")}</strong>
+          </article>
+        `).join("")}
+      </div>
+      <div class="audit-before-after">
+        <article>
+          <span>Before</span>
+          <pre>${escapeHtml(before ? JSON.stringify(before, null, 2) : "No before fields recorded.")}</pre>
+        </article>
+        <article>
+          <span>After</span>
+          <pre>${escapeHtml(after ? JSON.stringify(after, null, 2) : "No after fields recorded.")}</pre>
+        </article>
+      </div>
+      <div class="audit-raw-metadata">
+        <span>Raw metadata</span>
+        <pre>${escapeHtml(JSON.stringify(metadata, null, 2))}</pre>
+      </div>
+    </aside>
+  `;
+}
+
 function renderAuditLog() {
   const localEvents = Array.isArray(state.auditEvents) ? state.auditEvents : [];
   const serverEvents = Array.isArray(auditEvents) ? auditEvents : [];
-  const events = mergeRecordsById(localEvents, serverEvents)
-    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-    .slice(0, 100);
+  const events = allAuditEvents();
+  const filteredEvents = filteredAuditEvents(events).slice(0, 100);
   const actions = Array.from(new Set(events.map((event) => event.action).filter(Boolean))).slice(0, 12);
   const highImpact = events.filter((event) => auditImpactLevel(event) === "high");
   const irreversible = events.filter((event) => event.reversible === false);
+  const selectedEvent = events.find((event) => event.__auditKey === selectedAuditEventKey) || filteredEvents[0] || null;
 
   els.appView.innerHTML = `
     <div class="metric-grid">
@@ -26837,6 +27041,7 @@ function renderAuditLog() {
       <div class="audit-toolbar">
         ${actions.length ? actions.map((action) => `<span class="status-pill inbox-neutral">${escapeHtml(action)}</span>`).join("") : `<span class="status-pill inbox-neutral">No audit events yet</span>`}
       </div>
+      ${renderAuditFilters(events, filteredEvents)}
       <div class="audit-risk-grid">
         <article>
           <strong>${highImpact.length}</strong>
@@ -26854,8 +27059,11 @@ function renderAuditLog() {
           <small>Events are grouped by workspace, project, task, approval, automation, integration, and payment surfaces.</small>
         </article>
       </div>
-      <div class="audit-list">
-        ${events.length ? events.map(renderAuditEvent).join("") : emptyState(apiSession ? "Refresh to load API audit events." : "Make a local change to start the audit trail.")}
+      <div class="audit-workbench">
+        <div class="audit-list">
+          ${filteredEvents.length ? filteredEvents.map(renderAuditEvent).join("") : emptyState(apiSession ? "No audit events match the current filters." : "Make a local change to start the audit trail.")}
+        </div>
+        ${renderAuditDetailDrawer(selectedEvent)}
       </div>
     </section>
   `;
@@ -26880,7 +27088,7 @@ function renderAuditEvent(event) {
   const target = [event.targetType, event.targetId].filter(Boolean).join(":") || "workspace";
   const restoreHint = event.restoreHint || (event.reversible === false ? "Restore from backup if needed." : "Tracked as a reversible workspace change.");
   return `
-    <article class="audit-event audit-impact-${auditImpactLevel(event)}">
+    <article class="audit-event audit-impact-${auditImpactLevel(event)} ${event.__auditKey === selectedAuditEventKey ? "is-selected" : ""}">
       <div>
         <div class="audit-event-kicker">
           <span class="status-pill inbox-blue">${escapeHtml(event.action || "event")}</span>
@@ -26891,7 +27099,10 @@ function renderAuditEvent(event) {
         <p>${escapeHtml(memberName(event.actorId) || event.actorId || "System")} - ${escapeHtml(formatTimestamp(event.createdAt))} - ${escapeHtml(event.source || "server")}</p>
         <small>${escapeHtml(target)} - ${escapeHtml(restoreHint)}</small>
       </div>
-      <code>${escapeHtml(event.id || "")}</code>
+      <div class="audit-event-actions">
+        <code>${escapeHtml(event.id || "")}</code>
+        <button class="button button-secondary compact-button" type="button" data-audit-detail="${escapeHtml(event.__auditKey)}">Details</button>
+      </div>
     </article>
   `;
 }
@@ -35925,6 +36136,48 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const auditSavedViewButton = event.target.closest("[data-audit-saved-view]");
+  if (auditSavedViewButton) {
+    auditFilters = {
+      ...auditFilters,
+      savedView: auditSavedViewButton.dataset.auditSavedView || "all"
+    };
+    selectedAuditEventKey = "";
+    renderAuditLog();
+    return;
+  }
+
+  const auditClearFiltersButton = event.target.closest("#audit-clear-filters");
+  if (auditClearFiltersButton) {
+    auditFilters = {
+      query: "",
+      actor: "all",
+      action: "all",
+      impact: "all",
+      source: "all",
+      project: "all",
+      date: "all",
+      savedView: "all"
+    };
+    selectedAuditEventKey = "";
+    renderAuditLog();
+    return;
+  }
+
+  const auditDetailButton = event.target.closest("[data-audit-detail]");
+  if (auditDetailButton) {
+    selectedAuditEventKey = auditDetailButton.dataset.auditDetail || "";
+    renderAuditLog();
+    return;
+  }
+
+  const auditDetailCloseButton = event.target.closest("[data-audit-detail-close]");
+  if (auditDetailCloseButton) {
+    selectedAuditEventKey = "";
+    renderAuditLog();
+    return;
+  }
+
   const clientVisibilityPreviewButton = event.target.closest("#client-visibility-preview, [data-preview-client-company]");
   if (clientVisibilityPreviewButton) {
     startClientPortalPreview(clientVisibilityPreviewButton.dataset.previewClientCompany || selectedVisibilityReviewCompanyId());
@@ -36710,10 +36963,37 @@ els.appView.addEventListener("change", (event) => {
   const projectDateInput = event.target.closest("[data-project-date]");
   if (projectDateInput) {
     updateProjectDate(projectDateInput.dataset.projectId, projectDateInput.dataset.projectDate, projectDateInput.value);
+    return;
+  }
+
+  const auditFilterField = event.target.closest("[data-audit-filter]");
+  if (auditFilterField) {
+    auditFilters = {
+      ...auditFilters,
+      [auditFilterField.dataset.auditFilter]: auditFilterField.value
+    };
+    selectedAuditEventKey = "";
+    renderAuditLog();
   }
 });
 
 els.appView.addEventListener("input", (event) => {
+  const auditQueryInput = event.target.closest("input[data-audit-filter='query']");
+  if (auditQueryInput) {
+    auditFilters = {
+      ...auditFilters,
+      query: auditQueryInput.value
+    };
+    selectedAuditEventKey = "";
+    renderAuditLog();
+    const nextInput = document.querySelector("input[data-audit-filter='query']");
+    if (nextInput) {
+      nextInput.focus();
+      nextInput.setSelectionRange(nextInput.value.length, nextInput.value.length);
+    }
+    return;
+  }
+
   const templateSearch = event.target.closest("#template-search");
   if (templateSearch) {
     const cursor = templateSearch.selectionStart || templateSearch.value.length;
