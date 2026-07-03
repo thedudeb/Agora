@@ -19,6 +19,7 @@ const checkFiles = [
   "server/supabase-verify.js",
   "server/portable-fixtures-test.js",
   "scripts/agora-setup.js",
+  "scripts/demo-links.js",
   "scripts/recovery-stress-test.js",
   "scripts/disaster-recovery-drill.js",
   "scripts/capture-screenshots.js",
@@ -55,6 +56,16 @@ const commands = {
   setup: {
     summary: "Create a local, Docker, or hosted starter environment",
     run: async (args) => runStep("Agora setup", [process.execPath, [path.join(ROOT, "scripts", "agora-setup.js"), ...args]])
+  },
+  demo: {
+    summary: "Generate hosted demo links",
+    run: async (args) => {
+      const [subcommand, ...demoArgs] = args;
+      if (subcommand !== "links") {
+        throw new Error("Usage: npm run agora -- demo links [--base https://demo.example.com] [--demo id] [--markdown] [--json]");
+      }
+      await runStep("demo links", [process.execPath, [path.join(ROOT, "scripts", "demo-links.js"), ...demoArgs]]);
+    }
   },
   recovery: {
     summary: "Stress-test backup, portable import, and restore semantics",
@@ -237,6 +248,7 @@ Commands:
   verify [--quick] [--supabase]  Run check + fixtures + recovery + API smoke
   check                         Syntax-check project files
   setup                         Create local, Docker, or hosted starter env
+  demo links                    Generate hosted demo tour links
   fixtures                      Validate portable fixtures
   recovery                      Stress-test backup/import/restore semantics
   recovery-drill                Run disaster recovery drill from a server backup
@@ -265,6 +277,7 @@ Options:
 Examples:
   npm run agora -- verify
   npm run agora -- setup --profile docker --dry-run
+  npm run agora -- demo links --base https://demo.example.com --markdown
   npm run agora -- verify --quick
   npm run agora -- verify --supabase
   npm run agora -- recovery

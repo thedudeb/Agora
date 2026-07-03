@@ -104,6 +104,7 @@ npm run dev:api   # start the local API
 npm start         # serve the browser app for a host/runtime
 npm run start:api # start the API for a host/runtime
 npm run setup     # create .env and local persistent directories
+npm run demo:links # generate shareable demo tour links
 npm run mcp       # start the local stdio MCP server for power-user clients
 npm run plugins   # validate local plugin manifests
 npm run check     # syntax-check app and server files
@@ -123,6 +124,7 @@ npm run verify:upgrade # check migration files and latest server backup before u
 npm run screenshots # refresh launch screenshots with local Chrome/Chromium
 npm run agora -- verify # power-user CLI: check + fixtures + API smoke
 npm run agora -- qa # power-user CLI: release QA gate
+npm run agora -- demo links --base https://demo.example.com --markdown
 npm run agora -- upgrade check --backup tests/fixtures/server-backups/agora-workspace-backup-demo.json
 npm run agora -- recovery-drill --fixture
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
@@ -139,6 +141,8 @@ To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`
 For MCP clients, set `AGORA_API_URL`, `AGORA_API_TOKEN`, and optionally `AGORA_MCP_ALLOW_WRITES=true`, then run `npm run mcp`. See [`docs/mcp-server.md`](./docs/mcp-server.md) for client config examples, tools, resources, and security notes.
 
 For one-command setup and Docker Compose packaging, see [`docs/install.md`](./docs/install.md). The shortest path is `npm run setup`, then `npm run dev` and `npm run dev:api`; Docker users can run `npm run setup -- --profile docker` and `docker compose up --build`.
+
+For hosted evaluation, generate scenario-specific demo links with `npm run demo:links -- --base <app-url> --markdown`. See [`docs/demo-workspaces.md`](./docs/demo-workspaces.md) for the agency, scrum, client portal, trust center, and marketplace demo catalog.
 
 For migration work, the CLI can preview and apply Trello JSON or generic CSV exports before you touch a real workspace. See [`docs/migration-tool.md`](./docs/migration-tool.md) for the adapter contract, safety model, mapping tables, and examples.
 

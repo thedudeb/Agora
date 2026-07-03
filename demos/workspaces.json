@@ -1,0 +1,78 @@
+{
+  "type": "agora.demo-workspace-catalog",
+  "version": 1,
+  "updatedAt": "2026-07-03",
+  "baseWorkspace": "Acme Studio seeded workspace",
+  "demos": [
+    {
+      "id": "agency-command-center",
+      "name": "Agency Command Center",
+      "audience": "Agencies and consultants",
+      "entryRoute": "command-center",
+      "description": "A fast PM view of blockers, client promises, overdue work, approvals, capacity, and status-report needs.",
+      "highlights": ["Command Center", "Client Visibility", "Approvals", "Status report copy"],
+      "tour": [
+        { "label": "Command Center", "route": "command-center" },
+        { "label": "Client Visibility", "route": "visibility" },
+        { "label": "Reports", "route": "reports" },
+        { "label": "Data Export", "route": "data" }
+      ]
+    },
+    {
+      "id": "scrum-master-room",
+      "name": "Scrum Master Room",
+      "audience": "Software teams and scrum masters",
+      "entryRoute": "sprint",
+      "description": "Sprint planning, burndown/burnup, sprint timelines, capacity overlays, closeout, and sync payloads.",
+      "highlights": ["Sprint Command Center", "Burndown", "Capacity", "Jira/Linear/GitHub sync"],
+      "tour": [
+        { "label": "Sprint", "route": "sprint" },
+        { "label": "Board", "route": "board" },
+        { "label": "Release", "route": "release" },
+        { "label": "Integrations", "route": "settings", "settingsTab": "integrations" }
+      ]
+    },
+    {
+      "id": "client-portal-review",
+      "name": "Client Portal Review",
+      "audience": "Client-facing teams",
+      "entryRoute": "portal",
+      "description": "Preview what clients can see, review visibility warnings, approvals, portal links, and client-safe packets.",
+      "highlights": ["Client Portal", "Visibility Review", "Approvals", "Portal audit trail"],
+      "tour": [
+        { "label": "Client Portal", "route": "portal" },
+        { "label": "Visibility Review", "route": "visibility" },
+        { "label": "Companies", "route": "companies" },
+        { "label": "Permissions", "route": "permissions" }
+      ]
+    },
+    {
+      "id": "open-source-trust-center",
+      "name": "Open Source Trust Center",
+      "audience": "Self-hosters and open source evaluators",
+      "entryRoute": "readiness",
+      "description": "Portability, backups, release metadata, hosted readiness, permissions, diagnostics, and recovery proof.",
+      "highlights": ["Readiness", "Backend Health", "Backups", "Portable Export"],
+      "tour": [
+        { "label": "Readiness", "route": "readiness" },
+        { "label": "Developer Settings", "route": "settings", "settingsTab": "developer" },
+        { "label": "Security", "route": "settings", "settingsTab": "security" },
+        { "label": "Data", "route": "data" }
+      ]
+    },
+    {
+      "id": "template-marketplace",
+      "name": "Template Marketplace",
+      "audience": "Operators building repeatable delivery systems",
+      "entryRoute": "marketplace",
+      "description": "Installable project templates, automation packs, creator metadata, premium gates, and portable marketplace JSON.",
+      "highlights": ["Marketplace", "Templates", "Automations", "Plugin contracts"],
+      "tour": [
+        { "label": "Marketplace", "route": "marketplace" },
+        { "label": "Templates", "route": "templates" },
+        { "label": "Automations", "route": "automations" },
+        { "label": "Plugins", "route": "settings", "settingsTab": "plugins" }
+      ]
+    }
+  ]
+}

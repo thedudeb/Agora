@@ -47,6 +47,7 @@ Maker Comment:
 Launch Checklist:
 
 - Use `assets/screenshots/agora-landing.png` as the cover image.
+- Generate hosted demo links with `npm run demo:links -- --base <app-url> --markdown` and include at least one direct scenario link.
 - Add dashboard, board, mobile Today, and marketplace screenshots to the gallery.
 - Link to the GitHub repository and README quick start.
 - Mention that Agora is an early prototype, but already runs locally with Node.js and no app dependencies.
@@ -198,6 +199,7 @@ npm run screenshots
 ## Demo Video Script
 
 Use [`docs/demo-video-script.md`](./demo-video-script.md) for the full time-coded recording plan.
+Use [`docs/demo-workspaces.md`](./demo-workspaces.md) to generate scenario links for agency command center, scrum master room, client portal review, open source trust center, and template marketplace demos.
 
 Short flow:
 
