@@ -2695,6 +2695,10 @@ body[data-tutorial-target="view"] #app-view {
   grid-column: 1 / -1;
 }
 
+.project-memory-contract-panel {
+  grid-column: 1 / -1;
+}
+
 .project-memory-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2704,14 +2708,20 @@ body[data-tutorial-target="view"] #app-view {
 .project-memory-source-grid,
 .project-memory-list,
 .project-memory-preview-list,
-.project-memory-timeline {
+.project-memory-timeline,
+.project-memory-contract-grid {
   display: grid;
   gap: 10px;
 }
 
+.project-memory-contract-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .project-memory-source-grid article,
 .project-memory-card,
-.project-memory-proposal {
+.project-memory-proposal,
+.project-memory-contract-grid article {
   min-width: 0;
   padding: 12px;
   background: var(--surface-strong);
@@ -2847,6 +2857,41 @@ body[data-tutorial-target="view"] #app-view {
 
 .project-memory-timeline-item small {
   margin-top: 6px;
+}
+
+.project-memory-contract-grid h3 {
+  margin: 8px 0 4px;
+  font-size: 1rem;
+}
+
+.project-memory-contract-grid p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.project-memory-contract-shape {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.project-memory-contract-shape strong {
+  margin-right: 4px;
+}
+
+.project-memory-contract-shape code {
+  max-width: 100%;
+  padding: 6px 8px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 .operator-center-grid {
@@ -11803,6 +11848,7 @@ body[data-density="compact"] .main-content {
   .command-inbox-brief,
   .project-memory-form,
   .project-memory-source-grid,
+  .project-memory-contract-grid,
   .open-ownership-grid,
   .mobile-roadmap-list,
   .native-mobile-grid,

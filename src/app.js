@@ -3110,6 +3110,48 @@ function projectMemoryTimelineItems() {
     .slice(0, 50);
 }
 
+function projectMemoryIngestionContract() {
+  return {
+    type: "agora.project-memory-ingestion-contract",
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    entrypoint: "Project Memory > Universal Update Capture",
+    supportedSources: ["meeting", "email", "slack", "github", "client", "doc", "transcript", "csv", "other"],
+    connectorChannels: [
+      { id: "email-forward", label: "Email forwarder", status: "contract-ready", payload: "subject, from, receivedAt, body, attachments[]" },
+      { id: "github-webhook", label: "GitHub webhook", status: "contract-ready", payload: "repository, issue/pr, actor, event, body" },
+      { id: "chat-export", label: "Slack/Teams/Discord export", status: "contract-ready", payload: "channel, author, messages[], permalink" },
+      { id: "mobile-share", label: "Mobile share sheet", status: "contract-ready", payload: "source app, selected text, url, files[]" },
+      { id: "cli", label: "Agora CLI", status: "contract-ready", payload: "stdin/file, source, project, metadata" },
+      { id: "mcp", label: "MCP server", status: "contract-ready", payload: "tool input, resource uri, source metadata" }
+    ],
+    payloadShape: {
+      source: "meeting | email | slack | github | client | doc | transcript | csv | other",
+      externalId: "stable id from connector for idempotency",
+      title: "human-readable update title",
+      body: "raw update text",
+      projectId: "optional Agora project id",
+      companyId: "optional Agora company id",
+      capturedBy: "Agora member id or connector actor",
+      occurredAt: "source timestamp",
+      metadata: "connector-specific JSON object"
+    },
+    guarantees: [
+      "Raw updates are captured locally before extraction.",
+      "Structured extraction produces preview proposals only.",
+      "Human review is required before project records are mutated.",
+      "Applied proposals create audit events and affected-record references.",
+      "Connectors should provide externalId so duplicate deliveries are ignored."
+    ],
+    reviewFlow: ["capture", "extract-preview", "accept-or-reject", "apply", "audit"],
+    duplicateKey: "source + externalId",
+    offline: {
+      supported: true,
+      retryQueue: "Connectors can enqueue payloads locally and replay into the same capture function."
+    }
+  };
+}
+
 function projectUpdateProposalType(line) {
   const text = line.toLowerCase();
   if (/\b(blocked|blocker|waiting on|stuck|dependency)\b/.test(text)) return "blocker";
@@ -11519,6 +11561,7 @@ function portableWorkspaceManifest() {
   const documents = Array.isArray(state.documents) ? state.documents : [];
   const files = Array.isArray(state.files) ? state.files : [];
   const timeEntries = Array.isArray(state.timeEntries) ? state.timeEntries : [];
+  const memoryIngestionContract = projectMemoryIngestionContract();
   return {
     type: "agora.portable-workspace",
     exportVersion: WORKSPACE_EXPORT_VERSION,
@@ -11553,8 +11596,16 @@ function portableWorkspaceManifest() {
       includesCsvExports: true,
       includesAutomationPacks: true,
       includesOperatorLedger: true,
+      includesProjectMemoryIngestionContract: true,
       includesOfflineStorageContract: true,
       restorePath: "Data > Import JSON can restore workspace.json into Agora."
+    },
+    projectMemoryIngestion: {
+      type: memoryIngestionContract.type,
+      version: memoryIngestionContract.version,
+      supportedSources: memoryIngestionContract.supportedSources,
+      connectorChannels: memoryIngestionContract.connectorChannels.map((channel) => channel.id),
+      reviewFlow: memoryIngestionContract.reviewFlow
     },
     offlineStorageContract: {
       type: contract.type,
@@ -32123,6 +32174,7 @@ function renderProjectMemory() {
   const captures = normalizeUpdateCaptures(state.updateCaptures);
   const previews = normalizeUpdateExtractionPreviews(state.updateExtractionPreviews);
   const timeline = projectMemoryTimelineItems();
+  const contract = projectMemoryIngestionContract();
   const latestPreview = previews[0];
   const sourceCounts = ["meeting", "email", "slack", "github", "client"].map((source) => ({
     source,
@@ -32232,6 +32284,30 @@ function renderProjectMemory() {
           ${timeline.length ? timeline.map(renderProjectMemoryTimelineItem).join("") : emptyState("Capture and preview updates to build a memory timeline for each project.")}
         </div>
       </section>
+
+      <section class="panel project-memory-contract-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Connector-ready Ingestion Contract</p>
+            <h2>One pipeline for every source</h2>
+          </div>
+          <button class="button button-secondary compact-button" type="button" id="memory-contract-copy">Copy Contract JSON</button>
+        </div>
+        <p class="panel-note">Email, GitHub, Slack, mobile share sheets, CLI, MCP, and future webhooks can all send the same payload shape into capture, preview, review, apply, and audit.</p>
+        <div class="project-memory-contract-grid">
+          ${contract.connectorChannels.map((channel) => `
+            <article>
+              <span class="status-pill inbox-blue">${escapeHtml(channel.status)}</span>
+              <h3>${escapeHtml(channel.label)}</h3>
+              <p>${escapeHtml(channel.payload)}</p>
+            </article>
+          `).join("")}
+        </div>
+        <div class="project-memory-contract-shape">
+          <strong>Payload shape</strong>
+          ${Object.entries(contract.payloadShape).map(([key, value]) => `<code>${escapeHtml(key)}: ${escapeHtml(value)}</code>`).join("")}
+        </div>
+      </section>
     </div>
   `;
 }
@@ -32299,6 +32375,24 @@ function renderProjectMemoryTimelineItem(item) {
       </div>
     </article>
   `;
+}
+
+async function copyProjectMemoryIngestionContract() {
+  const payload = JSON.stringify(projectMemoryIngestionContractSafe(), null, 2);
+  if (!navigator.clipboard?.writeText) {
+    showToast("Clipboard is unavailable in this browser", "info");
+    return;
+  }
+  await navigator.clipboard.writeText(payload);
+  showToast("Project Memory ingestion contract copied", "success");
+}
+
+function projectMemoryIngestionContractSafe() {
+  const contract = projectMemoryIngestionContract();
+  return {
+    ...contract,
+    generatedAt: new Date().toISOString()
+  };
 }
 
 function captureProjectUpdate() {
@@ -39348,6 +39442,12 @@ document.addEventListener("click", (event) => {
   const memoryApplyButton = event.target.closest("[data-memory-apply]");
   if (memoryApplyButton) {
     applyExtractionProposal(memoryApplyButton.dataset.memoryApply, memoryApplyButton.dataset.memoryProposalId);
+    return;
+  }
+
+  const memoryContractCopyButton = event.target.closest("#memory-contract-copy");
+  if (memoryContractCopyButton) {
+    copyProjectMemoryIngestionContract().catch(() => showToast("Could not copy ingestion contract", "info"));
     return;
   }
 

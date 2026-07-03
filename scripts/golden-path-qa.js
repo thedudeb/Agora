@@ -159,6 +159,12 @@ const routeChecks = [
       "Project Memory Timeline",
       "Important updates, decisions, and outcomes",
       "source snippets, structured previews, and applied outcomes",
+      "Connector-ready Ingestion Contract",
+      "One pipeline for every source",
+      "Email forwarder",
+      "Agora CLI",
+      "MCP server",
+      "Payload shape",
       "Meeting notes",
       "Capture Update"
     ]
