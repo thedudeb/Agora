@@ -4455,8 +4455,8 @@ async function retryApiSyncQueueItem(itemId) {
     if (result.task) mergeCoreRecordsFromApi({ tasks: [result.task] });
     if (result.collection && result.record) mergeCollectionFromApi(result.collection, [result.record]);
     clearApiSyncQueueItem(item.id);
-    await refreshBackendHealth({ silent: true });
     saveState();
+    refreshBackendHealth({ silent: true }).catch(() => null);
     render();
     showToast("Queued sync retried", "success");
   } catch (error) {
