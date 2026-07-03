@@ -88,9 +88,15 @@ async function run() {
       token: login.token
     });
     assert(activeSessions.scope === "workspace", "admin session list should include workspace scope");
-    assert(activeSessions.sessions.some((item) => item.current === true && item.user.id === "mara"), "session list did not include current session");
+    const currentListedSession = activeSessions.sessions.find((item) => item.current === true && item.user.id === "mara");
+    assert(currentListedSession, "session list did not include current session");
+    assert(currentListedSession.clientIpHash && currentListedSession.clientIpHash.length === 16, "session list did not expose redacted client hash");
     const secondSession = activeSessions.sessions.find((item) => item.current === false && item.user.id === "mara");
     assert(secondSession?.id, "session list did not expose second session id");
+    assert(secondSession.status === "active", "session list did not expose active status");
+    assert(secondSession.lastSeenAt, "session list did not expose last seen timestamp");
+    assert(Number.isFinite(secondSession.requestCount), "session list did not expose request count");
+    assert(typeof secondSession.userAgent === "string" && !secondSession.userAgent.includes(secondLogin.token), "session list leaked unexpected user-agent data");
     assert(!secondSession.id.includes(secondLogin.token), "session list leaked raw token");
 
     const revokedSession = await request(`${baseUrl}/api/auth/sessions/${secondSession.id}`, {
@@ -123,6 +129,8 @@ async function run() {
     assert(backendHealth.productionGates.some((item) => item.id === "public-feature-abuse"), "backend health did not include public feature abuse gate");
     assert(backendHealth.productionGates.some((item) => item.id === "strict-csp"), "backend health did not include strict CSP gate");
     assert(backendHealth.readiness.some((item) => item.id === "password-reset-delivery"), "backend readiness did not include reset delivery gate");
+    assert(backendHealth.readiness.some((item) => item.id === "session-hardening"), "backend readiness did not include session hardening");
+    assert(backendHealth.sessionHardening?.ttlHours <= 12, "backend health did not expose hardened session ttl");
     assert(backendHealth.readiness.some((item) => item.id === "notification-delivery-map"), "backend readiness did not include notification delivery map");
     assert(Array.isArray(backendHealth.notificationDelivery?.matrix), "backend health did not expose notification delivery matrix");
     assert(backendHealth.notificationDelivery.matrix.some((item) => item.id === "portal-action"), "notification delivery matrix missed portal actions");

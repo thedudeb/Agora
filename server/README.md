@@ -172,7 +172,7 @@ In GitHub, create a repository webhook with Payload URL `https://your-agora-api.
 - `GET /api/observability`: returns request metrics, recent error request IDs, background job health, rate-limit key counts, realtime client counts, and structured logging status for sessions with audit access.
 - `GET /api/backups/status`: returns server backup status, latest backup metadata, and retention count for sessions with audit access.
 - `POST /api/backups/run`: writes a server-side workspace snapshot backup for sessions with scheduler permission.
-- `GET /api/auth/sessions`: lists active in-memory Agora sessions visible to the current user. Admins can see workspace sessions; other users see their own. Returned ids are hashes, not raw tokens.
+- `GET /api/auth/sessions`: lists active in-memory Agora sessions visible to the current user. Admins can see workspace sessions; other users see their own. Returned ids are hashes, not raw tokens; last-seen time, request count, coarse user agent, and client IP hash are included for review.
 - `DELETE /api/auth/sessions/:id`: revokes an active in-memory Agora session by hashed id. Users can revoke their own sessions; admins can revoke workspace sessions.
 - `GET /api/members`: returns workspace users, memberships, and invitations.
 - `GET /api/invitations`: lists workspace invitations for admins.

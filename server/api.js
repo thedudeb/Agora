@@ -1927,6 +1927,7 @@ async function buildBackendHealth(storage, session) {
   const email = emailDeliveryDiagnostics();
   const notificationDelivery = notificationDeliveryAudit(email);
   const backupStatus = workspaceBackupStatus();
+  const sessionHardening = sessionHardeningStatus();
   const snapshotDocument = await storage.loadWorkspace();
   const snapshot = snapshotDocument?.snapshot || {};
   const githubRepositories = Array.isArray(snapshot.workspace?.integrations?.github?.repositories)
@@ -2096,6 +2097,13 @@ async function buildBackendHealth(storage, session) {
       fix: "Keep AGORA_DEMO_AUTH=false and AGORA_PASSWORDLESS_AUTH=false outside trusted demos."
     },
     {
+      id: "session-hardening",
+      label: "Session hardening",
+      done: sessionHardening.ttlHours <= 12 && sessionHardening.resetTtlMinutes <= 60 && sessionHardening.invitationTtlDays <= 30 && sessionHardening.lastSeenTracking,
+      detail: `${sessionHardening.active} active session${sessionHardening.active === 1 ? "" : "s"}; ${sessionHardening.ttlHours}h session TTL; ${sessionHardening.resetTtlMinutes}m reset TTL; ${sessionHardening.invitationTtlDays}d invite TTL`,
+      fix: "Keep session TTL <= 12h, reset TTL <= 60m, invite TTL <= 30d, and review active sessions from Settings > Account."
+    },
+    {
       id: "file-uploads",
       label: "File uploads",
       done: true,
@@ -2207,6 +2215,7 @@ async function buildBackendHealth(storage, session) {
     user: session.user,
     membership: session.membership,
     permissions: session.permissions,
+    sessionHardening,
     productionMode: storageDriver === "supabase" && authDriver === "supabase",
     productionGates,
     snapshot: {
@@ -3400,8 +3409,21 @@ function buildSession(user, membership, token) {
     membership,
     permissions: rolePermissions[membership.role] || [],
     createdAt: new Date(now).toISOString(),
-    expiresAt: new Date(now + SESSION_TTL_MS).toISOString()
+    expiresAt: new Date(now + SESSION_TTL_MS).toISOString(),
+    lastSeenAt: new Date(now).toISOString(),
+    requestCount: 0,
+    clientIpHash: "",
+    userAgent: ""
   };
+}
+
+function touchSession(session, request) {
+  if (!session) return session;
+  session.lastSeenAt = new Date().toISOString();
+  session.requestCount = Number(session.requestCount || 0) + 1;
+  session.clientIpHash = hashOperationalIdentifier(clientIp(request));
+  session.userAgent = summarizeUserAgent(request.headers["user-agent"]);
+  return session;
 }
 
 async function requireSession(request, response, storage) {
@@ -3414,13 +3436,13 @@ async function requireSession(request, response, storage) {
       sendError(response, 401, "Session expired");
       return null;
     }
-    request.agoraSession = session;
-    return session;
+    request.agoraSession = touchSession(session, request);
+    return request.agoraSession;
   }
 
   if (token && supabaseAuthEnabled()) {
     const supabaseSession = await createSupabaseSessionFromAccessToken(storage, token, { persist: false });
-    request.agoraSession = supabaseSession;
+    request.agoraSession = touchSession(supabaseSession, request);
     return supabaseSession;
   }
 
@@ -3449,6 +3471,30 @@ function listActiveSessions(currentSession) {
   };
 }
 
+function sessionHardeningStatus() {
+  const now = Date.now();
+  const activeSessions = Array.from(sessions.values()).filter((item) => {
+    if (isSessionExpired(item)) {
+      sessions.delete(item.token);
+      return false;
+    }
+    return true;
+  });
+  const lastSeenTimes = activeSessions
+    .map((session) => Date.parse(session.lastSeenAt || session.createdAt || ""))
+    .filter(Number.isFinite);
+  const oldestLastSeenMs = lastSeenTimes.length ? Math.min(...lastSeenTimes) : now;
+  return {
+    active: activeSessions.length,
+    ttlHours: Math.round(SESSION_TTL_MS / 36_000) / 100,
+    resetTtlMinutes: Math.round(PASSWORD_RESET_TTL_MS / 6000) / 10,
+    invitationTtlDays: Math.round(INVITATION_TTL_MS / 864000) / 100,
+    lastSeenTracking: activeSessions.every((session) => Boolean(session.lastSeenAt)),
+    requestCountTracking: activeSessions.every((session) => Number.isFinite(Number(session.requestCount || 0))),
+    oldestLastSeenMinutes: Math.max(0, Math.round((now - oldestLastSeenMs) / 60000))
+  };
+}
+
 function revokeActiveSession(currentSession, tokenId) {
   const target = Array.from(sessions.values()).find((item) => sessionTokenId(item.token) === tokenId);
   if (!target || isSessionExpired(target)) {
@@ -3472,6 +3518,7 @@ function publicSessionToken(session, currentSession) {
   return {
     id: sessionTokenId(session.token),
     current: session.token === currentSession.token,
+    status: "active",
     user: session.user,
     membership: {
       role: session.membership.role,
@@ -3480,12 +3527,28 @@ function publicSessionToken(session, currentSession) {
     },
     permissions: session.permissions,
     createdAt: session.createdAt,
-    expiresAt: session.expiresAt
+    expiresAt: session.expiresAt,
+    lastSeenAt: session.lastSeenAt || session.createdAt,
+    requestCount: Number(session.requestCount || 0),
+    clientIpHash: session.clientIpHash || "",
+    userAgent: session.userAgent || ""
   };
 }
 
 function sessionTokenId(token) {
   return crypto.createHash("sha256").update(cleanString(token)).digest("hex").slice(0, 24);
+}
+
+function hashOperationalIdentifier(value) {
+  const normalized = cleanString(value);
+  if (!normalized || normalized === "unknown") return "";
+  return crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 16);
+}
+
+function summarizeUserAgent(value) {
+  return cleanString(value)
+    .replace(/\s+/g, " ")
+    .slice(0, 120);
 }
 
 function supabaseAuthEnabled() {

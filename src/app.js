@@ -7755,6 +7755,8 @@ function renderApiSessionRow(session) {
       <div>
         <span class="status-pill ${session.current ? "inbox-green" : "inbox-neutral"}">${session.current ? "Current" : "Active"}</span>
         <small>Created ${escapeHtml(formatTimestamp(session.createdAt))}</small>
+        <small>Last seen ${escapeHtml(formatTimestamp(session.lastSeenAt || session.createdAt))}</small>
+        <small>${Number(session.requestCount || 0)} request${Number(session.requestCount || 0) === 1 ? "" : "s"}${session.clientIpHash ? ` / client ${escapeHtml(session.clientIpHash)}` : ""}</small>
         <small>Expires ${escapeHtml(formatTimestamp(session.expiresAt))}</small>
         <button class="button button-secondary compact-button" type="button" data-api-session-revoke="${escapeHtml(session.id)}" aria-label="${escapeHtml(revokeLabel)} ${escapeHtml(session.id)}">${escapeHtml(revokeLabel)}</button>
       </div>
