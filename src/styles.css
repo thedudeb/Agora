@@ -918,9 +918,18 @@ textarea:focus {
   line-height: 0.84;
 }
 
+.landing-hero-statement {
+  max-width: 860px;
+  margin: 24px 0 0;
+  color: #f7f5ef;
+  font-size: clamp(1.8rem, 4vw, 3.7rem);
+  font-weight: 900;
+  line-height: 1.02;
+}
+
 .landing-lede {
   max-width: 700px;
-  margin: 28px 0 0;
+  margin: 18px 0 0;
   color: rgba(247, 245, 239, 0.84);
   font-size: clamp(1.15rem, 2vw, 1.55rem);
   line-height: 1.45;
@@ -964,9 +973,30 @@ textarea:focus {
   line-height: 1.6;
 }
 
+.landing-ownership {
+  max-width: 1280px;
+  padding-top: 56px;
+}
+
+.landing-ownership > div:first-child,
+.landing-starters > div:first-child,
+.landing-power > div:first-child {
+  display: grid;
+  gap: 14px;
+}
+
+.landing-ownership > div:first-child p,
+.landing-starters > div:first-child p {
+  max-width: 780px;
+  margin: 0;
+}
+
 .landing-problem-grid,
 .landing-signal-stack,
-.landing-choice-grid {
+.landing-choice-grid,
+.landing-ownership-grid,
+.landing-starter-grid,
+.landing-power-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
@@ -975,6 +1005,9 @@ textarea:focus {
 .landing-problem-grid article,
 .landing-signal-stack article,
 .landing-choice-grid article,
+.landing-ownership-grid article,
+.landing-starter-grid article,
+.landing-power-grid article,
 .landing-no-ads {
   padding: 20px;
   background: rgba(247, 245, 239, 0.08);
@@ -982,18 +1015,77 @@ textarea:focus {
   border-radius: 8px;
 }
 
-.landing-problem-grid span {
+.landing-ownership-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.landing-ownership-grid article {
+  position: relative;
+  min-height: 210px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(247, 245, 239, 0.12), rgba(247, 245, 239, 0.06));
+}
+
+.landing-ownership-grid article::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-top: 3px solid #e2ba5b;
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+.landing-problem-grid span,
+.landing-ownership-grid span,
+.landing-starter-grid span {
   color: #e2ba5b;
   font-size: 0.82rem;
   font-weight: 900;
+  text-transform: uppercase;
 }
 
 .landing-problem-grid h3,
-.landing-signal-stack strong {
+.landing-signal-stack strong,
+.landing-ownership-grid strong,
+.landing-starter-grid strong,
+.landing-power-grid strong {
   display: block;
   margin: 10px 0 0;
   color: #ffffff;
   font-size: 1.05rem;
+}
+
+.landing-ownership-grid strong {
+  margin-top: 16px;
+  font-size: clamp(1.35rem, 2vw, 2rem);
+  line-height: 1;
+}
+
+.landing-ownership-grid p,
+.landing-starter-grid p,
+.landing-power-grid p {
+  margin: 0;
+}
+
+.landing-starters {
+  max-width: 1280px;
+  padding-top: 38px;
+}
+
+.landing-starter-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.landing-starter-grid article {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-height: 250px;
+}
+
+.landing-starter-grid article .button {
+  align-self: end;
+  justify-self: start;
 }
 
 .landing-solution {
@@ -1077,6 +1169,28 @@ textarea:focus {
 
 .landing-choice {
   padding-top: 34px;
+}
+
+.landing-power {
+  max-width: 1280px;
+  padding-top: 34px;
+}
+
+.landing-power-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.landing-power-grid article {
+  min-height: 170px;
+  background: #f7f5ef;
+}
+
+.landing-power-grid strong {
+  color: #245a58;
+}
+
+.landing-power-grid p {
+  color: #4f4a42;
 }
 
 .landing-choice-grid {
@@ -11069,7 +11183,10 @@ body[data-density="compact"] .main-content {
   }
 
   .landing-choice-grid,
-  .landing-proof-metrics {
+  .landing-proof-metrics,
+  .landing-ownership-grid,
+  .landing-starter-grid,
+  .landing-power-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -11540,6 +11657,9 @@ body[data-density="compact"] .main-content {
   .landing-problem-grid,
   .landing-signal-stack,
   .landing-choice-grid,
+  .landing-ownership-grid,
+  .landing-starter-grid,
+  .landing-power-grid,
   .landing-proof-metrics {
     grid-template-columns: 1fr;
   }
@@ -11547,9 +11667,18 @@ body[data-density="compact"] .main-content {
   .landing-problem-grid article,
   .landing-signal-stack article,
   .landing-choice-grid article,
+  .landing-ownership-grid article,
+  .landing-starter-grid article,
+  .landing-power-grid article,
   .landing-proof-metrics article,
   .landing-no-ads {
     padding: 18px;
+  }
+
+  .landing-ownership-grid article,
+  .landing-starter-grid article,
+  .landing-power-grid article {
+    min-height: 0;
   }
 
   .landing-no-ads {

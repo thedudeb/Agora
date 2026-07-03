@@ -17339,6 +17339,20 @@ function renderMobileAppPanel() {
 }
 
 function renderLandingPage() {
+  const starterCards = Object.entries(roleStarterWorkspaceConfigs()).slice(0, 7);
+  const ownershipRows = [
+    ["Portability", "Full bundle", "JSON, CSV, Markdown, templates, automations, audit history, and operator context travel together."],
+    ["Offline", "5 app targets", "PWA, Mac, Windows, iOS, and Android share a local-first storage and retry queue contract."],
+    ["AI", "Receipts", "Operator actions show rationale, data sources, permissions, audit trail, and undo where possible."],
+    ["Migration", "Preview first", "Importer previews, mapping reports, local recovery snapshots, and rollback paths reduce switching risk."],
+    ["Ecosystem", "Open edge", "CLI, MCP, plugins, integration playbooks, marketplace templates, and automation packs extend the core."]
+  ];
+  const powerRows = [
+    ["Power Kanban", "WIP limits, mobile lanes, blockers, dependencies, swimlanes, flow health, and board analytics."],
+    ["Planning depth", "Backlog scoring, Gantt timelines, sprint timelines, burndown, burnup, velocity, and capacity overlays."],
+    ["Client control", "Client portals, approvals, visibility warnings, share packets, decision logs, and RAID tracking."],
+    ["Integration launch", "GitHub, Slack, Jira, Linear, Google, webhooks, and API adapters show auth, scopes, direction, and launch risk."]
+  ];
   els.appView.innerHTML = `
     <article class="landing-page">
       <section class="landing-hero">
@@ -17356,17 +17370,56 @@ function renderLandingPage() {
         <div class="landing-hero-copy">
           <p class="eyebrow">Open source project management</p>
           <h1>Agora</h1>
-          <p class="landing-lede">Open source project management without ads, trackers, or lock-in. Run projects, clients, daily work, approvals, docs, automations, and time tracking from a self-hostable workspace your team can actually own.</p>
+          <p class="landing-hero-statement">Own the work. Keep it portable. Run it offline. Audit the AI.</p>
+          <p class="landing-lede">Open source project management without ads, trackers, or lock-in. Run projects, clients, daily work, approvals, docs, automations, integrations, and recovery from a self-hostable workspace your team can actually own.</p>
           <div class="landing-actions">
             <button class="button button-primary" type="button" data-command-id="launch:workspace">Launch Workspace</button>
-            <button class="button button-secondary" type="button" data-route="portal">View Client Portal</button>
+            <button class="button button-secondary" type="button" data-onboarding-action="starter:agency">Load Starter Workspace</button>
           </div>
           <div class="landing-proof-row" aria-label="Product promises">
             <span>No ads</span>
             <span>Self-hostable</span>
             <span>Portable exports</span>
+            <span>Offline apps</span>
             <span>Auditable AI</span>
           </div>
+        </div>
+      </section>
+
+      <section class="landing-section landing-ownership">
+        <div>
+          <p class="eyebrow">Open ownership</p>
+          <h2>Built to beat closed work platforms where they are weakest.</h2>
+          <p>Agora makes ownership visible before a team has to trust us: leave with your data, recover from mistakes, keep working offline, inspect AI decisions, and extend the system without waiting on a proprietary roadmap.</p>
+        </div>
+        <div class="landing-ownership-grid">
+          ${ownershipRows.map(([label, value, detail]) => `
+            <article>
+              <span>${escapeHtml(label)}</span>
+              <strong>${escapeHtml(value)}</strong>
+              <p>${escapeHtml(detail)}</p>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+
+      <section class="landing-section landing-starters">
+        <div>
+          <p class="eyebrow">Start with real work</p>
+          <h2>Role-based starter workspaces, not empty boards.</h2>
+          <p>Choose a launch path and Agora creates a workspace with projects, tasks, milestones, docs, activities, membership, audit history, and integration plans already shaped for the job.</p>
+        </div>
+        <div class="landing-starter-grid">
+          ${starterCards.map(([id, config]) => `
+            <article>
+              <div>
+                <span>${escapeHtml(config.label)}</span>
+                <strong>${escapeHtml(config.projectName)}</strong>
+              </div>
+              <p>${escapeHtml(config.projectDescription)}</p>
+              <button class="button button-secondary compact-button" type="button" data-onboarding-action="starter:${escapeHtml(id)}">Load starter</button>
+            </article>
+          `).join("")}
         </div>
       </section>
 
@@ -17413,7 +17466,7 @@ function renderLandingPage() {
         <div class="landing-product-copy">
           <p class="eyebrow">Product proof</p>
           <h2>The launch story is already visible in the app.</h2>
-          <p>Dashboard readiness, board work, inbox signals, marketplace packs, mobile planning, and portable exports all live in the same dependency-free prototype.</p>
+          <p>Dashboard readiness, board work, inbox signals, marketplace packs, native mobile planning, integration playbooks, open ownership proof, and portable exports all live in the same dependency-free prototype.</p>
         </div>
         <div class="landing-product-frame">
           <img src="./assets/screenshots/agora-dashboard.png" alt="Agora dashboard showing workspace setup and launch readiness.">
@@ -17423,6 +17476,21 @@ function renderLandingPage() {
           <article><strong>Self-hosting path</strong><span>Connect the dependency-free API and optional Supabase storage.</span></article>
           <article><strong>Portable workspace</strong><span>Export JSON, CSV, Markdown, templates, automations, audit, and operator context.</span></article>
           <article><strong>Permissioned AI</strong><span>Preview Operator actions with rationale, audit logs, and undo paths.</span></article>
+        </div>
+      </section>
+
+      <section class="landing-section landing-power">
+        <div>
+          <p class="eyebrow">Power without sludge</p>
+          <h2>Serious project management, calmer by design.</h2>
+        </div>
+        <div class="landing-power-grid">
+          ${powerRows.map(([title, detail]) => `
+            <article>
+              <strong>${escapeHtml(title)}</strong>
+              <p>${escapeHtml(detail)}</p>
+            </article>
+          `).join("")}
         </div>
       </section>
 

@@ -46,6 +46,24 @@ const staticChecks = [
 
 const routeChecks = [
   {
+    name: "Landing page ownership story",
+    suite: "marketing",
+    route: "landing",
+    width: 1265,
+    height: 900,
+    required: [
+      "Own the work. Keep it portable. Run it offline. Audit the AI.",
+      "Open ownership",
+      "Built to beat closed work platforms",
+      "Role-based starter workspaces",
+      "Agency PM",
+      "Open-source maintainer",
+      "Power without sludge",
+      "Integration launch",
+      "No ads. No trackers. No borrowed attention."
+    ]
+  },
+  {
     name: "Dashboard onboarding golden paths",
     suite: "first-run",
     route: "dashboard",
