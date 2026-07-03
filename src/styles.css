@@ -2648,6 +2648,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .operator-signal-grid div,
 .operator-action-card,
+.agent-review-item,
 .operator-log-row,
 .operator-doc-row {
   min-width: 0;
@@ -2741,6 +2742,7 @@ body[data-tutorial-target="view"] #app-view {
 .operator-brief-list,
 .automation-suggestion-list,
 .operator-suggestion-list,
+.agent-review-list,
 .operator-action-log,
 .operator-doc-list,
 .portal-list {
@@ -3117,6 +3119,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .operator-brief,
 .operator-action-card,
+.agent-review-item,
 .operator-log-row,
 .operator-doc-row,
 .automation-suggestion,
@@ -3132,6 +3135,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .operator-brief h3,
 .operator-action-card h3,
+.agent-review-item h3,
 .operator-log-row h3,
 .operator-doc-row h3,
 .automation-suggestion h3,
@@ -3141,6 +3145,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .operator-brief p,
 .operator-action-card p,
+.agent-review-item p,
 .operator-log-row p,
 .operator-doc-row p,
 .automation-suggestion p,
@@ -3151,9 +3156,68 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .operator-action-card,
+.agent-review-item,
 .operator-doc-row {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+}
+
+.agent-review-panel {
+  grid-column: 1 / -1;
+}
+
+.agent-review-item.is-blocked {
+  opacity: 0.72;
+}
+
+.agent-review-facts,
+.agent-review-records,
+.agent-review-actions,
+.agent-review-decisions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.agent-review-facts span,
+.agent-review-records span,
+.agent-review-decisions span,
+.agent-review-decisions small {
+  min-width: 0;
+  padding: 5px 7px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.agent-review-rationale {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.agent-review-rationale strong {
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+
+.agent-review-actions {
+  justify-content: flex-end;
+}
+
+.agent-review-decisions {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
 }
 
 .workspace-pulse {
@@ -12105,6 +12169,7 @@ body[data-density="compact"] .main-content {
   }
 
   .operator-signal-grid,
+  .agent-review-item,
   .operator-doc-row,
   .api-state-grid,
   .backend-health-summary,

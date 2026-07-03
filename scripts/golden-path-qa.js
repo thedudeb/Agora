@@ -310,6 +310,22 @@ const routeChecks = [
     ]
   },
   {
+    name: "Operator agent review queue",
+    suite: "ai",
+    route: "operator",
+    width: 1265,
+    height: 712,
+    required: [
+      "AI command center",
+      "Agent Review Queue",
+      "Approve the action, not the magic",
+      "Refresh Queue",
+      "rationale",
+      "affected records",
+      "Trust and context"
+    ]
+  },
+  {
     name: "Collaboration decision promotion",
     suite: "workspace",
     route: "collaboration",

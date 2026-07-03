@@ -2963,6 +2963,7 @@ function normalizeState(nextState) {
     automations: normalizeAutomations(nextState.automations),
     automationHistory: Array.isArray(nextState.automationHistory) ? nextState.automationHistory.map(normalizeAutomationRun) : [],
     operatorActions: Array.isArray(nextState.operatorActions) ? nextState.operatorActions : [],
+    operatorReviewQueue: normalizeOperatorReviewQueue(nextState.operatorReviewQueue),
     companies: companies.map(normalizeCompanyRecord),
     projects: projects.map(normalizeProjectRecord),
     goals: normalizeGoals(nextState.goals, projects, companies),
@@ -10823,6 +10824,7 @@ function offlineStorageContract() {
       "automations",
       "projectTemplates",
       "operatorActions",
+      "operatorReviewQueue",
       "auditEvents",
       "notificationSettings",
       "importHistory"
@@ -11165,7 +11167,8 @@ function portableWorkspaceManifest() {
       documents: documents.length,
       files: files.length,
       timeEntries: timeEntries.length,
-      operatorActions: recentOperatorActions(50).length
+      operatorActions: recentOperatorActions(50).length,
+      operatorReviewQueue: operatorReviewQueueItems().length
     },
     portability: {
       canRunOffline: true,
@@ -14065,6 +14068,135 @@ function operatorActionSuggestionForBrief(brief) {
     };
   }
   return null;
+}
+
+function normalizeOperatorReviewQueue(queue = []) {
+  return (Array.isArray(queue) ? queue : [])
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      id: String(item.id || uid("operator-review")),
+      suggestionId: String(item.suggestionId || item.id || ""),
+      type: String(item.type || "task"),
+      title: String(item.title || "Operator action").slice(0, 180),
+      summary: String(item.summary || "").slice(0, 320),
+      projectId: String(item.projectId || ""),
+      projectName: String(item.projectName || projectName(item.projectId) || ""),
+      companyId: String(item.companyId || ""),
+      sourceTaskId: String(item.sourceTaskId || ""),
+      approvalId: String(item.approvalId || ""),
+      health: Number.isFinite(Number(item.health)) ? Number(item.health) : 100,
+      impact: String(item.impact || ""),
+      permission: String(item.permission || operatorPermissionForActionType(item.type || "task")),
+      status: ["pending", "approved", "rejected"].includes(item.status) ? item.status : "pending",
+      rationale: String(item.rationale || operatorRationaleFor(item.type || "task", item.projectId || "", item.sourceTaskId || "")).slice(0, 360),
+      affectedRecords: Array.isArray(item.affectedRecords) ? item.affectedRecords.map(String).slice(0, 6) : [],
+      createdAt: item.createdAt || new Date().toISOString(),
+      decidedAt: item.decidedAt || "",
+      decidedBy: item.decidedBy || "",
+      decisionNote: String(item.decisionNote || "").slice(0, 220)
+    }))
+    .slice(0, 40);
+}
+
+function operatorPermissionForActionType(type) {
+  if (type === "task" || type === "approval_chase" || type === "plan") return "Create tasks / plan work";
+  if (type === "approval_request") return "Manage approvals";
+  if (type === "client_update") return "Edit docs + read client data";
+  if (type === "integration_digest") return "Integration events";
+  return "Workspace read";
+}
+
+function operatorReviewItemFromSuggestion(action) {
+  const affectedRecords = [
+    action.projectName ? `Project: ${action.projectName}` : "",
+    action.sourceTaskId ? `Task: ${byId(state.tasks, action.sourceTaskId)?.title || action.sourceTaskId}` : "",
+    action.approvalId ? `Approval: ${byId(state.approvals, action.approvalId)?.title || action.approvalId}` : "",
+    action.companyId ? `Company: ${companyName(action.companyId)}` : ""
+  ].filter(Boolean);
+  return {
+    id: `review-${action.id}`,
+    suggestionId: action.id,
+    type: action.type,
+    title: action.title,
+    summary: action.summary,
+    projectId: action.projectId,
+    projectName: action.projectName,
+    companyId: action.companyId,
+    sourceTaskId: action.sourceTaskId,
+    approvalId: action.approvalId,
+    health: action.health,
+    impact: action.impact,
+    permission: operatorPermissionForActionType(action.type),
+    status: "pending",
+    rationale: operatorRationaleFor(action.type, action.projectId, action.sourceTaskId),
+    affectedRecords,
+    createdAt: new Date().toISOString(),
+    decidedAt: "",
+    decidedBy: "",
+    decisionNote: ""
+  };
+}
+
+function operatorReviewQueueItems() {
+  return normalizeOperatorReviewQueue(state.operatorReviewQueue);
+}
+
+function refreshOperatorReviewQueue() {
+  const existing = operatorReviewQueueItems();
+  const knownIds = new Set(existing.map((item) => item.suggestionId || item.id));
+  const nextItems = operatorActionSuggestions(6)
+    .filter((action) => !knownIds.has(action.id))
+    .slice(0, 4)
+    .map(operatorReviewItemFromSuggestion);
+  if (!nextItems.length) {
+    showToast("Agent review queue is already current", "info");
+    return;
+  }
+  state.operatorReviewQueue = [...nextItems, ...existing].slice(0, 40);
+  addAuditEvent({
+    action: "operator_review_queue_refresh",
+    detail: `Queued ${nextItems.length} Operator action${nextItems.length === 1 ? "" : "s"} for review`
+  });
+  saveState();
+  render();
+  showToast(`${nextItems.length} agent action${nextItems.length === 1 ? "" : "s"} queued for review`, "success");
+}
+
+function decideOperatorReviewItem(reviewId, decision) {
+  const queue = operatorReviewQueueItems();
+  const item = queue.find((row) => row.id === reviewId);
+  if (!item || item.status !== "pending") {
+    showToast("That review item is no longer pending", "info");
+    return;
+  }
+  if (decision === "approved" && !canOperatorApplyType(item.type)) {
+    showToast("Operator permission blocks that action", "info");
+    return;
+  }
+  const now = new Date().toISOString();
+  state.operatorReviewQueue = queue.map((row) => row.id === reviewId
+    ? {
+        ...row,
+        status: decision,
+        decidedAt: now,
+        decidedBy: activeMemberId(),
+        decisionNote: decision === "approved" ? "Approved from Agent Review Queue" : "Rejected from Agent Review Queue"
+      }
+    : row);
+  addAuditEvent({
+    action: `operator_review_${decision}`,
+    detail: `${decision === "approved" ? "Approved" : "Rejected"} ${item.title}`,
+    targetType: "operator_review",
+    targetId: item.id,
+    metadata: { type: item.type, projectId: item.projectId, affectedRecords: item.affectedRecords }
+  });
+  if (decision === "approved") {
+    applyOperatorSuggestion(item.type, item.projectId, item.sourceTaskId, item.approvalId, item.companyId);
+  } else {
+    saveState();
+    render();
+    showToast("Agent action rejected", "success");
+  }
 }
 
 function recentOperatorActions(limit = 6) {
@@ -20167,6 +20299,8 @@ function renderOperatorCenter() {
   const briefs = operatorBriefs(6);
   const operatorDocs = recentOperatorDocuments();
   const suggestedActions = operatorActionSuggestions(6);
+  const reviewQueue = operatorReviewQueueItems();
+  const pendingReviews = reviewQueue.filter((item) => item.status === "pending");
   const actionLog = recentOperatorActions(6);
   const openRisks = briefs.filter((brief) => brief.health < 70);
   const blockedTasks = activeTasks().filter(isTaskBlocked);
@@ -20177,6 +20311,7 @@ function renderOperatorCenter() {
       ${metric("Provider", aiProviderLabel())}
       ${metric("Adapter", aiConnectionSummary())}
       ${metric("Risks", openRisks.length)}
+      ${metric("Review queue", pendingReviews.length)}
       ${metric("Approvals", approvalCount)}
     </div>
 
@@ -20229,6 +20364,8 @@ function renderOperatorCenter() {
         </div>
       </section>
 
+      ${renderAgentReviewQueuePanel(reviewQueue)}
+
       ${renderOperatorTrustPanel()}
 
       <section class="panel">
@@ -20267,6 +20404,65 @@ function renderOperatorCenter() {
         </div>
       </section>
     </div>
+  `;
+}
+
+function renderAgentReviewQueuePanel(queue) {
+  const pending = queue.filter((item) => item.status === "pending");
+  const decided = queue.filter((item) => item.status !== "pending").slice(0, 3);
+  return `
+    <section class="panel agent-review-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Agent Review Queue</p>
+          <h2>Approve the action, not the magic</h2>
+        </div>
+        <div class="data-actions">
+          <span class="status-pill ${pending.length ? "inbox-amber" : "inbox-green"}">${pending.length} pending</span>
+          <button class="button button-primary compact-button" type="button" data-agent-review-refresh>Refresh Queue</button>
+        </div>
+      </div>
+      <p class="panel-note">Every proposed Operator change shows rationale, affected records, required permission, and a clear approve/reject path before it touches workspace data.</p>
+      <div class="agent-review-list">
+        ${pending.length ? pending.map(renderAgentReviewItem).join("") : emptyState("No pending agent actions. Refresh the queue to turn current Operator suggestions into reviewable proposals.")}
+      </div>
+      ${decided.length ? `
+        <div class="agent-review-decisions">
+          <span>Recent decisions</span>
+          ${decided.map((item) => `<small>${escapeHtml(item.status)} / ${escapeHtml(item.title)} / ${escapeHtml(item.decidedAt ? formatTimestamp(item.decidedAt) : "not recorded")}</small>`).join("")}
+        </div>
+      ` : ""}
+    </section>
+  `;
+}
+
+function renderAgentReviewItem(item) {
+  const allowed = canOperatorApplyType(item.type);
+  return `
+    <article class="agent-review-item ${allowed ? "" : "is-blocked"}">
+      <div>
+        <span class="status-pill inbox-${allowed ? item.health < 45 ? "red" : item.health < 70 ? "amber" : "green" : "neutral"}">${allowed ? escapeHtml(item.impact || "Ready") : "Permission blocked"}</span>
+        <h3>${escapeHtml(item.title)}</h3>
+        <p>${escapeHtml(item.summary)}</p>
+        <div class="agent-review-facts">
+          <span>${escapeHtml(item.permission)}</span>
+          <span>${escapeHtml(item.projectName || projectName(item.projectId))}</span>
+          <span>${escapeHtml(formatTimestamp(item.createdAt))}</span>
+        </div>
+        <div class="agent-review-rationale">
+          <strong>Rationale</strong>
+          <p>${escapeHtml(item.rationale)}</p>
+        </div>
+        <div class="agent-review-records">
+          ${item.affectedRecords.length ? item.affectedRecords.map((record) => `<span>${escapeHtml(record)}</span>`).join("") : `<span>Workspace signals</span>`}
+        </div>
+      </div>
+      <div class="agent-review-actions">
+        <button class="button button-primary compact-button" type="button" data-agent-review-approve="${escapeHtml(item.id)}" ${allowed ? "" : "disabled"}>Approve</button>
+        <button class="button button-secondary compact-button" type="button" data-agent-review-reject="${escapeHtml(item.id)}">Reject</button>
+        <button class="button button-secondary compact-button" type="button" data-project-id="${escapeHtml(item.projectId)}">Project</button>
+      </div>
+    </article>
   `;
 }
 
@@ -38762,6 +38958,24 @@ document.addEventListener("click", (event) => {
   const operatorActionButton = event.target.closest("[data-operator-action]");
   if (operatorActionButton) {
     runOperatorAction(operatorActionButton.dataset.operatorAction, operatorActionButton.dataset.operatorProject);
+    return;
+  }
+
+  const agentReviewRefreshButton = event.target.closest("[data-agent-review-refresh]");
+  if (agentReviewRefreshButton) {
+    refreshOperatorReviewQueue();
+    return;
+  }
+
+  const agentReviewApproveButton = event.target.closest("[data-agent-review-approve]");
+  if (agentReviewApproveButton) {
+    decideOperatorReviewItem(agentReviewApproveButton.dataset.agentReviewApprove, "approved");
+    return;
+  }
+
+  const agentReviewRejectButton = event.target.closest("[data-agent-review-reject]");
+  if (agentReviewRejectButton) {
+    decideOperatorReviewItem(agentReviewRejectButton.dataset.agentReviewReject, "rejected");
     return;
   }
 
