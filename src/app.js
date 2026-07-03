@@ -21943,6 +21943,26 @@ function projectAutopilotRecoveryScenarios(drifts = projectAutopilotDriftCards()
   });
 }
 
+function autopilotScenarioImpact(scenario) {
+  const projectTasks = scenario.projectId ? getProjectTasks(scenario.projectId, false).filter((task) => task.status !== "done") : activeTasks().filter((task) => task.status !== "done");
+  const overdue = projectTasks.filter(isOverdue).length;
+  const blocked = projectTasks.filter(isTaskBlocked).length;
+  const approvals = state.approvals.filter((approval) => approval.projectId === scenario.projectId && approval.status !== "approved").length;
+  const clientFacing = projectCompany(scenario.projectId)?.type === "Client";
+  const timelineDays = scenario.strategy === "Move deadline" ? 3 : scenario.strategy === "Reduce scope" ? 0 : scenario.strategy === "Notify client" ? 1 : 2;
+  const downstream = projectTasks.filter((task) => task.blockedBy?.length || task.dueDate).slice(0, 5).length;
+  const teamLoad = scenario.strategy === "Reassign owner" ? "Rebalances 1 owner" : scenario.strategy === "Split task" ? "Adds focused work" : "No owner change yet";
+  const riskScore = clamp(overdue * 14 + blocked * 12 + approvals * 8 + (clientFacing ? 10 : 0) - scenario.confidence / 4, 0, 100);
+  return {
+    timeline: timelineDays ? `+${timelineDays}d likely movement` : "Date protected",
+    downstream: `${downstream} linked task${downstream === 1 ? "" : "s"} to review`,
+    clientPromises: clientFacing ? `${approvals} approval/client signal${approvals === 1 ? "" : "s"}` : "Internal workspace impact",
+    teamLoad,
+    riskScore: Math.round(riskScore),
+    confidence: scenario.confidence
+  };
+}
+
 function renderProjectAutopilot() {
   const drifts = projectAutopilotDriftCards();
   const scenarios = projectAutopilotRecoveryScenarios(drifts);
@@ -22032,6 +22052,7 @@ function renderAutopilotDriftCard(drift) {
 
 function renderAutopilotScenarioCard(scenario) {
   const tone = autopilotSeverityTone(scenario.severity);
+  const impact = autopilotScenarioImpact(scenario);
   return `
     <article class="autopilot-scenario-card">
       <div class="autopilot-chip-row">
@@ -22043,6 +22064,17 @@ function renderAutopilotScenarioCard(scenario) {
       <p>${escapeHtml(scenario.summary)}</p>
       <div class="autopilot-change-list">
         ${scenario.proposedChanges.map((change) => `<span>${escapeHtml(change)}</span>`).join("")}
+      </div>
+      <div class="autopilot-impact-simulator">
+        <strong>Impact Simulator</strong>
+        <div>
+          <span>Timeline <b>${escapeHtml(impact.timeline)}</b></span>
+          <span>Downstream <b>${escapeHtml(impact.downstream)}</b></span>
+          <span>Client promises <b>${escapeHtml(impact.clientPromises)}</b></span>
+          <span>Team load <b>${escapeHtml(impact.teamLoad)}</b></span>
+          <span>Risk score <b>${impact.riskScore}</b></span>
+          <span>Confidence <b>${impact.confidence}%</b></span>
+        </div>
       </div>
     </article>
   `;

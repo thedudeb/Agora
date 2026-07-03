@@ -186,6 +186,10 @@ const routeChecks = [
       "Autopilot recovery proposals",
       "proposal-only",
       "Move deadline",
+      "Impact Simulator",
+      "Downstream",
+      "Client promises",
+      "Risk score",
       "Plan:",
       "Reality:"
     ]
