@@ -287,6 +287,27 @@ const routeChecks = [
     ]
   },
   {
+    name: "Release management ship room",
+    suite: "release",
+    route: "release",
+    width: 1265,
+    height: 712,
+    required: [
+      "Release Management",
+      "Ship room",
+      "Release dashboard",
+      "Upcoming releases",
+      "Selected release",
+      "Linked projects, sprints, and tasks",
+      "Release checklist / gates",
+      "Ship gates",
+      "Release notes generator",
+      "Draft changelog",
+      "Export Evidence",
+      "Download Notes"
+    ]
+  },
+  {
     name: "Audit Log 2.0",
     suite: "security",
     route: "audit",
