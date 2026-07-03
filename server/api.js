@@ -545,6 +545,8 @@ function apiCapabilitiesDocument() {
         "GET /api/openapi.json",
         "GET /api/public/feature-requests",
         "POST /api/public/feature-requests",
+        "GET /api/integrations/github/status",
+        "POST /api/integrations/github/webhook",
         "GET /api/invitations/:token",
         "POST /api/invitations/:token/accept",
         "GET /api/portal-links/validate/:token",
@@ -639,6 +641,12 @@ function openApiDocument() {
       },
       "/api/integrations/sync": {
         post: operation("Queue integration sync", "Queues an inbound, outbound, or two-way provider sync job for sessions with integration write permission.")
+      },
+      "/api/integrations/github/status": {
+        get: publicOperation("GitHub integration status", "Returns repository mapping, webhook readiness, and pending conflict counts without exposing secrets.")
+      },
+      "/api/integrations/github/webhook": {
+        post: publicOperation("GitHub webhook intake", "Receives signed GitHub issue and pull-request webhooks, maps them to tasks, and records conflicts for review.")
       }
     },
     components: {
@@ -879,6 +887,21 @@ function createServer(options = {}) {
         if (email) assertRateLimit(request, `public-feature-email:${email}`, PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS, 60 * 60 * 1000);
         const result = await createPublicFeatureRequest(storage, body);
         sendJson(response, 201, result);
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/integrations/github/status") {
+        const snapshot = await storage.loadWorkspaceSnapshot();
+        sendJson(response, 200, githubIntegrationStatus(snapshot));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/integrations/github/webhook") {
+        assertRateLimit(request, "github-webhook", 120, 60 * 1000);
+        const body = await readJsonBodyWithRaw(request, 1024 * 1024);
+        verifyGitHubWebhookSignature(request, body.raw);
+        const result = await handleGitHubWebhook(storage, request, body.json);
+        sendJson(response, result.conflict ? 202 : 201, result);
         return;
       }
 
@@ -5667,6 +5690,278 @@ async function upsertTask(storage, task, session, action) {
   return nextTasks.find((item) => item.id === nextTask.id);
 }
 
+function githubWebhookActorSession() {
+  return {
+    user: { id: "github-webhook", name: "GitHub Webhook", email: "" },
+    membership: { role: "admin", status: "active", companyId: "" },
+    permissions: rolePermissions.admin
+  };
+}
+
+function githubIntegrationStatus(snapshot = {}) {
+  const integrations = snapshot.workspace?.integrations || {};
+  const github = integrations.github || {};
+  const connection = (Array.isArray(integrations.connections) ? integrations.connections : []).find((item) => item.id === "github") || {};
+  const repositories = Array.isArray(github.repositories) ? github.repositories : [];
+  const conflicts = Array.isArray(snapshot.integrationConflicts) ? snapshot.integrationConflicts : [];
+  const webhookSecretConfigured = Boolean(cleanString(process.env.AGORA_GITHUB_WEBHOOK_SECRET));
+  return {
+    provider: "github",
+    configured: repositories.length > 0,
+    webhookEndpoint: "/api/integrations/github/webhook",
+    webhookSecretConfigured,
+    connection: {
+      status: cleanString(connection.status || "planned"),
+      health: cleanString(connection.health || "planned"),
+      syncMode: cleanString(connection.syncMode || "inbound"),
+      lastSyncedAt: cleanString(connection.lastSyncedAt)
+    },
+    repositories: repositories.map((repo) => ({
+      fullName: cleanString(repo.fullName),
+      projectId: cleanString(repo.projectId),
+      syncIssues: repo.syncIssues !== false,
+      syncPullRequests: repo.syncPullRequests !== false,
+      lastSyncedAt: cleanString(repo.lastSyncedAt),
+      status: cleanString(repo.status || "mapped")
+    })),
+    conflicts: conflicts.filter((conflict) => cleanString(conflict.provider) === "github" && cleanString(conflict.status || "open") === "open").length
+  };
+}
+
+function verifyGitHubWebhookSignature(request, rawBody) {
+  const secret = cleanString(process.env.AGORA_GITHUB_WEBHOOK_SECRET);
+  if (!secret) return;
+  const signature = cleanString(request.headers["x-hub-signature-256"]);
+  if (!signature.startsWith("sha256=")) publicError(401, "Missing GitHub webhook signature");
+  const expected = `sha256=${crypto.createHmac("sha256", secret).update(rawBody).digest("hex")}`;
+  const provided = Buffer.from(signature, "utf8");
+  const target = Buffer.from(expected, "utf8");
+  if (provided.length !== target.length || !crypto.timingSafeEqual(provided, target)) {
+    publicError(401, "Invalid GitHub webhook signature");
+  }
+}
+
+function githubWebhookEventName(request) {
+  return cleanString(request.headers["x-github-event"]).toLowerCase();
+}
+
+function githubRepositoryFullName(payload = {}) {
+  return cleanString(payload.repository?.full_name || [
+    payload.repository?.owner?.login,
+    payload.repository?.name
+  ].filter(Boolean).join("/"));
+}
+
+function githubExternalId(repoFullName, item = {}) {
+  const number = cleanString(item.number);
+  return repoFullName && number ? `${repoFullName}#${number}` : "";
+}
+
+function githubIssueStatus(issue = {}) {
+  return cleanString(issue.state) === "closed" ? "done" : "todo";
+}
+
+function githubPullRequestState(pullRequest = {}) {
+  if (pullRequest.merged === true || cleanString(pullRequest.merged_at)) return "merged";
+  return cleanString(pullRequest.state || "open");
+}
+
+function githubLabels(labels = []) {
+  return (Array.isArray(labels) ? labels : [])
+    .map((label) => cleanString(label.name || label))
+    .filter(Boolean)
+    .slice(0, 12);
+}
+
+function githubTaskFromIssue({ issue, repo, repoConfig, existingTask }) {
+  const now = new Date().toISOString();
+  const externalId = githubExternalId(repo, issue);
+  return normalizeTask({
+    ...(existingTask || {}),
+    id: existingTask?.id || `github-issue-${slugFromName(externalId)}`,
+    projectId: repoConfig.projectId,
+    title: cleanString(issue.title).slice(0, 180) || `GitHub issue #${cleanString(issue.number)}`,
+    description: cleanString(issue.body).slice(0, 5000),
+    status: githubIssueStatus(issue),
+    priority: existingTask?.priority || "normal",
+    tags: Array.from(new Set([...(existingTask?.tags || []), ...githubLabels(issue.labels), repoConfig.labelPrefix || "github"].filter(Boolean))).slice(0, 16),
+    customFields: {
+      ...(existingTask?.customFields || {}),
+      source: "github",
+      githubRepo: repo,
+      githubIssueNumber: cleanString(issue.number),
+      githubExternalId: externalId,
+      githubIssueState: cleanString(issue.state || "open"),
+      githubUrl: cleanString(issue.html_url),
+      githubSyncedAt: now,
+      githubUpdatedAt: cleanString(issue.updated_at || now)
+    },
+    createdAt: existingTask?.createdAt || cleanString(issue.created_at) || now,
+    updatedAt: now
+  });
+}
+
+function githubTaskWithPullRequest({ pullRequest, repo, repoConfig, existingTask }) {
+  const now = new Date().toISOString();
+  const externalId = githubExternalId(repo, pullRequest);
+  return normalizeTask({
+    ...(existingTask || {}),
+    id: existingTask?.id || `github-pr-${slugFromName(externalId)}`,
+    projectId: existingTask?.projectId || repoConfig.projectId,
+    title: existingTask?.title || cleanString(pullRequest.title).slice(0, 180) || `GitHub PR #${cleanString(pullRequest.number)}`,
+    description: existingTask?.description || cleanString(pullRequest.body).slice(0, 5000),
+    status: githubPullRequestState(pullRequest) === "merged" ? "done" : existingTask?.status || "review",
+    priority: existingTask?.priority || "normal",
+    tags: Array.from(new Set([...(existingTask?.tags || []), repoConfig.labelPrefix || "github", "pull-request"].filter(Boolean))).slice(0, 16),
+    customFields: {
+      ...(existingTask?.customFields || {}),
+      source: "github",
+      githubRepo: repo,
+      githubPrNumber: cleanString(pullRequest.number),
+      githubPrState: githubPullRequestState(pullRequest),
+      githubPullRequestId: externalId,
+      githubPrUrl: cleanString(pullRequest.html_url),
+      githubSyncedAt: now,
+      githubUpdatedAt: cleanString(pullRequest.updated_at || now)
+    },
+    createdAt: existingTask?.createdAt || cleanString(pullRequest.created_at) || now,
+    updatedAt: now
+  });
+}
+
+function findGitHubLinkedTask(tasks = [], repo, item = {}, type = "issue") {
+  const number = cleanString(item.number);
+  return tasks.find((task) => {
+    const fields = task.customFields || {};
+    if (cleanString(fields.githubRepo) !== repo) return false;
+    if (type === "pull_request") return cleanString(fields.githubPrNumber) === number || cleanString(fields.githubPullRequestId) === githubExternalId(repo, item);
+    return cleanString(fields.githubIssueNumber) === number || cleanString(fields.githubExternalId) === githubExternalId(repo, item);
+  });
+}
+
+function hasGitHubSyncConflict(existingTask, githubUpdatedAt) {
+  if (!existingTask) return false;
+  const lastSyncedAt = cleanString(existingTask.customFields?.githubSyncedAt);
+  if (!lastSyncedAt) return false;
+  const localUpdatedAt = cleanString(existingTask.updatedAt);
+  return Date.parse(localUpdatedAt) > Date.parse(lastSyncedAt) && Date.parse(githubUpdatedAt) > Date.parse(lastSyncedAt);
+}
+
+function isStaleGitHubWebhook(existingTask, githubUpdatedAt) {
+  if (!existingTask) return false;
+  const lastSyncedAt = cleanString(existingTask.customFields?.githubSyncedAt);
+  if (!lastSyncedAt) return false;
+  return Date.parse(cleanString(existingTask.updatedAt)) > Date.parse(lastSyncedAt)
+    && Date.parse(githubUpdatedAt) <= Date.parse(lastSyncedAt);
+}
+
+function githubConflictRecord({ eventName, action, repo, existingTask, incomingTask, externalUpdatedAt }) {
+  const now = new Date().toISOString();
+  return {
+    id: `github-conflict-${slugFromName(`${repo}-${incomingTask.customFields?.githubIssueNumber || incomingTask.customFields?.githubPrNumber || incomingTask.id}`)}`,
+    provider: "github",
+    status: "open",
+    eventName,
+    action,
+    repo,
+    taskId: existingTask.id,
+    taskTitle: existingTask.title,
+    externalId: incomingTask.customFields?.githubExternalId || incomingTask.customFields?.githubPullRequestId || "",
+    localRevision: cleanString(existingTask.updatedAt),
+    externalRevision: cleanString(externalUpdatedAt),
+    local: {
+      title: existingTask.title,
+      description: existingTask.description,
+      status: existingTask.status,
+      tags: existingTask.tags || []
+    },
+    external: {
+      title: incomingTask.title,
+      description: incomingTask.description,
+      status: incomingTask.status,
+      tags: incomingTask.tags || []
+    },
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+async function handleGitHubWebhook(storage, request, payload = {}) {
+  const eventName = githubWebhookEventName(request);
+  const action = cleanString(payload.action).toLowerCase();
+  if (!["issues", "pull_request"].includes(eventName)) {
+    return { accepted: true, ignored: true, reason: `Unsupported GitHub event ${eventName || "unknown"}` };
+  }
+  const repo = githubRepositoryFullName(payload);
+  if (!repo) publicError(400, "GitHub webhook requires repository.full_name");
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const integrations = snapshot.workspace?.integrations || {};
+  const github = integrations.github || {};
+  const repoConfig = (Array.isArray(github.repositories) ? github.repositories : []).find((item) => cleanString(item.fullName).toLowerCase() === repo.toLowerCase());
+  if (!repoConfig?.projectId) publicError(400, "GitHub repository is not mapped to an Agora project");
+
+  const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks.map(normalizeTask) : [];
+  const item = eventName === "issues" ? payload.issue : payload.pull_request;
+  if (!item || typeof item !== "object") publicError(400, "GitHub webhook payload is missing issue or pull_request");
+  const existingTask = findGitHubLinkedTask(tasks, repo, item, eventName);
+  const externalUpdatedAt = cleanString(item.updated_at || new Date().toISOString());
+  const incomingTask = eventName === "issues"
+    ? githubTaskFromIssue({ issue: item, repo, repoConfig, existingTask })
+    : githubTaskWithPullRequest({ pullRequest: item, repo, repoConfig, existingTask });
+
+  if (existingTask && isStaleGitHubWebhook(existingTask, externalUpdatedAt)) {
+    return { accepted: true, ignored: true, stale: true, task: existingTask };
+  }
+
+  if (existingTask && hasGitHubSyncConflict(existingTask, externalUpdatedAt)) {
+    const conflict = githubConflictRecord({ eventName, action, repo, existingTask, incomingTask, externalUpdatedAt });
+    const conflicts = Array.isArray(snapshot.integrationConflicts) ? snapshot.integrationConflicts : [];
+    await storage.saveWorkspaceSnapshot({
+      ...snapshot,
+      integrationConflicts: [conflict, ...conflicts.filter((item) => item.id !== conflict.id)].slice(0, 100)
+    }, {
+      storage: storage.driver || "json-file",
+      updatedBy: "github-webhook",
+      action: "github_webhook_conflict"
+    });
+    await storage.appendAuditEvent({
+      actorId: "github-webhook",
+      action: "github_webhook_conflict",
+      workspaceId: workspace.id,
+      detail: `GitHub ${eventName} ${repo} #${cleanString(item.number)} needs conflict review`
+    });
+    return { accepted: true, conflict, task: existingTask };
+  }
+
+  const task = await upsertTask(storage, incomingTask, githubWebhookActorSession(), existingTask ? "github_webhook_task_update" : "github_webhook_task_create");
+  const latestSnapshot = await storage.loadWorkspaceSnapshot();
+  const latestIntegrations = latestSnapshot.workspace?.integrations || {};
+  const now = new Date().toISOString();
+  await storage.saveWorkspaceSnapshot({
+    ...latestSnapshot,
+    workspace: {
+      ...(latestSnapshot.workspace || {}),
+      integrations: {
+        ...latestIntegrations,
+        github: {
+          ...(latestIntegrations.github || {}),
+          repositories: (Array.isArray(latestIntegrations.github?.repositories) ? latestIntegrations.github.repositories : []).map((item) => cleanString(item.fullName).toLowerCase() === repo.toLowerCase()
+            ? { ...item, lastSyncedAt: now, status: "mapped" }
+            : item)
+        },
+        connections: (Array.isArray(latestIntegrations.connections) ? latestIntegrations.connections : []).map((connection) => connection.id === "github"
+          ? { ...connection, status: "connected", health: "healthy", lastSyncedAt: now, secretStatus: cleanString(process.env.AGORA_GITHUB_WEBHOOK_SECRET) ? "configured" : connection.secretStatus || "missing" }
+          : connection)
+      }
+    }
+  }, {
+    storage: storage.driver || "json-file",
+    updatedBy: "github-webhook",
+    action: "github_webhook_sync"
+  });
+  return { accepted: true, eventName, action, repository: repo, task };
+}
+
 async function archiveProject(storage, projectId, session, archived) {
   const snapshot = await storage.loadWorkspaceSnapshot();
   const projects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
@@ -6643,11 +6938,49 @@ function readJsonBody(request, limitBytes = BODY_LIMIT_BYTES) {
   });
 }
 
+function readJsonBodyWithRaw(request, limitBytes = BODY_LIMIT_BYTES) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    let tooLarge = false;
+    request.on("data", (chunk) => {
+      if (tooLarge) return;
+      size += chunk.length;
+      if (size > limitBytes) {
+        tooLarge = true;
+        const error = new Error("Request body is too large");
+        error.statusCode = 413;
+        error.publicMessage = "Request body is too large";
+        reject(error);
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on("end", () => {
+      if (tooLarge) return;
+      const raw = Buffer.concat(chunks).toString("utf8");
+      if (!raw) {
+        resolve({ raw: "", json: {} });
+        return;
+      }
+      try {
+        resolve({ raw, json: JSON.parse(raw) });
+      } catch {
+        const error = new Error("Invalid JSON body");
+        error.statusCode = 400;
+        error.publicMessage = "Invalid JSON body";
+        reject(error);
+      }
+    });
+    request.on("error", reject);
+  });
+}
+
 function applyCors(request, response) {
   setSecurityHeaders(response);
   const origin = cleanString(request.headers.origin);
   response.setHeader("Vary", "Origin");
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-GitHub-Event, X-Hub-Signature-256");
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   if (!origin) return true;
   if (!isAllowedOrigin(origin)) return false;

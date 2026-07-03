@@ -1058,6 +1058,7 @@ const seedData = {
   hostedPortalSnapshot: null,
   selectedInviteToken: "",
   clientPortalLinks: [],
+  integrationConflicts: [],
   selectedProjectTab: "overview",
   selectedSettingsTab: "account",
   plugins: {
@@ -2796,6 +2797,7 @@ function normalizeState(nextState) {
     memberships: Array.isArray(nextState.memberships) ? nextState.memberships : seedData.memberships,
     users: Array.isArray(nextState.users) ? nextState.users : [],
     invitations: Array.isArray(nextState.invitations) ? nextState.invitations : [],
+    integrationConflicts: Array.isArray(nextState.integrationConflicts) ? nextState.integrationConflicts.map(normalizeIntegrationConflict) : [],
     auditEvents: Array.isArray(nextState.auditEvents) ? nextState.auditEvents : seedData.auditEvents,
     clientPortalPreviewCompanyId: byId(companies, nextState.clientPortalPreviewCompanyId) ? nextState.clientPortalPreviewCompanyId : "",
     selectedClientPortalToken: typeof nextState.selectedClientPortalToken === "string" ? nextState.selectedClientPortalToken : "",
@@ -3513,6 +3515,27 @@ function normalizeWorkspaceIntegrations(integrations = {}, projectList = seedDat
       id: catalogItem.id,
       ...(byId.get(catalogItem.id) || {})
     })).filter(Boolean)
+  };
+}
+
+function normalizeIntegrationConflict(conflict = {}) {
+  const provider = String(conflict.provider || "github").trim().toLowerCase();
+  return {
+    id: String(conflict.id || uid("integration-conflict")),
+    provider,
+    status: ["open", "resolved", "ignored"].includes(conflict.status) ? conflict.status : "open",
+    eventName: String(conflict.eventName || "").trim().slice(0, 80),
+    action: String(conflict.action || "").trim().slice(0, 80),
+    repo: String(conflict.repo || "").trim().slice(0, 160),
+    taskId: String(conflict.taskId || "").trim(),
+    taskTitle: String(conflict.taskTitle || "").trim().slice(0, 180),
+    externalId: String(conflict.externalId || "").trim().slice(0, 180),
+    localRevision: String(conflict.localRevision || ""),
+    externalRevision: String(conflict.externalRevision || ""),
+    local: conflict.local && typeof conflict.local === "object" && !Array.isArray(conflict.local) ? conflict.local : {},
+    external: conflict.external && typeof conflict.external === "object" && !Array.isArray(conflict.external) ? conflict.external : {},
+    createdAt: conflict.createdAt || new Date().toISOString(),
+    updatedAt: conflict.updatedAt || conflict.createdAt || new Date().toISOString()
   };
 }
 
@@ -8514,6 +8537,63 @@ function renderSyncMappingLayer(integrations) {
   `;
 }
 
+function githubWebhookEndpoint() {
+  return `${API_BASE_URL.replace(/\/+$/, "")}/api/integrations/github/webhook`;
+}
+
+function githubOpenConflicts() {
+  return (Array.isArray(state.integrationConflicts) ? state.integrationConflicts : [])
+    .map(normalizeIntegrationConflict)
+    .filter((conflict) => conflict.provider === "github" && conflict.status === "open")
+    .slice(0, 6);
+}
+
+function renderGitHubWebhookIntakePanel(integrations) {
+  const connection = integrations.connections.find((item) => item.id === "github") || {};
+  const conflicts = githubOpenConflicts();
+  const endpoint = githubWebhookEndpoint();
+  return `
+    <div class="github-webhook-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">GitHub webhook intake</p>
+          <h3>Issues and pull requests into Agora</h3>
+        </div>
+        <span class="status-pill ${conflicts.length ? "inbox-red" : connection.health === "healthy" ? "inbox-green" : "inbox-amber"}">${conflicts.length ? `${conflicts.length} conflicts` : connection.health || "planned"}</span>
+      </div>
+      <div class="github-webhook-grid">
+        <article>
+          <span>Endpoint</span>
+          <strong>${escapeHtml(endpoint)}</strong>
+        </article>
+        <article>
+          <span>Signature</span>
+          <strong>${connection.secretStatus === "configured" ? "Secret configured" : "AGORA_GITHUB_WEBHOOK_SECRET"}</strong>
+        </article>
+        <article>
+          <span>Events</span>
+          <strong>issues, pull_request</strong>
+        </article>
+      </div>
+      <div class="integration-action-row">
+        <button class="button button-secondary" type="button" id="github-copy-webhook-url">Copy Webhook URL</button>
+        <button class="button button-secondary" type="button" data-open-settings-tab="jobs">Open Jobs</button>
+      </div>
+      <div class="github-conflict-list">
+        ${conflicts.length ? conflicts.map((conflict) => `
+          <article>
+            <div>
+              <strong>${escapeHtml(conflict.taskTitle || conflict.externalId || "GitHub conflict")}</strong>
+              <span>${escapeHtml(conflict.repo)} / ${escapeHtml(conflict.eventName)} / local ${escapeHtml(formatTimestamp(conflict.localRevision))} / GitHub ${escapeHtml(formatTimestamp(conflict.externalRevision))}</span>
+            </div>
+            <small>${escapeHtml(conflict.action || "changed")}</small>
+          </article>
+        `).join("") : emptyState("No GitHub conflicts waiting for review.")}
+      </div>
+    </div>
+  `;
+}
+
 function renderGitHubIntegrationPanel(integrations) {
   const github = normalizeGitHubIntegration(integrations.github, state.projects);
   const connection = integrations.connections.find((item) => item.id === "github") || {};
@@ -8569,6 +8649,7 @@ function renderGitHubIntegrationPanel(integrations) {
           </article>
         `).join("")}
       </div>
+      ${renderGitHubWebhookIntakePanel(integrations)}
       ${renderSyncMappingLayer(integrations)}
       <div class="github-link-preview">
         <div class="mini-section-header">
@@ -32310,6 +32391,10 @@ async function copyGitHubSyncPayload() {
   await copyCommandText(payload, "GitHub sync payload copied");
 }
 
+async function copyGitHubWebhookUrl() {
+  await copyCommandText(githubWebhookEndpoint(), "GitHub webhook URL copied");
+}
+
 async function queueGitHubIntegrationSync() {
   if (!apiSession) {
     showToast("Connect the API before queueing GitHub sync", "info");
@@ -35158,6 +35243,12 @@ document.addEventListener("click", (event) => {
   const githubCopySyncPayloadButton = event.target.closest("#github-copy-sync-payload");
   if (githubCopySyncPayloadButton) {
     copyGitHubSyncPayload();
+    return;
+  }
+
+  const githubCopyWebhookUrlButton = event.target.closest("#github-copy-webhook-url");
+  if (githubCopyWebhookUrlButton) {
+    copyGitHubWebhookUrl();
     return;
   }
 

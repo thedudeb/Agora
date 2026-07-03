@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const crypto = require("node:crypto");
 const os = require("node:os");
 const path = require("node:path");
 const { createServer } = require("./api");
@@ -417,6 +418,128 @@ async function run() {
     });
     assert(createdTask.task.title === "Smoke Task", "task create failed");
 
+    const snapshotBeforeGitHub = await storage.loadWorkspaceSnapshot();
+    await storage.saveWorkspaceSnapshot({
+      ...snapshotBeforeGitHub,
+      workspace: {
+        ...(snapshotBeforeGitHub.workspace || {}),
+        integrations: {
+          defaultOwner: "mara",
+          webhookEndpoint: "",
+          apiAccess: true,
+          eventMirroring: true,
+          github: {
+            repositories: [{
+              id: "github-smoke",
+              fullName: "thedudeb/Agora",
+              projectId: "project-smoke",
+              syncIssues: true,
+              syncPullRequests: true,
+              closeOnDone: true,
+              labelPrefix: "github",
+              branchPrefix: "agora/",
+              lastSyncedAt: "",
+              status: "mapped"
+            }],
+            fieldMapping: {
+              issueTitle: "title",
+              issueBody: "description",
+              issueLabels: "tags",
+              issueAssignee: "assignee",
+              issueState: "status",
+              pullRequestState: "customFields.githubPrState"
+            }
+          },
+          connections: [{
+            id: "github",
+            status: "planned",
+            syncMode: "inbound",
+            owner: "mara",
+            health: "planned",
+            events: ["github.issue.opened", "github.issue.closed"],
+            secretStatus: "missing"
+          }]
+        }
+      }
+    });
+    const githubStatus = await request(`${baseUrl}/api/integrations/github/status`);
+    assert(githubStatus.repositories.some((repo) => repo.fullName === "thedudeb/Agora"), "github status did not expose mapped repository");
+    const githubIssuePayload = {
+      action: "opened",
+      repository: { full_name: "thedudeb/Agora", name: "Agora", owner: { login: "thedudeb" } },
+      issue: {
+        number: 77,
+        title: "Webhook-created issue",
+        body: "Created from GitHub webhook smoke test.",
+        state: "open",
+        labels: [{ name: "bug" }],
+        html_url: "https://github.com/thedudeb/Agora/issues/77",
+        created_at: "2026-07-03T10:00:00.000Z",
+        updated_at: "2026-07-03T10:00:00.000Z"
+      }
+    };
+    const webhookResult = await request(`${baseUrl}/api/integrations/github/webhook`, {
+      method: "POST",
+      headers: { "X-GitHub-Event": "issues" },
+      body: githubIssuePayload
+    });
+    assert(webhookResult.task?.customFields?.githubIssueNumber === "77", "github webhook did not create linked task");
+    const snapshotAfterGitHub = await storage.loadWorkspaceSnapshot();
+    const githubTask = snapshotAfterGitHub.tasks.find((task) => task.customFields?.githubExternalId === "thedudeb/Agora#77");
+    assert(githubTask?.title === "Webhook-created issue", "github webhook task was not saved");
+    const syncedAtMs = Date.parse(githubTask.customFields.githubSyncedAt);
+    const localEditAt = new Date(syncedAtMs + 1000).toISOString();
+    const externalEditAt = new Date(syncedAtMs + 2000).toISOString();
+    await storage.saveWorkspaceSnapshot({
+      ...snapshotAfterGitHub,
+      tasks: snapshotAfterGitHub.tasks.map((task) => task.id === githubTask.id
+        ? { ...task, title: "Locally edited GitHub task", updatedAt: localEditAt }
+        : task)
+    });
+    const conflictResult = await request(`${baseUrl}/api/integrations/github/webhook`, {
+      method: "POST",
+      headers: { "X-GitHub-Event": "issues" },
+      body: {
+        ...githubIssuePayload,
+        action: "edited",
+        issue: {
+          ...githubIssuePayload.issue,
+          title: "GitHub edited issue",
+          updated_at: externalEditAt
+        }
+      }
+    });
+    assert(conflictResult.conflict?.status === "open", "github webhook conflict was not captured");
+    const snapshotAfterConflict = await storage.loadWorkspaceSnapshot();
+    assert(snapshotAfterConflict.integrationConflicts.some((conflict) => conflict.provider === "github" && conflict.taskId === githubTask.id), "github conflict was not persisted");
+    process.env.AGORA_GITHUB_WEBHOOK_SECRET = "smoke-secret";
+    const invalidSignedWebhook = await requestError(`${baseUrl}/api/integrations/github/webhook`, {
+      method: "POST",
+      headers: { "X-GitHub-Event": "issues", "X-Hub-Signature-256": "sha256=bad" },
+      body: githubIssuePayload
+    });
+    assert(invalidSignedWebhook.status === 401, "invalid github webhook signature should fail");
+    const stalePayload = {
+      ...githubIssuePayload,
+      action: "edited",
+      issue: {
+        ...githubIssuePayload.issue,
+        title: "Stale GitHub redelivery",
+        updated_at: githubTask.customFields.githubSyncedAt
+      }
+    };
+    const signedBody = JSON.stringify(stalePayload);
+    const signedWebhook = await request(`${baseUrl}/api/integrations/github/webhook`, {
+      method: "POST",
+      headers: {
+        "X-GitHub-Event": "issues",
+        "X-Hub-Signature-256": `sha256=${crypto.createHmac("sha256", "smoke-secret").update(signedBody).digest("hex")}`
+      },
+      rawBody: signedBody
+    });
+    assert(signedWebhook.accepted === true && signedWebhook.stale === true, "signed stale github webhook should be accepted without overwriting");
+    delete process.env.AGORA_GITHUB_WEBHOOK_SECRET;
+
     const blockedMemberTask = await requestError(`${baseUrl}/api/tasks`, {
       method: "POST",
       token: accepted.token,
@@ -507,7 +630,7 @@ async function run() {
     const tasks = await request(`${baseUrl}/api/tasks?projectId=project-smoke`, {
       token: login.token
     });
-    assert(tasks.tasks.length === 1, "task list failed");
+    assert(tasks.tasks.some((task) => task.id === "task-smoke"), "task list failed");
 
     const featureRequest = await request(`${baseUrl}/api/feature-requests`, {
       method: "POST",
@@ -1897,7 +2020,7 @@ async function request(url, options = {}) {
       ...(options.headers || {}),
       ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
     },
-    body: options.body ? JSON.stringify(options.body) : undefined
+    body: options.rawBody || (options.body ? JSON.stringify(options.body) : undefined)
   });
   const body = await response.json();
   if (!response.ok) {
@@ -1914,7 +2037,7 @@ async function requestError(url, options = {}) {
       ...(options.headers || {}),
       ...(options.token ? { Authorization: `Bearer ${options.token}` } : {})
     },
-    body: options.body ? JSON.stringify(options.body) : undefined
+    body: options.rawBody || (options.body ? JSON.stringify(options.body) : undefined)
   });
   const body = await response.json();
   if (response.ok) {

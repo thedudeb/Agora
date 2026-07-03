@@ -482,6 +482,8 @@ const routeChecks = [
       "Auth, scopes, direction, and health",
       "GitHub Integration v1",
       "Issues and pull requests",
+      "GitHub webhook intake",
+      "Copy Webhook URL",
       "Sync mapping layer",
       "GitHub issue to Agora task",
       "Queue GitHub Sync",

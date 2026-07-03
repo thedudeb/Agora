@@ -63,6 +63,7 @@ Writes should be narrow and previewable:
 - `POST /api/feature-requests` for authenticated feature requests that should become tasks.
 - `POST /api/feature-requests/:id/updates` for feature-request pipeline updates and requester notifications.
 - `POST /api/integrations/sync` for previewed external sync handoffs such as GitHub issue and pull-request mapping jobs.
+- `POST /api/integrations/github/webhook` for signed GitHub `issues` and `pull_request` event intake that maps external work into Agora tasks or conflict records.
 
 Agents must ask for confirmation before:
 

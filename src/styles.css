@@ -5605,6 +5605,64 @@ body[data-tutorial-target="view"] #app-view {
   gap: 10px;
 }
 
+.github-webhook-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.github-webhook-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr 0.8fr;
+  gap: 8px;
+}
+
+.github-webhook-grid article {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.github-webhook-grid span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.github-webhook-grid strong {
+  overflow-wrap: anywhere;
+}
+
+.github-conflict-list {
+  display: grid;
+  gap: 8px;
+}
+
+.github-conflict-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.github-conflict-list span,
+.github-conflict-list small {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
 .sync-mapping-layer {
   display: grid;
   gap: 10px;
@@ -10264,6 +10322,7 @@ body[data-density="compact"] .main-content {
   .docs-grid,
   .github-connector-grid,
   .github-mapping-grid,
+  .github-webhook-grid,
   .sync-mapping-grid,
   .project-backlog-grid,
   .intake-grid,
@@ -10782,6 +10841,7 @@ body[data-density="compact"] .main-content {
   .integration-summary-grid,
   .github-connector-grid,
   .github-mapping-grid,
+  .github-webhook-grid,
   .sync-mapping-grid,
   .sprint-signal-grid,
   .sprint-definition-list,
