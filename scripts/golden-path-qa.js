@@ -506,6 +506,8 @@ const routeChecks = [
     required: [
       "Backend health",
       "Conflict center",
+      "Local data is safe while sync is blocked",
+      "Copy Support Bundle",
       "Merge policy",
       "Offline apps",
       "Desktop and mobile readiness",

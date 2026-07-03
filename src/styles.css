@@ -8119,6 +8119,23 @@ body[data-tutorial-target="view"] #app-view {
   line-height: 1.35;
 }
 
+.sync-safety-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.sync-safety-banner p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .conflict-center-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

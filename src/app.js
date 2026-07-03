@@ -3963,16 +3963,24 @@ function apiSyncQueueSummary() {
   const conflicts = queue.filter((item) => item.status === "conflict").length;
   const offline = queue.filter((item) => item.blockedBy === "network" || item.offline).length;
   const pending = queue.filter((item) => item.status !== "conflict").length;
+  const highAttempts = queue.filter((item) => Number(item.attempts || 0) >= 3).length;
   const oldest = queue.reduce((oldestItem, item) => {
     if (!oldestItem) return item;
     return new Date(item.createdAt || 0) < new Date(oldestItem.createdAt || 0) ? item : oldestItem;
+  }, null);
+  const latest = queue.reduce((latestItem, item) => {
+    if (!latestItem) return item;
+    return new Date(item.updatedAt || 0) > new Date(latestItem.updatedAt || 0) ? item : latestItem;
   }, null);
   return {
     total: queue.length,
     pending,
     conflicts,
     offline,
+    highAttempts,
     oldestAt: oldest?.createdAt || "",
+    latestAt: latest?.updatedAt || "",
+    latestError: latest?.error || "",
     attempts: queue.reduce((total, item) => total + Number(item.attempts || 0), 0)
   };
 }
@@ -4013,6 +4021,10 @@ function clearApiSyncQueueItem(id) {
 function queuedSyncRecord(item) {
   if (item?.body?.task) return { collection: "tasks", key: "task", record: item.body.task };
   if (item?.body?.project) return { collection: "projects", key: "project", record: item.body.project };
+  if (item?.body?.record) {
+    const match = String(item.path || "").match(/\/api\/records\/([^/?]+)/);
+    return { collection: match?.[1] || "records", key: "record", record: item.body.record };
+  }
   return null;
 }
 
@@ -4029,6 +4041,7 @@ function revisionIsAfter(a = "", b = "") {
 async function fetchRemoteQueuedRecord(item) {
   const queued = queuedSyncRecord(item);
   if (!queued?.record?.id) return null;
+  if (!["tasks", "projects"].includes(queued.collection)) return null;
   const path = queued.collection === "tasks" ? "/api/tasks" : "/api/projects";
   const key = queued.collection;
   const records = await fetchApiCollectionPages(path, key);
@@ -4069,6 +4082,73 @@ function markApiSyncQueueConflict(item, conflict) {
       }
     : entry);
   saveApiSyncQueue();
+}
+
+function syncQueueRecordTitle(item) {
+  const queued = queuedSyncRecord(item);
+  if (!queued?.record) return item.label || item.path || "Queued API sync";
+  return queued.record.title || queued.record.name || queued.record.email || queued.record.id || item.label || item.path;
+}
+
+function syncQueueRecordTypeLabel(item) {
+  const queued = queuedSyncRecord(item);
+  if (!queued) return "API write";
+  return queued.collection.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+function syncQueueSafetyMessage(item) {
+  if (item.status === "conflict") return "Local work is still on this device. Review the server version before choosing what to keep.";
+  if (item.blockedBy === "network" || item.offline) return "Data is safe locally and will retry when the network returns.";
+  if (item.blockedBy === "api") return "Data is safe locally. Retry after the API, session, or permissions issue is fixed.";
+  return "Data is safe locally while this write waits to retry.";
+}
+
+function syncQueueSupportPayload(item = null) {
+  const queue = normalizeApiSyncQueue(item ? [item] : apiSyncQueue);
+  return {
+    type: "agora.sync-failure-support",
+    generatedAt: new Date().toISOString(),
+    workspace: {
+      id: state.workspace?.id || "",
+      name: state.workspace?.name || "",
+      slug: state.workspace?.slug || ""
+    },
+    api: {
+      baseUrl: API_BASE_URL,
+      connected: Boolean(apiSession),
+      status: apiStatusLabel(),
+      online: isNetworkOnline(),
+      localApi: isLocalApiBaseUrl()
+    },
+    summary: apiSyncQueueSummary(),
+    queue: queue.map((entry) => ({
+      id: entry.id,
+      label: entry.label,
+      recordType: syncQueueRecordTypeLabel(entry),
+      recordTitle: syncQueueRecordTitle(entry),
+      method: entry.method,
+      path: entry.path,
+      status: entry.status,
+      blockedBy: entry.blockedBy,
+      error: entry.error,
+      attempts: Number(entry.attempts || 0),
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+      lastAttemptAt: entry.lastAttemptAt,
+      nextRetryAt: entry.nextRetryAt,
+      safeLocally: true,
+      body: redactSupportPayload(entry.body)
+    }))
+  };
+}
+
+function redactSupportPayload(value) {
+  if (Array.isArray(value)) return value.map(redactSupportPayload);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+    const sensitive = /token|secret|password|authorization|apiKey|serviceRole|smtp|stripe|x402/i.test(key);
+    return [key, sensitive ? "[redacted]" : redactSupportPayload(item)];
+  }));
 }
 
 async function refreshBackendHealth(options = {}) {
@@ -4340,6 +4420,99 @@ async function retryApiSyncQueue() {
       : synced ? `Retried ${synced} API sync${synced === 1 ? "" : "s"}` : "API sync retry still blocked",
     synced && !conflictCount ? "success" : "info"
   );
+}
+
+async function retryApiSyncQueueItem(itemId) {
+  const item = apiSyncQueue.find((entry) => entry.id === itemId);
+  if (!item) return;
+  if (item.status === "conflict") {
+    showToast("Resolve the conflict before retrying this sync", "info");
+    return;
+  }
+  if (!apiSession) {
+    showToast("Connect to the API before retrying sync", "info");
+    return;
+  }
+  if (!canAttemptApiRequest()) {
+    render();
+    showToast("Agora is offline. This local change will retry when the network returns.", "info");
+    return;
+  }
+
+  try {
+    const conflict = await detectQueuedSyncConflict(item);
+    if (conflict) {
+      markApiSyncQueueConflict(item, conflict);
+      render();
+      showToast("This sync needs conflict review", "info");
+      return;
+    }
+    const result = await apiRequest(item.path, {
+      method: item.method,
+      body: item.body
+    });
+    if (result.project) mergeCoreRecordsFromApi({ projects: [result.project] });
+    if (result.task) mergeCoreRecordsFromApi({ tasks: [result.task] });
+    if (result.collection && result.record) mergeCollectionFromApi(result.collection, [result.record]);
+    clearApiSyncQueueItem(item.id);
+    await refreshBackendHealth({ silent: true });
+    saveState();
+    render();
+    showToast("Queued sync retried", "success");
+  } catch (error) {
+    queueApiSyncFailure({ ...item, error: error.message });
+    render();
+    showToast(`Sync still blocked: ${error.message}`, "info");
+  }
+}
+
+function dismissApiSyncQueueItem(itemId) {
+  const item = apiSyncQueue.find((entry) => entry.id === itemId);
+  if (!item) return;
+  clearApiSyncQueueItem(item.id);
+  render();
+  showToast("Queued sync dismissed. Local workspace data remains on this device.", "success");
+}
+
+async function copyApiSyncSupportDetails(itemId = "") {
+  const item = itemId ? apiSyncQueue.find((entry) => entry.id === itemId) : null;
+  const payload = syncQueueSupportPayload(item || null);
+  await copyCommandText(JSON.stringify(payload, null, 2), item ? "Sync support details copied" : "Sync queue support bundle copied");
+}
+
+function openApiSyncQueueTarget(itemId) {
+  const item = apiSyncQueue.find((entry) => entry.id === itemId);
+  const queued = queuedSyncRecord(item);
+  if (!queued?.record) {
+    showToast("This queued sync does not map to a visible record", "info");
+    return;
+  }
+  if (queued.collection === "tasks") {
+    const task = byId(state.tasks, queued.record.id) || queued.record;
+    state.selectedProject = task.projectId || state.selectedProject;
+    state.selectedRoute = "project";
+    state.selectedProjectTab = "tasks";
+    openSidebarGroupForRoute("project");
+    saveState();
+    render();
+    openTaskDialog(task);
+    return;
+  }
+  if (queued.collection === "projects") {
+    state.selectedProject = queued.record.id;
+    state.selectedRoute = "project";
+    state.selectedProjectTab = "overview";
+    openSidebarGroupForRoute("project");
+    saveState();
+    render();
+    return;
+  }
+  state.selectedRoute = "settings";
+  state.selectedSettingsTab = "sync";
+  openSidebarGroupForRoute("settings");
+  saveState();
+  render();
+  showToast(`${syncQueueRecordTypeLabel(item)} sync is visible in Settings > Sync`, "info");
 }
 
 async function resolveApiSyncConflict(itemId, resolution) {
@@ -8161,12 +8334,14 @@ function renderApiSyncQueueItem(item) {
   const conflict = item.status === "conflict" && item.conflict;
   const blockerLabel = item.status === "conflict" ? "Conflict" : item.blockedBy === "network" ? "Offline" : item.blockedBy === "api" ? "API blocked" : "Pending";
   const blockerTone = item.status === "conflict" ? "inbox-red" : item.blockedBy === "network" ? "inbox-amber" : "inbox-neutral";
+  const canOpenRecord = Boolean(queued?.record && ["tasks", "projects"].includes(queued.collection));
   return `
     <article class="${conflict ? "is-conflict" : ""}">
       <div>
-        <strong>${escapeHtml(item.label || item.path)}</strong>
+        <strong>${escapeHtml(syncQueueRecordTitle(item))}</strong>
+        <p>${escapeHtml(syncQueueSafetyMessage(item))}</p>
         <p>${escapeHtml(item.error)} - last tried ${escapeHtml(formatTimestamp(item.lastAttemptAt || item.updatedAt))}</p>
-        ${queued?.record ? `<small>${escapeHtml(queued.collection)} / ${escapeHtml(queued.record.title || queued.record.name || queued.record.id)}</small>` : ""}
+        ${queued?.record ? `<small>${escapeHtml(syncQueueRecordTypeLabel(item))} / ${escapeHtml(queued.record.id || "")}</small>` : ""}
         <small>${escapeHtml(item.method)} ${escapeHtml(item.path)} / queued ${escapeHtml(formatTimestamp(item.createdAt))} / ${Number(item.attempts || 0)} attempt${Number(item.attempts || 0) === 1 ? "" : "s"}</small>
         ${item.nextRetryAt && !conflict ? `<small>Next automatic retry after ${escapeHtml(formatTimestamp(item.nextRetryAt))}</small>` : ""}
         ${conflict ? `
@@ -8177,12 +8352,21 @@ function renderApiSyncQueueItem(item) {
       <span class="status-pill ${blockerTone}">${escapeHtml(blockerLabel)}</span>
       ${conflict ? `
         <div class="sync-conflict-actions">
+          <button class="button button-secondary compact-button" type="button" data-sync-item-action="copy" data-sync-id="${escapeHtml(item.id)}">Copy Details</button>
+          ${canOpenRecord ? `<button class="button button-secondary compact-button" type="button" data-sync-item-action="open" data-sync-id="${escapeHtml(item.id)}">Open Record</button>` : ""}
           <button class="button button-secondary compact-button" type="button" data-sync-conflict="local" data-sync-id="${escapeHtml(item.id)}">Keep Local</button>
           <button class="button button-secondary compact-button" type="button" data-sync-conflict="server" data-sync-id="${escapeHtml(item.id)}">Use Server</button>
           <button class="button button-secondary compact-button" type="button" data-sync-conflict="merge" data-sync-id="${escapeHtml(item.id)}">Merge</button>
           <button class="button button-secondary compact-button" type="button" data-sync-conflict="drop" data-sync-id="${escapeHtml(item.id)}">Drop</button>
         </div>
-      ` : ""}
+      ` : `
+        <div class="sync-conflict-actions">
+          <button class="button button-primary compact-button" type="button" data-sync-item-action="retry" data-sync-id="${escapeHtml(item.id)}" ${apiSession ? "" : "disabled"}>Retry</button>
+          ${canOpenRecord ? `<button class="button button-secondary compact-button" type="button" data-sync-item-action="open" data-sync-id="${escapeHtml(item.id)}">Open Record</button>` : ""}
+          <button class="button button-secondary compact-button" type="button" data-sync-item-action="copy" data-sync-id="${escapeHtml(item.id)}">Copy Details</button>
+          <button class="button button-secondary compact-button" type="button" data-sync-item-action="dismiss" data-sync-id="${escapeHtml(item.id)}">Dismiss</button>
+        </div>
+      `}
     </article>
   `;
 }
@@ -8242,13 +8426,20 @@ function renderConflictResolutionCenter(queueSummary = apiSyncQueueSummary()) {
         <article>
           <span>Merge policy</span>
           <strong>Field-aware</strong>
-          <small>Merge keeps server fields, overlays local edits, and unions tags/custom fields.</small>
+          <small>${queueSummary.highAttempts ? `${queueSummary.highAttempts} repeated failure${queueSummary.highAttempts === 1 ? "" : "s"} need support details.` : "Merge keeps server fields, overlays local edits, and unions tags/custom fields."}</small>
         </article>
         <article>
           <span>Oldest local change</span>
           <strong>${queueSummary.oldestAt ? escapeHtml(formatTimestamp(queueSummary.oldestAt)) : "None"}</strong>
           <small>Local work remains usable while PMs review sync state.</small>
         </article>
+      </div>
+      <div class="sync-safety-banner">
+        <div>
+          <strong>Local data is safe while sync is blocked.</strong>
+          <p>Agora keeps failed writes in this browser or app profile. Retry when the API is back, resolve conflicts when server data changed, or copy a redacted support bundle.</p>
+        </div>
+        <button class="button button-secondary compact-button" type="button" id="api-sync-copy-support" ${queueSummary.total ? "" : "disabled"}>Copy Support Bundle</button>
       </div>
       <div class="conflict-center-body">
         <div>
@@ -38096,6 +38287,23 @@ document.addEventListener("click", (event) => {
   const apiSyncRetryButton = event.target.closest("#api-sync-retry");
   if (apiSyncRetryButton) {
     retryApiSyncQueue();
+    return;
+  }
+
+  const apiSyncCopySupportButton = event.target.closest("#api-sync-copy-support");
+  if (apiSyncCopySupportButton) {
+    copyApiSyncSupportDetails();
+    return;
+  }
+
+  const syncItemActionButton = event.target.closest("[data-sync-item-action]");
+  if (syncItemActionButton) {
+    const action = syncItemActionButton.dataset.syncItemAction;
+    const itemId = syncItemActionButton.dataset.syncId || "";
+    if (action === "retry") retryApiSyncQueueItem(itemId);
+    if (action === "dismiss") dismissApiSyncQueueItem(itemId);
+    if (action === "copy") copyApiSyncSupportDetails(itemId);
+    if (action === "open") openApiSyncQueueTarget(itemId);
     return;
   }
 
