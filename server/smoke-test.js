@@ -480,13 +480,27 @@ async function run() {
     };
     const webhookResult = await request(`${baseUrl}/api/integrations/github/webhook`, {
       method: "POST",
-      headers: { "X-GitHub-Event": "issues" },
+      headers: { "X-GitHub-Event": "issues", "X-GitHub-Delivery": "smoke-delivery-77" },
       body: githubIssuePayload
     });
     assert(webhookResult.task?.customFields?.githubIssueNumber === "77", "github webhook did not create linked task");
     const snapshotAfterGitHub = await storage.loadWorkspaceSnapshot();
     const githubTask = snapshotAfterGitHub.tasks.find((task) => task.customFields?.githubExternalId === "thedudeb/Agora#77");
     assert(githubTask?.title === "Webhook-created issue", "github webhook task was not saved");
+    const duplicateWebhook = await request(`${baseUrl}/api/integrations/github/webhook`, {
+      method: "POST",
+      headers: { "X-GitHub-Event": "issues", "X-GitHub-Delivery": "smoke-delivery-77" },
+      body: githubIssuePayload
+    });
+    assert(duplicateWebhook.duplicate === true && duplicateWebhook.ignored === true, "duplicate github delivery should be ignored");
+    const snapshotAfterDuplicate = await storage.loadWorkspaceSnapshot();
+    assert(snapshotAfterDuplicate.tasks.filter((task) => task.customFields?.githubExternalId === "thedudeb/Agora#77").length === 1, "duplicate github delivery created another task");
+    const pingWebhook = await request(`${baseUrl}/api/integrations/github/webhook`, {
+      method: "POST",
+      headers: { "X-GitHub-Event": "ping", "X-GitHub-Delivery": "smoke-ping-delivery" },
+      body: { zen: "Keep it logically awesome.", repository: githubIssuePayload.repository }
+    });
+    assert(pingWebhook.accepted === true && pingWebhook.ignored === true, "unsupported github event should be accepted and ignored");
     const syncedAtMs = Date.parse(githubTask.customFields.githubSyncedAt);
     const localEditAt = new Date(syncedAtMs + 1000).toISOString();
     const externalEditAt = new Date(syncedAtMs + 2000).toISOString();
@@ -522,13 +536,54 @@ async function run() {
     assert(resolvedConflict.task.title === "GitHub edited issue", "github conflict resolution did not apply GitHub fields");
     const snapshotAfterResolution = await storage.loadWorkspaceSnapshot();
     assert(snapshotAfterResolution.integrationConflicts.some((conflict) => conflict.id === storedConflict.id && conflict.resolution === "use-github"), "resolved github conflict was not persisted");
+    process.env.AGORA_REQUIRE_GITHUB_WEBHOOK_SECRET = "true";
+    const missingProductionSignature = await requestError(`${baseUrl}/api/integrations/github/webhook`, {
+      method: "POST",
+      headers: { "X-GitHub-Event": "issues", "X-GitHub-Delivery": "smoke-missing-signature" },
+      body: githubIssuePayload
+    });
+    assert(missingProductionSignature.status === 401, "production github webhook without secret should fail");
+    delete process.env.AGORA_REQUIRE_GITHUB_WEBHOOK_SECRET;
     process.env.AGORA_GITHUB_WEBHOOK_SECRET = "smoke-secret";
     const invalidSignedWebhook = await requestError(`${baseUrl}/api/integrations/github/webhook`, {
       method: "POST",
-      headers: { "X-GitHub-Event": "issues", "X-Hub-Signature-256": "sha256=bad" },
+      headers: { "X-GitHub-Event": "issues", "X-GitHub-Delivery": "smoke-invalid-signature", "X-Hub-Signature-256": "sha256=bad" },
       body: githubIssuePayload
     });
     assert(invalidSignedWebhook.status === 401, "invalid github webhook signature should fail");
+    const malformedPayloadBody = JSON.stringify({
+      action: "opened",
+      repository: githubIssuePayload.repository
+    });
+    const malformedPayload = await requestError(`${baseUrl}/api/integrations/github/webhook`, {
+      method: "POST",
+      headers: {
+        "X-GitHub-Event": "issues",
+        "X-GitHub-Delivery": "smoke-malformed-payload",
+        "X-Hub-Signature-256": githubSignature(malformedPayloadBody, "smoke-secret")
+      },
+      rawBody: malformedPayloadBody
+    });
+    assert(malformedPayload.status === 400, "malformed github payload should fail");
+    const unmappedPayloadBody = JSON.stringify({
+      ...githubIssuePayload,
+      repository: { full_name: "thedudeb/Unmapped", name: "Unmapped", owner: { login: "thedudeb" } }
+    });
+    const unmappedRepoWebhook = await requestError(`${baseUrl}/api/integrations/github/webhook`, {
+      method: "POST",
+      headers: {
+        "X-GitHub-Event": "issues",
+        "X-GitHub-Delivery": "smoke-unmapped-repo",
+        "X-Hub-Signature-256": githubSignature(unmappedPayloadBody, "smoke-secret")
+      },
+      rawBody: unmappedPayloadBody
+    });
+    assert(unmappedRepoWebhook.status === 400, "unmapped github repository should fail");
+    const snapshotAfterRejectedWebhooks = await storage.loadWorkspaceSnapshot();
+    assert(snapshotAfterRejectedWebhooks.notificationHistory.some((event) => event.kind === "github-webhook" && event.title.includes("rejected") && event.reason.includes("AGORA_GITHUB_WEBHOOK_SECRET")), "missing secret rejection receipt was not persisted");
+    assert(snapshotAfterRejectedWebhooks.notificationHistory.some((event) => event.kind === "github-webhook" && event.title.includes("rejected") && event.reason.includes("Invalid GitHub webhook signature")), "invalid signature rejection receipt was not persisted");
+    assert(snapshotAfterRejectedWebhooks.notificationHistory.some((event) => event.kind === "github-webhook" && event.title.includes("rejected") && event.reason.includes("missing issue")), "malformed payload rejection receipt was not persisted");
+    assert(snapshotAfterRejectedWebhooks.notificationHistory.some((event) => event.kind === "github-webhook" && event.title.includes("rejected") && event.reason.includes("not mapped")), "unmapped repository rejection receipt was not persisted");
     const stalePayload = {
       ...githubIssuePayload,
       action: "edited",
@@ -543,7 +598,7 @@ async function run() {
       method: "POST",
       headers: {
         "X-GitHub-Event": "issues",
-        "X-Hub-Signature-256": `sha256=${crypto.createHmac("sha256", "smoke-secret").update(signedBody).digest("hex")}`
+        "X-Hub-Signature-256": githubSignature(signedBody, "smoke-secret")
       },
       rawBody: signedBody
     });
@@ -1072,6 +1127,8 @@ async function run() {
 
     console.log("API smoke test passed");
   } finally {
+    delete process.env.AGORA_GITHUB_WEBHOOK_SECRET;
+    delete process.env.AGORA_REQUIRE_GITHUB_WEBHOOK_SECRET;
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
@@ -2082,6 +2139,10 @@ async function requestRaw(url, options = {}) {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function githubSignature(body, secret) {
+  return `sha256=${crypto.createHmac("sha256", secret).update(body).digest("hex")}`;
 }
 
 run().catch((error) => {

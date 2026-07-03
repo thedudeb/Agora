@@ -646,7 +646,7 @@ function openApiDocument() {
         get: publicOperation("GitHub integration status", "Returns repository mapping, webhook readiness, and pending conflict counts without exposing secrets.")
       },
       "/api/integrations/github/webhook": {
-        post: publicOperation("GitHub webhook intake", "Receives signed GitHub issue and pull-request webhooks, maps them to tasks, and records conflicts for review.")
+        post: publicOperation("GitHub webhook intake", "Receives GitHub issue and pull-request webhooks, enforces signatures when required, blocks duplicate X-GitHub-Delivery replays, maps events to tasks, and records conflicts or rejected deliveries for review.")
       },
       "/api/integrations/github/conflicts/{id}/resolve": {
         post: operation("Resolve GitHub conflict", "Applies Keep Agora, Use GitHub, Merge, or Ignore decisions to an open GitHub conflict.")
@@ -898,16 +898,35 @@ function createServer(options = {}) {
 
       if (request.method === "GET" && url.pathname === "/api/integrations/github/status") {
         const snapshot = await storage.loadWorkspaceSnapshot();
-        sendJson(response, 200, githubIntegrationStatus(snapshot));
+        sendJson(response, 200, githubIntegrationStatus(snapshot, storage));
         return;
       }
 
       if (request.method === "POST" && url.pathname === "/api/integrations/github/webhook") {
         assertRateLimit(request, "github-webhook", 120, 60 * 1000);
         const body = await readJsonBodyWithRaw(request, 1024 * 1024);
-        verifyGitHubWebhookSignature(request, body.raw);
-        const result = await handleGitHubWebhook(storage, request, body.json);
-        sendJson(response, result.conflict ? 202 : 201, result);
+        try {
+          verifyGitHubWebhookSignature(storage, request, body.raw);
+          const deliveryId = githubWebhookDeliveryId(request);
+          if (deliveryId && await githubWebhookDeliverySeen(storage, deliveryId)) {
+            const receipt = await recordGitHubWebhookReceipt(storage, {
+              deliveryId,
+              eventName: githubWebhookEventName(request) || "unknown",
+              action: cleanString(body.json?.action).toLowerCase(),
+              repository: githubRepositoryFullName(body.json),
+              number: body.json?.issue?.number || body.json?.pull_request?.number,
+              outcome: "duplicate",
+              reason: "Ignored duplicate GitHub webhook delivery"
+            });
+            sendJson(response, 202, { accepted: true, ignored: true, duplicate: true, receipt });
+            return;
+          }
+          const result = await handleGitHubWebhook(storage, request, body.json, { deliveryId });
+          sendJson(response, result.conflict || result.ignored ? 202 : 201, result);
+        } catch (error) {
+          await recordGitHubWebhookFailureReceipt(storage, request, body.json, error.publicMessage || "GitHub webhook rejected");
+          throw error;
+        }
         return;
       }
 
@@ -1679,6 +1698,12 @@ async function buildBackendHealth(storage, session) {
   const notificationDelivery = notificationDeliveryAudit(email);
   const snapshotDocument = await storage.loadWorkspace();
   const snapshot = snapshotDocument?.snapshot || {};
+  const githubRepositories = Array.isArray(snapshot.workspace?.integrations?.github?.repositories)
+    ? snapshot.workspace.integrations.github.repositories
+    : [];
+  const githubConfigured = githubRepositories.length > 0;
+  const githubWebhookSecretConfigured = Boolean(githubWebhookSecret());
+  const githubWebhookSecretMandatory = githubWebhookSecretRequired(storage);
   const collectionReports = await Promise.all(Object.entries(recordCollections).map(async ([key, config]) => {
     try {
       const records = await storage.loadRecords(key, scopedRecordFilters(session, {}));
@@ -1769,6 +1794,15 @@ async function buildBackendHealth(storage, session) {
         ? "Trusted proxy mode reads X-Forwarded-For"
         : "Rate limits use the direct socket address",
       fix: "Only set AGORA_TRUST_PROXY=true behind a proxy that overwrites untrusted X-Forwarded-For headers."
+    },
+    {
+      id: "github-webhook-secret",
+      label: "GitHub webhook secret",
+      done: !githubConfigured || !githubWebhookSecretMandatory || githubWebhookSecretConfigured,
+      detail: githubConfigured
+        ? githubWebhookSecretConfigured ? "GitHub webhook signatures are enforced" : githubWebhookSecretMandatory ? "GitHub webhook secret is missing" : "GitHub webhooks are unsigned in local mode"
+        : "GitHub repositories are not mapped yet",
+      fix: "Set AGORA_GITHUB_WEBHOOK_SECRET to the GitHub webhook secret before enabling production GitHub intake."
     }
   ];
   const readiness = [
@@ -1862,6 +1896,15 @@ async function buildBackendHealth(storage, session) {
         ? "Production email routes have their required SMTP and recipient settings"
         : `${notificationDelivery.blockers.length} email route${notificationDelivery.blockers.length === 1 ? "" : "s"} need configuration`,
       fix: notificationDelivery.blockers[0]?.fix || "Set SMTP and owner-recipient environment variables before relying on external notification email."
+    },
+    {
+      id: "github-webhook-intake",
+      label: "GitHub webhook intake",
+      done: !githubConfigured || (!githubWebhookSecretMandatory || githubWebhookSecretConfigured),
+      detail: githubConfigured
+        ? `${githubRepositories.length} mapped repo${githubRepositories.length === 1 ? "" : "s"}; ${githubWebhookSecretConfigured ? "secret configured" : githubWebhookSecretMandatory ? "secret required" : "secret optional locally"}; replay protection enabled`
+        : "No GitHub repositories mapped",
+      fix: "Map each GitHub repository to an Agora project and set AGORA_GITHUB_WEBHOOK_SECRET before production."
     },
     {
       id: "record-query-api",
@@ -5727,18 +5770,21 @@ function githubWebhookActorSession() {
   };
 }
 
-function githubIntegrationStatus(snapshot = {}) {
+function githubIntegrationStatus(snapshot = {}, storage) {
   const integrations = snapshot.workspace?.integrations || {};
   const github = integrations.github || {};
   const connection = (Array.isArray(integrations.connections) ? integrations.connections : []).find((item) => item.id === "github") || {};
   const repositories = Array.isArray(github.repositories) ? github.repositories : [];
   const conflicts = Array.isArray(snapshot.integrationConflicts) ? snapshot.integrationConflicts : [];
   const webhookSecretConfigured = Boolean(cleanString(process.env.AGORA_GITHUB_WEBHOOK_SECRET));
+  const webhookSecretRequired = githubWebhookSecretRequired(storage);
   return {
     provider: "github",
     configured: repositories.length > 0,
     webhookEndpoint: "/api/integrations/github/webhook",
     webhookSecretConfigured,
+    webhookSecretRequired,
+    replayProtection: true,
     connection: {
       status: cleanString(connection.status || "planned"),
       health: cleanString(connection.health || "planned"),
@@ -5757,9 +5803,20 @@ function githubIntegrationStatus(snapshot = {}) {
   };
 }
 
-function verifyGitHubWebhookSignature(request, rawBody) {
-  const secret = cleanString(process.env.AGORA_GITHUB_WEBHOOK_SECRET);
-  if (!secret) return;
+function githubWebhookSecretRequired(storage) {
+  return cleanString(storage?.driver || process.env.AGORA_STORAGE_DRIVER).toLowerCase() === "supabase"
+    || authDriverLabel() === "supabase"
+    || envFlag("AGORA_REQUIRE_GITHUB_WEBHOOK_SECRET", false);
+}
+
+function verifyGitHubWebhookSignature(storage, request, rawBody) {
+  const secret = githubWebhookSecret();
+  if (!secret) {
+    if (githubWebhookSecretRequired(storage)) {
+      publicError(401, "AGORA_GITHUB_WEBHOOK_SECRET is required for production GitHub webhooks");
+    }
+    return;
+  }
   const signature = cleanString(request.headers["x-hub-signature-256"]);
   if (!signature.startsWith("sha256=")) publicError(401, "Missing GitHub webhook signature");
   const expected = `sha256=${crypto.createHmac("sha256", secret).update(rawBody).digest("hex")}`;
@@ -5770,8 +5827,16 @@ function verifyGitHubWebhookSignature(request, rawBody) {
   }
 }
 
+function githubWebhookSecret() {
+  return cleanString(process.env.AGORA_GITHUB_WEBHOOK_SECRET);
+}
+
 function githubWebhookEventName(request) {
   return cleanString(request.headers["x-github-event"]).toLowerCase();
+}
+
+function githubWebhookDeliveryId(request) {
+  return cleanString(request.headers["x-github-delivery"]).slice(0, 120);
 }
 
 function githubRepositoryFullName(payload = {}) {
@@ -5921,12 +5986,17 @@ async function recordGitHubWebhookReceipt(storage, details = {}) {
   const action = cleanString(details.action || "received");
   const number = cleanString(details.number);
   const outcome = cleanString(details.outcome || "accepted");
+  const deliveryId = cleanString(details.deliveryId);
+  const deliverySuffix = deliveryId ? ` delivery:${deliveryId}` : "";
+  const receiptId = deliveryId && !["duplicate", "rejected"].includes(outcome)
+    ? `github-webhook-delivery-${slugFromName(deliveryId)}`
+    : `github-webhook-${outcome}-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
   return storage.upsertRecord("notificationHistory", normalizeNotificationHistoryEvent({
-    id: cleanString(details.deliveryId) || `github-webhook-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`,
+    id: receiptId,
     kind: "github-webhook",
     title: `GitHub ${eventName} ${outcome}`,
     message: [repo, number ? `#${number}` : "", action, details.taskId ? `task ${details.taskId}` : ""].filter(Boolean).join(" / "),
-    reason: cleanString(details.reason || `GitHub webhook ${outcome}`).slice(0, 500),
+    reason: `${cleanString(details.reason || `GitHub webhook ${outcome}`)}${deliverySuffix}`.slice(0, 500),
     count: Number(details.count || 1),
     channel: "github webhook",
     createdAt: now,
@@ -5938,11 +6008,41 @@ async function recordGitHubWebhookReceipt(storage, details = {}) {
   });
 }
 
-async function handleGitHubWebhook(storage, request, payload = {}) {
+async function githubWebhookDeliverySeen(storage, deliveryId) {
+  const cleanDeliveryId = cleanString(deliveryId);
+  if (!cleanDeliveryId) return false;
+  const receiptId = `github-webhook-delivery-${slugFromName(cleanDeliveryId)}`;
+  const receipts = await storage.loadRecords("notificationHistory", {});
+  return receipts.some((receipt) => receipt.kind === "github-webhook" && (
+    receipt.id === receiptId || (!cleanString(receipt.id).startsWith("github-webhook-rejected-")
+      && !cleanString(receipt.id).startsWith("github-webhook-duplicate-")
+      && cleanString(receipt.reason).includes(`delivery:${cleanDeliveryId}`))
+  ));
+}
+
+async function recordGitHubWebhookFailureReceipt(storage, request, payload = {}, reason = "GitHub webhook rejected") {
+  try {
+    return await recordGitHubWebhookReceipt(storage, {
+      deliveryId: githubWebhookDeliveryId(request),
+      eventName: githubWebhookEventName(request) || "unknown",
+      action: cleanString(payload?.action).toLowerCase(),
+      repository: githubRepositoryFullName(payload),
+      number: payload?.issue?.number || payload?.pull_request?.number,
+      outcome: "rejected",
+      reason
+    });
+  } catch (receiptError) {
+    console.warn("Failed to record GitHub webhook rejection", receiptError.message);
+    return null;
+  }
+}
+
+async function handleGitHubWebhook(storage, request, payload = {}, options = {}) {
   const eventName = githubWebhookEventName(request);
   const action = cleanString(payload.action).toLowerCase();
   if (!["issues", "pull_request"].includes(eventName)) {
     const receipt = await recordGitHubWebhookReceipt(storage, {
+      deliveryId: options.deliveryId,
       eventName: eventName || "unknown",
       action,
       outcome: "ignored",
@@ -5969,6 +6069,7 @@ async function handleGitHubWebhook(storage, request, payload = {}) {
 
   if (existingTask && isStaleGitHubWebhook(existingTask, externalUpdatedAt)) {
     const receipt = await recordGitHubWebhookReceipt(storage, {
+      deliveryId: options.deliveryId,
       eventName,
       action,
       repository: repo,
@@ -5998,6 +6099,7 @@ async function handleGitHubWebhook(storage, request, payload = {}) {
       detail: `GitHub ${eventName} ${repo} #${cleanString(item.number)} needs conflict review`
     });
     const receipt = await recordGitHubWebhookReceipt(storage, {
+      deliveryId: options.deliveryId,
       eventName,
       action,
       repository: repo,
@@ -6036,6 +6138,7 @@ async function handleGitHubWebhook(storage, request, payload = {}) {
     action: "github_webhook_sync"
   });
   const receipt = await recordGitHubWebhookReceipt(storage, {
+    deliveryId: options.deliveryId,
     eventName,
     action,
     repository: repo,
@@ -7231,7 +7334,7 @@ function applyCors(request, response) {
   setSecurityHeaders(response);
   const origin = cleanString(request.headers.origin);
   response.setHeader("Vary", "Origin");
-  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-GitHub-Event, X-Hub-Signature-256");
+  response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-GitHub-Event, X-GitHub-Delivery, X-Hub-Signature-256");
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   if (!origin) return true;
   if (!isAllowedOrigin(origin)) return false;

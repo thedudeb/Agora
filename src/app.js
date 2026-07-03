@@ -8573,7 +8573,12 @@ function githubSetupChecklist(integrations, conflicts, receipts) {
     {
       label: "Secret configured",
       done: connection.secretStatus === "configured",
-      detail: connection.secretStatus === "configured" ? "Server reports a configured webhook secret." : "Set AGORA_GITHUB_WEBHOOK_SECRET on the API server."
+      detail: connection.secretStatus === "configured" ? "Server reports a configured webhook secret." : "Set AGORA_GITHUB_WEBHOOK_SECRET before production."
+    },
+    {
+      label: "Replay protection",
+      done: true,
+      detail: "Duplicate X-GitHub-Delivery values are ignored."
     },
     {
       label: "Events selected",
@@ -8687,7 +8692,11 @@ function renderGitHubWebhookIntakePanel(integrations) {
         </article>
         <article>
           <span>Signature</span>
-          <strong>${connection.secretStatus === "configured" ? "Secret configured" : "AGORA_GITHUB_WEBHOOK_SECRET"}</strong>
+          <strong>${connection.secretStatus === "configured" ? "Secret configured" : "Required in production"}</strong>
+        </article>
+        <article>
+          <span>Replay</span>
+          <strong>X-GitHub-Delivery</strong>
         </article>
         <article>
           <span>Events</span>
