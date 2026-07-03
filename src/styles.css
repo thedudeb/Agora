@@ -5902,6 +5902,129 @@ body[data-tutorial-target="view"] #app-view {
   margin-bottom: 14px;
 }
 
+.admin-readiness-panel {
+  grid-column: 1 / -1;
+}
+
+.admin-readiness-metrics {
+  margin-bottom: 14px;
+}
+
+.admin-readiness-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.admin-action-list,
+.admin-activity-list,
+.role-preview-list {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-action-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(120px, 0.45fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.admin-action-list strong,
+.admin-action-list span,
+.admin-action-list small,
+.admin-activity-list strong,
+.admin-activity-list small,
+.admin-activity-list p,
+.role-preview-card-header span,
+.role-preview-list span,
+.role-preview-list small {
+  overflow-wrap: anywhere;
+}
+
+.admin-action-list span:not(.status-pill),
+.admin-action-list small,
+.admin-activity-list small,
+.admin-activity-list p,
+.role-preview-card-header span,
+.role-preview-list small {
+  color: var(--muted);
+}
+
+.admin-activity-list article {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.admin-activity-list p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.role-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.role-preview-grid > article {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.role-preview-card-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.role-preview-card-header strong,
+.role-preview-card-header span {
+  display: block;
+}
+
+.role-preview-list small {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.role-preview-list span {
+  display: block;
+  padding: 7px 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 0.86rem;
+}
+
+.role-preview-list .is-allowed {
+  color: var(--green);
+}
+
+.role-preview-list .is-denied {
+  color: var(--muted);
+}
+
+.admin-permission-chip-list {
+  margin-top: 14px;
+}
+
 .permissions-audit-matrix {
   overflow-x: auto;
 }
@@ -10023,6 +10146,8 @@ body[data-density="compact"] .main-content {
   .hosted-launch-grid,
   .hosted-launch-command,
   .access-summary-grid,
+  .admin-readiness-grid,
+  .admin-action-list article,
   .integration-grid,
   .integration-summary-grid,
   .sprint-signal-grid,
@@ -10040,6 +10165,7 @@ body[data-density="compact"] .main-content {
   .goal-project-row,
   .theme-option-grid,
   .trust-grid,
+  .role-preview-grid,
   .operator-trust-grid,
   .portable-file-grid,
   .automation-pack-list,

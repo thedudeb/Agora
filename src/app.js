@@ -24398,6 +24398,7 @@ function renderSettings() {
 
       ${activeSettingsTab === "security" ? `
       ${renderCurrentAccessPanel()}
+      ${renderAdminReadinessPanel()}
       ${renderPortalSecurityPanel()}
       ${renderSessionManagementPanel()}
       ${renderOfflineDataSecurityPanel()}
@@ -25353,6 +25354,269 @@ function rolePermissionMap() {
   };
 }
 
+function adminReadinessActions() {
+  return [
+    {
+      id: "workspace-import",
+      label: "Import or replace workspace",
+      surface: "Data",
+      permission: "workspace:import",
+      impact: "high",
+      controls: ["Preview", "Backup restore", "Audit"],
+      detail: "Can change the source-of-truth workspace data.",
+      auditActions: ["workspace_import", "workspace_restore", "workspace_export"]
+    },
+    {
+      id: "member-role-change",
+      label: "Change member roles",
+      surface: "Members",
+      permission: "members:write",
+      impact: "high",
+      controls: ["Confirm", "Audit"],
+      detail: "Controls who can invite, administer, and reach sensitive settings.",
+      auditActions: ["member_role_update", "member_invite", "member_revoke"]
+    },
+    {
+      id: "sprint-close",
+      label: "Close sprint",
+      surface: "Scrum",
+      permission: "projects:write",
+      impact: "high",
+      controls: ["Preview", "Undo", "Audit"],
+      detail: "Archives a sprint report, rolls work forward, and can promote the next sprint.",
+      auditActions: ["sprint_close", "sprint_close_undo"]
+    },
+    {
+      id: "sprint-automation-run",
+      label: "Run sprint automations",
+      surface: "Automation",
+      permission: "projects:write",
+      impact: "medium",
+      controls: ["Preview", "Activity log", "Audit"],
+      detail: "Can create retro actions, reminders, tags, and activity notes.",
+      auditActions: ["sprint_automation_run", "sprint_automation_preset"]
+    },
+    {
+      id: "scheduler-run",
+      label: "Run server scheduler",
+      surface: "Automation",
+      permission: "scheduler:run",
+      impact: "medium",
+      controls: ["Job log", "Audit"],
+      detail: "Can execute background automations and notification jobs.",
+      auditActions: ["scheduler_run", "backend_job"]
+    },
+    {
+      id: "integrations-update",
+      label: "Manage integrations",
+      surface: "Integrations",
+      permission: "integrations:write",
+      impact: "high",
+      controls: ["Secret status", "Test event", "Audit"],
+      detail: "Can change connected adapter status, sync direction, and event mirroring.",
+      auditActions: ["integrations_update", "integration_test_event", "sprint_sync_mark"]
+    },
+    {
+      id: "payment-settings",
+      label: "Change payments",
+      surface: "Billing",
+      permission: "payments:write",
+      impact: "high",
+      controls: ["Test event", "Audit"],
+      detail: "Can update provider settings, plans, and entitlement evidence.",
+      auditActions: ["payment_settings_update", "payment_test_event", "payment_entitlement_granted"]
+    },
+    {
+      id: "notification-delivery",
+      label: "Manage notification delivery",
+      surface: "Notifications",
+      permission: "notifications:write",
+      impact: "medium",
+      controls: ["Diagnostics", "Audit"],
+      detail: "Can change channels used for email, portal, and delivery alerts.",
+      auditActions: ["notification", "email", "portal"]
+    },
+    {
+      id: "roadmap-delete",
+      label: "Remove roadmap sprint",
+      surface: "Scrum",
+      permission: "projects:write",
+      impact: "high",
+      controls: ["Confirm", "Audit"],
+      detail: "Can remove future planning commitments from the sprint roadmap.",
+      auditActions: ["sprint_roadmap_delete"]
+    },
+    {
+      id: "automation-delete",
+      label: "Delete automation",
+      surface: "Automation",
+      permission: "projects:write",
+      impact: "high",
+      controls: ["Confirm", "Audit"],
+      detail: "Can remove rules that teams may depend on for delivery hygiene.",
+      auditActions: ["automation_delete", "delete_automation"]
+    }
+  ];
+}
+
+function roleHasPermission(roleId, permission) {
+  return Boolean(rolePermissionMap()[roleId]?.includes(permission));
+}
+
+function roleLabelsForPermission(permission) {
+  return workspaceRoles
+    .filter((role) => roleHasPermission(role.id, permission))
+    .map((role) => role.label);
+}
+
+function adminActivityRows() {
+  const actions = adminReadinessActions();
+  const actionKeywords = new Set(actions.flatMap((action) => action.auditActions));
+  const matchesAdminAction = (value) => {
+    const normalized = String(value || "").toLowerCase();
+    return Array.from(actionKeywords).some((keyword) => normalized.includes(String(keyword).toLowerCase()));
+  };
+  const localEvents = Array.isArray(state.auditEvents) ? state.auditEvents : [];
+  const serverEvents = Array.isArray(auditEvents) ? auditEvents : [];
+  const auditRows = mergeRecordsById(localEvents, serverEvents)
+    .filter((event) => auditImpactLevel(event) === "high" || matchesAdminAction(event.action) || matchesAdminAction(event.detail))
+    .map((event) => ({
+      id: event.id || `${event.action || "event"}-${event.createdAt || "unknown"}`,
+      kind: "Audit",
+      title: event.detail || event.action || "Workspace event",
+      meta: `${memberName(event.actorId) || event.actorId || "System"} - ${formatTimestamp(event.createdAt)}`,
+      detail: [event.action, event.targetType, event.source || "local"].filter(Boolean).join(" / "),
+      impact: auditImpactLevel(event),
+      createdAt: event.createdAt
+    }));
+  const automationRows = (Array.isArray(state.automationHistory) ? state.automationHistory : [])
+    .filter((run) => String(run.source || run.automationId || run.summary || "").toLowerCase().includes("sprint"))
+    .map((run) => ({
+      id: run.id || `${run.automationId || "automation"}-${run.createdAt || "unknown"}`,
+      kind: "Automation",
+      title: run.summary || "Sprint automation run",
+      meta: `${Number(run.changedCount || 0)} changed - ${formatTimestamp(run.createdAt)}`,
+      detail: run.rationale || (Array.isArray(run.actionLog) ? run.actionLog.slice(0, 2).join(" / ") : ""),
+      impact: Number(run.changedCount || 0) > 2 ? "medium" : "low",
+      createdAt: run.createdAt
+    }));
+  return [...auditRows, ...automationRows]
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 8);
+}
+
+function renderAdminReadinessPanel() {
+  const actions = adminReadinessActions();
+  const activityRows = adminActivityRows();
+  const highImpactActions = actions.filter((action) => action.impact === "high");
+  const previewedActions = actions.filter((action) => action.controls.some((control) => control.toLowerCase().includes("preview")));
+  const undoableActions = actions.filter((action) => action.controls.some((control) => control.toLowerCase().includes("undo") || control.toLowerCase().includes("restore")));
+  const auditedActions = actions.filter((action) => action.controls.some((control) => control.toLowerCase().includes("audit")));
+  return `
+    <section class="panel admin-readiness-panel permissions-audit-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Enterprise readiness</p>
+          <h2>Admin readiness</h2>
+        </div>
+        <span class="status-pill inbox-blue">${actions.length} guarded actions</span>
+      </div>
+      <div class="permissions-risk-grid admin-readiness-metrics">
+        <article>
+          <span class="status-pill inbox-red">High impact</span>
+          <strong>${highImpactActions.length}</strong>
+          <small>Workspace imports, role changes, integrations, billing, sprint close, and removals need explicit ownership.</small>
+        </article>
+        <article>
+          <span class="status-pill inbox-blue">Previewed</span>
+          <strong>${previewedActions.length}</strong>
+          <small>High-change workflows should show what will happen before mutating data.</small>
+        </article>
+        <article>
+          <span class="status-pill inbox-green">Recoverable</span>
+          <strong>${undoableActions.length}</strong>
+          <small>Undo paths or backup restore guidance are visible for the riskiest changes.</small>
+        </article>
+        <article>
+          <span class="status-pill inbox-neutral">Audited</span>
+          <strong>${auditedActions.length}</strong>
+          <small>Admin actions are designed to leave local or server audit evidence.</small>
+        </article>
+      </div>
+      <div class="admin-readiness-grid">
+        <div>
+          <div class="mini-section-header">
+            <strong>Danger zone review</strong>
+            <span>Risky workflows, required permission, and current guardrails.</span>
+          </div>
+          <div class="admin-action-list">
+            ${highImpactActions.map((action) => `
+              <article>
+                <div>
+                  <strong>${escapeHtml(action.label)}</strong>
+                  <span>${escapeHtml(`${action.surface} - ${action.detail}`)}</span>
+                </div>
+                <span class="status-pill inbox-${action.impact === "high" ? "red" : "amber"}">${escapeHtml(action.permission)}</span>
+                <small>${escapeHtml(action.controls.join(" / "))}</small>
+              </article>
+            `).join("")}
+          </div>
+        </div>
+        <div>
+          <div class="mini-section-header">
+            <strong>Admin activity center</strong>
+            <span>Recent high-impact audit and sprint automation evidence.</span>
+          </div>
+          <div class="admin-activity-list">
+            ${activityRows.length ? activityRows.map((row) => `
+              <article class="audit-impact-${escapeHtml(row.impact)}">
+                <div>
+                  <span class="status-pill inbox-neutral">${escapeHtml(row.kind)}</span>
+                  <strong>${escapeHtml(row.title)}</strong>
+                  <small>${escapeHtml(row.meta)}</small>
+                </div>
+                <p>${escapeHtml(row.detail || "No additional detail recorded.")}</p>
+              </article>
+            `).join("") : emptyState("High-impact admin changes and sprint automation runs will appear here.")}
+          </div>
+        </div>
+      </div>
+      <div class="mini-section-header">
+        <strong>Role preview</strong>
+        <span>Use this as an impersonation-lite check before inviting managers, members, or clients.</span>
+      </div>
+      <div class="role-preview-grid">
+        ${workspaceRoles.map((role) => {
+          const allowed = actions.filter((action) => roleHasPermission(role.id, action.permission));
+          const blocked = actions.filter((action) => !roleHasPermission(role.id, action.permission));
+          return `
+            <article>
+              <div class="role-preview-card-header">
+                <div>
+                  <strong>${escapeHtml(role.label)}</strong>
+                  <span>${escapeHtml(role.description)}</span>
+                </div>
+                <span class="status-pill ${allowed.length > 6 ? "inbox-amber" : "inbox-green"}">${allowed.length}/${actions.length}</span>
+              </div>
+              <div class="role-preview-list">
+                <small>Can do</small>
+                ${(allowed.length ? allowed.slice(0, 4) : [{ label: "No sensitive admin actions" }]).map((action) => `<span class="is-allowed">${escapeHtml(action.label)}</span>`).join("")}
+                <small>Blocked</small>
+                ${(blocked.length ? blocked.slice(0, 4) : [{ label: "No readiness actions blocked" }]).map((action) => `<span class="is-denied">${escapeHtml(action.label)}</span>`).join("")}
+              </div>
+            </article>
+          `;
+        }).join("")}
+      </div>
+      <div class="permission-chip-list admin-permission-chip-list" aria-label="Sensitive permission access">
+        ${["workspace:import", "members:write", "projects:write", "integrations:write", "payments:write", "scheduler:run"].map((permission) => `
+          <span class="status-pill inbox-neutral">${escapeHtml(permission)}: ${escapeHtml(roleLabelsForPermission(permission).join(", ") || "No roles")}</span>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function permissionsAuditRows() {
   const memberships = Array.isArray(state.memberships) ? state.memberships : [];
   return workspaceMembers().map((member) => {
@@ -25517,6 +25781,8 @@ function renderPermissionsAudit() {
         `).join("")}
       </div>
     </section>
+
+    ${renderAdminReadinessPanel()}
 
     <section class="panel permissions-audit-panel">
       <div class="panel-header">

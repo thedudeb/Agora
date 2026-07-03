@@ -430,6 +430,10 @@ const routeChecks = [
     height: 712,
     required: [
       "Current access",
+      "Admin readiness",
+      "Danger zone review",
+      "Admin activity center",
+      "Role preview",
       "Active sessions",
       "Offline security posture",
       "Local-first means the device matters",
