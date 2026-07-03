@@ -24498,7 +24498,108 @@ function portfolioScenarioPlans(rows, workloadRows) {
   ];
 }
 
+function portfolioPriorityScore(row) {
+  const openIntake = row.report.openIntake.length;
+  const releaseUrgency = row.targetDate ? Math.max(0, 100 - daysBetween(todayKey(), row.targetDate) * 3) : 35;
+  const impact = clamp(60 + row.openRaid.filter((item) => ["high", "critical"].includes(item.severity)).length * 10 + openIntake * 4, 0, 100);
+  const urgency = clamp(releaseUrgency + row.report.overdue.length * 8 + row.report.dueSoon.length * 4, 0, 100);
+  const confidence = row.releaseConfidence;
+  const effortPenalty = clamp(Math.round(row.report.openTasks.length * 4 + Math.max(0, row.ownerLoad?.utilization || 0) * 0.25), 0, 100);
+  const risk = clamp(row.blockers * 12 + row.report.overdue.length * 8, 0, 100);
+  const clientValue = clamp((projectCompany(row.project.id)?.type === "Client" ? 70 : 55) + openIntake * 5, 0, 100);
+  const strategicFit = clamp((state.goals || []).filter((goal) => (goal.projectIds || []).includes(row.project.id)).length * 35 + 35, 0, 100);
+  const score = clamp(Math.round(
+    impact * 0.2
+    + urgency * 0.18
+    + confidence * 0.16
+    + risk * 0.14
+    + clientValue * 0.14
+    + strategicFit * 0.14
+    - effortPenalty * 0.1
+  ), 0, 100);
+  return {
+    score,
+    factors: {
+      impact,
+      urgency,
+      confidence,
+      effort: 100 - effortPenalty,
+      risk,
+      clientValue,
+      strategicFit
+    }
+  };
+}
+
+function portfolioBacklogPriorityItems() {
+  return normalizeProjectBacklog(state.projectBacklog)
+    .filter((item) => item.status !== "rejected")
+    .map((item) => {
+      const effort = clamp(100 - Number(item.effort || item.impact * 8 || 35), 0, 100);
+      const score = clamp(Math.round(
+        Number(item.impact || 1) * 14
+        + Number(item.urgency || 1) * 12
+        + Number(item.confidence || 1) * 10
+        + effort * 0.18
+      ), 0, 100);
+      return { item, score, effort };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+function renderPortfolioPriorityPanel(rows) {
+  const scoredRows = rows
+    .map((row) => ({ ...row, priority: portfolioPriorityScore(row) }))
+    .sort((a, b) => b.priority.score - a.priority.score);
+  const backlogItems = portfolioBacklogPriorityItems();
+  return `
+    <section class="panel portfolio-priority-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Priority scoring</p>
+          <h2>What should we prioritize?</h2>
+        </div>
+        <span class="status-pill inbox-blue">ICE+ risk</span>
+      </div>
+      <p class="panel-note">Scores combine impact, urgency, confidence, effort, risk, client value, and strategic fit. Higher scores should get earlier leadership attention.</p>
+      <div class="portfolio-priority-list">
+        ${scoredRows.slice(0, 6).map((row) => `
+          <article>
+            <div>
+              <strong>${escapeHtml(row.project.name)}</strong>
+              <span>${escapeHtml(companyName(row.project.companyId))} / ${escapeHtml(memberName(row.project.owner))}</span>
+            </div>
+            <span class="status-pill ${row.priority.score >= 75 ? "inbox-green" : row.priority.score >= 50 ? "inbox-amber" : "inbox-neutral"}">${row.priority.score}</span>
+            <div class="priority-factor-grid">
+              ${Object.entries(row.priority.factors).map(([label, value]) => `<small>${escapeHtml(label)} ${Math.round(value)}</small>`).join("")}
+            </div>
+          </article>
+        `).join("")}
+      </div>
+      <div class="portfolio-backlog-priority">
+        <div class="mini-section-header">
+          <strong>Backlog candidates</strong>
+          <span>${backlogItems.length} scored</span>
+        </div>
+        <div class="portfolio-priority-list compact">
+          ${backlogItems.slice(0, 4).map(({ item, score }) => `
+            <article>
+              <div>
+                <strong>${escapeHtml(item.title)}</strong>
+                <span>${escapeHtml(item.requestedBy || "Workspace")} / ${escapeHtml(item.targetWindow || "No window")}</span>
+              </div>
+              <span class="status-pill ${score >= 75 ? "inbox-green" : score >= 50 ? "inbox-amber" : "inbox-neutral"}">${score}</span>
+              <small>${escapeHtml(projectBacklogStatusLabel(item.status))}</small>
+            </article>
+          `).join("") || emptyState("No backlog candidates are waiting for scoring.")}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function renderPortfolioRow(row) {
+  const priority = portfolioPriorityScore(row);
   return `
     <article class="portfolio-command-row">
       <button class="table-task-button" type="button" data-project-id="${escapeHtml(row.project.id)}">
@@ -24511,6 +24612,7 @@ function renderPortfolioRow(row) {
         <span>${row.blockers} blockers</span>
         <span>${row.releaseConfidence}% release</span>
         <span>${formatDuration(row.trackedBudget)}</span>
+        <span>${priority.score} priority</span>
       </div>
     </article>
   `;
@@ -24579,6 +24681,8 @@ function renderPortfolioResourcePlanning() {
       </section>
 
       ${renderCapacityPlanningPanel(workloadRows)}
+
+      ${renderPortfolioPriorityPanel(rows)}
 
       <section class="panel portfolio-scenario-panel">
         <div class="panel-header">
