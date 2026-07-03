@@ -1,0 +1,44 @@
+{
+  "type": "agora.plugin",
+  "manifestVersion": 1,
+  "id": "example-importer",
+  "name": "Example Importer",
+  "version": "0.1.0",
+  "description": "Reference plugin manifest for a local importer and command contribution.",
+  "author": {
+    "name": "Agora Community"
+  },
+  "permissions": [
+    "workspace:read",
+    "projects:write",
+    "tasks:write"
+  ],
+  "runtime": {
+    "mode": "none"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "id": "example-importer.open",
+        "title": "Open Example Importer",
+        "description": "Show how a plugin command can route users to an importer flow."
+      }
+    ],
+    "importers": [
+      {
+        "id": "example-importer.csv",
+        "title": "Example CSV Importer",
+        "source": "example-csv",
+        "formats": ["csv"],
+        "description": "Maps title, project, assignee, status, priority, due date, and description fields."
+      }
+    ],
+    "mcpTools": [
+      {
+        "id": "example-importer.preview",
+        "title": "Preview Example Import",
+        "description": "Future MCP bridge point for previewing this plugin's import mapping."
+      }
+    ]
+  }
+}

@@ -27,6 +27,7 @@ Agora currently covers the core loop: plan work, move tasks, triage inbox signal
 - Dependency-free browser app with seeded demo data, local persistence, backups, portable exports, an offline PWA shell, and an optional offline-capable desktop shell.
 - Project views for dashboard, Today, inbox, board, list, calendar, sprint command center with planning mode, sprint automation previews, presets, and audit runs, sprint close preview/undo, review closeout history, editable roadmap sprints, burndown/burnup forecasts, velocity forecasts, AI scrum-master briefs, multi-sprint roadmaps, scenario planning, Jira/Linear/GitHub sprint sync payloads, draggable sprint timelines, and capacity overlays, timelines, reports, companies, client portal, docs/files, project backlog, intake, templates, automations, marketplace, data, audit, permissions, Operator, and settings.
 - Dependency-free API scaffold with local JSON storage, optional Supabase storage/auth, structured records, marketplace catalog, payment-adapter skeleton, scheduler endpoints, and smoke tests.
+- Plugin manifest skeleton with a validator, example plugin, and least-privilege contribution contract for commands, views, importers, templates, automation packs, MCP tools, and settings panels.
 - Trust posture for self-hosters: no ads, no trackers, server-only secrets, role permissions, company-scoped access, portable bundles, and auditable AI actions.
 
 ## Status
@@ -101,6 +102,7 @@ npm run dev:api   # start the local API
 npm start         # serve the browser app for a host/runtime
 npm run start:api # start the API for a host/runtime
 npm run mcp       # start the local stdio MCP server for power-user clients
+npm run plugins   # validate local plugin manifests
 npm run check     # syntax-check app and server files
 npm run qa        # release QA: quick verification + browser golden-path QA
 npm run verify:quick # syntax + portable fixture validation + recovery stress test
@@ -110,6 +112,7 @@ npm run test:api  # run the dependency-free API smoke test
 npm run test:fixtures # validate portable workspace and automation pack fixtures
 npm run test:recovery # stress-test backup, portable import, and restore behavior
 npm run test:golden # browser-check onboarding, marketplace, templates, and portable recovery
+npm run test:plugins # validate plugin manifest contracts
 npm run test:supabase # verify a real Supabase project end to end
 npm run verify:supabase # verify + real Supabase project checks
 npm run screenshots # refresh launch screenshots with local Chrome/Chromium
@@ -129,6 +132,8 @@ To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`
 For MCP clients, set `AGORA_API_URL`, `AGORA_API_TOKEN`, and optionally `AGORA_MCP_ALLOW_WRITES=true`, then run `npm run mcp`. See [`docs/mcp-server.md`](./docs/mcp-server.md) for client config examples, tools, resources, and security notes.
 
 For migration work, the CLI can preview and apply Trello JSON or generic CSV exports before you touch a real workspace. See [`docs/migration-tool.md`](./docs/migration-tool.md) for the adapter contract, safety model, mapping tables, and examples.
+
+For plugin experiments, start with [`plugins/example-importer/plugin.json`](./plugins/example-importer/plugin.json), validate with `npm run test:plugins`, and read the [plugin architecture contract](./docs/plugin-architecture.md). The first plugin layer is declarative and local-first, so contributors can safely propose commands, views, importers, templates, automation packs, MCP tools, and settings panels before Agora enables runtime loading.
 
 For power users and self-hosters, the lightweight CLI wraps common project operations:
 
