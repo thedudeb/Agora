@@ -826,6 +826,9 @@ function openApiDocument() {
       "/api/backups/run": {
         post: operation("Run workspace backup", "Writes a server-side workspace snapshot backup for admins, managers, or trusted cron sessions.")
       },
+      "/api/admin/diagnostics": {
+        get: operation("Admin diagnostics", "Returns a redacted diagnostics packet for production support without exposing secrets.")
+      },
       "/api/integrations/sync": {
         post: operation("Queue integration sync", "Queues an inbound, outbound, or two-way provider sync job for sessions with integration write permission.")
       },
@@ -1207,6 +1210,15 @@ function createServer(options = {}) {
           return;
         }
         sendJson(response, 201, await runWorkspaceBackup(storage, { source: "api", requestedBy: session.user.name || session.user.email || session.user.id }));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/admin/diagnostics") {
+        if (!hasPermission(session, "audit:read")) {
+          sendError(response, 403, "Missing audit read permission");
+          return;
+        }
+        sendJson(response, 200, await buildAdminDiagnostics(storage, session, request.agoraRequestId));
         return;
       }
 
@@ -2232,6 +2244,65 @@ async function buildBackendHealth(storage, session) {
     backups: backupStatus,
     generatedAt: new Date().toISOString()
   };
+}
+
+async function buildAdminDiagnostics(storage, session, requestId = "") {
+  const health = await buildBackendHealth(storage, session);
+  return {
+    type: "agora.admin-diagnostics",
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    requestId,
+    service: "agora-api",
+    apiVersion: API_VERSION,
+    workspaceId: health.workspaceId,
+    session: {
+      userId: session.user?.id || "",
+      role: session.membership?.role || "",
+      companyId: sessionCompanyId(session)
+    },
+    runtime: {
+      node: process.version,
+      storage: health.storage,
+      auth: health.auth,
+      productionMode: health.productionMode
+    },
+    env: redactedEnvironmentPosture(),
+    productionGates: health.productionGates,
+    readiness: health.readiness,
+    snapshot: health.snapshot,
+    records: health.records,
+    observability: health.observability,
+    jobs: health.jobs,
+    backups: health.backups,
+    sessionHardening: health.sessionHardening,
+    email: health.email,
+    notificationDelivery: health.notificationDelivery
+  };
+}
+
+function redactedEnvironmentPosture() {
+  return {
+    strictCsp: structuredBoolean("AGORA_STRICT_CSP") || cleanString(process.env.NODE_ENV).toLowerCase() === "production",
+    structuredLogs: structuredApiLogsEnabled(),
+    demoAuth: structuredBoolean("AGORA_DEMO_AUTH"),
+    passwordlessAuth: structuredBoolean("AGORA_PASSWORDLESS_AUTH"),
+    publicFeatureRequests: publicFeatureRequestsEnabled(),
+    trustProxy: structuredBoolean("AGORA_TRUST_PROXY"),
+    backupScheduler: structuredBoolean("AGORA_BACKUP_SCHEDULER_ENABLED"),
+    backupDirConfigured: Boolean(cleanString(process.env.AGORA_BACKUP_DIR)),
+    allowedOriginsCount: allowedOrigins().size,
+    publicAppUrlConfigured: Boolean(cleanString(process.env.AGORA_PUBLIC_APP_URL || process.env.AGORA_APP_URL)),
+    supabaseUrlConfigured: Boolean(cleanString(process.env.SUPABASE_URL || process.env.AGORA_SUPABASE_URL)),
+    supabaseAnonKeyConfigured: Boolean(cleanString(process.env.SUPABASE_ANON_KEY || process.env.AGORA_SUPABASE_ANON_KEY)),
+    supabaseServiceRoleConfigured: Boolean(cleanString(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.AGORA_SUPABASE_SERVICE_ROLE_KEY)),
+    smtpConfigured: Boolean(cleanString(process.env.AGORA_SMTP_HOST || process.env.SMTP_HOST)),
+    githubWebhookSecretConfigured: Boolean(cleanString(process.env.AGORA_GITHUB_WEBHOOK_SECRET))
+  };
+}
+
+function structuredBoolean(name) {
+  return envFlag(name, false);
 }
 
 function schedulerRecordFilters(session) {

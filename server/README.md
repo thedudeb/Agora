@@ -36,6 +36,8 @@ Settings and Data also expose Backend Health after you connect. It reports the a
 
 For hosted backups, set `AGORA_BACKUP_DIR` to a durable mounted path. Admins and managers can call `POST /api/backups/run`, click Run Server Backup in Backend Health, or enable `AGORA_BACKUP_SCHEDULER_ENABLED=true` for the API worker. Backend Health reports the latest backup and retained file count.
 
+For support handoffs, admins can download or copy a redacted diagnostics packet from Backend Health. It includes Backend Health, observability, jobs, backups, session posture, and env presence booleans without raw tokens or provider secrets.
+
 Demo auth, passwordless email login, and the public feature-request API are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true`, `AGORA_PASSWORDLESS_AUTH=true`, or `AGORA_PUBLIC_FEATURE_REQUESTS=true` in `.env` and restart the API. Session lifetime defaults to eight hours through `AGORA_SESSION_TTL_SECONDS`, invitations expire through `AGORA_INVITATION_TTL_DAYS`, password reset tokens expire through `AGORA_PASSWORD_RESET_TTL_MINUTES`, reset delivery is configured with `AGORA_PASSWORD_RESET_DELIVERY`, and cross-origin API calls are limited to localhost plus any origins listed in `AGORA_ALLOWED_ORIGINS`.
 
 ## App Server
@@ -172,6 +174,7 @@ In GitHub, create a repository webhook with Payload URL `https://your-agora-api.
 - `GET /api/observability`: returns request metrics, recent error request IDs, background job health, rate-limit key counts, realtime client counts, and structured logging status for sessions with audit access.
 - `GET /api/backups/status`: returns server backup status, latest backup metadata, and retention count for sessions with audit access.
 - `POST /api/backups/run`: writes a server-side workspace snapshot backup for sessions with scheduler permission.
+- `GET /api/admin/diagnostics`: returns a redacted support packet for sessions with audit access.
 - `GET /api/auth/sessions`: lists active in-memory Agora sessions visible to the current user. Admins can see workspace sessions; other users see their own. Returned ids are hashes, not raw tokens; last-seen time, request count, coarse user agent, and client IP hash are included for review.
 - `DELETE /api/auth/sessions/:id`: revokes an active in-memory Agora session by hashed id. Users can revoke their own sessions; admins can revoke workspace sessions.
 - `GET /api/members`: returns workspace users, memberships, and invitations.

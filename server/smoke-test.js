@@ -63,6 +63,7 @@ async function run() {
     assert(openApi.openapi === "3.1.0", "openapi endpoint returned wrong version");
     assert(openApi.paths?.["/api/tasks"]?.get, "openapi endpoint missed tasks list route");
     assert(openApi.paths?.["/api/backups/run"]?.post, "openapi endpoint missed backup run route");
+    assert(openApi.paths?.["/api/admin/diagnostics"]?.get, "openapi endpoint missed admin diagnostics route");
     assert(openApi.components?.securitySchemes?.bearerAuth, "openapi endpoint missed bearer auth scheme");
 
     const login = await request(`${baseUrl}/api/auth/demo-login`, {
@@ -165,6 +166,14 @@ async function run() {
     });
     assert(backendHealth.backups?.latest?.file === backupRun.file, "backend health did not expose latest backup");
     assert(backendHealth.readiness.some((item) => item.id === "workspace-backups"), "backend health did not include backup readiness");
+    const diagnostics = await request(`${baseUrl}/api/admin/diagnostics`, {
+      token: login.token
+    });
+    assert(diagnostics.type === "agora.admin-diagnostics", "admin diagnostics returned wrong type");
+    assert(diagnostics.env && diagnostics.env.backupDirConfigured === true, "admin diagnostics did not include redacted env posture");
+    const diagnosticsText = JSON.stringify(diagnostics);
+    assert(!diagnosticsText.includes(login.token), "admin diagnostics leaked raw session token");
+    assert(!diagnosticsText.includes(process.env.SUPABASE_SERVICE_ROLE_KEY || "replace-me-service-role-key"), "admin diagnostics leaked service role key");
     const canceledJob = await request(`${baseUrl}/api/backend/jobs/job-json-queued-smoke/cancel`, {
       method: "POST",
       token: login.token

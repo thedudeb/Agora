@@ -52,4 +52,5 @@ Use this runbook when moving Agora from a local pilot to a hosted workspace with
 - Keep the latest portable bundle and API backup close during the first session.
 - Watch request metrics, background jobs, failed syncs, and audit events after the first real workflow.
 - Keep the `X-Request-Id` from any failed browser/API report so it can be matched against `/api/observability` and structured logs.
+- Download the redacted Admin Diagnostics packet from Backend Health before opening a support issue or handing off to another operator.
 - If state, auth, or migration behavior looks wrong, roll back the deployment and restore from the latest known-good bundle or Supabase backup.

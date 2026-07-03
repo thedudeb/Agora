@@ -4239,6 +4239,29 @@ async function runServerWorkspaceBackup() {
   }
 }
 
+async function exportAdminDiagnostics(format = "json") {
+  if (!apiSession) {
+    showToast("Connect to the API before exporting diagnostics", "info");
+    return;
+  }
+  if (!canWrite("audit:read")) {
+    showToast("Your role cannot export admin diagnostics", "info");
+    return;
+  }
+  try {
+    const diagnostics = await apiRequest("/api/admin/diagnostics");
+    const text = JSON.stringify(diagnostics, null, 2);
+    if (format === "copy") {
+      copyCommandText(text, "Admin diagnostics copied");
+      return;
+    }
+    downloadJsonFile(`${slugFromName(state.workspace.name)}-admin-diagnostics-${todayKey()}.json`, text);
+    showToast("Admin diagnostics downloaded", "success");
+  } catch (error) {
+    showToast(`Diagnostics export failed: ${error.message}`, "info");
+  }
+}
+
 async function loadAuditLogFromApi(options = {}) {
   if (!apiSession) {
     if (!options.silent) showToast("Connect to the API from Settings first", "info");
@@ -29414,6 +29437,8 @@ function renderBackendChecklist() {
     <div class="backend-actions">
       <button class="button button-secondary compact-button" type="button" data-backend-health-refresh ${apiSession ? "" : "disabled"}>Refresh Health</button>
       <button class="button button-secondary compact-button" type="button" data-server-backup-run ${apiSession && canWrite("scheduler:run") ? "" : "disabled"}>Run Server Backup</button>
+      <button class="button button-secondary compact-button" type="button" data-admin-diagnostics="json" ${apiSession && canWrite("audit:read") ? "" : "disabled"}>Download Diagnostics</button>
+      <button class="button button-secondary compact-button" type="button" data-admin-diagnostics="copy" ${apiSession && canWrite("audit:read") ? "" : "disabled"}>Copy Diagnostics</button>
       <button class="button button-secondary compact-button" type="button" id="api-sync-retry" ${apiSession && apiSyncQueue.length ? "" : "disabled"}>Retry Failed Syncs</button>
     </div>
     ${renderBackendObservabilityPanel()}
@@ -37702,6 +37727,12 @@ document.addEventListener("click", (event) => {
   const serverBackupRunButton = event.target.closest("[data-server-backup-run]");
   if (serverBackupRunButton) {
     runServerWorkspaceBackup();
+    return;
+  }
+
+  const adminDiagnosticsButton = event.target.closest("[data-admin-diagnostics]");
+  if (adminDiagnosticsButton) {
+    exportAdminDiagnostics(adminDiagnosticsButton.dataset.adminDiagnostics);
     return;
   }
 
