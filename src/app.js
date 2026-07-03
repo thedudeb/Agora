@@ -27008,6 +27008,112 @@ function renderAuditDetailDrawer(event) {
   `;
 }
 
+function auditEvidenceEvents() {
+  return filteredAuditEvents(allAuditEvents());
+}
+
+function exportAuditCsv(events = auditEvidenceEvents()) {
+  const headers = ["id", "createdAt", "actor", "action", "impact", "source", "target", "detail", "restoreHint"];
+  const rows = events.map((event) => [
+    event.id || event.__auditKey,
+    event.createdAt || "",
+    memberName(event.actorId) || event.actorId || "System",
+    event.action || "event",
+    auditImpactLevel(event),
+    event.source || "local",
+    [event.targetType, event.targetId].filter(Boolean).join(":") || "workspace",
+    event.detail || "",
+    event.restoreHint || (event.reversible === false ? "Restore from backup if needed." : "Tracked as a reversible workspace change.")
+  ]);
+  return [headers, ...rows].map((row) => row.map(csvValue).join(",")).join("\n");
+}
+
+function auditEvidenceMarkdown(events = auditEvidenceEvents()) {
+  const openControls = typeof securityControlCenterItems === "function"
+    ? securityControlCenterItems().filter((control) => !control.done)
+    : [];
+  const highImpact = events.filter((event) => auditImpactLevel(event) === "high");
+  const irreversible = events.filter((event) => event.reversible === false);
+  const savedViewLabel = auditSavedViews.find((view) => view.id === auditFilters.savedView)?.label || "All events";
+  return [
+    `# ${state.workspace.name} Audit Evidence Pack`,
+    "",
+    `Generated: ${new Date().toISOString()}`,
+    `View: ${savedViewLabel}`,
+    `Events exported: ${events.length}`,
+    `High-impact events: ${highImpact.length}`,
+    `Backup-restore events: ${irreversible.length}`,
+    `Open security controls: ${openControls.length}`,
+    "",
+    "## Filters",
+    "",
+    ...Object.entries(auditFilters).map(([key, value]) => `- ${key}: ${value || "all"}`),
+    "",
+    "## Open Controls",
+    "",
+    ...(openControls.length ? openControls.map((control) => `- ${control.label}: ${control.detail} Fix: ${control.fix}`) : ["- None in the current report."]),
+    "",
+    "## Key Events",
+    "",
+    ...(events.slice(0, 25).map((event) => [
+      `### ${event.action || "event"}`,
+      "",
+      `- Time: ${event.createdAt || "Unknown"}`,
+      `- Actor: ${memberName(event.actorId) || event.actorId || "System"}`,
+      `- Impact: ${auditImpactLevel(event)}`,
+      `- Target: ${[event.targetType, event.targetId].filter(Boolean).join(":") || "workspace"}`,
+      `- Detail: ${event.detail || "No detail recorded."}`,
+      `- Restore: ${event.restoreHint || (event.reversible === false ? "Restore from backup if needed." : "Tracked as a reversible workspace change.")}`,
+      ""
+    ].join("\n"))),
+    ...(events.length > 25 ? [`_Showing first 25 of ${events.length} exported events._`, ""] : [])
+  ].join("\n");
+}
+
+function auditEvidenceJson(events = auditEvidenceEvents()) {
+  const openControls = typeof securityControlCenterItems === "function"
+    ? securityControlCenterItems().filter((control) => !control.done)
+    : [];
+  return JSON.stringify({
+    workspace: {
+      id: state.workspace.id,
+      name: state.workspace.name
+    },
+    generatedAt: new Date().toISOString(),
+    filters: auditFilters,
+    summary: {
+      events: events.length,
+      actors: new Set(events.map((event) => event.actorId).filter(Boolean)).size,
+      highImpact: events.filter((event) => auditImpactLevel(event) === "high").length,
+      irreversible: events.filter((event) => event.reversible === false).length,
+      openControls: openControls.length
+    },
+    openControls,
+    events
+  }, null, 2);
+}
+
+function downloadAuditEvidencePack() {
+  const events = auditEvidenceEvents();
+  const base = `${slugFromName(state.workspace.name)}-audit-evidence-${todayKey()}`;
+  downloadTextFile(`${base}.csv`, exportAuditCsv(events), "text/csv");
+  downloadJsonFile(`${base}.json`, auditEvidenceJson(events));
+  downloadTextFile(`${base}.md`, auditEvidenceMarkdown(events), "text/markdown");
+  addAuditEvent({
+    action: "audit_evidence_export",
+    detail: `Exported audit evidence pack with ${events.length} event${events.length === 1 ? "" : "s"}`,
+    targetType: "workspace",
+    targetId: state.workspace.id,
+    metadata: {
+      filters: auditFilters,
+      eventCount: events.length
+    }
+  });
+  saveState();
+  renderAuditLog();
+  showToast("Audit evidence pack exported", "success");
+}
+
 function renderAuditLog() {
   const localEvents = Array.isArray(state.auditEvents) ? state.auditEvents : [];
   const serverEvents = Array.isArray(auditEvents) ? auditEvents : [];
@@ -27036,8 +27142,12 @@ function renderAuditLog() {
           <p class="eyebrow">Admin</p>
           <h2>Audit trail</h2>
         </div>
-        <button class="button button-secondary" type="button" id="audit-refresh" ${apiSession ? "" : "disabled"}>${auditLoading ? "Refreshing" : "Refresh"}</button>
+        <div class="portal-actions">
+          <button class="button button-secondary" type="button" id="audit-evidence-export">Export Evidence Pack</button>
+          <button class="button button-secondary" type="button" id="audit-refresh" ${apiSession ? "" : "disabled"}>${auditLoading ? "Refreshing" : "Refresh"}</button>
+        </div>
       </div>
+      <p class="panel-note">Evidence pack export includes audit CSV, audit JSON, and a Markdown summary of filtered events and open security controls.</p>
       <div class="audit-toolbar">
         ${actions.length ? actions.map((action) => `<span class="status-pill inbox-neutral">${escapeHtml(action)}</span>`).join("") : `<span class="status-pill inbox-neutral">No audit events yet</span>`}
       </div>
@@ -36133,6 +36243,12 @@ document.addEventListener("click", (event) => {
   const auditRefreshButton = event.target.closest("#audit-refresh");
   if (auditRefreshButton) {
     loadAuditLogFromApi();
+    return;
+  }
+
+  const auditEvidenceExportButton = event.target.closest("#audit-evidence-export");
+  if (auditEvidenceExportButton) {
+    downloadAuditEvidencePack();
     return;
   }
 

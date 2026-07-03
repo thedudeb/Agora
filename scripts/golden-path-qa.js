@@ -287,6 +287,26 @@ const routeChecks = [
     ]
   },
   {
+    name: "Audit Log 2.0",
+    suite: "security",
+    route: "audit",
+    width: 1265,
+    height: 712,
+    required: [
+      "Audit trail",
+      "Export Evidence Pack",
+      "Evidence pack export includes audit CSV",
+      "Security events",
+      "Client portal activity",
+      "AI/operator actions",
+      "Integration failures",
+      "Audit event detail drawer",
+      "Raw metadata",
+      "Before",
+      "After"
+    ]
+  },
+  {
     name: "Beta launch handoff",
     suite: "release",
     route: "beta",
