@@ -144,6 +144,12 @@ The verifier starts a temporary Agora API server with Supabase storage, uses a u
 - `GET /api/integrations/github/status`: returns GitHub repository mapping, webhook readiness, and pending conflict count without exposing secrets.
 - `POST /api/integrations/github/webhook`: receives GitHub `issues` and `pull_request` webhooks, verifies `X-Hub-Signature-256` when `AGORA_GITHUB_WEBHOOK_SECRET` is set, maps events to tasks, and records conflicts for review.
 - `POST /api/integrations/github/conflicts/:id/resolve`: resolves an open GitHub conflict for sessions with `integrations:write` and `tasks:write`. Body: `{ "resolution": "keep-agora" | "use-github" | "merge" | "ignore", "note": "..." }`.
+- `POST /api/integrations/github/test-event`: sends a realistic GitHub issue event through the same task mapping and receipt path as production webhooks for sessions with `integrations:write` and `tasks:write`.
+
+### GitHub webhook setup
+
+In GitHub, create a repository webhook with Payload URL `https://your-agora-api.example.com/api/integrations/github/webhook`, Content type `application/json`, Secret matching `AGORA_GITHUB_WEBHOOK_SECRET`, and events `Issues` plus `Pull requests`. Use Settings > Integrations > Send Test GitHub Event to verify mapping, receipts, and conflict handling before relying on live deliveries.
+
 - `GET /api/scheduler/notifications/due`: returns due, unsent notification reminders visible to the authenticated session.
 - `POST /api/scheduler/notifications/run`: processes due reminders, marks them sent, and writes notification-history records. Use it from trusted cron, or set `AGORA_SCHEDULER_ENABLED=true` to run the scheduler inside the API process.
 - `POST /api/payments/checkout-intent`: creates a server-side checkout intent for paid marketplace templates and other billable workspace items.
@@ -152,6 +158,7 @@ The verifier starts a temporary Agora API server with Supabase storage, uses a u
 - `POST /api/auth/demo-login`: creates a demo session when `AGORA_DEMO_AUTH=true`. Body: `{ "memberId": "mara" }`.
 - `POST /api/auth/login`: creates a passwordless session for an accepted workspace user when `AGORA_PASSWORDLESS_AUTH=true`. Body: `{ "email": "jordan@example.com" }`.
 - `POST /api/auth/password-login`: creates a session with email and password. Body: `{ "email": "jordan@example.com", "password": "8+ characters" }`.
+
 - `POST /api/auth/change-password`: changes the current authenticated password. Body: `{ "currentPassword": "...", "newPassword": "8+ characters" }`.
 - `POST /api/auth/password-reset/request`: creates a short-lived password reset token. Body: `{ "email": "jordan@example.com" }`.
 - `POST /api/auth/password-reset/confirm`: completes a password reset. Body: `{ "email": "jordan@example.com", "token": "...", "password": "8+ characters" }`.

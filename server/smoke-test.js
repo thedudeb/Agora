@@ -549,6 +549,15 @@ async function run() {
     });
     assert(signedWebhook.accepted === true && signedWebhook.stale === true, "signed stale github webhook should be accepted without overwriting");
     delete process.env.AGORA_GITHUB_WEBHOOK_SECRET;
+    const testEvent = await request(`${baseUrl}/api/integrations/github/test-event`, {
+      method: "POST",
+      token: login.token,
+      body: { title: "Smoke GitHub test event", issueNumber: 9876 }
+    });
+    assert(testEvent.test === true && testEvent.task?.customFields?.githubIssueNumber === "9876", "github test event did not create a mapped task");
+    assert(testEvent.receipt?.kind === "github-webhook", "github test event did not return a delivery receipt");
+    const snapshotAfterTestEvent = await storage.loadWorkspaceSnapshot();
+    assert(snapshotAfterTestEvent.notificationHistory.some((event) => event.kind === "github-webhook" && event.message.includes("#9876")), "github webhook receipt was not persisted");
 
     const blockedMemberTask = await requestError(`${baseUrl}/api/tasks`, {
       method: "POST",

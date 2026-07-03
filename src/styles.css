@@ -5641,6 +5641,69 @@ body[data-tutorial-target="view"] #app-view {
   overflow-wrap: anywhere;
 }
 
+.github-setup-checklist,
+.github-delivery-receipts {
+  display: grid;
+  gap: 8px;
+}
+
+.github-setup-list,
+.github-receipt-list {
+  display: grid;
+  gap: 8px;
+}
+
+.github-setup-list article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 8px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.github-setup-list article > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  padding: 3px 6px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.github-setup-list article.is-done > span {
+  color: #0f5132;
+  background: #d8f3df;
+  border-color: #99d7ad;
+}
+
+.github-setup-list small,
+.github-receipt-list span,
+.github-receipt-list small {
+  color: var(--muted);
+  font-size: 0.76rem;
+  overflow-wrap: anywhere;
+}
+
+.github-receipt-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  padding: 8px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
 .github-conflict-list {
   display: grid;
   gap: 8px;
@@ -10934,6 +10997,7 @@ body[data-density="compact"] .main-content {
   }
 
   .github-conflict-list article,
+  .github-receipt-list article,
   .github-conflict-compare-head,
   .github-conflict-compare-row {
     grid-template-columns: 1fr;

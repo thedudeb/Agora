@@ -8548,6 +8548,97 @@ function githubOpenConflicts() {
     .slice(0, 6);
 }
 
+function githubWebhookReceipts() {
+  return normalizeNotificationHistory(state.notificationHistory)
+    .filter((event) => event.kind === "github-webhook")
+    .slice(0, 5);
+}
+
+function githubSetupChecklist(integrations, conflicts, receipts) {
+  const github = normalizeGitHubIntegration(integrations.github, state.projects);
+  const connection = integrations.connections.find((item) => item.id === "github") || {};
+  const repoMapped = github.repositories.some((repo) => repo.fullName && repo.projectId);
+  const selectedEvents = new Set(connection.events || []);
+  return [
+    {
+      label: "Repo mapped",
+      done: repoMapped,
+      detail: repoMapped ? github.repositories.map((repo) => repo.fullName).join(", ") : "Choose a GitHub repository and Agora project."
+    },
+    {
+      label: "Webhook URL ready",
+      done: Boolean(API_BASE_URL),
+      detail: githubWebhookEndpoint()
+    },
+    {
+      label: "Secret configured",
+      done: connection.secretStatus === "configured",
+      detail: connection.secretStatus === "configured" ? "Server reports a configured webhook secret." : "Set AGORA_GITHUB_WEBHOOK_SECRET on the API server."
+    },
+    {
+      label: "Events selected",
+      done: selectedEvents.has("github.issue.opened") || selectedEvents.has("github.pr.opened"),
+      detail: "Subscribe GitHub to issues and pull_request events."
+    },
+    {
+      label: "Last webhook received",
+      done: receipts.length > 0,
+      detail: receipts[0] ? `${receipts[0].title} / ${formatTimestamp(receipts[0].createdAt)}` : "Send a test event or wait for GitHub delivery."
+    },
+    {
+      label: "Conflicts clear",
+      done: conflicts.length === 0,
+      detail: conflicts.length ? `${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"} need review.` : "No GitHub conflicts are waiting."
+    }
+  ];
+}
+
+function renderGitHubSetupChecklist(integrations, conflicts, receipts) {
+  const items = githubSetupChecklist(integrations, conflicts, receipts);
+  const doneCount = items.filter((item) => item.done).length;
+  return `
+    <div class="github-setup-checklist">
+      <div class="mini-section-header">
+        <strong>GitHub setup checklist</strong>
+        <span>${doneCount}/${items.length} ready</span>
+      </div>
+      <div class="github-setup-list">
+        ${items.map((item) => `
+          <article class="${item.done ? "is-done" : "is-pending"}">
+            <span>${item.done ? "OK" : "Next"}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <small>${escapeHtml(item.detail)}</small>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderGitHubDeliveryReceipts(receipts) {
+  return `
+    <div class="github-delivery-receipts">
+      <div class="mini-section-header">
+        <strong>Webhook delivery receipts</strong>
+        <span>${receipts.length ? `${receipts.length} recent` : "No deliveries yet"}</span>
+      </div>
+      <div class="github-receipt-list">
+        ${receipts.length ? receipts.map((receipt) => `
+          <article>
+            <div>
+              <strong>${escapeHtml(receipt.title)}</strong>
+              <span>${escapeHtml(receipt.message || receipt.reason || "GitHub delivery received")}</span>
+            </div>
+            <small>${escapeHtml(formatTimestamp(receipt.createdAt))}</small>
+          </article>
+        `).join("") : emptyState("No GitHub webhook deliveries have been recorded yet.")}
+      </div>
+    </div>
+  `;
+}
+
 function renderGitHubConflictCompare(conflict) {
   const rows = [
     ["Title", conflict.local?.title || "", conflict.external?.title || ""],
@@ -8576,8 +8667,10 @@ function renderGitHubConflictCompare(conflict) {
 function renderGitHubWebhookIntakePanel(integrations) {
   const connection = integrations.connections.find((item) => item.id === "github") || {};
   const conflicts = githubOpenConflicts();
+  const receipts = githubWebhookReceipts();
   const endpoint = githubWebhookEndpoint();
   const canResolveConflicts = Boolean(apiSession && canWrite("integrations:write") && canWrite("tasks:write"));
+  const canSendTest = Boolean(apiSession && canWrite("integrations:write") && canWrite("tasks:write"));
   return `
     <div class="github-webhook-panel">
       <div class="panel-header">
@@ -8601,11 +8694,14 @@ function renderGitHubWebhookIntakePanel(integrations) {
           <strong>issues, pull_request</strong>
         </article>
       </div>
+      ${renderGitHubSetupChecklist(integrations, conflicts, receipts)}
       <p class="panel-note">Conflict review supports Keep Agora, Use GitHub, Merge, or Ignore. Merge keeps Agora description context, uses GitHub title/status, and unions tags.</p>
       <div class="integration-action-row">
         <button class="button button-secondary" type="button" id="github-copy-webhook-url">Copy Webhook URL</button>
+        <button class="button button-primary" type="button" id="github-send-test-event" ${canSendTest ? "" : "disabled"}>Send Test GitHub Event</button>
         <button class="button button-secondary" type="button" data-open-settings-tab="jobs">Open Jobs</button>
       </div>
+      ${renderGitHubDeliveryReceipts(receipts)}
       <div class="github-conflict-list">
         ${conflicts.length ? conflicts.map((conflict) => `
           <article>
@@ -32525,6 +32621,68 @@ async function resolveGitHubIntegrationConflict(conflictId, resolution) {
   }
 }
 
+async function sendGitHubTestWebhookEvent() {
+  if (!apiSession) {
+    showToast("Connect the API before sending a GitHub test event", "info");
+    return;
+  }
+  if (!canWrite("integrations:write") || !canWrite("tasks:write")) {
+    showToast("Your role cannot send GitHub test events", "info");
+    return;
+  }
+  try {
+    const result = await apiRequest("/api/integrations/github/test-event", {
+      method: "POST",
+      body: {
+        title: "Agora test GitHub issue",
+        body: "This test event was sent from Agora Settings."
+      }
+    });
+    if (result.task) {
+      state.tasks = mergeRecordsById(state.tasks, [result.task]);
+    }
+    if (result.conflict) {
+      state.integrationConflicts = [normalizeIntegrationConflict(result.conflict), ...state.integrationConflicts.filter((conflict) => conflict.id !== result.conflict.id)];
+    }
+    if (result.receipt) {
+      state.notificationHistory = normalizeNotificationHistory([result.receipt, ...(state.notificationHistory || [])]);
+    }
+    if (result.repository || result.payload?.repository) {
+      const repository = result.repository || result.payload.repository;
+      const now = new Date().toISOString();
+      const integrations = integrationSettings();
+      state.workspace = {
+        ...state.workspace,
+        integrations: normalizeWorkspaceIntegrations({
+          ...integrations,
+          github: {
+            ...integrations.github,
+            repositories: integrations.github.repositories.map((repo) => repo.fullName === repository ? { ...repo, lastSyncedAt: now, status: "mapped" } : repo)
+          },
+          connections: integrations.connections.map((connection) => connection.id === "github"
+            ? { ...connection, status: "connected", health: "healthy", lastSyncedAt: now }
+            : connection)
+        }, state.projects)
+      };
+    }
+    addAuditEvent({
+      action: "github_test_webhook",
+      detail: `Sent GitHub test webhook${result.payload?.issueNumber ? ` #${result.payload.issueNumber}` : ""}`,
+      targetType: "integrationSettings",
+      targetId: "github",
+      impact: "low",
+      reversible: true,
+      restoreHint: "Archive the created test task or resolve any generated conflict.",
+      metadata: { provider: "github", taskId: result.task?.id || "", conflictId: result.conflict?.id || "" }
+    });
+    saveState();
+    render();
+    showToast(result.conflict ? "GitHub test event created a conflict review" : "GitHub test event delivered", result.conflict ? "info" : "success");
+  } catch (error) {
+    showToast(`GitHub test event failed: ${error.message}`, "info");
+  }
+}
+
 function savePaymentSettings() {
   if (!requireAdminAction("payment-settings", { deniedMessage: "Your role cannot manage payments" })) return;
   const provider = document.querySelector("#payment-provider")?.value || "none";
@@ -35329,6 +35487,12 @@ document.addEventListener("click", (event) => {
   const githubQueueSyncButton = event.target.closest("#github-queue-sync");
   if (githubQueueSyncButton && !githubQueueSyncButton.disabled) {
     queueGitHubIntegrationSync();
+    return;
+  }
+
+  const githubSendTestEventButton = event.target.closest("#github-send-test-event");
+  if (githubSendTestEventButton && !githubSendTestEventButton.disabled) {
+    sendGitHubTestWebhookEvent();
     return;
   }
 

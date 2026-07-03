@@ -650,6 +650,9 @@ function openApiDocument() {
       },
       "/api/integrations/github/conflicts/{id}/resolve": {
         post: operation("Resolve GitHub conflict", "Applies Keep Agora, Use GitHub, Merge, or Ignore decisions to an open GitHub conflict.")
+      },
+      "/api/integrations/github/test-event": {
+        post: operation("Send GitHub test event", "Sends a realistic GitHub issue event through the same task mapping and receipt path as production webhooks.")
       }
     },
     components: {
@@ -1058,6 +1061,17 @@ function createServer(options = {}) {
         const body = await readJsonBody(request);
         const result = await resolveGitHubConflict(storage, decodeURIComponent(githubConflictResolveMatch[1]), body, session);
         sendJson(response, 200, result);
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/integrations/github/test-event") {
+        if (!hasPermission(session, "integrations:write") || !hasPermission(session, "tasks:write")) {
+          sendError(response, 403, "Missing integration or task write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const result = await runGitHubTestEvent(storage, body, session);
+        sendJson(response, 201, result);
         return;
       }
 
@@ -5900,11 +5914,41 @@ function githubConflictRecord({ eventName, action, repo, existingTask, incomingT
   };
 }
 
+async function recordGitHubWebhookReceipt(storage, details = {}) {
+  const now = new Date().toISOString();
+  const repo = cleanString(details.repository || details.repo);
+  const eventName = cleanString(details.eventName || "github");
+  const action = cleanString(details.action || "received");
+  const number = cleanString(details.number);
+  const outcome = cleanString(details.outcome || "accepted");
+  return storage.upsertRecord("notificationHistory", normalizeNotificationHistoryEvent({
+    id: cleanString(details.deliveryId) || `github-webhook-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`,
+    kind: "github-webhook",
+    title: `GitHub ${eventName} ${outcome}`,
+    message: [repo, number ? `#${number}` : "", action, details.taskId ? `task ${details.taskId}` : ""].filter(Boolean).join(" / "),
+    reason: cleanString(details.reason || `GitHub webhook ${outcome}`).slice(0, 500),
+    count: Number(details.count || 1),
+    channel: "github webhook",
+    createdAt: now,
+    updatedAt: now
+  }), {
+    storage: storage.driver || "json-file",
+    updatedBy: "github-webhook",
+    action: "github_webhook_receipt"
+  });
+}
+
 async function handleGitHubWebhook(storage, request, payload = {}) {
   const eventName = githubWebhookEventName(request);
   const action = cleanString(payload.action).toLowerCase();
   if (!["issues", "pull_request"].includes(eventName)) {
-    return { accepted: true, ignored: true, reason: `Unsupported GitHub event ${eventName || "unknown"}` };
+    const receipt = await recordGitHubWebhookReceipt(storage, {
+      eventName: eventName || "unknown",
+      action,
+      outcome: "ignored",
+      reason: `Unsupported GitHub event ${eventName || "unknown"}`
+    });
+    return { accepted: true, ignored: true, receipt, reason: `Unsupported GitHub event ${eventName || "unknown"}` };
   }
   const repo = githubRepositoryFullName(payload);
   if (!repo) publicError(400, "GitHub webhook requires repository.full_name");
@@ -5924,7 +5968,16 @@ async function handleGitHubWebhook(storage, request, payload = {}) {
     : githubTaskWithPullRequest({ pullRequest: item, repo, repoConfig, existingTask });
 
   if (existingTask && isStaleGitHubWebhook(existingTask, externalUpdatedAt)) {
-    return { accepted: true, ignored: true, stale: true, task: existingTask };
+    const receipt = await recordGitHubWebhookReceipt(storage, {
+      eventName,
+      action,
+      repository: repo,
+      number: item.number,
+      outcome: "stale",
+      taskId: existingTask.id,
+      reason: "Ignored stale GitHub redelivery"
+    });
+    return { accepted: true, ignored: true, stale: true, receipt, task: existingTask };
   }
 
   if (existingTask && hasGitHubSyncConflict(existingTask, externalUpdatedAt)) {
@@ -5944,7 +5997,16 @@ async function handleGitHubWebhook(storage, request, payload = {}) {
       workspaceId: workspace.id,
       detail: `GitHub ${eventName} ${repo} #${cleanString(item.number)} needs conflict review`
     });
-    return { accepted: true, conflict, task: existingTask };
+    const receipt = await recordGitHubWebhookReceipt(storage, {
+      eventName,
+      action,
+      repository: repo,
+      number: item.number,
+      outcome: "conflict",
+      taskId: existingTask.id,
+      reason: "GitHub event created a conflict review"
+    });
+    return { accepted: true, receipt, conflict, task: existingTask };
   }
 
   const task = await upsertTask(storage, incomingTask, githubWebhookActorSession(), existingTask ? "github_webhook_task_update" : "github_webhook_task_create");
@@ -5973,7 +6035,60 @@ async function handleGitHubWebhook(storage, request, payload = {}) {
     updatedBy: "github-webhook",
     action: "github_webhook_sync"
   });
-  return { accepted: true, eventName, action, repository: repo, task };
+  const receipt = await recordGitHubWebhookReceipt(storage, {
+    eventName,
+    action,
+    repository: repo,
+    number: item.number,
+    outcome: existingTask ? "updated" : "created",
+    taskId: task.id,
+    reason: existingTask ? "GitHub webhook updated an Agora task" : "GitHub webhook created an Agora task"
+  });
+  return { accepted: true, eventName, action, repository: repo, receipt, task };
+}
+
+async function runGitHubTestEvent(storage, body = {}, session) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const github = snapshot.workspace?.integrations?.github || {};
+  const repositories = Array.isArray(github.repositories) ? github.repositories : [];
+  const repoConfig = repositories.find((repo) => cleanString(repo.fullName) && cleanString(repo.projectId));
+  if (!repoConfig) publicError(400, "Map a GitHub repository before sending a test event");
+  const now = new Date().toISOString();
+  const issueNumber = Math.max(9000, Math.round(Number(body.issueNumber || 9000 + (Date.now() % 999))));
+  const payload = {
+    action: cleanString(body.action || "opened") || "opened",
+    repository: {
+      full_name: cleanString(repoConfig.fullName),
+      name: cleanString(repoConfig.fullName).split("/")[1] || "repo",
+      owner: { login: cleanString(repoConfig.fullName).split("/")[0] || "owner" }
+    },
+    issue: {
+      number: issueNumber,
+      title: cleanString(body.title || "Agora test GitHub issue"),
+      body: cleanString(body.body || `Test event sent by ${session.user.name} from Agora Settings.`),
+      state: cleanString(body.state || "open"),
+      labels: [{ name: cleanString(repoConfig.labelPrefix || "agora") }, { name: "test-webhook" }],
+      html_url: `https://github.com/${cleanString(repoConfig.fullName)}/issues/${issueNumber}`,
+      created_at: now,
+      updated_at: now
+    }
+  };
+  const result = await handleGitHubWebhook(storage, { headers: { "x-github-event": "issues" } }, payload);
+  await storage.appendAuditEvent({
+    actorId: session.user.id,
+    action: "github_test_webhook",
+    workspaceId: workspace.id,
+    detail: `${session.user.name} sent a GitHub test webhook for ${repoConfig.fullName} #${issueNumber}`
+  });
+  return {
+    ...result,
+    test: true,
+    payload: {
+      repository: repoConfig.fullName,
+      issueNumber,
+      title: payload.issue.title
+    }
+  };
 }
 
 function githubConflictResolutionValue(value) {

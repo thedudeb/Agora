@@ -65,6 +65,7 @@ Writes should be narrow and previewable:
 - `POST /api/integrations/sync` for previewed external sync handoffs such as GitHub issue and pull-request mapping jobs.
 - `POST /api/integrations/github/webhook` for signed GitHub `issues` and `pull_request` event intake that maps external work into Agora tasks or conflict records.
 - `POST /api/integrations/github/conflicts/:id/resolve` for confirmed GitHub conflict decisions: keep Agora, use GitHub, merge, or ignore.
+- `POST /api/integrations/github/test-event` for admin-triggered GitHub delivery checks that reuse the production mapping and receipt flow.
 
 Agents must ask for confirmation before:
 
