@@ -2742,6 +2742,19 @@ body[data-tutorial-target="view"] #app-view {
   gap: 8px;
 }
 
+.project-memory-proposal {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.project-memory-proposal.is-applied {
+  border-color: rgba(46, 125, 90, 0.36);
+}
+
+.project-memory-proposal.is-rejected {
+  opacity: 0.68;
+}
+
 .project-memory-card {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -2768,6 +2781,13 @@ body[data-tutorial-target="view"] #app-view {
 
 .project-memory-card-actions {
   display: flex;
+  justify-content: flex-end;
+}
+
+.project-memory-proposal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   justify-content: flex-end;
 }
 
@@ -11762,7 +11782,8 @@ body[data-density="compact"] .main-content {
     grid-template-columns: 1fr;
   }
 
-  .project-memory-card {
+  .project-memory-card,
+  .project-memory-proposal {
     grid-template-columns: 1fr;
   }
 

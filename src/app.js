@@ -3167,6 +3167,145 @@ function previewProjectUpdateExtraction(captureId) {
   showToast(`${preview.proposals.length} project memory proposal${preview.proposals.length === 1 ? "" : "s"} previewed`, "success");
 }
 
+function updateExtractionProposal(previewId, proposalId, updater) {
+  state.updateExtractionPreviews = normalizeUpdateExtractionPreviews(state.updateExtractionPreviews).map((preview) => {
+    if (preview.id !== previewId) return preview;
+    return {
+      ...preview,
+      proposals: preview.proposals.map((proposal) => proposal.id === proposalId ? updater(proposal, preview) : proposal),
+      status: "reviewed"
+    };
+  });
+}
+
+function reviewExtractionProposal(previewId, proposalId, decision) {
+  const nextStatus = decision === "accepted" ? "accepted" : "rejected";
+  updateExtractionProposal(previewId, proposalId, (proposal) => ({ ...proposal, status: nextStatus }));
+  addAuditEvent({
+    action: `project_memory_proposal_${nextStatus}`,
+    detail: `${nextStatus === "accepted" ? "Accepted" : "Rejected"} project memory proposal`,
+    targetType: "updateExtractionProposal",
+    targetId: proposalId,
+    metadata: { previewId }
+  });
+  saveState();
+  render();
+  showToast(nextStatus === "accepted" ? "Proposal accepted for apply" : "Proposal rejected", "success");
+}
+
+function defaultProjectForProposal(proposal, preview) {
+  return proposal.projectId || preview.projectId || activeProjects()[0]?.id || state.projects[0]?.id || "";
+}
+
+function applyExtractionProposal(previewId, proposalId) {
+  const preview = normalizeUpdateExtractionPreviews(state.updateExtractionPreviews).find((item) => item.id === previewId);
+  const proposal = preview?.proposals.find((item) => item.id === proposalId);
+  if (!preview || !proposal) {
+    showToast("Proposal not found", "info");
+    return;
+  }
+  if (proposal.status === "rejected") {
+    showToast("Rejected proposals cannot be applied", "info");
+    return;
+  }
+  if (proposal.status === "applied") {
+    showToast("Proposal already applied", "info");
+    return;
+  }
+
+  const projectId = defaultProjectForProposal(proposal, preview);
+  const project = byId(state.projects, projectId);
+  const now = new Date().toISOString();
+  let appliedRecord = null;
+  let appliedType = proposal.type;
+
+  if (proposal.type === "task" || proposal.type === "date_change") {
+    appliedRecord = normalizeTaskRecord({
+      id: uid("task"),
+      projectId,
+      title: proposal.title,
+      description: proposal.summary,
+      assignee: activeMemberId(),
+      status: "todo",
+      priority: proposal.type === "date_change" ? "high" : "normal",
+      startDate: todayKey(),
+      dueDate: "",
+      blockedBy: [],
+      tags: ["project-memory"],
+      subtasks: [],
+      customFields: { source: "Project Memory", confidence: String(proposal.confidence) },
+      createdAt: now,
+      updatedAt: now
+    });
+    state.tasks = [appliedRecord, ...state.tasks];
+    appliedType = "task";
+  } else if (proposal.type === "approval") {
+    appliedRecord = {
+      id: uid("approval-memory"),
+      companyId: project?.companyId || "",
+      projectId,
+      taskId: "",
+      title: proposal.title,
+      requester: activeMemberId(),
+      reviewer: "Reviewer",
+      status: "requested",
+      dueDate: shiftDate(todayKey(), 3),
+      summary: proposal.summary,
+      createdAt: now
+    };
+    state.approvals = [appliedRecord, ...state.approvals];
+  } else if (proposal.type === "risk" || proposal.type === "blocker" || proposal.type === "decision") {
+    appliedRecord = {
+      id: uid("raid"),
+      type: proposal.type === "blocker" ? "issue" : proposal.type,
+      projectId,
+      companyId: project?.companyId || "",
+      title: proposal.title,
+      detail: proposal.summary,
+      owner: activeMemberId(),
+      severity: proposal.type === "decision" ? "medium" : "high",
+      status: proposal.type === "decision" ? "decided" : "open",
+      mitigation: proposal.type === "decision" ? "Decision imported from Project Memory." : "Review and assign next mitigation.",
+      visibility: "internal",
+      linkType: "project",
+      linkId: projectId,
+      sourceType: "import",
+      createdAt: now,
+      updatedAt: now
+    };
+    state.raidItems = normalizeRaidItems([appliedRecord, ...(state.raidItems || [])]);
+    appliedType = "raid";
+  } else {
+    appliedRecord = {
+      id: uid("comment"),
+      taskId: "",
+      projectId,
+      author: activeMemberId(),
+      body: proposal.summary,
+      createdAt: now,
+      updatedAt: now
+    };
+    state.comments = normalizeComments([appliedRecord, ...(state.comments || [])]);
+    appliedType = "comment";
+  }
+
+  updateExtractionProposal(previewId, proposalId, (item) => ({
+    ...item,
+    status: "applied",
+    affectedRecords: [...new Set([...(item.affectedRecords || []), `${appliedType}: ${appliedRecord.id}`])]
+  }));
+  addAuditEvent({
+    action: "project_memory_proposal_applied",
+    detail: `Applied project memory proposal as ${appliedType}`,
+    targetType: appliedType,
+    targetId: appliedRecord.id,
+    metadata: { previewId, proposalId, projectId, proposalType: proposal.type }
+  });
+  saveState();
+  render();
+  showToast(`Project memory proposal applied as ${appliedType}`, "success");
+}
+
 function pluginContributionEntries(plugin) {
   const contributes = plugin.contributes || {};
   return Object.entries(contributes)
@@ -32022,13 +32161,13 @@ function renderProjectMemory() {
         <div class="panel-header">
           <div>
             <p class="eyebrow">Structured Extraction Preview</p>
-            <h2>Proposed project memory</h2>
+            <h2>Human Review + Apply</h2>
           </div>
           <span class="status-pill ${latestPreview ? "inbox-blue" : "inbox-neutral"}">${latestPreview ? `${latestPreview.confidence}% confidence` : "No preview"}</span>
         </div>
         <p class="panel-note">Agora turns raw updates into proposed tasks, blockers, decisions, risks, approvals, date changes, and comments before anything is applied.</p>
         <div class="project-memory-preview-list">
-          ${latestPreview ? latestPreview.proposals.map(renderExtractionProposalCard).join("") : emptyState("Preview a captured update to see structured project changes here.")}
+          ${latestPreview ? latestPreview.proposals.map((proposal) => renderExtractionProposalCard(proposal, latestPreview)).join("") : emptyState("Preview a captured update to see structured project changes here.")}
         </div>
       </section>
     </div>
@@ -32056,19 +32195,27 @@ function renderUpdateCaptureCard(capture) {
   `;
 }
 
-function renderExtractionProposalCard(proposal) {
+function renderExtractionProposalCard(proposal, preview) {
   const tone = proposal.confidence >= 78 ? "green" : proposal.confidence >= 62 ? "blue" : "amber";
+  const applied = proposal.status === "applied";
+  const rejected = proposal.status === "rejected";
   return `
-    <article class="project-memory-proposal">
+    <article class="project-memory-proposal ${applied ? "is-applied" : rejected ? "is-rejected" : ""}">
       <div>
         <div class="project-memory-card-chips">
           <span class="status-pill inbox-${tone}">${proposal.confidence}% confidence</span>
           <span class="status-pill inbox-neutral">${escapeHtml(proposal.type.replace("_", " "))}</span>
+          <span class="status-pill ${applied ? "inbox-green" : rejected ? "inbox-red" : proposal.status === "accepted" ? "inbox-blue" : "inbox-neutral"}">${escapeHtml(proposal.status)}</span>
           ${proposal.affectedRecords.map((record) => `<span class="status-pill inbox-neutral">${escapeHtml(record)}</span>`).join("")}
         </div>
         <h3>${escapeHtml(proposal.title)}</h3>
         <p>${escapeHtml(proposal.summary)}</p>
         <small>Source: ${escapeHtml(proposal.sourceText)}</small>
+      </div>
+      <div class="project-memory-proposal-actions">
+        <button class="button button-secondary compact-button" type="button" data-memory-review="accepted" data-memory-preview-id="${escapeHtml(preview.id)}" data-memory-proposal-id="${escapeHtml(proposal.id)}" ${applied || rejected ? "disabled" : ""}>Accept</button>
+        <button class="button button-secondary compact-button" type="button" data-memory-review="rejected" data-memory-preview-id="${escapeHtml(preview.id)}" data-memory-proposal-id="${escapeHtml(proposal.id)}" ${applied || rejected ? "disabled" : ""}>Reject</button>
+        <button class="button button-primary compact-button" type="button" data-memory-apply="${escapeHtml(preview.id)}" data-memory-proposal-id="${escapeHtml(proposal.id)}" ${applied || rejected ? "disabled" : ""}>Apply</button>
       </div>
     </article>
   `;
@@ -39105,6 +39252,22 @@ document.addEventListener("click", (event) => {
   const memoryPreviewButton = event.target.closest("[data-memory-preview]");
   if (memoryPreviewButton) {
     previewProjectUpdateExtraction(memoryPreviewButton.dataset.memoryPreview);
+    return;
+  }
+
+  const memoryReviewButton = event.target.closest("[data-memory-review]");
+  if (memoryReviewButton) {
+    reviewExtractionProposal(
+      memoryReviewButton.dataset.memoryPreviewId,
+      memoryReviewButton.dataset.memoryProposalId,
+      memoryReviewButton.dataset.memoryReview
+    );
+    return;
+  }
+
+  const memoryApplyButton = event.target.closest("[data-memory-apply]");
+  if (memoryApplyButton) {
+    applyExtractionProposal(memoryApplyButton.dataset.memoryApply, memoryApplyButton.dataset.memoryProposalId);
     return;
   }
 
