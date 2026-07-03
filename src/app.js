@@ -5497,6 +5497,362 @@ function createBlankWorkspaceState(options = {}) {
   });
 }
 
+function roleStarterWorkspaceConfigs() {
+  return {
+    agency: {
+      label: "Agency PM",
+      workspaceName: "Agency Client Launch Starter",
+      companyName: "Northstar Client",
+      companyType: "Client",
+      projectName: "Client onboarding launch",
+      projectDescription: "Run a new client from sales handoff through kickoff, portal setup, first approval, and weekly status.",
+      route: "visibility",
+      tab: "overview",
+      integrations: ["slack", "google-drive", "google-calendar", "webhooks"],
+      tasks: [
+        ["handoff", "Collect sales handoff notes", "todo", "high", 1, "mara", ["handoff", "client"]],
+        ["kickoff", "Prepare kickoff agenda", "doing", "urgent", 2, "sam", ["meeting", "approval"]],
+        ["portal", "Configure client portal packet", "todo", "high", 4, "nina", ["portal", "visibility"]],
+        ["approval", "Send first approval request", "todo", "high", 6, "sam", ["approval"]],
+        ["status", "Draft first weekly status update", "todo", "normal", 7, "mara", ["status"]],
+        ["recovery", "Export launch recovery bundle", "todo", "normal", 8, "eli", ["recovery"]]
+      ],
+      milestones: [["Kickoff complete", 2], ["Portal ready", 5], ["First status sent", 8]],
+      docs: [["Client launch brief", "Goals, stakeholders, timeline, visibility rules, approval path, and first-week risks."]]
+    },
+    software: {
+      label: "Software lead",
+      workspaceName: "Software Release Starter",
+      companyName: "Product Engineering",
+      companyType: "Internal",
+      projectName: "Public beta release",
+      projectDescription: "Plan a release with roadmap scope, sprint execution, GitHub handoff, QA, changelog, and launch evidence.",
+      route: "sprint",
+      tab: "overview",
+      integrations: ["github", "linear", "slack", "webhooks"],
+      tasks: [
+        ["scope", "Freeze beta release scope", "doing", "urgent", 1, "mara", ["release", "scope"]],
+        ["github", "Map GitHub issues to release tasks", "todo", "high", 2, "eli", ["github"]],
+        ["qa", "Run release QA and smoke tests", "todo", "high", 4, "sam", ["qa"]],
+        ["changelog", "Draft changelog and migration notes", "todo", "normal", 5, "nina", ["docs"]],
+        ["risks", "Review blocker and dependency list", "todo", "high", 3, "mara", ["risk"]],
+        ["launch", "Publish release readiness packet", "todo", "normal", 7, "eli", ["launch"]]
+      ],
+      milestones: [["Scope freeze", 1], ["QA complete", 5], ["Release candidate", 7]],
+      docs: [["Release brief", "Scope, known risks, test evidence, rollout owner, rollback trigger, and customer-facing notes."]]
+    },
+    scrum: {
+      label: "Scrum master",
+      workspaceName: "Scrum Team Cadence Starter",
+      companyName: "Delivery Team",
+      companyType: "Internal",
+      projectName: "Beta sprint cadence",
+      projectDescription: "Run sprint planning, capacity review, daily standup, carryover, closeout, and retrospective follow-up.",
+      route: "sprint",
+      tab: "overview",
+      integrations: ["slack", "jira", "google-calendar", "webhooks"],
+      tasks: [
+        ["capacity", "Confirm sprint capacity by owner", "doing", "urgent", 1, "sam", ["capacity"]],
+        ["planning", "Finalize sprint commitment", "todo", "high", 1, "mara", ["planning"]],
+        ["standup", "Publish daily standup brief", "todo", "normal", 2, "eli", ["standup"]],
+        ["blockers", "Clear top sprint blockers", "todo", "high", 3, "nina", ["blocker"]],
+        ["carryover", "Review carryover candidates", "todo", "normal", 8, "sam", ["carryover"]],
+        ["retro", "Log retro decisions and owners", "todo", "normal", 10, "mara", ["retro"]]
+      ],
+      milestones: [["Sprint planned", 1], ["Mid-sprint risk review", 5], ["Sprint closeout", 10]],
+      docs: [["Sprint operating agreement", "Capacity assumptions, done definition, meeting rhythm, escalation path, and closeout rules."]]
+    },
+    consultant: {
+      label: "Consultant",
+      workspaceName: "Consultant Client Starter",
+      companyName: "First Advisory Client",
+      companyType: "Client",
+      projectName: "Discovery to recommendation",
+      projectDescription: "Move a consulting engagement from discovery through analysis, recommendation, client decision, and handoff.",
+      route: "command-center",
+      tab: "overview",
+      integrations: ["google-drive", "google-calendar", "slack", "api"],
+      tasks: [
+        ["discovery", "Run stakeholder discovery calls", "doing", "high", 2, "mara", ["discovery"]],
+        ["research", "Analyze current workflow evidence", "todo", "high", 4, "eli", ["research"]],
+        ["options", "Draft recommendation options", "todo", "normal", 6, "sam", ["strategy"]],
+        ["decision", "Capture client decision log", "todo", "high", 7, "mara", ["decision"]],
+        ["handoff", "Prepare implementation handoff", "todo", "normal", 9, "nina", ["handoff"]],
+        ["bundle", "Export client recovery bundle", "todo", "normal", 10, "eli", ["recovery"]]
+      ],
+      milestones: [["Discovery complete", 3], ["Recommendation review", 7], ["Handoff complete", 10]],
+      docs: [["Consulting brief", "Problem statement, stakeholder map, evidence, recommendation options, decision log, and handoff checklist."]]
+    },
+    "client-portal": {
+      label: "Client Portal",
+      workspaceName: "Client Portal Starter",
+      companyName: "Portal Pilot Client",
+      companyType: "Client",
+      projectName: "Client visibility pilot",
+      projectDescription: "Pilot a client-safe portal with visible tasks, approvals, files, status, and portal link governance.",
+      route: "visibility",
+      tab: "tasks",
+      integrations: ["google-drive", "slack", "webhooks", "api"],
+      tasks: [
+        ["visible-status", "Mark client-visible status tasks", "doing", "high", 1, "sam", ["portal"]],
+        ["files", "Attach launch files for client review", "todo", "normal", 2, "nina", ["files"]],
+        ["approval", "Request portal approval signoff", "todo", "urgent", 3, "mara", ["approval"]],
+        ["link", "Rotate and test portal link", "todo", "high", 4, "eli", ["security"]],
+        ["warning", "Resolve visibility warnings", "todo", "high", 5, "sam", ["visibility"]],
+        ["feedback", "Capture client portal feedback", "todo", "normal", 6, "mara", ["feedback"]]
+      ],
+      milestones: [["Portal packet ready", 2], ["Approval complete", 4], ["Client feedback reviewed", 6]],
+      docs: [["Portal operating guide", "What clients can see, what stays internal, approval expectations, link expiry, and feedback routing."]]
+    },
+    "open-source": {
+      label: "Open-source maintainer",
+      workspaceName: "Open Source Maintainer Starter",
+      companyName: "Community Project",
+      companyType: "Community",
+      projectName: "Community release train",
+      projectDescription: "Coordinate issues, pull requests, roadmap requests, release notes, contributor docs, and maintainer review.",
+      route: "project-backlog",
+      tab: "overview",
+      integrations: ["github", "linear", "webhooks", "api"],
+      tasks: [
+        ["triage", "Triage incoming GitHub issues", "doing", "high", 1, "eli", ["github", "triage"]],
+        ["prs", "Review pending pull requests", "todo", "high", 2, "mara", ["github", "review"]],
+        ["roadmap", "Prioritize community roadmap asks", "todo", "normal", 3, "sam", ["roadmap"]],
+        ["docs", "Update contributor documentation", "todo", "normal", 5, "nina", ["docs"]],
+        ["release", "Prepare release notes", "todo", "high", 6, "eli", ["release"]],
+        ["security", "Review security disclosure path", "todo", "urgent", 4, "mara", ["security"]]
+      ],
+      milestones: [["Triage complete", 2], ["Release notes ready", 6], ["Maintainer handoff", 7]],
+      docs: [["Maintainer brief", "Issue triage rules, PR review lanes, release checklist, security contact, and contributor expectations."]]
+    },
+    nonprofit: {
+      label: "Nonprofit operator",
+      workspaceName: "Nonprofit Program Starter",
+      companyName: "Community Program",
+      companyType: "Nonprofit",
+      projectName: "Grant-funded program launch",
+      projectDescription: "Track program deliverables, volunteer capacity, funder reporting, approvals, events, and outcome evidence.",
+      route: "reports",
+      tab: "overview",
+      integrations: ["google-calendar", "google-drive", "slack", "zapier"],
+      tasks: [
+        ["grant", "Confirm grant deliverables and due dates", "doing", "urgent", 1, "mara", ["grant"]],
+        ["volunteers", "Assign volunteer owners", "todo", "high", 2, "sam", ["capacity"]],
+        ["event", "Publish community event timeline", "todo", "normal", 4, "nina", ["event"]],
+        ["report", "Draft funder status report", "todo", "high", 6, "eli", ["reporting"]],
+        ["risk", "Review program risks and mitigations", "todo", "high", 5, "mara", ["risk"]],
+        ["outcomes", "Collect outcome evidence", "todo", "normal", 8, "sam", ["impact"]]
+      ],
+      milestones: [["Program kickoff", 2], ["Funder report draft", 6], ["Outcome review", 8]],
+      docs: [["Program operating brief", "Deliverables, funder commitments, volunteer roles, reporting dates, impact evidence, and risks."]]
+    }
+  };
+}
+
+function roleStarterWorkspaceConfig(profileId) {
+  const configs = roleStarterWorkspaceConfigs();
+  return configs[profileId] || configs.agency;
+}
+
+function createRoleStarterWorkspaceState(profileId, options = {}) {
+  const config = roleStarterWorkspaceConfig(profileId);
+  const now = new Date().toISOString();
+  const today = todayKey();
+  const day = (offset) => shiftDate(today, offset);
+  const at = (offset, hour, minute = 0) => `${day(offset)}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00.000Z`;
+  const workspaceId = options.id || activeWorkspaceId;
+  const projectId = `starter-${profileId}-project`;
+  const companyId = `starter-${profileId}-company`;
+  const starter = createBlankWorkspaceState({
+    id: workspaceId,
+    name: config.workspaceName,
+    slug: slugFromName(config.workspaceName)
+  });
+  const company = normalizeCompanyRecord({
+    id: companyId,
+    name: config.companyName,
+    description: `${config.label} starter account.`,
+    type: config.companyType,
+    owner: "mara",
+    status: "Active"
+  });
+  const project = normalizeProjectRecord({
+    id: projectId,
+    name: config.projectName,
+    companyId,
+    description: config.projectDescription,
+    owner: "mara",
+    startDate: today,
+    dueDate: day(Math.max(...config.tasks.map((task) => task[4]))),
+    status: "active",
+    customFields: {
+      starterProfile: profileId,
+      starterRole: config.label
+    },
+    createdAt: now,
+    updatedAt: now
+  });
+  const tasks = config.tasks.map(([key, title, status, priority, dueOffset, assignee, tags], index) => normalizeTaskRecord({
+    id: `starter-${profileId}-task-${key}`,
+    projectId,
+    title,
+    description: `${config.label} starter task for ${config.projectName}.`,
+    assignee,
+    status,
+    priority,
+    startDate: day(Math.max(0, dueOffset - 2)),
+    dueDate: day(dueOffset),
+    tags,
+    subtasks: ["Owner confirmed", "Next action clear", "Evidence attached"],
+    customFields: {
+      starterProfile: profileId,
+      starterKey: key
+    },
+    boardOrder: index,
+    sortOrder: index,
+    createdAt: at(-1, 9 + (index % 6)),
+    updatedAt: at(0, 8 + (index % 8))
+  }));
+  const milestones = config.milestones.map(([title, dueOffset], index) => ({
+    id: `starter-${profileId}-milestone-${index + 1}`,
+    projectId,
+    title,
+    dueDate: day(dueOffset),
+    status: "planned",
+    owner: index % 2 ? "sam" : "mara"
+  }));
+  const documents = config.docs.map(([title, body], index) => ({
+    id: `starter-${profileId}-doc-${index + 1}`,
+    projectId,
+    title,
+    body,
+    updatedAt: now,
+    owner: "mara"
+  }));
+  const connections = integrationCatalog.map((catalogItem) => ({
+    id: catalogItem.id,
+    status: config.integrations.includes(catalogItem.id) ? "planned" : "disabled",
+    syncMode: config.integrations.includes(catalogItem.id) ? (catalogItem.id === "api" ? "inbound" : "outbound") : "none",
+    owner: "eli",
+    health: config.integrations.includes(catalogItem.id) ? "needs-config" : "planned",
+    secretStatus: ["api", "google-calendar"].includes(catalogItem.id) ? "not-required" : "missing",
+    events: catalogItem.signals.slice(0, 2).map((signal) => signal.toLowerCase().replace(/[^a-z0-9]+/g, ".")).filter((eventName) => integrationEventOptions.includes(eventName))
+  }));
+
+  return normalizeState({
+    ...starter,
+    selectedRoute: config.route,
+    selectedProject: projectId,
+    selectedCompany: companyId,
+    selectedProjectTab: config.tab,
+    selectedSettingsTab: "sync",
+    selectedDailyDate: today,
+    filters: { ...starter.filters, company: companyId, assignee: "all", status: "all", priority: "all", query: "" },
+    dailyNotes: {
+      [today]: `${config.label} starter focus: open the first project, confirm owners, and export a recovery point before inviting the team.`
+    },
+    dailyPlans: Object.fromEntries(tasks.slice(0, 4).map((task, index) => [task.id, { date: today, lane: index < 2 ? "now" : "next" }])),
+    companies: [company],
+    projects: [project],
+    tasks,
+    milestones,
+    documents,
+    activities: tasks.slice(0, 3).map((task, index) => ({
+      id: `starter-${profileId}-activity-${index + 1}`,
+      projectId,
+      type: "starter_task",
+      message: `seeded ${task.title}`,
+      memberId: task.assignee,
+      createdAt: at(-1, 12 + index)
+    })),
+    comments: [{
+      id: `starter-${profileId}-comment-1`,
+      taskId: tasks[0]?.id || "",
+      projectId,
+      author: "mara",
+      body: "Starter workspace loaded. Confirm the owners, then create a recovery bundle before inviting people in.",
+      createdAt: at(0, 10)
+    }],
+    projectBacklog: tasks.slice(3).map((task, index) => ({
+      id: `starter-${profileId}-backlog-${index + 1}`,
+      title: task.title,
+      description: task.description,
+      projectId,
+      companyId,
+      score: 78 - index * 6,
+      effort: index + 2,
+      impact: 8 - index,
+      status: "candidate",
+      owner: task.assignee
+    })),
+    memberships: [
+      { memberId: "mara", role: "admin", status: "active" },
+      { memberId: "sam", role: "manager", status: "active" },
+      { memberId: "eli", role: "member", status: "active" }
+    ],
+    invitations: [{
+      id: `starter-${profileId}-invite`,
+      email: `client-${profileId}@example.com`,
+      role: config.companyType === "Client" ? "client" : "member",
+      status: "pending",
+      token: `starter-${profileId}-invite-token`,
+      invitedBy: "mara",
+      companyId,
+      createdAt: now,
+      expiresAt: day(14)
+    }],
+    auditEvents: [
+      {
+        id: `audit-starter-${profileId}-${workspaceId}-${Date.now()}`,
+        actorId: "mara",
+        action: "workspace_role_starter_load",
+        detail: `${config.label} starter workspace loaded`,
+        source: "local",
+        createdAt: now
+      },
+      ...starter.auditEvents
+    ],
+    workspace: {
+      ...starter.workspace,
+      name: config.workspaceName,
+      slug: slugFromName(config.workspaceName),
+      backendTarget: "API + local offline",
+      defaultRole: "member",
+      integrations: normalizeWorkspaceIntegrations({
+        ...starter.workspace.integrations,
+        defaultOwner: "eli",
+        eventMirroring: true,
+        apiAccess: true,
+        connections,
+        github: {
+          repositories: [{
+            id: `starter-${profileId}-github`,
+            fullName: "thedudeb/Agora",
+            projectId,
+            syncIssues: true,
+            syncPullRequests: true,
+            closeOnDone: true,
+            labelPrefix: "agora",
+            branchPrefix: "agora/",
+            status: config.integrations.includes("github") ? "mapped" : "needs-auth"
+          }]
+        }
+      }, [project])
+    },
+    onboarding: {
+      ...starter.onboarding,
+      dismissed: false,
+      sampleMode: "starter",
+      roleProfile: profileId,
+      completedAt: "",
+      wizardActive: true,
+      wizardStep: 2,
+      notificationsReviewed: true,
+      templatesReviewed: true
+    }
+  });
+}
+
 function createBetaWorkspaceState(options = {}) {
   const beta = structuredClone(seedData);
   const owner = members[0];
@@ -6348,7 +6704,7 @@ function onboardingItems() {
   const setupMemberships = state.onboarding?.sampleMode === "clean"
     ? activeMemberships.filter((membership) => membership.memberId === members[0].id || customUserIds.has(membership.memberId))
     : activeMemberships;
-  const hasChosenDataMode = ["demo", "clean", "import", "template", "beta"].includes(state.onboarding?.sampleMode);
+  const hasChosenDataMode = ["demo", "clean", "import", "template", "beta", "starter"].includes(state.onboarding?.sampleMode);
   const hasWorkspaceName = Boolean(state.workspace.name && state.workspace.name !== "New Agora Workspace");
   const hasCompany = visibleCompanies().length > 0;
   const hasProject = activeProjects().length > 0;
@@ -6374,6 +6730,8 @@ function onboardingItems() {
             ? "Template workspace"
             : state.onboarding?.sampleMode === "beta"
               ? "Beta workspace"
+              : state.onboarding?.sampleMode === "starter"
+                ? `${onboardingRoleProfile()?.label || "Role"} starter`
               : "Demo workspace",
       done: hasChosenDataMode,
       action: "start-clean"
@@ -6444,7 +6802,7 @@ function onboardingRoleProfiles() {
       label: "Agency PM",
       value: "Client launch",
       detail: "Client portal, approvals, weekly status, reusable handoff workflow.",
-      action: "templates"
+      route: "visibility"
     },
     {
       id: "software",
@@ -6473,6 +6831,27 @@ function onboardingRoleProfiles() {
       value: "Trust proof",
       detail: "Backend health, backups, portability, packaging, and release evidence.",
       route: "readiness"
+    },
+    {
+      id: "client-portal",
+      label: "Client portal",
+      value: "Shared status",
+      detail: "Portal packet, visible work, approval routing, link safety, and client feedback.",
+      route: "visibility"
+    },
+    {
+      id: "open-source",
+      label: "OSS maintainer",
+      value: "Community release",
+      detail: "GitHub triage, PR review, roadmap asks, release notes, and security intake.",
+      route: "project-backlog"
+    },
+    {
+      id: "nonprofit",
+      label: "Nonprofit ops",
+      value: "Program delivery",
+      detail: "Grant deliverables, volunteer owners, funder reporting, events, and impact evidence.",
+      route: "reports"
     }
   ];
 }
@@ -6498,7 +6877,7 @@ function onboardingLaunchChecklist() {
       label: "Start with real shape",
       detail: items.data?.done ? items.data.detail : "Use beta, demo, clean, import, or template mode.",
       done: Boolean(items.data?.done),
-      action: "start-beta"
+      action: onboardingRoleProfile() ? `starter:${state.onboarding.roleProfile}` : "role"
     },
     {
       id: "project",
@@ -6762,10 +7141,11 @@ function renderActivationLoop() {
       </div>
       <div class="role-profile-grid">
         ${onboardingRoleProfiles().map((profile) => `
-          <button class="role-profile-card ${profile.id === state.onboarding?.roleProfile ? "is-selected" : ""}" type="button" data-onboarding-action="role:${escapeHtml(profile.id)}">
+          <button class="role-profile-card ${profile.id === state.onboarding?.roleProfile ? "is-selected" : ""}" type="button" data-onboarding-action="starter:${escapeHtml(profile.id)}">
             <span>${escapeHtml(profile.label)}</span>
             <strong>${escapeHtml(profile.value)}</strong>
             <small>${escapeHtml(profile.detail)}</small>
+            <em>Load starter workspace</em>
           </button>
         `).join("")}
       </div>
@@ -14646,6 +15026,17 @@ function handleOnboardingAction(action) {
 
   if (action === "role") {
     openOnboardingWizard(0);
+    return;
+  }
+
+  if (action.startsWith("starter:")) {
+    const roleProfile = action.slice("starter:".length);
+    const profile = onboardingRoleProfiles().find((item) => item.id === roleProfile);
+    if (!profile) return;
+    state = createRoleStarterWorkspaceState(profile.id);
+    saveState();
+    render();
+    showToast(`${profile.label} starter workspace loaded`, "success");
     return;
   }
 

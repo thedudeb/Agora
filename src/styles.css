@@ -1376,6 +1376,14 @@ body[data-tutorial-target="view"] #app-view {
   line-height: 1.4;
 }
 
+.role-profile-card em {
+  align-self: end;
+  color: var(--accent-strong);
+  font-size: 0.76rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
 .launch-checklist {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
