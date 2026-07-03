@@ -108,6 +108,7 @@ npm run demo:links # generate shareable demo tour links
 npm run migrate:concierge -- tests/fixtures/trello-board.json --source trello-json --workspace tests/fixtures/workspace.json
 npm run ecosystem # validate plugin/MCP extension registry
 npm run trust     # run the Trust Center evidence report
+npm run package:check # validate release packaging manifest
 npm run mcp       # start the local stdio MCP server for power-user clients
 npm run plugins   # validate local plugin manifests
 npm run check     # syntax-check app and server files
@@ -131,6 +132,7 @@ npm run agora -- demo links --base https://demo.example.com --markdown
 npm run agora -- concierge tests/fixtures/trello-board.json --source trello-json --workspace tests/fixtures/workspace.json
 npm run agora -- ecosystem
 npm run agora -- trust
+npm run agora -- package-check
 npm run agora -- upgrade check --backup tests/fixtures/server-backups/agora-workspace-backup-demo.json
 npm run agora -- recovery-drill --fixture
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
@@ -158,6 +160,8 @@ For the platform story across plugins, MCP, connectors, templates, automations, 
 
 For trust evidence, run `npm run trust` or `npm run agora -- trust --json`. The report checks Agora's no-tracker runtime posture, security headers, redacted diagnostics, recovery drills, upgrade gates, portability, migration readiness, hosted readiness, and extension registry. See [`docs/trust-center.md`](./docs/trust-center.md).
 
+For release packaging, run `npm run package:check` or `npm run agora -- package-check --json`. The manifest covers source installs, Docker Compose, hosted web/API deployments, offline PWA installs, macOS desktop, Windows desktop, and portable workspace bundles. See [`docs/packaging.md`](./docs/packaging.md).
+
 For production upgrades, run `npm run verify:upgrade` before applying migrations or rolling a new API build, then run `npm run drill:recovery -- --backup <server-backup.json>` to prove restore mechanics in isolation. See [`docs/upgrade-checklist.md`](./docs/upgrade-checklist.md) and [`docs/disaster-recovery-drill.md`](./docs/disaster-recovery-drill.md) for the operator sequence and rollback trigger.
 
 For power users and self-hosters, the lightweight CLI wraps common project operations:
@@ -169,6 +173,7 @@ npm run agora -- verify --quick
 npm run agora -- verify --supabase
 npm run agora -- recovery
 npm run agora -- trust
+npm run agora -- package-check
 npm run agora -- screenshots
 npm run agora -- golden
 npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
@@ -188,6 +193,7 @@ Use this before pushing a release candidate:
 ```sh
 npm run security
 npm run trust
+npm run package:check
 npm run verify:hosted
 npm run rehearse:hosted
 npm run qa

@@ -23,6 +23,7 @@ const checkFiles = [
   "scripts/migration-concierge.js",
   "scripts/ecosystem-check.js",
   "scripts/trust-report.js",
+  "scripts/packaging-check.js",
   "scripts/recovery-stress-test.js",
   "scripts/disaster-recovery-drill.js",
   "scripts/capture-screenshots.js",
@@ -81,6 +82,10 @@ const commands = {
   trust: {
     summary: "Run the Trust Center report",
     run: async (args) => runStep("Trust Center report", [process.execPath, [path.join(ROOT, "scripts", "trust-report.js"), ...args]])
+  },
+  "package-check": {
+    summary: "Validate release packaging manifest",
+    run: async (args) => runStep("packaging readiness check", [process.execPath, [path.join(ROOT, "scripts", "packaging-check.js"), ...args]])
   },
   recovery: {
     summary: "Stress-test backup, portable import, and restore semantics",
@@ -267,6 +272,7 @@ Commands:
   concierge                     Run guided migration preflight
   ecosystem                     Validate plugin/MCP ecosystem registry
   trust                         Run the Trust Center report
+  package-check                 Validate release packaging manifest
   fixtures                      Validate portable fixtures
   recovery                      Stress-test backup/import/restore semantics
   recovery-drill                Run disaster recovery drill from a server backup
@@ -300,6 +306,8 @@ Examples:
   npm run agora -- ecosystem
   npm run agora -- trust
   npm run agora -- trust --json
+  npm run agora -- package-check
+  npm run agora -- package-check --json
   npm run agora -- verify --quick
   npm run agora -- verify --supabase
   npm run agora -- recovery

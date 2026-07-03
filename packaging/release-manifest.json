@@ -1,0 +1,85 @@
+{
+  "type": "agora.release-manifest",
+  "version": 1,
+  "productVersion": "0.1.0",
+  "requiredRootCommands": [
+    "setup",
+    "start",
+    "start:api",
+    "trust",
+    "verify:hosted",
+    "verify:upgrade",
+    "drill:recovery",
+    "package:check"
+  ],
+  "requiredDesktopCommands": [
+    "pack:mac",
+    "pack:win",
+    "dist"
+  ],
+  "channels": [
+    {
+      "id": "source",
+      "label": "Source install",
+      "artifactType": "Git checkout or source archive",
+      "platforms": ["macOS", "Windows", "Linux"],
+      "entrypoint": "npm run setup",
+      "requiredFiles": ["package.json", "package-lock.json", "scripts/agora-setup.js", "docs/install.md"],
+      "verification": ["npm run setup -- --dry-run", "npm run check"]
+    },
+    {
+      "id": "docker-compose",
+      "label": "Docker Compose",
+      "artifactType": "Container image plus compose stack",
+      "platforms": ["macOS", "Windows", "Linux", "server"],
+      "entrypoint": "docker compose up --build",
+      "requiredFiles": ["Dockerfile", "docker-compose.yml", ".dockerignore", "docs/install.md"],
+      "verification": ["npm run setup -- --profile docker --dry-run", "docker compose config"]
+    },
+    {
+      "id": "hosted",
+      "label": "Hosted web/API deployment",
+      "artifactType": "Static web app plus long-running API service",
+      "platforms": ["Vercel", "Render", "Fly.io", "Railway", "Node host"],
+      "entrypoint": "npm run start && npm run start:api",
+      "requiredFiles": ["vercel.json", "server/api.js", "server/static.js", "docs/deployment.md", "docs/hosted-launch-runbook.md"],
+      "verification": ["npm run verify:hosted", "npm run rehearse:hosted"]
+    },
+    {
+      "id": "pwa-offline",
+      "label": "Offline PWA",
+      "artifactType": "Installable browser app",
+      "platforms": ["iOS", "Android", "desktop browser"],
+      "entrypoint": "Open hosted app and install from browser",
+      "requiredFiles": ["manifest.webmanifest", "sw.js", "offline.html", "assets/icons/agora-192.png", "assets/icons/agora-512.png"],
+      "verification": ["npm run test:golden"]
+    },
+    {
+      "id": "desktop-macos",
+      "label": "macOS desktop shell",
+      "artifactType": "DMG and ZIP",
+      "platforms": ["macOS"],
+      "entrypoint": "npm --prefix desktop run pack:mac",
+      "requiredFiles": ["desktop/package.json", "desktop/package-lock.json", "desktop/electron/main.cjs", "desktop/electron/preload.cjs", "docs/desktop-app.md"],
+      "verification": ["npm run check", "npm --prefix desktop run pack:mac"]
+    },
+    {
+      "id": "desktop-windows",
+      "label": "Windows desktop shell",
+      "artifactType": "NSIS installer and portable executable",
+      "platforms": ["Windows"],
+      "entrypoint": "npm --prefix desktop run pack:win",
+      "requiredFiles": ["desktop/package.json", "desktop/package-lock.json", "desktop/electron/main.cjs", "desktop/electron/preload.cjs", "docs/desktop-app.md"],
+      "verification": ["npm run check", "npm --prefix desktop run pack:win"]
+    },
+    {
+      "id": "portable-data",
+      "label": "Portable workspace bundle",
+      "artifactType": "JSON/CSV/Markdown workspace export",
+      "platforms": ["Agora web", "Agora desktop", "future mobile shells"],
+      "entrypoint": "Data > Portable workspace bundle",
+      "requiredFiles": ["docs/portable-workspace.md", "tests/fixtures/portable-workspace-bundle.json", "server/portable-fixtures-test.js"],
+      "verification": ["npm run test:fixtures", "npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json"]
+    }
+  ]
+}
