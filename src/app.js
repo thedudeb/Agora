@@ -10104,6 +10104,48 @@ function commandPaletteBaseItems() {
       keywords: "backup import export api sync"
     },
     {
+      id: "migration:open",
+      title: "Open Migration Studio",
+      detail: "Preview Trello JSON or CSV imports with mapping, backup, and rollback checks",
+      group: "Migration",
+      keywords: "migration import trello asana jira linear clickup csv json"
+    },
+    {
+      id: "migration:trello",
+      title: "Start Trello import",
+      detail: "Open Migration Studio with Trello JSON selected and a sample board loaded",
+      group: "Migration",
+      keywords: "trello import migration board cards json sample"
+    },
+    {
+      id: "api:capabilities",
+      title: "Copy API capabilities URL",
+      detail: `${API_BASE_URL}/api/capabilities`,
+      group: "API",
+      keywords: "api capabilities discovery agents integrations"
+    },
+    {
+      id: "api:openapi",
+      title: "Copy OpenAPI URL",
+      detail: `${API_BASE_URL}/api/openapi.json`,
+      group: "API",
+      keywords: "openapi schema api discovery client sdk"
+    },
+    {
+      id: "mcp:docs",
+      title: "Copy MCP docs path",
+      detail: "docs/mcp-server.md",
+      group: "MCP",
+      keywords: "mcp model context protocol agent docs"
+    },
+    {
+      id: "docs:agent-contract",
+      title: "Copy API agent contract path",
+      detail: "docs/api-agent-contract.md",
+      group: "API",
+      keywords: "agent contract api automation safety docs"
+    },
+    {
       id: "api:save",
       title: "Save workspace to API",
       detail: apiSession ? apiConnectionLabel() : "Connect to the API first",
@@ -10411,7 +10453,7 @@ function beginShortcutLeader() {
   shortcutLeaderActive = true;
   if (shortcutLeaderTimer) window.clearTimeout(shortcutLeaderTimer);
   shortcutLeaderTimer = window.setTimeout(clearShortcutLeader, 1800);
-  showToast("Go to: D Dashboard, T Today, B Board, I Inbox, S Settings", "info");
+  showToast("Go to: D Dashboard, T Today, B Board, I Inbox, M Migration, R Readiness, S Settings", "info");
 }
 
 function runGoToShortcut(key) {
@@ -10420,6 +10462,8 @@ function runGoToShortcut(key) {
     t: "daily",
     b: "board",
     i: "inbox",
+    m: "data",
+    r: "readiness",
     s: "settings"
   };
   const route = routeByKey[key];
@@ -10627,6 +10671,19 @@ function openCommandSearchResult(result) {
   setRoute(result.route || "dashboard");
 }
 
+async function copyCommandText(value, successMessage) {
+  if (!navigator.clipboard?.writeText) {
+    showToast(value, "info");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast(successMessage, "success");
+  } catch {
+    showToast(value, "info");
+  }
+}
+
 function executeCommand(commandId) {
   const item = commandPaletteAllItems().find((command) => command.id === commandId);
   if (!item || item.disabled) return;
@@ -10718,6 +10775,38 @@ function executeCommand(commandId) {
     state.selectedRoute = "data";
     saveState();
     createWorkspaceBackup("Command palette backup");
+    return;
+  }
+
+  if (commandId === "migration:open") {
+    setRoute("data");
+    showToast("Migration Studio is ready", "success");
+    return;
+  }
+
+  if (commandId === "migration:trello") {
+    setRoute("data");
+    window.setTimeout(() => selectSwitcherPreset("trello"), 0);
+    return;
+  }
+
+  if (commandId === "api:capabilities") {
+    copyCommandText(`${API_BASE_URL}/api/capabilities`, "API capabilities URL copied");
+    return;
+  }
+
+  if (commandId === "api:openapi") {
+    copyCommandText(`${API_BASE_URL}/api/openapi.json`, "OpenAPI URL copied");
+    return;
+  }
+
+  if (commandId === "mcp:docs") {
+    copyCommandText("docs/mcp-server.md", "MCP docs path copied");
+    return;
+  }
+
+  if (commandId === "docs:agent-contract") {
+    copyCommandText("docs/api-agent-contract.md", "Agent contract path copied");
     return;
   }
 
