@@ -50,6 +50,7 @@ async function run() {
     const health = await request(`${baseUrl}/api/health`);
     assert(health.ok === true, "health endpoint failed");
     assert(health.version, "health endpoint did not expose API version");
+    assert(health.release?.version === health.version, "health endpoint did not expose release metadata");
     const rawHealth = await requestRaw(`${baseUrl}/api/health`);
     assert(rawHealth.headers.get("x-request-id"), "health endpoint did not include request id header");
 
@@ -122,6 +123,7 @@ async function run() {
     }
     assert(backendHealth.storage === "json-file", "backend health did not expose storage driver");
     assert(backendHealth.auth === "local", "backend health did not expose auth driver");
+    assert(backendHealth.release?.version === health.version, "backend health did not expose release metadata");
     assert(backendHealth.records.some((record) => record.key === "comments"), "backend health did not report record collections");
     assert(backendHealth.readiness.some((item) => item.id === "structured-records"), "backend health did not include readiness items");
     assert(backendHealth.readiness.some((item) => item.id === "record-query-api"), "backend health did not include query API readiness");

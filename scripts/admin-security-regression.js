@@ -11,6 +11,7 @@ const staticServer = fs.readFileSync(path.join(root, "server", "static.js"), "ut
 const desktopMain = fs.readFileSync(path.join(root, "desktop", "electron", "main.cjs"), "utf8");
 const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "qa.yml"), "utf8");
 const rootPackage = fs.readFileSync(path.join(root, "package.json"), "utf8");
+const packageJson = JSON.parse(rootPackage);
 const envExample = fs.readFileSync(path.join(root, ".env.example"), "utf8");
 
 function has(text) {
@@ -81,6 +82,8 @@ assert(desktopMain.includes("function isProductionCsp()"), "desktop shell must e
 assert(desktopMain.includes('envFlag("AGORA_STRICT_CSP", app.isPackaged)'), "packaged desktop builds must default to strict CSP");
 
 assert(rootPackage.includes('"audit": "npm audit --audit-level=moderate && npm --prefix desktop audit --audit-level=moderate"'), "root package must expose dependency audit script");
+assert(app.includes(`version: "${packageJson.version}"`), "browser release metadata must match package.json version");
+assert(api.includes('const API_VERSION = packageJson.version || "0.1.0";'), "API version must come from package.json");
 assert(workflow.includes("node-version: \"22\""), "CI must use a Node version supported by desktop security tooling");
 assert(workflow.includes("npm run audit"), "CI must run dependency audit");
 

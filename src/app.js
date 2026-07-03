@@ -351,6 +351,17 @@ const workspaceRoles = [
   { id: "client", label: "Client / Guest", description: "Can submit intake, review shared work, and follow selected project updates." }
 ];
 
+const AGORA_RELEASE = Object.freeze({
+  name: "agora",
+  version: "0.1.0",
+  channel: "browser",
+  commit: "",
+  shortCommit: "",
+  date: ""
+});
+
+window.AGORA_RELEASE = AGORA_RELEASE;
+
 const settingsTabs = [
   { id: "account", label: "Account" },
   { id: "workspace", label: "Workspace" },
@@ -29415,6 +29426,7 @@ function renderPermissionsAudit() {
 function renderBackendChecklist() {
   const records = Array.isArray(backendHealth?.records) ? backendHealth.records : [];
   const checkedAt = backendHealth?.generatedAt || apiSession?.lastBackendCheckedAt || "";
+  const serverRelease = backendHealth?.release || apiSession?.apiHealth?.release || {};
   return `
     <div class="backend-health-summary">
       <article>
@@ -29432,6 +29444,14 @@ function renderBackendChecklist() {
       <article>
         <span>Last check</span>
         <strong>${checkedAt ? escapeHtml(formatTimestamp(checkedAt)) : "Never"}</strong>
+      </article>
+      <article>
+        <span>App release</span>
+        <strong>${escapeHtml(releaseDisplay(AGORA_RELEASE))}</strong>
+      </article>
+      <article>
+        <span>Server release</span>
+        <strong>${escapeHtml(releaseDisplay(serverRelease, apiSession ? "Unknown" : "Disconnected"))}</strong>
       </article>
     </div>
     <div class="backend-actions">
@@ -29483,6 +29503,13 @@ function renderBackendChecklist() {
       </div>
     ` : ""}
   `;
+}
+
+function releaseDisplay(release = {}, fallback = "Unknown") {
+  const version = release.version ? `v${release.version}` : "";
+  const commit = release.shortCommit || (release.commit ? release.commit.slice(0, 12) : "");
+  const channel = release.channel && !["browser", "development"].includes(release.channel) ? release.channel : "";
+  return [version, commit, channel].filter(Boolean).join(" / ") || fallback;
 }
 
 function renderBackendObservabilityPanel() {

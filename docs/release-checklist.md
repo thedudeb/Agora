@@ -77,6 +77,7 @@ Fix any failure before releasing. `qa` runs quick verification plus browser gold
 - Deploy the API with `npm run start:api`.
 - Set production environment variables in the host dashboard, not in client code.
 - Confirm `/api/health`, `/api/backend/health`, `/api/payments/config`, and `/api/marketplace/catalog` respond after sign-in.
+- Confirm `/api/health` and Settings > Developer show the expected app/server version and deploy commit.
 - Open Settings > Account and complete Hosted onboarding.
 - Open Backend Health and confirm the hosted launch runbook shows environment, persistence, email, public surface, recovery, and billing posture.
 - Send one invite and one public feature request, then confirm the email jobs queue or deliver through the configured provider.

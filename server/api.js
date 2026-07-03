@@ -7,6 +7,7 @@ const tls = require("node:tls");
 const { URL } = require("node:url");
 const { loadEnvFile } = require("./env");
 const { createStorage } = require("./storage");
+const packageJson = require("../package.json");
 
 loadEnvFile();
 
@@ -27,7 +28,7 @@ const INVITATION_TTL_MS = positiveNumber(process.env.AGORA_INVITATION_TTL_DAYS, 
 const PORTAL_LINK_TTL_MS = positiveNumber(process.env.AGORA_PORTAL_LINK_TTL_DAYS, 14) * 24 * 60 * 60 * 1000;
 const PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS = positiveNumber(process.env.AGORA_PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS, 30);
 const PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS = positiveNumber(process.env.AGORA_PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS, 10 * 60 * 1000);
-const API_VERSION = "0.1.0";
+const API_VERSION = packageJson.version || "0.1.0";
 const BACKUP_SCHEMA_VERSION = 1;
 
 const workspace = {
@@ -115,6 +116,31 @@ function envFlag(name, fallback = false) {
 function positiveNumber(value, fallback) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function releaseMetadata() {
+  const commit = cleanString(
+    process.env.AGORA_RELEASE_COMMIT
+    || process.env.VERCEL_GIT_COMMIT_SHA
+    || process.env.RENDER_GIT_COMMIT
+    || process.env.COMMIT_SHA
+    || process.env.SOURCE_VERSION
+  );
+  const date = cleanString(
+    process.env.AGORA_RELEASE_DATE
+    || process.env.VERCEL_GIT_COMMIT_DATE
+    || process.env.BUILD_DATE
+  );
+  const channel = cleanString(process.env.AGORA_RELEASE_CHANNEL || process.env.NODE_ENV || "development");
+  return {
+    name: packageJson.name || "agora",
+    version: API_VERSION,
+    channel,
+    commit,
+    shortCommit: commit ? commit.slice(0, 12) : "",
+    date,
+    source: "package.json"
+  };
 }
 
 function clientIp(request) {
@@ -705,6 +731,7 @@ function apiCapabilitiesDocument() {
   return {
     service: "agora-api",
     version: API_VERSION,
+    release: releaseMetadata(),
     generatedAt: new Date().toISOString(),
     workspace: {
       id: workspace.id,
@@ -935,6 +962,7 @@ function createServer(options = {}) {
           ok: true,
           service: "agora-api",
           version: API_VERSION,
+          release: releaseMetadata(),
           storage: storage.driver || "json-file",
           auth: authDriverLabel(),
           workspace
@@ -2228,6 +2256,7 @@ async function buildBackendHealth(storage, session) {
     membership: session.membership,
     permissions: session.permissions,
     sessionHardening,
+    release: releaseMetadata(),
     productionMode: storageDriver === "supabase" && authDriver === "supabase",
     productionGates,
     snapshot: {
@@ -2255,6 +2284,7 @@ async function buildAdminDiagnostics(storage, session, requestId = "") {
     requestId,
     service: "agora-api",
     apiVersion: API_VERSION,
+    release: health.release || releaseMetadata(),
     workspaceId: health.workspaceId,
     session: {
       userId: session.user?.id || "",

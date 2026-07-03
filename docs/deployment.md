@@ -54,6 +54,9 @@ AGORA_DEMO_AUTH=false
 AGORA_PASSWORDLESS_AUTH=false
 AGORA_STRICT_CSP=true
 AGORA_STRUCTURED_LOGS=true
+AGORA_RELEASE_CHANNEL=production
+AGORA_RELEASE_COMMIT=your-git-sha
+AGORA_RELEASE_DATE=2026-07-03T00:00:00Z
 AGORA_BACKUP_DIR=/var/lib/agora/backups
 AGORA_BACKUP_RETENTION_FILES=20
 AGORA_BACKUP_SCHEDULER_ENABLED=true
@@ -75,6 +78,8 @@ Backend Health reports production gates for the hosted path:
 - `Rate-limit IP source`: direct socket IPs are used unless `AGORA_TRUST_PROXY=true` is intentionally enabled behind a trusted proxy.
 - `Strict CSP`: hosted app/static servers run with `AGORA_STRICT_CSP=true` or `NODE_ENV=production`.
 - `Workspace backups`: the API can write server-side backups to a durable mounted directory.
+
+The API also exposes release metadata on `/api/health`, `/api/capabilities`, Backend Health, and redacted Admin Diagnostics. Set `AGORA_RELEASE_COMMIT` and `AGORA_RELEASE_DATE` from your deploy host when available; Vercel and Render commit variables are detected automatically.
 
 Settings > Account also shows Hosted onboarding, which is the operator-facing path for first-owner signup, API sync, teammate/client invite, email delivery, public feedback, and recovery proof.
 
