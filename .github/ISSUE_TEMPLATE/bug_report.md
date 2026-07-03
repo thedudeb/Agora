@@ -28,6 +28,8 @@ What did you expect to happen?
 - Browser:
 - Operating system:
 - Viewport: desktop, iPhone, iPad, other
+- Request ID, if the API returned one:
+- Backend Health or redacted diagnostics export attached: yes/no
 
 ## Data safety
 
