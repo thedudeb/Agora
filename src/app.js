@@ -28553,6 +28553,82 @@ function trustCenterStats() {
   };
 }
 
+function openOwnershipAdvantageRows() {
+  const recovery = portableRecoveryStatus();
+  const offlineItems = offlineAppReadinessItems();
+  const aiActions = Array.isArray(state.operatorActions) ? state.operatorActions : [];
+  const undoableActions = aiActions.filter((action) => action.undoType && action.status !== "undone");
+  const migrationHistory = normalizeMigrationHistory(state.migrationHistory);
+  const connectorCount = integrationCatalog.length + pluginConnectorContributions().length;
+  const marketplaceCount = marketplaceProjectTemplates.length + automationMarketplacePacks.length;
+  return [
+    {
+      title: "Portability over lock-in",
+      proof: `${recovery.files.length} bundle files`,
+      detail: "Workspace JSON, CSV, Markdown, templates, automations, audit history, and the offline contract travel together.",
+      moat: "Teams can leave, restore, inspect, or self-host without a sales ticket."
+    },
+    {
+      title: "Offline-native continuity",
+      proof: `${offlineItems.filter((item) => item.done).length}/${offlineItems.length} readiness checks`,
+      detail: "PWA, desktop, iOS, Android, and Windows targets share the same local-first storage and retry queue contract.",
+      moat: "Work keeps moving when the network, vendor API, or hosted service is unavailable."
+    },
+    {
+      title: "Auditable AI",
+      proof: `${aiActions.length} ledger actions`,
+      detail: `${undoableActions.length} undoable actions with rationale, data sources, permissions, and local-mode fallback.`,
+      moat: "AI is accountable project infrastructure, not a black-box teammate."
+    },
+    {
+      title: "Migration safety",
+      proof: `${migrationHistory.length} migrations tracked`,
+      detail: "Imports preview mappings, create recovery snapshots, preserve schema history, and show validation warnings before apply.",
+      moat: "Switching from another tool feels reversible instead of scary."
+    },
+    {
+      title: "Open ecosystem",
+      proof: `${connectorCount} connectors / ${marketplaceCount} packs`,
+      detail: "CLI, MCP server, plugin manifests, integration playbooks, template packs, and automation packs extend the core product.",
+      moat: "Power users can build around Agora instead of waiting on a proprietary roadmap."
+    }
+  ];
+}
+
+function renderOpenOwnershipAdvantagePanel() {
+  const rows = openOwnershipAdvantageRows();
+  const readyRows = rows.filter((row) => !/^0\b/.test(row.proof)).length;
+  return `
+    <section class="panel open-ownership-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Competitive advantage</p>
+          <h2>Open ownership advantage</h2>
+        </div>
+        <span class="status-pill inbox-green">${readyRows}/${rows.length} proof lanes</span>
+      </div>
+      <p class="panel-note">Agora should beat closed work platforms by making ownership, recovery, AI accountability, and extension points visible before a team has to trust us.</p>
+      <div class="open-ownership-grid">
+        ${rows.map((row) => `
+          <article>
+            <div>
+              <span>${escapeHtml(row.title)}</span>
+              <strong>${escapeHtml(row.proof)}</strong>
+            </div>
+            <p>${escapeHtml(row.detail)}</p>
+            <small>${escapeHtml(row.moat)}</small>
+          </article>
+        `).join("")}
+      </div>
+      <div class="lock-in-receipt">
+        <strong>Lock-in risk receipt</strong>
+        <p>Every serious workspace needs a visible answer to four questions: can we leave, can we recover, can we audit AI, and can we keep working offline?</p>
+        <span>Agora answers those in-product.</span>
+      </div>
+    </section>
+  `;
+}
+
 function renderTrustCenterPanel() {
   const stats = trustCenterStats();
   const ai = aiSettings();
@@ -28594,6 +28670,8 @@ function renderTrustCenterPanel() {
         <button class="button button-primary" type="button" data-route="operator">Review AI Ledger</button>
       </div>
     </section>
+
+    ${renderOpenOwnershipAdvantagePanel()}
 
     <section class="panel">
       <div class="panel-header">
@@ -28820,6 +28898,7 @@ function renderDataManagement() {
     </div>
 
     ${renderPortableRecoveryConfidencePanel()}
+    ${renderOpenOwnershipAdvantagePanel()}
     ${renderOfflineAppReadinessPanel()}
     ${renderWorkspaceSchemaPanel()}
 

@@ -7892,6 +7892,66 @@ body[data-tutorial-target="view"] #app-view {
   font-size: 1.2rem;
 }
 
+.open-ownership-panel {
+  grid-column: 1 / -1;
+}
+
+.open-ownership-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.open-ownership-grid article {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.open-ownership-grid article > div {
+  display: grid;
+  gap: 4px;
+}
+
+.open-ownership-grid span,
+.lock-in-receipt span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.open-ownership-grid strong {
+  font-size: 1.05rem;
+}
+
+.open-ownership-grid p,
+.open-ownership-grid small,
+.lock-in-receipt p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.lock-in-receipt {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.lock-in-receipt strong {
+  white-space: nowrap;
+}
+
 .trust-export-row {
   display: flex;
   flex-wrap: wrap;
@@ -11239,6 +11299,7 @@ body[data-density="compact"] .main-content {
   .goal-meta-grid,
   .theme-option-grid,
   .trust-grid,
+  .open-ownership-grid,
   .mobile-roadmap-list,
   .native-mobile-grid,
   .automation-pack-list,
@@ -11759,6 +11820,8 @@ body[data-density="compact"] .main-content {
   .goal-project-row,
   .theme-option-grid,
   .trust-grid,
+  .open-ownership-grid,
+  .lock-in-receipt,
   .role-preview-grid,
   .operator-trust-grid,
   .portable-file-grid,

@@ -463,6 +463,10 @@ const routeChecks = [
       "CLI inspect",
       "Portable workspace OS",
       "Download Bundle",
+      "Open ownership advantage",
+      "Lock-in risk receipt",
+      "Auditable AI",
+      "Migration safety",
       "Create Backup",
       "Import bundle",
       "Preview Bundle",
@@ -541,6 +545,23 @@ const routeChecks = [
       "Local-first means the device matters",
       "Download Redacted Bundle",
       "Permission matrix"
+    ]
+  },
+  {
+    name: "Settings trust ownership proof",
+    suite: "security",
+    route: "settings",
+    query: { settingsTab: "trust" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Trust center",
+      "Open, portable, auditable",
+      "Open ownership advantage",
+      "Portability over lock-in",
+      "Offline-native continuity",
+      "Auditable AI",
+      "Lock-in risk receipt"
     ]
   },
   {
