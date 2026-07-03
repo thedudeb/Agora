@@ -6,7 +6,7 @@ Agora's plugin path starts with a safe manifest contract before dynamic runtime 
 
 - Keep plugins local-first and inspectable.
 - Require least-privilege permissions up front.
-- Support commands, views, importers, templates, automation packs, MCP tools, and settings panels.
+- Support commands, connectors, views, importers, templates, automation packs, MCP tools, and settings panels.
 - Make plugin validation part of release QA.
 - Avoid remote code execution in the first contract.
 
@@ -26,6 +26,7 @@ Each plugin folder contains `plugin.json`:
   "runtime": { "mode": "none" },
   "contributes": {
     "commands": [],
+    "connectors": [],
     "views": [],
     "importers": [],
     "templates": [],
@@ -51,6 +52,8 @@ npm run test:plugins
 ```
 
 The validator checks required fields, version format, supported permissions, runtime mode, local iframe entries, contribution keys, and whether the plugin contributes at least one extension point.
+
+Connector contributions are declarative provider bridges. They should name the provider, supported sync modes, subscribed events, required external scopes, and the API or MCP handoff that will perform the real sync. Agora can list disabled connector manifests in Settings > Integrations, then register them as active connectors once an admin enables the plugin.
 
 Machine-readable output:
 

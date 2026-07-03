@@ -401,6 +401,45 @@ const bundledPluginManifests = [
         }
       ]
     }
+  },
+  {
+    type: "agora.plugin",
+    manifestVersion: 1,
+    id: "github-connector",
+    name: "GitHub Connector",
+    version: "0.1.0",
+    description: "Declarative connector manifest for GitHub issues, pull requests, and Agora task sync.",
+    author: { name: "Agora Community" },
+    permissions: ["workspace:read", "tasks:read", "tasks:write", "integrations:write"],
+    runtime: { mode: "api" },
+    contributes: {
+      connectors: [
+        {
+          id: "github-connector.sync",
+          title: "GitHub Issue and PR Sync",
+          provider: "github",
+          category: "Engineering",
+          syncModes: ["inbound", "outbound", "two-way"],
+          events: ["github.issue.opened", "github.issue.closed", "github.pr.opened", "github.pr.merged"],
+          scopes: ["repo", "issues", "pull_requests"],
+          description: "Maps GitHub issues and pull requests to Agora tasks through the integration sync queue."
+        }
+      ],
+      commands: [
+        {
+          id: "github-connector.open",
+          title: "Open GitHub Connector",
+          description: "Open the integration registry with the GitHub connector mapping visible."
+        }
+      ],
+      mcpTools: [
+        {
+          id: "github-connector.queueSync",
+          title: "Queue GitHub Sync",
+          description: "Future MCP bridge point for queueing a GitHub integration sync job."
+        }
+      ]
+    }
   }
 ];
 
@@ -2879,6 +2918,14 @@ function enabledPluginContributions() {
   return bundledPluginManifests
     .filter((plugin) => enabled.has(plugin.id))
     .flatMap((plugin) => pluginContributionEntries(plugin).map((entry) => ({ ...entry, plugin })));
+}
+
+function pluginConnectorContributions() {
+  const enabled = enabledPluginIds();
+  return bundledPluginManifests
+    .flatMap((plugin) => pluginContributionEntries(plugin)
+      .filter((entry) => entry.type === "connectors")
+      .map((entry) => ({ ...entry, plugin, enabled: enabled.has(plugin.id) })));
 }
 
 function pluginCommandPaletteItems() {
@@ -8335,13 +8382,14 @@ function renderIntegrationsHubPanel() {
 }
 
 function renderConnectorRegistryPanel(integrations) {
-  const rows = integrations.connections.map((connection) => {
+  const builtinRows = integrations.connections.map((connection) => {
     const catalogItem = integrationCatalog.find((item) => item.id === connection.id) || {};
     const ready = connection.status === "connected" && connection.health === "healthy";
     return {
       id: connection.id,
       name: catalogItem.name || connection.id,
       category: catalogItem.category || "Connector",
+      source: "Built-in connector",
       ready,
       syncMode: integrationSyncLabel(connection.syncMode),
       health: connection.health || "planned",
@@ -8349,6 +8397,18 @@ function renderConnectorRegistryPanel(integrations) {
       events: connection.events || []
     };
   });
+  const pluginRows = pluginConnectorContributions().map((connector) => ({
+    id: connector.id,
+    name: connector.title || connector.id,
+    category: connector.category || connector.provider || "Plugin connector",
+    source: "Plugin connector bridge",
+    ready: connector.enabled,
+    syncMode: Array.isArray(connector.syncModes) ? connector.syncModes.map(integrationSyncLabel).join(", ") : "Manual",
+    health: connector.enabled ? "enabled" : "disabled",
+    owner: connector.plugin.name,
+    events: Array.isArray(connector.events) ? connector.events : []
+  }));
+  const rows = [...builtinRows, ...pluginRows];
   return `
     <section class="connector-registry-panel">
       <div class="panel-header">
@@ -8358,13 +8418,14 @@ function renderConnectorRegistryPanel(integrations) {
         </div>
         <span class="status-pill inbox-blue">${rows.filter((row) => row.ready).length}/${rows.length} ready</span>
       </div>
+      <p class="panel-note">Plugin connector bridge entries come from enabled local plugin manifests and use the same sync queue as built-in connectors.</p>
       <div class="connector-registry-list">
-        ${rows.slice(0, 6).map((row) => `
+        ${rows.slice(0, 8).map((row) => `
           <article>
             <div>
               <span class="status-pill ${row.ready ? "inbox-green" : row.health === "error" ? "inbox-red" : "inbox-neutral"}">${escapeHtml(row.health)}</span>
               <strong>${escapeHtml(row.name)}</strong>
-              <p>${escapeHtml(`${row.category} / ${row.syncMode} / owner ${row.owner}`)}</p>
+              <p>${escapeHtml(`${row.category} / ${row.syncMode} / ${row.source} / ${row.owner}`)}</p>
             </div>
             <small>${row.events.length} subscribed events</small>
           </article>
@@ -25104,7 +25165,7 @@ function renderPluginSettingsPanel() {
         <article>
           <span>Contract</span>
           <strong>Manifest v1</strong>
-          <small>Declarative commands, views, importers, templates, automation packs, MCP tools, and settings panels.</small>
+          <small>Declarative commands, connectors, views, importers, templates, automation packs, MCP tools, and settings panels.</small>
         </article>
         <article>
           <span>Runtime</span>

@@ -477,6 +477,7 @@ const routeChecks = [
     required: [
       "Connected tools",
       "Connector registry",
+      "Plugin connector bridge",
       "Auth, scopes, direction, and health",
       "GitHub Integration v1",
       "Issues and pull requests",
@@ -498,8 +499,10 @@ const routeChecks = [
       "Plugin registry",
       "Local extension manifests",
       "Example Importer",
+      "GitHub Connector",
       "Contribution registry",
       "Enabled plugin contributions",
+      "connectors",
       "Plugin changes",
       "Manifest v1"
     ]

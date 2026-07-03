@@ -1,0 +1,48 @@
+{
+  "type": "agora.plugin",
+  "manifestVersion": 1,
+  "id": "github-connector",
+  "name": "GitHub Connector",
+  "version": "0.1.0",
+  "description": "Declarative connector manifest for GitHub issues, pull requests, and Agora task sync.",
+  "author": {
+    "name": "Agora Community"
+  },
+  "permissions": [
+    "workspace:read",
+    "tasks:read",
+    "tasks:write",
+    "integrations:write"
+  ],
+  "runtime": {
+    "mode": "api"
+  },
+  "contributes": {
+    "connectors": [
+      {
+        "id": "github-connector.sync",
+        "title": "GitHub Issue and PR Sync",
+        "provider": "github",
+        "category": "Engineering",
+        "syncModes": ["inbound", "outbound", "two-way"],
+        "events": ["github.issue.opened", "github.issue.closed", "github.pr.opened", "github.pr.merged"],
+        "scopes": ["repo", "issues", "pull_requests"],
+        "description": "Maps GitHub issues and pull requests to Agora tasks through the integration sync queue."
+      }
+    ],
+    "commands": [
+      {
+        "id": "github-connector.open",
+        "title": "Open GitHub Connector",
+        "description": "Open the integration registry with the GitHub connector mapping visible."
+      }
+    ],
+    "mcpTools": [
+      {
+        "id": "github-connector.queueSync",
+        "title": "Queue GitHub Sync",
+        "description": "Future MCP bridge point for queueing a GitHub integration sync job."
+      }
+    ]
+  }
+}

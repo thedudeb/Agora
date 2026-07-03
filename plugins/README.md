@@ -26,7 +26,7 @@ Required fields:
 - `name`, `version`, `description`.
 - `permissions`: least-privilege Agora permissions requested by the plugin.
 - `runtime`: `none`, `api`, or `iframe`.
-- `contributes`: arrays of commands, views, importers, templates, automation packs, MCP tools, or settings panels.
+- `contributes`: arrays of commands, connectors, views, importers, templates, automation packs, MCP tools, or settings panels.
 
 Remote runtime URLs are not allowed in the first contract. Keep plugin assets local and reviewable.
 

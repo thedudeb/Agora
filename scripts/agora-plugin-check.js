@@ -23,6 +23,7 @@ const allowedPermissions = new Set([
 ]);
 const contributionKeys = new Set([
   "commands",
+  "connectors",
   "views",
   "importers",
   "templates",
@@ -149,7 +150,7 @@ function validateContributes(contributes, errors) {
     if (!Array.isArray(contributes[key])) errors.push(`contributes.${key} must be an array.`);
   });
   const total = Object.values(contributes).reduce((sum, value) => sum + (Array.isArray(value) ? value.length : 0), 0);
-  if (!total) errors.push("contributes must include at least one command, view, importer, template, automation pack, MCP tool, or settings panel.");
+  if (!total) errors.push("contributes must include at least one command, connector, view, importer, template, automation pack, MCP tool, or settings panel.");
 }
 
 main();
