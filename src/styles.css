@@ -1854,7 +1854,8 @@ body[data-tutorial-target="view"] #app-view {
 
 .release-card-list,
 .release-scope-list,
-.release-blocker-list {
+.release-blocker-list,
+.release-gate-list {
   display: grid;
   gap: 10px;
 }
@@ -1922,7 +1923,8 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .release-scope-list article,
-.release-blocker-list article {
+.release-blocker-list article,
+.release-gate-list article {
   padding: 10px;
   background: var(--surface-strong);
   border: 1px solid var(--line);
@@ -1937,6 +1939,35 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .release-blocker-list p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.release-gate-list article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(120px, auto);
+  gap: 10px;
+  align-items: center;
+}
+
+.release-gate-list article > span {
+  min-width: 42px;
+  padding: 4px 7px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-align: center;
+  background: var(--surface);
+  border-radius: 999px;
+}
+
+.release-gate-list article.is-done > span {
+  color: #ffffff;
+  background: var(--green);
+}
+
+.release-gate-list p {
   margin: 4px 0 0;
   color: var(--muted);
   line-height: 1.4;
@@ -11273,6 +11304,7 @@ body[data-density="compact"] .main-content {
 
   .payment-audit-event,
   .payment-entitlement,
+  .release-gate-list article,
   .security-control-list .readiness-item,
   .permissions-member-list article {
     grid-template-columns: 1fr;

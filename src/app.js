@@ -17266,6 +17266,113 @@ function selectedReleaseRecord(releases = releaseProjectCandidates()) {
   return releases[0];
 }
 
+function releaseGateOverrides(releaseId) {
+  const overrides = state.releaseGateOverrides || {};
+  return overrides[releaseId] || {};
+}
+
+function releaseGateOverride(releaseId, gateId) {
+  return releaseGateOverrides(releaseId)[gateId] || "required";
+}
+
+function releaseGateDefinitions(release) {
+  const scope = Array.isArray(release?.scope) ? release.scope : [];
+  const documents = Array.isArray(state.documents) ? state.documents : [];
+  const qaTasks = scope.filter((task) => /qa|test|smoke|regression|verify/i.test(`${task.title} ${task.description} ${(task.tags || []).join(" ")}`));
+  const docsTasks = scope.filter((task) => /doc|docs|notes|changelog|guide|readme/i.test(`${task.title} ${task.description} ${(task.tags || []).join(" ")}`));
+  const migrationTasks = scope.filter((task) => /migration|import|rollback|restore/i.test(`${task.title} ${task.description} ${(task.tags || []).join(" ")}`));
+  const openSecurityControls = securityControlCenterItems().filter((control) => !control.done);
+  const evidenceExported = state.auditEvents.some((event) => ["audit_evidence_export", "release_evidence_export"].includes(event.action));
+  const projectDocs = documents.filter((document) => document.projectId === release.project.id);
+  const gateData = [
+    {
+      id: "qa-complete",
+      label: "QA complete",
+      detail: qaTasks.length ? `${qaTasks.filter((task) => task.status === "done").length}/${qaTasks.length} QA tasks done` : "Add or complete QA, smoke, or regression tasks.",
+      done: qaTasks.length > 0 && qaTasks.every((task) => task.status === "done")
+    },
+    {
+      id: "client-approval",
+      label: "Client approval",
+      detail: release.approvals.length ? `${release.openApprovals.length} approval${release.openApprovals.length === 1 ? "" : "s"} still open` : "No approval record linked to this release.",
+      done: release.approvals.length > 0 && release.openApprovals.length === 0
+    },
+    {
+      id: "docs-ready",
+      label: "Docs ready",
+      detail: docsTasks.length ? `${docsTasks.filter((task) => task.status === "done").length}/${docsTasks.length} docs tasks done` : `${projectDocs.length} project doc${projectDocs.length === 1 ? "" : "s"} linked`,
+      done: docsTasks.length ? docsTasks.every((task) => task.status === "done") : projectDocs.length > 0
+    },
+    {
+      id: "migration-checked",
+      label: "Migration checked",
+      detail: state.switcherImportPreview || state.portableImportPreview ? "Import or restore preview has been reviewed." : migrationTasks.length ? `${migrationTasks.filter((task) => task.status === "done").length}/${migrationTasks.length} migration tasks done` : "Preview migration or restore paths before release.",
+      done: Boolean(state.switcherImportPreview || state.portableImportPreview) || (migrationTasks.length > 0 && migrationTasks.every((task) => task.status === "done"))
+    },
+    {
+      id: "rollback-plan",
+      label: "Rollback plan",
+      detail: loadWorkspaceBackups().length ? `${loadWorkspaceBackups().length} backup${loadWorkspaceBackups().length === 1 ? "" : "s"} available` : "Create a backup or recovery snapshot before release.",
+      done: loadWorkspaceBackups().length > 0
+    },
+    {
+      id: "security-controls",
+      label: "Security controls pass",
+      detail: openSecurityControls.length ? `${openSecurityControls.length} security control${openSecurityControls.length === 1 ? "" : "s"} open` : "Security Control Center is clear.",
+      done: openSecurityControls.length === 0
+    },
+    {
+      id: "evidence-exported",
+      label: "Evidence pack exported",
+      detail: evidenceExported ? "Audit or release evidence export appears in the audit trail." : "Export an audit or release evidence pack before shipping.",
+      done: evidenceExported
+    }
+  ];
+
+  return gateData.map((gate) => {
+    const override = releaseGateOverride(release.id, gate.id);
+    return {
+      ...gate,
+      override,
+      passed: override === "waived" || gate.done
+    };
+  });
+}
+
+function renderReleaseGatePanel(release) {
+  const gates = releaseGateDefinitions(release);
+  const passed = gates.filter((gate) => gate.passed).length;
+  return `
+    <section class="panel release-gate-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Release checklist / gates</p>
+          <h2>Ship gates</h2>
+        </div>
+        <span class="status-pill ${passed === gates.length ? "inbox-green" : "inbox-amber"}">${passed}/${gates.length} passing</span>
+      </div>
+      <div class="release-gate-list">
+        ${gates.map((gate) => `
+          <article class="${gate.passed ? "is-done" : "is-pending"}">
+            <span>${gate.passed ? "OK" : "Gate"}</span>
+            <div>
+              <strong>${escapeHtml(gate.label)}</strong>
+              <p>${escapeHtml(gate.detail)}</p>
+            </div>
+            <label>
+              <span class="sr-only">Gate mode for ${escapeHtml(gate.label)}</span>
+              <select data-release-gate="${escapeHtml(gate.id)}" data-release-id="${escapeHtml(release.id)}">
+                <option value="required" ${gate.override === "required" ? "selected" : ""}>Required</option>
+                <option value="waived" ${gate.override === "waived" ? "selected" : ""}>Waived</option>
+              </select>
+            </label>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function releaseRecentSignals(release) {
   const projectId = release?.project?.id || "";
   return allAuditEvents()
@@ -17379,6 +17486,8 @@ function renderReleaseManagement() {
             `).join("") || emptyState("No scoped tasks are linked to this release yet.")}
           </div>
         </section>
+
+        ${renderReleaseGatePanel(selected)}
 
         <section class="panel release-blocker-panel">
           <div class="panel-header">
@@ -37334,6 +37443,32 @@ els.appView.addEventListener("change", (event) => {
     };
     selectedAuditEventKey = "";
     renderAuditLog();
+    return;
+  }
+
+  const releaseGateSelect = event.target.closest("[data-release-gate]");
+  if (releaseGateSelect) {
+    const releaseId = releaseGateSelect.dataset.releaseId || "";
+    const gateId = releaseGateSelect.dataset.releaseGate || "";
+    const value = releaseGateSelect.value === "waived" ? "waived" : "required";
+    state.releaseGateOverrides = {
+      ...(state.releaseGateOverrides || {}),
+      [releaseId]: {
+        ...releaseGateOverrides(releaseId),
+        [gateId]: value
+      }
+    };
+    addAuditEvent({
+      action: "release_gate_configured",
+      detail: `${value === "waived" ? "Waived" : "Required"} release gate ${gateId}`,
+      targetType: "release",
+      targetId: releaseId,
+      metadata: { releaseId, gateId, mode: value },
+      impact: value === "waived" ? "medium" : "low",
+      restoreHint: "Set the release gate back to Required from Release Management."
+    });
+    saveState();
+    renderReleaseManagement();
   }
 });
 
