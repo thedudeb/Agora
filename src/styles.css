@@ -1316,6 +1316,40 @@ body[data-tutorial-target="view"] #app-view {
   color: var(--muted);
 }
 
+.first-run-command-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.first-run-command-grid article {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 12px;
+  min-height: 160px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.first-run-command-grid span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.first-run-command-grid small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.first-run-command-grid .button {
+  align-self: end;
+}
+
 .onboarding-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

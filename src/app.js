@@ -6430,6 +6430,7 @@ function renderOnboardingPanel() {
         </div>
         <button class="button button-primary compact-button" type="button" data-onboarding-action="${escapeHtml(nextAction.action || "wizard")}">${setupComplete ? "Review Sync" : "Continue"}</button>
       </div>
+      ${renderFirstRunCommandCenter()}
       ${renderFirstValuePath()}
       <div class="onboarding-choice-row">
         <button class="button button-primary" type="button" data-onboarding-action="wizard">${state.onboarding?.wizardActive ? "Hide Wizard" : "Open Wizard"}</button>
@@ -6454,6 +6455,60 @@ function renderOnboardingPanel() {
         `).join("")}
       </div>
     </section>
+  `;
+}
+
+function renderFirstRunCommandCenter() {
+  const cards = [
+    {
+      label: "What needs attention?",
+      value: "PM Command Center",
+      detail: "Late work, blockers, approvals, promises, open decisions, RAID, and client update signals.",
+      route: "command-center",
+      primary: true
+    },
+    {
+      label: "Where is the work?",
+      value: "Board",
+      detail: "Move cards, scan workload, inspect dependencies, and create the next task.",
+      route: "board"
+    },
+    {
+      label: "What can clients see?",
+      value: "Client Visibility",
+      detail: "Preview shared packets, warnings, portal links, and approval readiness before sending.",
+      route: "visibility"
+    },
+    {
+      label: "What should I do today?",
+      value: "Today",
+      detail: "Focus the next action list for the current team and project filters.",
+      route: "daily"
+    },
+    {
+      label: "Can I bring my old work?",
+      value: "Migration",
+      detail: "Preview CSV, Trello, Asana, Jira, Linear, or ClickUp imports before applying.",
+      action: "import"
+    },
+    {
+      label: "Can I trust this?",
+      value: "Trust and Recovery",
+      detail: "Review backups, export paths, backend health, release metadata, and permissions.",
+      route: "readiness"
+    }
+  ];
+  return `
+    <div class="first-run-command-grid" aria-label="First-run command center">
+      ${cards.map((card) => `
+        <article>
+          <span>${escapeHtml(card.label)}</span>
+          <strong>${escapeHtml(card.value)}</strong>
+          <small>${escapeHtml(card.detail)}</small>
+          <button class="button ${card.primary ? "button-primary" : "button-secondary"} compact-button" type="button" ${card.route ? `data-route="${escapeHtml(card.route)}"` : `data-onboarding-action="${escapeHtml(card.action)}"`}>Open</button>
+        </article>
+      `).join("")}
+    </div>
   `;
 }
 
