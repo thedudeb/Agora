@@ -8,6 +8,7 @@ const { createStorage, createSupabaseStorage } = require("./storage");
 async function run() {
   process.env.AGORA_PUBLIC_FEATURE_REQUESTS = "true";
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-api-"));
+  process.env.AGORA_BACKUP_DIR = path.join(dataDir, "backups");
   const storage = createStorage({ dataDir, driver: "json" });
   await storage.saveBackgroundJobs([
     {
@@ -61,6 +62,7 @@ async function run() {
     const openApi = await request(`${baseUrl}/api/openapi.json`);
     assert(openApi.openapi === "3.1.0", "openapi endpoint returned wrong version");
     assert(openApi.paths?.["/api/tasks"]?.get, "openapi endpoint missed tasks list route");
+    assert(openApi.paths?.["/api/backups/run"]?.post, "openapi endpoint missed backup run route");
     assert(openApi.components?.securitySchemes?.bearerAuth, "openapi endpoint missed bearer auth scheme");
 
     const login = await request(`${baseUrl}/api/auth/demo-login`, {
@@ -136,6 +138,25 @@ async function run() {
     assert(observability.logging?.requestIdHeader === "X-Request-Id", "observability snapshot did not describe request id header");
     assert(observability.requests?.recentErrors?.some((item) => item.requestId), "observability recent errors did not include request ids");
     assert(Number.isFinite(observability.rateLimits?.trackedKeys), "observability snapshot did not expose rate-limit counts");
+    const backupStatusBefore = await request(`${baseUrl}/api/backups/status`, {
+      token: login.token
+    });
+    assert(backupStatusBefore.enabled === true, "backup status should be enabled by default");
+    const backupRun = await request(`${baseUrl}/api/backups/run`, {
+      method: "POST",
+      token: login.token
+    });
+    assert(backupRun.ok === true && backupRun.file.endsWith(".json"), "backup run did not create a JSON backup");
+    assert(fs.existsSync(path.join(process.env.AGORA_BACKUP_DIR, backupRun.file)), "backup file was not written");
+    const backupStatusAfter = await request(`${baseUrl}/api/backups/status`, {
+      token: login.token
+    });
+    assert(backupStatusAfter.latest?.file === backupRun.file, "backup status did not report latest backup");
+    backendHealth = await request(`${baseUrl}/api/backend/health`, {
+      token: login.token
+    });
+    assert(backendHealth.backups?.latest?.file === backupRun.file, "backend health did not expose latest backup");
+    assert(backendHealth.readiness.some((item) => item.id === "workspace-backups"), "backend health did not include backup readiness");
     const canceledJob = await request(`${baseUrl}/api/backend/jobs/job-json-queued-smoke/cancel`, {
       method: "POST",
       token: login.token

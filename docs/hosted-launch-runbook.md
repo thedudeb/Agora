@@ -20,6 +20,7 @@ Use this runbook when moving Agora from a local pilot to a hosted workspace with
 - Set `AGORA_EMAIL_FROM`, `AGORA_FEATURE_REQUEST_EMAIL`, and SMTP credentials for invitations, feature request owner emails, and requester updates.
 - Keep `AGORA_DEMO_AUTH=false` and `AGORA_PASSWORDLESS_AUTH=false`.
 - Set `AGORA_STRUCTURED_LOGS=true` if your host captures JSON stdout logs.
+- Set `AGORA_BACKUP_DIR` to a durable mounted path, choose `AGORA_BACKUP_RETENTION_FILES`, and enable `AGORA_BACKUP_SCHEDULER_ENABLED=true` when the API process should write scheduled backups itself.
 - Use SMTP or webhook password reset delivery, and keep `AGORA_PASSWORD_RESET_RETURN_TOKEN=false`.
 - Keep public feedback limits configured with `AGORA_PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS`, `AGORA_PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS`, and `AGORA_PUBLIC_FEATURE_BODY_LIMIT_BYTES`.
 
@@ -31,6 +32,7 @@ Use this runbook when moving Agora from a local pilot to a hosted workspace with
 - Restart the API, sign in, refresh Backend Health, and confirm production mode is ready.
 - Re-run `npm run verify:hosted` after each environment change.
 - Confirm Email diagnostics shows SMTP, sender, invitations, feature request owner, and password reset delivery in the expected state.
+- Run `POST /api/backups/run` or click Run Server Backup from Backend Health, then confirm Backend Health shows the latest backup.
 - Run `npm run test:supabase` against a test workspace after migration or environment changes.
 
 ## 4. Verify Product Surfaces

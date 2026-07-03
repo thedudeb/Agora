@@ -28,6 +28,7 @@ const PORTAL_LINK_TTL_MS = positiveNumber(process.env.AGORA_PORTAL_LINK_TTL_DAYS
 const PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS = positiveNumber(process.env.AGORA_PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS, 30);
 const PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS = positiveNumber(process.env.AGORA_PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS, 10 * 60 * 1000);
 const API_VERSION = "0.1.0";
+const BACKUP_SCHEMA_VERSION = 1;
 
 const workspace = {
   id: "workspace-acme",
@@ -99,6 +100,7 @@ const realtimeClients = new Set();
 const BACKGROUND_JOB_MAX_QUEUE = positiveNumber(process.env.AGORA_BACKGROUND_JOB_MAX_QUEUE, 100);
 const BACKGROUND_JOB_BASE_RETRY_MS = positiveNumber(process.env.AGORA_BACKGROUND_JOB_BASE_RETRY_MS, 5000);
 const BACKGROUND_JOB_MAX_RETRY_MS = positiveNumber(process.env.AGORA_BACKGROUND_JOB_MAX_RETRY_MS, 60000);
+const BACKUP_RETENTION_FILES = positiveNumber(process.env.AGORA_BACKUP_RETENTION_FILES, 20);
 
 function structuredApiLogsEnabled() {
   return envFlag("AGORA_STRUCTURED_LOGS", cleanString(process.env.NODE_ENV).toLowerCase() === "production");
@@ -498,12 +500,133 @@ function buildObservabilitySnapshot(session, requestId = "") {
     },
     requests: requestMetricsSnapshot(),
     jobs: backgroundJobSnapshot(),
+    backups: workspaceBackupStatus(),
     realtime: {
       clients: realtimeClients.size
     },
     rateLimits: {
       trackedKeys: rateLimits.size
     }
+  };
+}
+
+function workspaceBackupDir() {
+  return path.resolve(process.env.AGORA_BACKUP_DIR || path.join(__dirname, "data", "backups"));
+}
+
+function workspaceBackupEnabled() {
+  return !envFlag("AGORA_BACKUP_DISABLED", false);
+}
+
+function listWorkspaceBackupFiles() {
+  const dir = workspaceBackupDir();
+  try {
+    const files = fs.readdirSync(dir)
+      .filter((file) => /^agora-workspace-backup-.*\.json$/.test(file))
+      .map((file) => {
+        const filePath = path.join(dir, file);
+        const stat = fs.statSync(filePath);
+        return {
+          file,
+          bytes: stat.size,
+          createdAt: stat.mtime.toISOString()
+        };
+      })
+      .sort((a, b) => cleanString(b.createdAt).localeCompare(cleanString(a.createdAt)));
+    return { ok: true, dirConfigured: Boolean(process.env.AGORA_BACKUP_DIR), retention: BACKUP_RETENTION_FILES, files };
+  } catch (error) {
+    if (error.code === "ENOENT") return { ok: true, dirConfigured: Boolean(process.env.AGORA_BACKUP_DIR), retention: BACKUP_RETENTION_FILES, files: [] };
+    return { ok: false, dirConfigured: Boolean(process.env.AGORA_BACKUP_DIR), retention: BACKUP_RETENTION_FILES, files: [], error: error.message };
+  }
+}
+
+function workspaceBackupStatus() {
+  const listing = listWorkspaceBackupFiles();
+  const latest = listing.files[0] || null;
+  return {
+    enabled: workspaceBackupEnabled(),
+    ok: listing.ok,
+    configuredDirectory: listing.dirConfigured,
+    retention: listing.retention,
+    count: listing.files.length,
+    latest,
+    error: listing.error || ""
+  };
+}
+
+async function runWorkspaceBackup(storage, options = {}) {
+  if (!workspaceBackupEnabled()) publicError(503, "Workspace backups are disabled");
+  const document = await storage.loadWorkspace();
+  const snapshot = document?.snapshot || {};
+  validateSnapshot(snapshot);
+  const generatedAt = new Date().toISOString();
+  const workspaceInfo = {
+    id: snapshot.workspace?.id || storage.workspaceId || workspace.id,
+    name: snapshot.workspace?.name || workspace.name,
+    slug: snapshot.workspace?.slug || workspace.slug
+  };
+  const backup = {
+    type: "agora.workspace-backup",
+    version: BACKUP_SCHEMA_VERSION,
+    generatedAt,
+    source: options.source || "manual",
+    workspace: workspaceInfo,
+    metadata: {
+      storage: storage.driver || "unknown",
+      snapshotUpdatedAt: document?.metadata?.updatedAt || "",
+      requestedBy: options.requestedBy || ""
+    },
+    counts: workspaceSnapshotCounts(snapshot),
+    snapshot
+  };
+  const dir = workspaceBackupDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const file = `agora-workspace-backup-${slugFromName(workspaceInfo.name)}-${generatedAt.replace(/[:.]/g, "-")}.json`;
+  const target = path.join(dir, file);
+  const temp = `${target}.${process.pid}.tmp`;
+  fs.writeFileSync(temp, `${JSON.stringify(backup, null, 2)}\n`);
+  fs.renameSync(temp, target);
+  cleanupWorkspaceBackups(dir);
+  if (typeof storage.appendAuditEvent === "function") {
+    await storage.appendAuditEvent({
+      action: "workspace_backup",
+      detail: `${options.requestedBy || "System"} created a server workspace backup`,
+      targetType: "workspace",
+      targetId: workspaceInfo.id,
+      reversible: false,
+      metadata: { file, source: backup.source, counts: backup.counts }
+    });
+  }
+  return {
+    ok: true,
+    file,
+    bytes: fs.statSync(target).size,
+    generatedAt,
+    workspace: workspaceInfo,
+    counts: backup.counts,
+    retention: BACKUP_RETENTION_FILES
+  };
+}
+
+function cleanupWorkspaceBackups(dir = workspaceBackupDir()) {
+  const files = listWorkspaceBackupFiles().files;
+  files.slice(BACKUP_RETENTION_FILES).forEach((file) => {
+    try {
+      fs.unlinkSync(path.join(dir, file.file));
+    } catch {
+      // Best-effort retention cleanup should not fail the backup that just succeeded.
+    }
+  });
+}
+
+function workspaceSnapshotCounts(snapshot = {}) {
+  return {
+    companies: Array.isArray(snapshot.companies) ? snapshot.companies.length : 0,
+    projects: Array.isArray(snapshot.projects) ? snapshot.projects.length : 0,
+    tasks: Array.isArray(snapshot.tasks) ? snapshot.tasks.length : 0,
+    users: Array.isArray(snapshot.users) ? snapshot.users.length : 0,
+    memberships: Array.isArray(snapshot.memberships) ? snapshot.memberships.length : 0,
+    auditEvents: Array.isArray(snapshot.auditEvents) ? snapshot.auditEvents.length : 0
   };
 }
 
@@ -696,6 +819,12 @@ function openApiDocument() {
       },
       "/api/observability": {
         get: operation("Observability snapshot", "Returns authenticated request metrics, recent errors, job health, and logging status without exposing secrets.")
+      },
+      "/api/backups/status": {
+        get: operation("Backup status", "Returns server-side workspace backup status, retention, and latest backup metadata.")
+      },
+      "/api/backups/run": {
+        post: operation("Run workspace backup", "Writes a server-side workspace snapshot backup for admins, managers, or trusted cron sessions.")
       },
       "/api/integrations/sync": {
         post: operation("Queue integration sync", "Queues an inbound, outbound, or two-way provider sync job for sessions with integration write permission.")
@@ -1060,6 +1189,24 @@ function createServer(options = {}) {
           return;
         }
         sendJson(response, 200, buildObservabilitySnapshot(session, request.agoraRequestId));
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/backups/status") {
+        if (!hasPermission(session, "audit:read")) {
+          sendError(response, 403, "Missing audit read permission");
+          return;
+        }
+        sendJson(response, 200, workspaceBackupStatus());
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/backups/run") {
+        if (!hasPermission(session, "scheduler:run")) {
+          sendError(response, 403, "Missing scheduler run permission");
+          return;
+        }
+        sendJson(response, 201, await runWorkspaceBackup(storage, { source: "api", requestedBy: session.user.name || session.user.email || session.user.id }));
         return;
       }
 
@@ -1779,6 +1926,7 @@ async function buildBackendHealth(storage, session) {
   const publicFeatureBodyLimitKb = Math.round(PUBLIC_FEATURE_BODY_LIMIT_BYTES / 1024);
   const email = emailDeliveryDiagnostics();
   const notificationDelivery = notificationDeliveryAudit(email);
+  const backupStatus = workspaceBackupStatus();
   const snapshotDocument = await storage.loadWorkspace();
   const snapshot = snapshotDocument?.snapshot || {};
   const githubRepositories = Array.isArray(snapshot.workspace?.integrations?.github?.repositories)
@@ -1974,6 +2122,15 @@ async function buildBackendHealth(storage, session) {
       fix: "Use AGORA_SCHEDULER_ENABLED=true for the API worker, or call the scheduler endpoint from trusted cron."
     },
     {
+      id: "workspace-backups",
+      label: "Workspace backups",
+      done: !productionTarget || Boolean(backupStatus.latest),
+      detail: backupStatus.latest
+        ? `Last backup ${backupStatus.latest.createdAt}; ${backupStatus.count}/${backupStatus.retention} retained`
+        : backupStatus.enabled ? "No server-side workspace backup has been recorded yet" : "Server-side workspace backups are disabled",
+      fix: "Call POST /api/backups/run from a trusted cron session or enable AGORA_BACKUP_SCHEDULER_ENABLED=true on the API worker."
+    },
+    {
       id: "notification-delivery-map",
       label: "Notification delivery map",
       done: notificationDelivery.matrix.length >= 8,
@@ -2063,6 +2220,7 @@ async function buildBackendHealth(storage, session) {
     notificationDelivery,
     observability: requestMetricsSnapshot(),
     jobs: backgroundJobSnapshot(),
+    backups: backupStatus,
     generatedAt: new Date().toISOString()
   };
 }
@@ -7611,6 +7769,14 @@ if (require.main === module) {
     windowlessInterval(() => {
       runNotificationScheduler(storage, { source: "worker" }).catch((error) => {
         console.error(`Agora scheduler failed: ${error.message}`);
+      });
+    }, intervalMs);
+  }
+  if (envFlag("AGORA_BACKUP_SCHEDULER_ENABLED", false)) {
+    const intervalMs = positiveNumber(process.env.AGORA_BACKUP_INTERVAL_HOURS, 24) * 60 * 60 * 1000;
+    windowlessInterval(() => {
+      runWorkspaceBackup(storage, { source: "worker", requestedBy: "Backup scheduler" }).catch((error) => {
+        console.error(`Agora backup scheduler failed: ${error.message}`);
       });
     }, intervalMs);
   }

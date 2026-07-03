@@ -4220,6 +4220,25 @@ async function runBackendJobAction(jobId, action) {
   }
 }
 
+async function runServerWorkspaceBackup() {
+  if (!apiSession) {
+    showToast("Connect to the API before running a server backup", "info");
+    return;
+  }
+  if (!canWrite("scheduler:run")) {
+    showToast("Your role cannot run server backups", "info");
+    return;
+  }
+  try {
+    const result = await apiRequest("/api/backups/run", { method: "POST" });
+    await refreshBackendHealth({ silent: true });
+    render();
+    showToast(`Server backup created: ${result.file}`, "success");
+  } catch (error) {
+    showToast(`Server backup failed: ${error.message}`, "info");
+  }
+}
+
 async function loadAuditLogFromApi(options = {}) {
   if (!apiSession) {
     if (!options.silent) showToast("Connect to the API from Settings first", "info");
@@ -29392,6 +29411,7 @@ function renderBackendChecklist() {
     </div>
     <div class="backend-actions">
       <button class="button button-secondary compact-button" type="button" data-backend-health-refresh ${apiSession ? "" : "disabled"}>Refresh Health</button>
+      <button class="button button-secondary compact-button" type="button" data-server-backup-run ${apiSession && canWrite("scheduler:run") ? "" : "disabled"}>Run Server Backup</button>
       <button class="button button-secondary compact-button" type="button" id="api-sync-retry" ${apiSession && apiSyncQueue.length ? "" : "disabled"}>Retry Failed Syncs</button>
     </div>
     ${renderBackendObservabilityPanel()}
@@ -29441,6 +29461,7 @@ function renderBackendChecklist() {
 function renderBackendObservabilityPanel() {
   const metrics = backendHealth?.observability || {};
   const jobs = backendHealth?.jobs || {};
+  const backups = backendHealth?.backups || {};
   const routes = Array.isArray(metrics.routes) ? metrics.routes.slice(0, 6) : [];
   const recentErrors = Array.isArray(metrics.recentErrors) ? metrics.recentErrors.slice(0, 4) : [];
   return `
@@ -29460,6 +29481,10 @@ function renderBackendObservabilityPanel() {
       <article>
         <span>Jobs queued</span>
         <strong>${Number(jobs.queued || 0)}</strong>
+      </article>
+      <article>
+        <span>Last backup</span>
+        <strong>${backups.latest?.createdAt ? escapeHtml(formatTimestamp(backups.latest.createdAt)) : "None"}</strong>
       </article>
     </div>
     ${routes.length ? `
@@ -37669,6 +37694,12 @@ document.addEventListener("click", (event) => {
   const backendJobActionButton = event.target.closest("[data-backend-job-action]");
   if (backendJobActionButton) {
     runBackendJobAction(backendJobActionButton.dataset.backendJobId, backendJobActionButton.dataset.backendJobAction);
+    return;
+  }
+
+  const serverBackupRunButton = event.target.closest("[data-server-backup-run]");
+  if (serverBackupRunButton) {
+    runServerWorkspaceBackup();
     return;
   }
 

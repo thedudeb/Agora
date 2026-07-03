@@ -51,6 +51,7 @@ function hostedEnvironmentReport(options = {}) {
     checkAuthHardening(),
     checkStrictCsp(),
     checkObservability(),
+    checkBackups(),
     checkPasswordReset(),
     checkEmailDelivery(),
     checkPublicFeatureRequests(options),
@@ -154,6 +155,19 @@ function checkObservability() {
     done: structured,
     detail: structured ? "Structured request logs are enabled" : "Structured request logs are not enabled",
     fix: "Set AGORA_STRUCTURED_LOGS=true or NODE_ENV=production so hosted request IDs can be matched to API logs."
+  });
+}
+
+function checkBackups() {
+  const disabled = boolEnv("AGORA_BACKUP_DISABLED");
+  const backupDir = env("AGORA_BACKUP_DIR");
+  const retention = positiveNumber(env("AGORA_BACKUP_RETENTION_FILES"), 20);
+  return gate({
+    id: "server-backups",
+    label: "Server workspace backups",
+    done: !disabled && Boolean(backupDir) && retention >= 3,
+    detail: disabled ? "Backups are disabled" : backupDir ? `${retention} retained backup file${retention === 1 ? "" : "s"}` : "Backup directory is not configured",
+    fix: "Set AGORA_BACKUP_DIR to a durable mounted path, keep AGORA_BACKUP_DISABLED=false, and retain at least 3 files."
   });
 }
 
