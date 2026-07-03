@@ -28,6 +28,17 @@ Imported records include `customFields.sourceSystem`, `sourceId`, `sourceUrl`, `
 
 ## CLI Preview
 
+Run the migration concierge first when moving real customer work:
+
+```sh
+npm run migrate:concierge -- trello-export.json \
+  --source trello-json \
+  --workspace tests/fixtures/workspace.json \
+  --backup tests/fixtures/server-backups/agora-workspace-backup-demo.json
+```
+
+It prints confidence, counts, missing fields, warning/blocker status, rollback evidence, sample tasks, and the next safe apply command.
+
 Preview a Trello board export:
 
 ```sh
@@ -56,6 +67,8 @@ npm run agora -- migrate preview tasks.csv --source generic-csv --json
 ```
 
 ## CLI Apply
+
+Only apply after the concierge or preview output has been reviewed and a backup is available.
 
 Apply an export into an existing workspace JSON and write a new workspace file:
 

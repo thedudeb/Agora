@@ -20,6 +20,7 @@ const checkFiles = [
   "server/portable-fixtures-test.js",
   "scripts/agora-setup.js",
   "scripts/demo-links.js",
+  "scripts/migration-concierge.js",
   "scripts/recovery-stress-test.js",
   "scripts/disaster-recovery-drill.js",
   "scripts/capture-screenshots.js",
@@ -66,6 +67,10 @@ const commands = {
       }
       await runStep("demo links", [process.execPath, [path.join(ROOT, "scripts", "demo-links.js"), ...demoArgs]]);
     }
+  },
+  concierge: {
+    summary: "Run guided migration preflight",
+    run: async (args) => runStep("migration concierge", [process.execPath, [path.join(ROOT, "scripts", "migration-concierge.js"), ...args]])
   },
   recovery: {
     summary: "Stress-test backup, portable import, and restore semantics",
@@ -249,6 +254,7 @@ Commands:
   check                         Syntax-check project files
   setup                         Create local, Docker, or hosted starter env
   demo links                    Generate hosted demo tour links
+  concierge                     Run guided migration preflight
   fixtures                      Validate portable fixtures
   recovery                      Stress-test backup/import/restore semantics
   recovery-drill                Run disaster recovery drill from a server backup
@@ -278,6 +284,7 @@ Examples:
   npm run agora -- verify
   npm run agora -- setup --profile docker --dry-run
   npm run agora -- demo links --base https://demo.example.com --markdown
+  npm run agora -- concierge tests/fixtures/trello-board.json --source trello-json --workspace tests/fixtures/workspace.json
   npm run agora -- verify --quick
   npm run agora -- verify --supabase
   npm run agora -- recovery
