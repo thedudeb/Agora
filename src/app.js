@@ -17373,6 +17373,115 @@ function renderReleaseGatePanel(release) {
   `;
 }
 
+function releaseNotesMarkdown(release) {
+  const completed = release.scope.filter((task) => task.status === "done");
+  const projectDecisions = decisionLogItems().filter((decision) => decision.projectId === release.project.id);
+  const openRisks = release.risks.filter((item) => item.status !== "closed");
+  const shippedRequests = featureRequestTasks().filter((task) => task.projectId === release.project.id && featureRequestStatus(task) === "shipped");
+  const githubItems = release.scope.filter((task) => task.customFields?.githubExternalId || task.customFields?.githubPullRequestId);
+  const gateSummary = releaseGateDefinitions(release);
+  const lineList = (items, render, empty) => items.length ? items.map(render) : [`- ${empty}`];
+  return [
+    `# ${release.project.name} Release Notes`,
+    "",
+    `Target date: ${release.targetDate ? formatDate(release.targetDate) : "Unscheduled"}`,
+    `Owner: ${memberName(release.owner) || "Unowned"}`,
+    `Confidence: ${release.confidence}%`,
+    "",
+    "## Summary",
+    "",
+    release.project.description || "Release summary needs a short product/customer outcome statement.",
+    "",
+    "## What Shipped",
+    "",
+    ...lineList(completed, (task) => `- ${task.title}${task.customFields?.githubUrl ? ` (${task.customFields.githubUrl})` : ""}`, "No completed scoped tasks yet."),
+    "",
+    "## Feature Requests",
+    "",
+    ...lineList(shippedRequests, (task) => `- ${task.title.replace(/^Feature request:\s*/i, "")}: ${task.customFields?.requester || "Requester"} can be notified.`, "No shipped feature requests linked to this release."),
+    "",
+    "## GitHub Items",
+    "",
+    ...lineList(githubItems, (task) => `- ${task.title} / ${task.customFields?.githubRepo || "GitHub"} ${task.customFields?.githubIssueNumber ? `#${task.customFields.githubIssueNumber}` : task.customFields?.githubPrNumber ? `#${task.customFields.githubPrNumber}` : ""}`, "No GitHub issues or pull requests are linked."),
+    "",
+    "## Decisions",
+    "",
+    ...lineList(projectDecisions, (decision) => `- ${decision.title}: ${decision.status || "open"}${decision.summary ? ` / ${decision.summary}` : ""}`, "No decisions are linked to this release."),
+    "",
+    "## Risks and Follow-ups",
+    "",
+    ...lineList(openRisks, (risk) => `- ${risk.title}: ${risk.mitigation || risk.detail || "Needs owner follow-up."}`, "No open release risks are tracked."),
+    "",
+    "## Gate Status",
+    "",
+    ...gateSummary.map((gate) => `- ${gate.label}: ${gate.passed ? "pass" : "open"}${gate.override === "waived" ? " (waived)" : ""} / ${gate.detail}`),
+    "",
+    "## Rollback",
+    "",
+    loadWorkspaceBackups().length ? `Latest backup available. ${loadWorkspaceBackups().length} backup${loadWorkspaceBackups().length === 1 ? "" : "s"} stored locally.` : "Create a backup before publishing this release."
+  ].join("\n");
+}
+
+function releaseNotesDraft(release) {
+  return state.releaseNotesDrafts?.[release.id] || releaseNotesMarkdown(release);
+}
+
+function renderReleaseNotesPanel(release) {
+  const draft = releaseNotesDraft(release);
+  return `
+    <section class="panel release-notes-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Release notes generator</p>
+          <h2>Draft changelog</h2>
+        </div>
+        <div class="portal-actions">
+          <button class="button button-secondary compact-button" type="button" data-release-notes-download="${escapeHtml(release.id)}">Download Notes</button>
+          <button class="button button-primary compact-button" type="button" data-release-notes-generate="${escapeHtml(release.id)}">Generate Release Notes</button>
+        </div>
+      </div>
+      <p class="panel-note">Draft pulls completed scope, decisions, risks, shipped feature requests, and GitHub-linked work into one changelog.</p>
+      <pre class="release-notes-preview">${escapeHtml(draft)}</pre>
+    </section>
+  `;
+}
+
+function generateReleaseNotes(releaseId) {
+  const release = selectedReleaseRecord(releaseProjectCandidates().filter((item) => item.id === releaseId));
+  if (!release) {
+    showToast("Release not found", "info");
+    return;
+  }
+  const draft = releaseNotesMarkdown(release);
+  state.releaseNotesDrafts = {
+    ...(state.releaseNotesDrafts || {}),
+    [release.id]: draft
+  };
+  addAuditEvent({
+    action: "release_notes_generated",
+    detail: `Generated release notes for ${release.project.name}`,
+    targetType: "release",
+    targetId: release.id,
+    metadata: {
+      releaseId: release.id,
+      scopeCount: release.scope.length,
+      confidence: release.confidence
+    },
+    impact: "low",
+    restoreHint: "Regenerate release notes from the Release Management page."
+  });
+  saveState();
+  renderReleaseManagement();
+  showToast("Release notes generated", "success");
+}
+
+function downloadReleaseNotes(releaseId) {
+  const release = selectedReleaseRecord(releaseProjectCandidates().filter((item) => item.id === releaseId));
+  if (!release) return;
+  downloadTextFile(`${slugFromName(release.project.name)}-release-notes-${todayKey()}.md`, releaseNotesDraft(release), "text/markdown");
+  showToast("Release notes downloaded", "success");
+}
+
 function releaseRecentSignals(release) {
   const projectId = release?.project?.id || "";
   return allAuditEvents()
@@ -17488,6 +17597,8 @@ function renderReleaseManagement() {
         </section>
 
         ${renderReleaseGatePanel(selected)}
+
+        ${renderReleaseNotesPanel(selected)}
 
         <section class="panel release-blocker-panel">
           <div class="panel-header">
@@ -36644,6 +36755,18 @@ document.addEventListener("click", (event) => {
     state.selectedReleaseId = releaseSelectButton.dataset.releaseSelect || "";
     saveState();
     renderReleaseManagement();
+    return;
+  }
+
+  const releaseNotesGenerateButton = event.target.closest("[data-release-notes-generate]");
+  if (releaseNotesGenerateButton) {
+    generateReleaseNotes(releaseNotesGenerateButton.dataset.releaseNotesGenerate);
+    return;
+  }
+
+  const releaseNotesDownloadButton = event.target.closest("[data-release-notes-download]");
+  if (releaseNotesDownloadButton) {
+    downloadReleaseNotes(releaseNotesDownloadButton.dataset.releaseNotesDownload);
     return;
   }
 
