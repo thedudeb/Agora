@@ -19,6 +19,7 @@ Use this runbook when moving Agora from a local pilot to a hosted workspace with
 - Set `AGORA_STRICT_CSP=true` or run the app/static server with `NODE_ENV=production`.
 - Set `AGORA_EMAIL_FROM`, `AGORA_FEATURE_REQUEST_EMAIL`, and SMTP credentials for invitations, feature request owner emails, and requester updates.
 - Keep `AGORA_DEMO_AUTH=false` and `AGORA_PASSWORDLESS_AUTH=false`.
+- Set `AGORA_STRUCTURED_LOGS=true` if your host captures JSON stdout logs.
 - Use SMTP or webhook password reset delivery, and keep `AGORA_PASSWORD_RESET_RETURN_TOKEN=false`.
 - Keep public feedback limits configured with `AGORA_PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS`, `AGORA_PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS`, and `AGORA_PUBLIC_FEATURE_BODY_LIMIT_BYTES`.
 
@@ -48,4 +49,5 @@ Use this runbook when moving Agora from a local pilot to a hosted workspace with
 - Invite the first admin or manager only after Backend Health gates pass.
 - Keep the latest portable bundle and API backup close during the first session.
 - Watch request metrics, background jobs, failed syncs, and audit events after the first real workflow.
+- Keep the `X-Request-Id` from any failed browser/API report so it can be matched against `/api/observability` and structured logs.
 - If state, auth, or migration behavior looks wrong, roll back the deployment and restore from the latest known-good bundle or Supabase backup.

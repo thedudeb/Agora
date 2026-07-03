@@ -32,7 +32,7 @@ npm run dev
 
 Then open Settings, create the first workspace owner account, sign in with email and password, and use the Data page to save or load the workspace snapshot. If the API is not running at the default address, set the API URL in Settings and reload the app.
 
-Settings and Data also expose Backend Health after you connect. It reports the active storage/auth drivers, production-mode readiness, workspace snapshot metadata, structured record collections, session company scoping, and any failed browser syncs that can be retried.
+Settings and Data also expose Backend Health after you connect. It reports the active storage/auth drivers, production-mode readiness, workspace snapshot metadata, structured record collections, session company scoping, request metrics, recent API error request IDs, background jobs, and any failed browser syncs that can be retried. Every API response includes `X-Request-Id`; error JSON includes the same request ID for support handoff. Set `AGORA_STRUCTURED_LOGS=true` or `NODE_ENV=production` to emit redacted JSON request logs.
 
 Demo auth, passwordless email login, and the public feature-request API are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true`, `AGORA_PASSWORDLESS_AUTH=true`, or `AGORA_PUBLIC_FEATURE_REQUESTS=true` in `.env` and restart the API. Session lifetime defaults to eight hours through `AGORA_SESSION_TTL_SECONDS`, invitations expire through `AGORA_INVITATION_TTL_DAYS`, password reset tokens expire through `AGORA_PASSWORD_RESET_TTL_MINUTES`, reset delivery is configured with `AGORA_PASSWORD_RESET_DELIVERY`, and cross-origin API calls are limited to localhost plus any origins listed in `AGORA_ALLOWED_ORIGINS`.
 
@@ -167,6 +167,7 @@ In GitHub, create a repository webhook with Payload URL `https://your-agora-api.
 - `POST /api/auth/supabase-login`: exchanges a Supabase Auth access token for an Agora API session when `AGORA_AUTH_DRIVER=supabase`. Body: `{ "accessToken": "supabase-access-token" }`.
 - `POST /api/auth/logout`: clears the current session.
 - `GET /api/session`: returns the current authenticated session.
+- `GET /api/observability`: returns request metrics, recent error request IDs, background job health, rate-limit key counts, realtime client counts, and structured logging status for sessions with audit access.
 - `GET /api/auth/sessions`: lists active in-memory Agora sessions visible to the current user. Admins can see workspace sessions; other users see their own. Returned ids are hashes, not raw tokens.
 - `DELETE /api/auth/sessions/:id`: revokes an active in-memory Agora session by hashed id. Users can revoke their own sessions; admins can revoke workspace sessions.
 - `GET /api/members`: returns workspace users, memberships, and invitations.

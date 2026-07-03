@@ -50,6 +50,7 @@ function hostedEnvironmentReport(options = {}) {
     checkHostedUrls(),
     checkAuthHardening(),
     checkStrictCsp(),
+    checkObservability(),
     checkPasswordReset(),
     checkEmailDelivery(),
     checkPublicFeatureRequests(options),
@@ -142,6 +143,17 @@ function checkStrictCsp() {
     done: strict,
     detail: strict ? "Strict CSP is enabled through AGORA_STRICT_CSP or NODE_ENV=production" : "Strict CSP is not enabled",
     fix: "Set AGORA_STRICT_CSP=true or NODE_ENV=production for hosted app/static servers."
+  });
+}
+
+function checkObservability() {
+  const structured = boolEnv("AGORA_STRUCTURED_LOGS") || env("NODE_ENV") === "production";
+  return gate({
+    id: "observability",
+    label: "Request observability",
+    done: structured,
+    detail: structured ? "Structured request logs are enabled" : "Structured request logs are not enabled",
+    fix: "Set AGORA_STRUCTURED_LOGS=true or NODE_ENV=production so hosted request IDs can be matched to API logs."
   });
 }
 

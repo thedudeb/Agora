@@ -100,6 +100,10 @@ const BACKGROUND_JOB_MAX_QUEUE = positiveNumber(process.env.AGORA_BACKGROUND_JOB
 const BACKGROUND_JOB_BASE_RETRY_MS = positiveNumber(process.env.AGORA_BACKGROUND_JOB_BASE_RETRY_MS, 5000);
 const BACKGROUND_JOB_MAX_RETRY_MS = positiveNumber(process.env.AGORA_BACKGROUND_JOB_MAX_RETRY_MS, 60000);
 
+function structuredApiLogsEnabled() {
+  return envFlag("AGORA_STRUCTURED_LOGS", cleanString(process.env.NODE_ENV).toLowerCase() === "production");
+}
+
 function envFlag(name, fallback = false) {
   const value = cleanString(process.env[name]).toLowerCase();
   if (!value) return fallback;
@@ -396,7 +400,7 @@ function backgroundJobRetryDelay(attempts) {
   return Math.min(BACKGROUND_JOB_MAX_RETRY_MS, BACKGROUND_JOB_BASE_RETRY_MS * (2 ** Math.max(0, attempts - 1)));
 }
 
-function recordRequestMetric({ method, pathname, statusCode, durationMs }) {
+function recordRequestMetric({ method, pathname, statusCode, durationMs, requestId, errorMessage }) {
   const route = `${method} ${normalizeMetricPath(pathname)}`;
   const failed = statusCode >= 500;
   requestMetrics.total += 1;
@@ -411,13 +415,32 @@ function recordRequestMetric({ method, pathname, statusCode, durationMs }) {
   requestMetrics.byRoute.set(route, current);
   if (statusCode >= 400) {
     requestMetrics.recentErrors.unshift({
+      requestId,
       route,
       statusCode,
       durationMs,
+      message: cleanString(errorMessage || http.STATUS_CODES[statusCode] || "Request failed"),
       at: new Date().toISOString()
     });
     requestMetrics.recentErrors.splice(20);
   }
+}
+
+function writeRequestLog({ request, pathname, statusCode, durationMs, requestId, errorMessage }) {
+  if (!structuredApiLogsEnabled()) return;
+  const session = request.agoraSession || {};
+  console.log(JSON.stringify({
+    type: "agora.api.request",
+    requestId,
+    method: request.method,
+    route: normalizeMetricPath(pathname),
+    statusCode,
+    durationMs,
+    workspaceId: session.workspace?.id || workspace.id,
+    memberId: session.user?.id || "",
+    role: session.membership?.role || "",
+    error: statusCode >= 400 ? cleanString(errorMessage || http.STATUS_CODES[statusCode] || "Request failed") : ""
+  }));
 }
 
 function normalizeMetricPath(pathname) {
@@ -449,6 +472,38 @@ function requestMetricsSnapshot() {
     maxDurationMs: requestMetrics.maxDurationMs,
     routes,
     recentErrors: requestMetrics.recentErrors
+  };
+}
+
+function buildObservabilitySnapshot(session, requestId = "") {
+  return {
+    ok: true,
+    service: "agora-api",
+    generatedAt: new Date().toISOString(),
+    requestId,
+    workspace: {
+      id: workspace.id,
+      name: workspace.name
+    },
+    session: {
+      userId: session.user?.id || "",
+      role: session.membership?.role || "",
+      permissions: Array.isArray(session.permissions) ? session.permissions.length : 0
+    },
+    logging: {
+      structured: structuredApiLogsEnabled(),
+      requestIdHeader: "X-Request-Id",
+      bodyLogging: false,
+      secretLogging: false
+    },
+    requests: requestMetricsSnapshot(),
+    jobs: backgroundJobSnapshot(),
+    realtime: {
+      clients: realtimeClients.size
+    },
+    rateLimits: {
+      trackedKeys: rateLimits.size
+    }
   };
 }
 
@@ -639,6 +694,9 @@ function openApiDocument() {
       "/api/backend/health": {
         get: operation("Backend health", "Returns authenticated readiness, metrics, jobs, production gates, and session scope.")
       },
+      "/api/observability": {
+        get: operation("Observability snapshot", "Returns authenticated request metrics, recent errors, job health, and logging status without exposing secrets.")
+      },
       "/api/integrations/sync": {
         post: operation("Queue integration sync", "Queues an inbound, outbound, or two-way provider sync job for sessions with integration write permission.")
       },
@@ -703,12 +761,27 @@ function createServer(options = {}) {
   return http.createServer(async (request, response) => {
     const requestStartedAt = Date.now();
     const requestUrl = new URL(request.url, "http://localhost");
+    const requestId = cleanString(request.headers["x-request-id"]) || `req-${crypto.randomUUID()}`;
+    request.agoraRequestId = requestId;
+    response.agoraRequestId = requestId;
+    response.setHeader("X-Request-Id", requestId);
     response.on("finish", () => {
+      const durationMs = Date.now() - requestStartedAt;
       recordRequestMetric({
         method: request.method,
         pathname: requestUrl.pathname,
         statusCode: response.statusCode,
-        durationMs: Date.now() - requestStartedAt
+        durationMs,
+        requestId,
+        errorMessage: response.agoraErrorMessage
+      });
+      writeRequestLog({
+        request,
+        pathname: requestUrl.pathname,
+        statusCode: response.statusCode,
+        durationMs,
+        requestId,
+        errorMessage: response.agoraErrorMessage
       });
     });
     try {
@@ -978,6 +1051,15 @@ function createServer(options = {}) {
         }
         const health = await buildBackendHealth(storage, session);
         sendJson(response, 200, health);
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/observability") {
+        if (!hasPermission(session, "audit:read")) {
+          sendError(response, 403, "Missing audit read permission");
+          return;
+        }
+        sendJson(response, 200, buildObservabilitySnapshot(session, request.agoraRequestId));
         return;
       }
 
@@ -3174,11 +3256,14 @@ async function requireSession(request, response, storage) {
       sendError(response, 401, "Session expired");
       return null;
     }
+    request.agoraSession = session;
     return session;
   }
 
   if (token && supabaseAuthEnabled()) {
-    return createSupabaseSessionFromAccessToken(storage, token, { persist: false });
+    const supabaseSession = await createSupabaseSessionFromAccessToken(storage, token, { persist: false });
+    request.agoraSession = supabaseSession;
+    return supabaseSession;
   }
 
   sendError(response, 401, "Authentication required");
@@ -7458,12 +7543,14 @@ function setSecurityHeaders(response) {
 
 function sendJson(response, statusCode, value) {
   setSecurityHeaders(response);
+  if (response.agoraRequestId) response.setHeader("X-Request-Id", response.agoraRequestId);
   response.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   response.end(`${JSON.stringify(value, null, 2)}\n`);
 }
 
 function sendError(response, statusCode, message) {
-  sendJson(response, statusCode, { error: message });
+  response.agoraErrorMessage = cleanString(message);
+  sendJson(response, statusCode, { error: message, requestId: response.agoraRequestId || "" });
 }
 
 function writeRealtimeEvent(response, event) {

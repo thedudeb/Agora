@@ -49,6 +49,8 @@ async function run() {
     const health = await request(`${baseUrl}/api/health`);
     assert(health.ok === true, "health endpoint failed");
     assert(health.version, "health endpoint did not expose API version");
+    const rawHealth = await requestRaw(`${baseUrl}/api/health`);
+    assert(rawHealth.headers.get("x-request-id"), "health endpoint did not include request id header");
 
     const capabilities = await request(`${baseUrl}/api/capabilities`);
     assert(capabilities.service === "agora-api", "capabilities endpoint returned wrong service");
@@ -98,6 +100,7 @@ async function run() {
       token: secondLogin.token
     });
     assert(revokedAccess.status === 401, "revoked token should not authenticate");
+    assert(revokedAccess.body.requestId, "error responses should include request id");
 
     let backendHealth = await request(`${baseUrl}/api/backend/health`, {
       token: login.token
@@ -126,6 +129,13 @@ async function run() {
     assert(backendHealth.observability && Number.isFinite(backendHealth.observability.total), "backend health did not include observability metrics");
     assert(backendHealth.jobs && Array.isArray(backendHealth.jobs.recent), "backend health did not include job metrics");
     assert(backendHealth.jobs.recent.some((job) => job.id === "job-json-failed-smoke"), "backend health did not hydrate persisted job history");
+    const observability = await request(`${baseUrl}/api/observability`, {
+      token: login.token
+    });
+    assert(observability.requestId, "observability snapshot did not expose request id");
+    assert(observability.logging?.requestIdHeader === "X-Request-Id", "observability snapshot did not describe request id header");
+    assert(observability.requests?.recentErrors?.some((item) => item.requestId), "observability recent errors did not include request ids");
+    assert(Number.isFinite(observability.rateLimits?.trackedKeys), "observability snapshot did not expose rate-limit counts");
     const canceledJob = await request(`${baseUrl}/api/backend/jobs/job-json-queued-smoke/cancel`, {
       method: "POST",
       token: login.token

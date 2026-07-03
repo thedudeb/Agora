@@ -3872,7 +3872,8 @@ async function apiRequest(path, options = {}) {
   });
   const body = await response.json();
   if (!response.ok) {
-    throw new Error(body.error || "API request failed");
+    const requestId = response.headers.get("X-Request-Id") || body.requestId || "";
+    throw new Error(`${body.error || "API request failed"}${requestId ? ` (Request ID ${requestId})` : ""}`);
   }
   return body;
 }
@@ -29441,6 +29442,7 @@ function renderBackendObservabilityPanel() {
   const metrics = backendHealth?.observability || {};
   const jobs = backendHealth?.jobs || {};
   const routes = Array.isArray(metrics.routes) ? metrics.routes.slice(0, 6) : [];
+  const recentErrors = Array.isArray(metrics.recentErrors) ? metrics.recentErrors.slice(0, 4) : [];
   return `
     <div class="backend-health-summary">
       <article>
@@ -29466,6 +29468,16 @@ function renderBackendObservabilityPanel() {
           <article class="${route.errors ? "is-pending" : "is-ready"}">
             <strong>${escapeHtml(route.route)}</strong>
             <span>${Number(route.count || 0)} req / ${Number(route.avgDurationMs || 0)}ms avg</span>
+          </article>
+        `).join("")}
+      </div>
+    ` : ""}
+    ${recentErrors.length ? `
+      <div class="backend-record-list">
+        ${recentErrors.map((error) => `
+          <article class="is-pending">
+            <strong>${escapeHtml(error.route || "API error")}</strong>
+            <span>${Number(error.statusCode || 0)} / ${escapeHtml(error.requestId || "no request id")} / ${Number(error.durationMs || 0)}ms</span>
           </article>
         `).join("")}
       </div>
