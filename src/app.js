@@ -9336,12 +9336,30 @@ function portableWorkspaceBundle() {
 }
 
 function downloadPortableWorkspaceBundle() {
+  if (!requireAdminAction("workspace-import", { deniedMessage: "Your role cannot export workspace recovery bundles" })) return;
   downloadJsonFile(`${slugFromName(state.workspace.name)}-portable-bundle-${todayKey()}.json`, JSON.stringify(portableWorkspaceBundle(), null, 2));
+  addAuditEvent({
+    action: "workspace_export",
+    detail: `Downloaded portable recovery bundle for ${state.workspace.name}`,
+    targetType: "workspace",
+    targetId: state.workspace.id,
+    metadata: { format: "portable-bundle" }
+  });
+  saveState();
   showToast("Portable workspace bundle downloaded", "success");
 }
 
 function downloadPortableWorkspaceManifest() {
+  if (!requireAdminAction("workspace-import", { deniedMessage: "Your role cannot export workspace manifests" })) return;
   downloadTextFile(`${slugFromName(state.workspace.name)}-portable-manifest-${todayKey()}.md`, portableWorkspaceReadme(), "text/markdown");
+  addAuditEvent({
+    action: "workspace_export",
+    detail: `Downloaded portable manifest for ${state.workspace.name}`,
+    targetType: "workspace",
+    targetId: state.workspace.id,
+    metadata: { format: "portable-manifest" }
+  });
+  saveState();
   showToast("Portable manifest downloaded", "success");
 }
 
@@ -9392,9 +9410,23 @@ function portableImportPreview(rawJson) {
 }
 
 function importWorkspaceJson(rawJson, options = {}) {
+  if (!requireAdminAction("workspace-import", { deniedMessage: "Your role cannot import or replace workspaces" })) return false;
   const parsed = parsePortableWorkspaceInput(rawJson);
   if (options.backupLabel) saveWorkspaceBackups([workspaceBackupRecord(options.backupLabel), ...loadWorkspaceBackups()]);
   applyWorkspaceSnapshot(parsed.snapshot);
+  addAuditEvent({
+    action: "workspace_import",
+    detail: `Imported ${parsed.snapshot?.workspace?.name || "workspace"} into the current workspace`,
+    targetType: "workspace",
+    targetId: state.workspace.id,
+    metadata: {
+      sourceType: parsed.sourceType,
+      backupCreated: Boolean(options.backupLabel),
+      fileCount: parsed.fileCount || 1
+    }
+  });
+  saveState();
+  return true;
 }
 
 function normalizeWorkspaceBackup(backup) {
@@ -9442,12 +9474,22 @@ function workspaceBackupRecord(label = "Manual backup") {
 }
 
 function createWorkspaceBackup(label = "Manual backup") {
+  if (!requireAdminAction("workspace-import", { deniedMessage: "Your role cannot create workspace backups" })) return;
   saveWorkspaceBackups([workspaceBackupRecord(label), ...loadWorkspaceBackups()]);
+  addAuditEvent({
+    action: "workspace_export",
+    detail: `Created workspace backup: ${label}`,
+    targetType: "workspace",
+    targetId: state.workspace.id,
+    metadata: { format: "local-backup" }
+  });
+  saveState();
   render();
   showToast("Workspace backup created", "success");
 }
 
 function restoreWorkspaceBackup(backupId) {
+  if (!requireAdminAction("workspace-import", { deniedMessage: "Your role cannot restore workspace backups" })) return;
   const backup = loadWorkspaceBackups().find((item) => item.id === backupId);
   if (!backup) {
     showToast("Backup not found", "info");
@@ -9464,6 +9506,14 @@ function restoreWorkspaceBackup(backupId) {
       slug: backup.snapshot.workspace?.slug || state.workspace.slug
     }
   });
+  addAuditEvent({
+    action: "workspace_restore",
+    detail: `Restored workspace backup: ${backup.label}`,
+    targetType: "workspace",
+    targetId: state.workspace.id,
+    metadata: { backupId }
+  });
+  saveState();
   render();
   showToast(`Restored ${backup.label}`, "success");
 }
@@ -9476,7 +9526,16 @@ function deleteWorkspaceBackup(backupId) {
 }
 
 function downloadWorkspaceExport() {
+  if (!requireAdminAction("workspace-import", { deniedMessage: "Your role cannot export workspace JSON" })) return;
   downloadJsonFile(`${slugFromName(state.workspace.name)}-${todayKey()}.json`, exportWorkspaceJson());
+  addAuditEvent({
+    action: "workspace_export",
+    detail: `Downloaded workspace JSON for ${state.workspace.name}`,
+    targetType: "workspace",
+    targetId: state.workspace.id,
+    metadata: { format: "workspace-json" }
+  });
+  saveState();
   showToast("Workspace export downloaded", "success");
 }
 
@@ -12332,11 +12391,15 @@ function addAuditEvent({
   source = apiSession ? "api-ready" : "local",
   targetType = "workspace",
   targetId = state.workspace?.id || "",
-  impact = "low",
-  reversible = true,
-  restoreHint = "Tracked in local workspace history.",
+  impact,
+  reversible,
+  restoreHint,
   metadata = {}
 }) {
+  const readinessAction = adminReadinessActionForAudit(action);
+  const derivedReversible = readinessAction
+    ? readinessAction.controls.some((control) => /undo|restore|backup/i.test(control))
+    : true;
   const event = {
     id: uid("audit"),
     actorId,
@@ -12345,10 +12408,13 @@ function addAuditEvent({
     source,
     targetType,
     targetId,
-    impact,
-    reversible,
-    restoreHint,
-    metadata,
+    impact: impact || readinessAction?.impact || "low",
+    reversible: reversible ?? derivedReversible,
+    restoreHint: restoreHint || readinessAction?.restoreHint || (readinessAction ? "Review the recovery path listed in Admin readiness." : "Tracked in local workspace history."),
+    metadata: {
+      ...(readinessAction ? { adminActionId: readinessAction.id, requiredPermission: readinessAction.permission } : {}),
+      ...metadata
+    },
     session: apiSession ? "authenticated" : "local-demo",
     createdAt: new Date().toISOString()
   };
@@ -25364,6 +25430,7 @@ function adminReadinessActions() {
       impact: "high",
       controls: ["Preview", "Backup restore", "Audit"],
       detail: "Can change the source-of-truth workspace data.",
+      restoreHint: "Restore the pre-import local backup or re-import the previous portable bundle.",
       auditActions: ["workspace_import", "workspace_restore", "workspace_export"]
     },
     {
@@ -25374,6 +25441,7 @@ function adminReadinessActions() {
       impact: "high",
       controls: ["Confirm", "Audit"],
       detail: "Controls who can invite, administer, and reach sensitive settings.",
+      restoreHint: "Change the member back to the previous role from Settings > Members.",
       auditActions: ["member_role_update", "member_invite", "member_revoke"]
     },
     {
@@ -25384,6 +25452,7 @@ function adminReadinessActions() {
       impact: "high",
       controls: ["Preview", "Undo", "Audit"],
       detail: "Archives a sprint report, rolls work forward, and can promote the next sprint.",
+      restoreHint: "Use Undo Close while available, or restore from a workspace backup.",
       auditActions: ["sprint_close", "sprint_close_undo"]
     },
     {
@@ -25394,6 +25463,7 @@ function adminReadinessActions() {
       impact: "medium",
       controls: ["Preview", "Activity log", "Audit"],
       detail: "Can create retro actions, reminders, tags, and activity notes.",
+      restoreHint: "Review the sprint automation audit trail and rollback available automation runs.",
       auditActions: ["sprint_automation_run", "sprint_automation_preset"]
     },
     {
@@ -25404,6 +25474,7 @@ function adminReadinessActions() {
       impact: "medium",
       controls: ["Job log", "Audit"],
       detail: "Can execute background automations and notification jobs.",
+      restoreHint: "Review the server job log, then reverse affected records from their native views.",
       auditActions: ["scheduler_run", "backend_job"]
     },
     {
@@ -25414,7 +25485,8 @@ function adminReadinessActions() {
       impact: "high",
       controls: ["Secret status", "Test event", "Audit"],
       detail: "Can change connected adapter status, sync direction, and event mirroring.",
-      auditActions: ["integrations_update", "integration_test_event", "sprint_sync_mark"]
+      restoreHint: "Revert the integration connection settings or disable event mirroring.",
+      auditActions: ["integrations_update", "integration_test_event", "sprint_sync_mark", "sprint_external_sync"]
     },
     {
       id: "payment-settings",
@@ -25424,6 +25496,7 @@ function adminReadinessActions() {
       impact: "high",
       controls: ["Test event", "Audit"],
       detail: "Can update provider settings, plans, and entitlement evidence.",
+      restoreHint: "Revert payment provider settings and review the payment audit trail.",
       auditActions: ["payment_settings_update", "payment_test_event", "payment_entitlement_granted"]
     },
     {
@@ -25434,7 +25507,8 @@ function adminReadinessActions() {
       impact: "medium",
       controls: ["Diagnostics", "Audit"],
       detail: "Can change channels used for email, portal, and delivery alerts.",
-      auditActions: ["notification", "email", "portal"]
+      restoreHint: "Revert notification delivery settings and review notification history.",
+      auditActions: ["notification", "email", "portal", "notification_delivery_update"]
     },
     {
       id: "roadmap-delete",
@@ -25444,6 +25518,7 @@ function adminReadinessActions() {
       impact: "high",
       controls: ["Confirm", "Audit"],
       detail: "Can remove future planning commitments from the sprint roadmap.",
+      restoreHint: "Recreate the roadmap sprint or restore from a workspace backup.",
       auditActions: ["sprint_roadmap_delete"]
     },
     {
@@ -25454,9 +25529,29 @@ function adminReadinessActions() {
       impact: "high",
       controls: ["Confirm", "Audit"],
       detail: "Can remove rules that teams may depend on for delivery hygiene.",
+      restoreHint: "Recreate the automation rule or restore it from a workspace backup.",
       auditActions: ["automation_delete", "delete_automation"]
     }
   ];
+}
+
+function adminReadinessActionForAudit(actionName) {
+  const normalized = String(actionName || "").toLowerCase();
+  if (!normalized) return null;
+  return adminReadinessActions().find((action) => action.auditActions.some((auditAction) => normalized.includes(String(auditAction).toLowerCase()))) || null;
+}
+
+function adminReadinessAction(actionId) {
+  return adminReadinessActions().find((action) => action.id === actionId) || null;
+}
+
+function requireAdminAction(actionId, options = {}) {
+  const action = adminReadinessAction(actionId);
+  if (!action) return true;
+  if (canWrite(action.permission)) return true;
+  showToast(options.deniedMessage || `Your role cannot ${action.label.toLowerCase()}`, "info");
+  if (options.renderOnDeny) render();
+  return false;
 }
 
 function roleHasPermission(roleId, permission) {
@@ -28327,10 +28422,7 @@ async function copySprintSyncPayload(providerId) {
 }
 
 function markSprintSyncProviderSynced(providerId) {
-  if (!canWrite("integrations:write")) {
-    showToast("Your role cannot manage integration sync", "info");
-    return;
-  }
+  if (!requireAdminAction("integrations-update", { deniedMessage: "Your role cannot manage integration sync" })) return;
   if (!sprintSyncProviders.includes(providerId)) return;
   const integrations = integrationSettings();
   const now = new Date().toISOString();
@@ -28355,7 +28447,6 @@ function markSprintSyncProviderSynced(providerId) {
     detail: `Marked ${sprintSyncProviderLabel(providerId)} sprint sync at ${formatTimestamp(now)}`,
     targetType: "workspace",
     targetId: state.workspace.id,
-    impact: "low",
     reversible: true
   });
   syncIntegrationSettingsToApi("Sprint sync settings synced to API");
@@ -28406,10 +28497,7 @@ function setSprintClosePreview(open) {
 }
 
 function closeCurrentSprint() {
-  if (!canWrite("projects:write")) {
-    showToast("Your role cannot close sprints", "info");
-    return;
-  }
+  if (!requireAdminAction("sprint-close", { deniedMessage: "Your role cannot close sprints" })) return;
   if (!state.sprintClosePreviewOpen) {
     setSprintClosePreview(true);
     showToast("Review the close sprint preview first", "info");
@@ -28489,7 +28577,6 @@ function closeCurrentSprint() {
     detail: `Closed ${closedSprint.name}; rolled ${changedTasks.length} unfinished ${changedTasks.length === 1 ? "story" : "stories"} to ${rollForwardName}`,
     targetType: "workspace",
     targetId: state.workspace.id,
-    impact: "medium",
     reversible: true,
     metadata: { reportId: report.id, rolledForward: changedTasks.length }
   });
@@ -28499,10 +28586,7 @@ function closeCurrentSprint() {
 }
 
 function undoLastSprintClose() {
-  if (!canWrite("projects:write")) {
-    showToast("Your role cannot undo sprint closes", "info");
-    return;
-  }
+  if (!requireAdminAction("sprint-close", { deniedMessage: "Your role cannot undo sprint closes" })) return;
   const scrum = scrumSettings();
   const undo = scrum.lastCloseUndo;
   if (!undo?.previousScrum || !undo.taskSnapshots?.length) {
@@ -28534,7 +28618,6 @@ function undoLastSprintClose() {
     detail: `Undid ${undo.label}`,
     targetType: "workspace",
     targetId: state.workspace.id,
-    impact: "medium",
     reversible: false
   });
   saveState();
@@ -28606,10 +28689,7 @@ function updateRoadmapSprint(form, sprintId) {
 }
 
 function deleteRoadmapSprint(sprintId) {
-  if (!canWrite("projects:write")) {
-    showToast("Your role cannot manage roadmap sprints", "info");
-    return;
-  }
+  if (!requireAdminAction("roadmap-delete", { deniedMessage: "Your role cannot remove roadmap sprints" })) return;
   const current = scrumSettings();
   const sprint = current.roadmapSprints.find((item) => item.id === sprintId);
   if (!sprint) return;
@@ -28620,17 +28700,20 @@ function deleteRoadmapSprint(sprintId) {
       roadmapSprints: current.roadmapSprints.filter((item) => item.id !== sprintId)
     })
   };
-  addAuditEvent({ action: "sprint_roadmap_delete", detail: `Removed ${sprint.name}` });
+  addAuditEvent({
+    action: "sprint_roadmap_delete",
+    detail: `Removed ${sprint.name}`,
+    targetType: "sprintRoadmap",
+    targetId: sprint.id,
+    reversible: false
+  });
   saveState();
   render();
   showToast("Roadmap sprint removed", "success");
 }
 
 function enableSprintAutomation(definitionId) {
-  if (!canWrite("projects:write")) {
-    showToast("Your role cannot manage sprint automations", "info");
-    return;
-  }
+  if (!requireAdminAction("sprint-automation-run", { deniedMessage: "Your role cannot manage sprint automations" })) return;
   const definition = sprintAutomationDefinitions.find((item) => item.id === definitionId);
   if (!definition) return;
   upsertSprintAutomationDefinition(definition);
@@ -28673,10 +28756,7 @@ function upsertSprintAutomationDefinition(definition) {
 }
 
 function installSprintAutomationPreset(presetId) {
-  if (!canWrite("projects:write")) {
-    showToast("Your role cannot manage sprint automations", "info");
-    return;
-  }
+  if (!requireAdminAction("sprint-automation-run", { deniedMessage: "Your role cannot manage sprint automations" })) return;
   const preset = sprintAutomationPresetDefinitions.find((item) => item.id === presetId);
   if (!preset) return;
   const rules = preset.ruleIds
@@ -28688,7 +28768,6 @@ function installSprintAutomationPreset(presetId) {
     detail: `Installed ${preset.name}`,
     targetType: "automation",
     targetId: preset.id,
-    impact: "low",
     reversible: true,
     metadata: { rules: rules.map((rule) => rule.id) }
   });
@@ -28812,10 +28891,7 @@ function runSprintAutomationRule(rule, tasks, scrum, metrics, rollbackState) {
 }
 
 function runEnabledSprintAutomations() {
-  if (!canWrite("projects:write")) {
-    showToast("Your role cannot run sprint automations", "info");
-    return;
-  }
+  if (!requireAdminAction("sprint-automation-run", { deniedMessage: "Your role cannot run sprint automations" })) return;
   const scrum = scrumSettings();
   const tasks = sprintScopedTasks(scrum);
   const metrics = sprintMetrics(tasks, scrum);
@@ -29880,12 +29956,20 @@ function editAutomationRule(ruleId) {
 }
 
 function deleteAutomationRule(ruleId) {
+  if (!requireAdminAction("automation-delete", { deniedMessage: "Your role cannot delete automations" })) return;
   const automation = byId(state.automations, ruleId);
   if (automation) {
     syncAutomationRuleToApi({ ...automation, enabled: false, updatedAt: new Date().toISOString() }, "Automation rule disabled in API", false);
   }
   state.automations = state.automations.filter((automation) => automation.id !== ruleId);
   state.automationHistory = state.automationHistory.filter((run) => run.automationId !== ruleId);
+  addAuditEvent({
+    action: "automation_delete",
+    detail: `Deleted ${automation?.name || "automation rule"}`,
+    targetType: "automation",
+    targetId: ruleId,
+    reversible: false
+  });
   saveState();
   render();
   showToast("Automation deleted", "success");
@@ -30591,10 +30675,7 @@ function saveAiSettings() {
 }
 
 function saveIntegrationSettings() {
-  if (!canWrite("integrations:write")) {
-    showToast("Your role cannot manage integrations", "info");
-    return;
-  }
+  if (!requireAdminAction("integrations-update", { deniedMessage: "Your role cannot manage integrations" })) return;
   const existing = integrationSettings();
   const existingById = new Map(existing.connections.map((connection) => [connection.id, connection]));
   const connections = integrationCatalog.map((catalogItem) => {
@@ -30631,7 +30712,13 @@ function saveIntegrationSettings() {
   };
   addAuditEvent({
     action: "integrations_update",
-    detail: `Updated ${connections.filter((connection) => connection.status === "connected").length} connected integrations`
+    detail: `Updated ${connections.filter((connection) => connection.status === "connected").length} connected integrations`,
+    targetType: "integrationSettings",
+    targetId: state.workspace.id,
+    metadata: {
+      connected: connections.filter((connection) => connection.status === "connected").length,
+      eventMirroring: state.workspace.integrations.eventMirroring
+    }
   });
   syncIntegrationSettingsToApi();
   saveState();
@@ -30769,10 +30856,7 @@ function addWhiteboardNote() {
 }
 
 function recordIntegrationTestEvent() {
-  if (!canWrite("integrations:write")) {
-    showToast("Your role cannot test integrations", "info");
-    return;
-  }
+  if (!requireAdminAction("integrations-update", { deniedMessage: "Your role cannot test integrations" })) return;
   const integrations = integrationSettings();
   const connected = integrations.connections.filter((connection) => connection.status === "connected");
   const now = new Date().toISOString();
@@ -30789,7 +30873,11 @@ function recordIntegrationTestEvent() {
     action: "integration_test_event",
     detail: connected.length
       ? `Test event queued for ${connected.map((connection) => integrationCatalog.find((item) => item.id === connection.id)?.name || connection.id).join(", ")}`
-      : "Test event recorded with no connected integrations"
+      : "Test event recorded with no connected integrations",
+    targetType: "integrationSettings",
+    targetId: state.workspace.id,
+    reversible: true,
+    metadata: { connected: connected.map((connection) => connection.id) }
   });
   saveState();
   render();
@@ -30797,10 +30885,7 @@ function recordIntegrationTestEvent() {
 }
 
 function savePaymentSettings() {
-  if (!canWrite("payments:write")) {
-    showToast("Your role cannot manage payments", "info");
-    return;
-  }
+  if (!requireAdminAction("payment-settings", { deniedMessage: "Your role cannot manage payments" })) return;
   const provider = document.querySelector("#payment-provider")?.value || "none";
   const planId = document.querySelector("#payment-plan")?.value || "free";
   const currency = document.querySelector("#payment-currency")?.value || "USD";
@@ -30837,7 +30922,10 @@ function savePaymentSettings() {
   };
   addAuditEvent({
     action: "payment_settings_update",
-    detail: `Payments set to ${paymentPlan(nextPayments.planId).label} / ${paymentProviderLabel(nextPayments.provider)} with ${formatPaymentAmount(nextPayments.spendingCapCents, nextPayments.currency)} cap`
+    detail: `Payments set to ${paymentPlan(nextPayments.planId).label} / ${paymentProviderLabel(nextPayments.provider)} with ${formatPaymentAmount(nextPayments.spendingCapCents, nextPayments.currency)} cap`,
+    targetType: "payments",
+    targetId: state.workspace.id,
+    metadata: { provider: nextPayments.provider, planId: nextPayments.planId, currency: nextPayments.currency }
   });
   saveState();
   render();
@@ -30845,10 +30933,7 @@ function savePaymentSettings() {
 }
 
 function recordTestPaymentEvent() {
-  if (!canWrite("payments:write")) {
-    showToast("Your role cannot test payments", "info");
-    return;
-  }
+  if (!requireAdminAction("payment-settings", { deniedMessage: "Your role cannot test payments" })) return;
   const payments = paymentSettings();
   if (payments.provider === "none") {
     showToast("Choose a payment provider first", "info");
@@ -30874,7 +30959,11 @@ function recordTestPaymentEvent() {
   };
   addAuditEvent({
     action: "payment_test_event",
-    detail: `Recorded ${formatPaymentAmount(amountCents, payments.currency)} ${paymentProviderLabel(payments.provider)} test event`
+    detail: `Recorded ${formatPaymentAmount(amountCents, payments.currency)} ${paymentProviderLabel(payments.provider)} test event`,
+    targetType: "payments",
+    targetId: event.id,
+    reversible: true,
+    metadata: { provider: payments.provider, amountCents, currency: payments.currency }
   });
   saveState();
   render();
@@ -30883,19 +30972,20 @@ function recordTestPaymentEvent() {
 
 function updateMemberRole(memberId, role) {
   if (!workspaceMembers().some((member) => member.id === memberId) || !workspaceRoles.some((item) => item.id === role)) return;
-  if (!canWrite("members:write")) {
-    showToast("Your role cannot manage members", "info");
-    render();
-    return;
-  }
+  if (!requireAdminAction("member-role-change", { deniedMessage: "Your role cannot manage members", renderOnDeny: true })) return;
 
   const existing = state.memberships.some((membership) => membership.memberId === memberId);
+  const previousRole = state.memberships.find((membership) => membership.memberId === memberId)?.role || state.workspace.defaultRole;
   state.memberships = existing
     ? state.memberships.map((membership) => membership.memberId === memberId ? { ...membership, role } : membership)
     : [...state.memberships, { memberId, role, status: "active" }];
   addAuditEvent({
     action: "member_role_update",
-    detail: `Changed ${memberName(memberId)} role to ${workspaceRoles.find((item) => item.id === role)?.label || role}`
+    detail: `Changed ${memberName(memberId)} role to ${workspaceRoles.find((item) => item.id === role)?.label || role}`,
+    targetType: "member",
+    targetId: memberId,
+    reversible: true,
+    metadata: { previousRole, nextRole: role }
   });
   saveState();
   render();
@@ -30936,7 +31026,7 @@ function importWorkspaceFromTextarea() {
   if (!rawJson) return;
 
   try {
-    importWorkspaceJson(rawJson, { backupLabel: "Before JSON import" });
+    if (!importWorkspaceJson(rawJson, { backupLabel: "Before JSON import" })) return;
     render();
     showToast("Workspace imported", "success");
   } catch (error) {
@@ -30953,6 +31043,7 @@ function importWorkspaceAsNewFromTextarea() {
 }
 
 function importWorkspaceAsNewFromPayload(rawJson) {
+  if (!requireAdminAction("workspace-import", { deniedMessage: "Your role cannot import workspaces" })) return;
   try {
     const parsed = migrateWorkspaceSnapshot(parsePortableWorkspaceInput(rawJson).snapshot, { source: "new-workspace-import" });
     const sourceWorkspace = parsed.workspace || {};
@@ -30998,6 +31089,16 @@ function importWorkspaceAsNewFromPayload(rawJson) {
       }
     }, { source: "new-workspace-import" }));
     resetWorkspaceViewState();
+    addAuditEvent({
+      action: "workspace_import",
+      detail: `Imported ${workspaceName} as a new workspace`,
+      targetType: "workspace",
+      targetId: workspaceId,
+      metadata: {
+        mode: "new-workspace",
+        sourceWorkspaceId: sourceWorkspace.id || ""
+      }
+    });
     saveState();
     render();
     showToast(`Imported ${workspaceName}`, "success");
@@ -31036,7 +31137,7 @@ function importPortablePayload(mode = "new-workspace") {
 
   try {
     if (mode === "replace") {
-      importWorkspaceJson(rawJson, { backupLabel: "Before portable import" });
+      if (!importWorkspaceJson(rawJson, { backupLabel: "Before portable import" })) return;
       state.portableImportPreview = null;
       saveState();
       render();
@@ -31433,11 +31534,13 @@ function switcherRollbackHistoryEntry(rollback) {
 }
 
 function applySwitcherRows(rows, source) {
+  if (!requireAdminAction("workspace-import", { deniedMessage: "Your role cannot apply migration imports" })) return { projects: 0, tasks: 0 };
   const preview = prepareSwitcherImport(rows, source);
   return applySwitcherPreview(preview);
 }
 
 function applySwitcherImportPreview() {
+  if (!requireAdminAction("workspace-import", { deniedMessage: "Your role cannot apply migration imports" })) return;
   const preview = normalizeSwitcherImportPreview(state.switcherImportPreview);
   if (!preview) {
     showToast("Preview an import before applying it", "info");
@@ -32209,6 +32312,7 @@ async function restoreWorkspaceSnapshotFromApi() {
     showToast("Connect to the API from Settings first", "info");
     return;
   }
+  if (!requireAdminAction("workspace-import", { deniedMessage: "Your role cannot restore workspace snapshots" })) return;
 
   try {
     const document = await apiRequest("/api/workspace");
@@ -32218,6 +32322,13 @@ async function restoreWorkspaceSnapshotFromApi() {
     }
     saveWorkspaceBackups([workspaceBackupRecord("Before API restore"), ...loadWorkspaceBackups()]);
     applyWorkspaceSnapshot(document.snapshot);
+    addAuditEvent({
+      action: "workspace_restore",
+      detail: "Restored workspace snapshot from API",
+      targetType: "workspace",
+      targetId: state.workspace.id,
+      metadata: { source: "api-workspace-snapshot" }
+    });
     await loadCoreRecordsFromApi();
     await loadStructuredRecordsFromApi();
     saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, storageDriver: document.metadata.storage || apiSession.storageDriver });
@@ -32234,6 +32345,7 @@ async function importWorkspaceToApi() {
     showToast("Connect to the API from Settings first", "info");
     return;
   }
+  if (!requireAdminAction("workspace-import", { deniedMessage: "Your role cannot import workspaces to the API" })) return;
 
   const rawJson = document.querySelector("#json-import")?.value.trim();
   if (!rawJson) {
@@ -32246,6 +32358,13 @@ async function importWorkspaceToApi() {
     const document = await apiRequest("/api/workspace/import", {
       method: "POST",
       body: { snapshot }
+    });
+    addAuditEvent({
+      action: "workspace_import",
+      detail: "Imported JSON workspace to API",
+      targetType: "workspace",
+      targetId: state.workspace.id,
+      metadata: { source: "api-workspace-import" }
     });
     saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, storageDriver: document.metadata.storage || apiSession.storageDriver });
     await refreshBackendHealth({ silent: true });
@@ -32522,10 +32641,7 @@ async function runServerNotificationScheduler() {
     showToast("Connect to the API before running the server scheduler", "info");
     return;
   }
-  if (!canWrite("scheduler:run")) {
-    showToast("Your role cannot run the server scheduler", "info");
-    return;
-  }
+  if (!requireAdminAction("scheduler-run", { deniedMessage: "Your role cannot run the server scheduler" })) return;
   try {
     const result = await apiRequest("/api/scheduler/notifications/run", {
       method: "POST"
@@ -32542,6 +32658,15 @@ async function runServerNotificationScheduler() {
       saveState();
       render();
     }
+    addAuditEvent({
+      action: "scheduler_run",
+      detail: `Server notification scheduler processed ${Number(result.processed || 0)} reminders`,
+      targetType: "scheduler",
+      targetId: "notifications",
+      reversible: false,
+      metadata: { processed: Number(result.processed || 0) }
+    });
+    saveState();
     showToast(result.processed ? `Server scheduler processed ${result.processed} reminder${result.processed === 1 ? "" : "s"}` : "No due reminders on the server", result.processed ? "success" : "info");
   } catch (error) {
     showToast(`Server scheduler failed: ${error.message}`, "info");
@@ -32553,10 +32678,7 @@ async function runServerAutomations() {
     showToast("Connect to the API before running server automations", "info");
     return;
   }
-  if (!canWrite("scheduler:run")) {
-    showToast("Your role cannot run server automations", "info");
-    return;
-  }
+  if (!requireAdminAction("scheduler-run", { deniedMessage: "Your role cannot run server automations" })) return;
   try {
     const result = await apiRequest("/api/automations/run", {
       method: "POST",
@@ -32578,6 +32700,15 @@ async function runServerAutomations() {
       saveState();
       render();
     }
+    addAuditEvent({
+      action: "scheduler_run",
+      detail: `Server automations changed ${Number(result.changedCount || 0)} items`,
+      targetType: "scheduler",
+      targetId: "automations",
+      reversible: false,
+      metadata: { changedCount: Number(result.changedCount || 0) }
+    });
+    saveState();
     showToast(result.changedCount ? `Server automations changed ${result.changedCount} ${result.changedCount === 1 ? "item" : "items"}` : "No server automation changes", result.changedCount ? "success" : "info");
   } catch (error) {
     showToast(`Server automations failed: ${error.message}`, "info");
@@ -32755,10 +32886,7 @@ function updateNotificationCadence(cadence) {
 }
 
 function saveNotificationDeliverySettings() {
-  if (!canWrite("notifications:write")) {
-    showToast("Your role cannot manage notification delivery", "info");
-    return;
-  }
+  if (!requireAdminAction("notification-delivery", { deniedMessage: "Your role cannot manage notification delivery" })) return;
   const settings = notificationSettings();
   const webhookUrl = document.querySelector("#notification-webhook-url")?.value.trim() || "";
   const emailAddress = document.querySelector("#notification-email-address")?.value.trim() || "";
@@ -32774,7 +32902,10 @@ function saveNotificationDeliverySettings() {
   };
   addAuditEvent({
     action: "notification_delivery_update",
-    detail: `Updated notification delivery channels: ${notificationDeliveryChannels(state.notificationSettings)}`
+    detail: `Updated notification delivery channels: ${notificationDeliveryChannels(state.notificationSettings)}`,
+    targetType: "notificationSettings",
+    targetId: state.workspace.id,
+    metadata: { channels: notificationDeliveryChannels(state.notificationSettings) }
   });
   syncNotificationSettingsToApi();
   saveState();
