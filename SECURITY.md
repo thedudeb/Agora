@@ -44,6 +44,7 @@ Before inviting a real team:
 - Set `AGORA_DEMO_AUTH=false` in production.
 - Set `AGORA_PASSWORDLESS_AUTH=false` unless intentionally enabled.
 - Keep `AGORA_PUBLIC_FEATURE_REQUESTS=false` until you intentionally accept public submissions and have tuned the public rate/body limits.
+- Run `npm run trust` to verify the current Trust Center evidence for privacy, headers, diagnostics, backups, upgrades, portability, migration, hosted readiness, and extension contracts.
 - Run `npm run security` before release and investigate any moderate-or-higher advisory.
 - Set `AGORA_STRICT_CSP=true` or `NODE_ENV=production` for hosted app/static servers, and keep `AGORA_CSP_CONNECT_SRC` limited to trusted API origins.
 - Refresh Backend Health and export the Readiness page report before cutover so strict CSP, public origins, reset delivery, and dependency audit evidence are captured without secrets.
