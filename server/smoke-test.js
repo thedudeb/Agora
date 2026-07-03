@@ -512,6 +512,16 @@ async function run() {
     assert(conflictResult.conflict?.status === "open", "github webhook conflict was not captured");
     const snapshotAfterConflict = await storage.loadWorkspaceSnapshot();
     assert(snapshotAfterConflict.integrationConflicts.some((conflict) => conflict.provider === "github" && conflict.taskId === githubTask.id), "github conflict was not persisted");
+    const storedConflict = snapshotAfterConflict.integrationConflicts.find((conflict) => conflict.provider === "github" && conflict.taskId === githubTask.id);
+    const resolvedConflict = await request(`${baseUrl}/api/integrations/github/conflicts/${storedConflict.id}/resolve`, {
+      method: "POST",
+      token: login.token,
+      body: { resolution: "use-github", note: "Smoke test accepts the GitHub edit." }
+    });
+    assert(resolvedConflict.conflict.status === "resolved", "github conflict was not marked resolved");
+    assert(resolvedConflict.task.title === "GitHub edited issue", "github conflict resolution did not apply GitHub fields");
+    const snapshotAfterResolution = await storage.loadWorkspaceSnapshot();
+    assert(snapshotAfterResolution.integrationConflicts.some((conflict) => conflict.id === storedConflict.id && conflict.resolution === "use-github"), "resolved github conflict was not persisted");
     process.env.AGORA_GITHUB_WEBHOOK_SECRET = "smoke-secret";
     const invalidSignedWebhook = await requestError(`${baseUrl}/api/integrations/github/webhook`, {
       method: "POST",

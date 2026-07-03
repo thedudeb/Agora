@@ -143,6 +143,7 @@ The verifier starts a temporary Agora API server with Supabase storage, uses a u
 - `POST /api/integrations/sync`: queues an inbound, outbound, or two-way provider sync job for sessions with `integrations:write`. Body: `{ "provider": "github", "direction": "inbound", "mapping": { "issueTitle": "title" }, "records": [] }`.
 - `GET /api/integrations/github/status`: returns GitHub repository mapping, webhook readiness, and pending conflict count without exposing secrets.
 - `POST /api/integrations/github/webhook`: receives GitHub `issues` and `pull_request` webhooks, verifies `X-Hub-Signature-256` when `AGORA_GITHUB_WEBHOOK_SECRET` is set, maps events to tasks, and records conflicts for review.
+- `POST /api/integrations/github/conflicts/:id/resolve`: resolves an open GitHub conflict for sessions with `integrations:write` and `tasks:write`. Body: `{ "resolution": "keep-agora" | "use-github" | "merge" | "ignore", "note": "..." }`.
 - `GET /api/scheduler/notifications/due`: returns due, unsent notification reminders visible to the authenticated session.
 - `POST /api/scheduler/notifications/run`: processes due reminders, marks them sent, and writes notification-history records. Use it from trusted cron, or set `AGORA_SCHEDULER_ENABLED=true` to run the scheduler inside the API process.
 - `POST /api/payments/checkout-intent`: creates a server-side checkout intent for paid marketplace templates and other billable workspace items.

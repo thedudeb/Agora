@@ -8548,10 +8548,36 @@ function githubOpenConflicts() {
     .slice(0, 6);
 }
 
+function renderGitHubConflictCompare(conflict) {
+  const rows = [
+    ["Title", conflict.local?.title || "", conflict.external?.title || ""],
+    ["Status", statusLabel(conflict.local?.status || ""), statusLabel(conflict.external?.status || "")],
+    ["Description", conflict.local?.description || "", conflict.external?.description || ""],
+    ["Tags", Array.isArray(conflict.local?.tags) ? conflict.local.tags.join(", ") : "", Array.isArray(conflict.external?.tags) ? conflict.external.tags.join(", ") : ""]
+  ];
+  return `
+    <div class="github-conflict-compare">
+      <div class="github-conflict-compare-head">
+        <span>Field</span>
+        <span>Agora</span>
+        <span>GitHub</span>
+      </div>
+      ${rows.map(([field, local, external]) => `
+        <div class="github-conflict-compare-row">
+          <strong>${escapeHtml(field)}</strong>
+          <span>${escapeHtml(local || "Empty")}</span>
+          <span>${escapeHtml(external || "Empty")}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
 function renderGitHubWebhookIntakePanel(integrations) {
   const connection = integrations.connections.find((item) => item.id === "github") || {};
   const conflicts = githubOpenConflicts();
   const endpoint = githubWebhookEndpoint();
+  const canResolveConflicts = Boolean(apiSession && canWrite("integrations:write") && canWrite("tasks:write"));
   return `
     <div class="github-webhook-panel">
       <div class="panel-header">
@@ -8575,6 +8601,7 @@ function renderGitHubWebhookIntakePanel(integrations) {
           <strong>issues, pull_request</strong>
         </article>
       </div>
+      <p class="panel-note">Conflict review supports Keep Agora, Use GitHub, Merge, or Ignore. Merge keeps Agora description context, uses GitHub title/status, and unions tags.</p>
       <div class="integration-action-row">
         <button class="button button-secondary" type="button" id="github-copy-webhook-url">Copy Webhook URL</button>
         <button class="button button-secondary" type="button" data-open-settings-tab="jobs">Open Jobs</button>
@@ -8585,6 +8612,13 @@ function renderGitHubWebhookIntakePanel(integrations) {
             <div>
               <strong>${escapeHtml(conflict.taskTitle || conflict.externalId || "GitHub conflict")}</strong>
               <span>${escapeHtml(conflict.repo)} / ${escapeHtml(conflict.eventName)} / local ${escapeHtml(formatTimestamp(conflict.localRevision))} / GitHub ${escapeHtml(formatTimestamp(conflict.externalRevision))}</span>
+              ${renderGitHubConflictCompare(conflict)}
+              <div class="github-conflict-actions">
+                <button class="button button-secondary compact-button" type="button" data-github-conflict-resolution="keep-agora" data-github-conflict-id="${escapeHtml(conflict.id)}" ${canResolveConflicts ? "" : "disabled"}>Keep Agora</button>
+                <button class="button button-secondary compact-button" type="button" data-github-conflict-resolution="use-github" data-github-conflict-id="${escapeHtml(conflict.id)}" ${canResolveConflicts ? "" : "disabled"}>Use GitHub</button>
+                <button class="button button-primary compact-button" type="button" data-github-conflict-resolution="merge" data-github-conflict-id="${escapeHtml(conflict.id)}" ${canResolveConflicts ? "" : "disabled"}>Merge</button>
+                <button class="button button-secondary compact-button" type="button" data-github-conflict-resolution="ignore" data-github-conflict-id="${escapeHtml(conflict.id)}" ${canResolveConflicts ? "" : "disabled"}>Ignore</button>
+              </div>
             </div>
             <small>${escapeHtml(conflict.action || "changed")}</small>
           </article>
@@ -32451,6 +32485,46 @@ async function queueGitHubIntegrationSync() {
   }
 }
 
+async function resolveGitHubIntegrationConflict(conflictId, resolution) {
+  if (!apiSession) {
+    showToast("Connect the API before resolving GitHub conflicts", "info");
+    return;
+  }
+  if (!canWrite("integrations:write") || !canWrite("tasks:write")) {
+    showToast("Your role cannot resolve GitHub conflicts", "info");
+    return;
+  }
+  try {
+    const result = await apiRequest(`/api/integrations/github/conflicts/${encodeURIComponent(conflictId)}/resolve`, {
+      method: "POST",
+      body: { resolution }
+    });
+    if (result.task) {
+      state.tasks = mergeRecordsById(state.tasks, [result.task]);
+    }
+    if (Array.isArray(result.conflicts)) {
+      state.integrationConflicts = result.conflicts.map(normalizeIntegrationConflict);
+    } else if (result.conflict) {
+      state.integrationConflicts = state.integrationConflicts.map((conflict) => conflict.id === result.conflict.id ? normalizeIntegrationConflict(result.conflict) : conflict);
+    }
+    addAuditEvent({
+      action: "github_conflict_resolve",
+      detail: `Resolved GitHub conflict with ${resolution}`,
+      targetType: "integrationConflict",
+      targetId: conflictId,
+      impact: resolution === "ignore" ? "low" : "medium",
+      reversible: true,
+      restoreHint: "Review the task change history or restore from a workspace backup if the wrong side was chosen.",
+      metadata: { provider: "github", resolution }
+    });
+    saveState();
+    render();
+    showToast("GitHub conflict resolved", "success");
+  } catch (error) {
+    showToast(`GitHub conflict resolve failed: ${error.message}`, "info");
+  }
+}
+
 function savePaymentSettings() {
   if (!requireAdminAction("payment-settings", { deniedMessage: "Your role cannot manage payments" })) return;
   const provider = document.querySelector("#payment-provider")?.value || "none";
@@ -35255,6 +35329,12 @@ document.addEventListener("click", (event) => {
   const githubQueueSyncButton = event.target.closest("#github-queue-sync");
   if (githubQueueSyncButton && !githubQueueSyncButton.disabled) {
     queueGitHubIntegrationSync();
+    return;
+  }
+
+  const githubConflictResolutionButton = event.target.closest("[data-github-conflict-resolution]");
+  if (githubConflictResolutionButton && !githubConflictResolutionButton.disabled) {
+    resolveGitHubIntegrationConflict(githubConflictResolutionButton.dataset.githubConflictId, githubConflictResolutionButton.dataset.githubConflictResolution);
     return;
   }
 

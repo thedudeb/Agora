@@ -5650,7 +5650,7 @@ body[data-tutorial-target="view"] #app-view {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
-  align-items: center;
+  align-items: start;
   padding: 8px;
   background: var(--surface-strong);
   border: 1px solid var(--line);
@@ -5661,6 +5661,47 @@ body[data-tutorial-target="view"] #app-view {
 .github-conflict-list small {
   color: var(--muted);
   font-size: 0.76rem;
+}
+
+.github-conflict-compare {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.github-conflict-compare-head,
+.github-conflict-compare-row {
+  display: grid;
+  grid-template-columns: 0.55fr minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+}
+
+.github-conflict-compare-head {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.github-conflict-compare-row {
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.github-conflict-compare-row strong,
+.github-conflict-compare-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.github-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
 }
 
 .sync-mapping-layer {
@@ -10889,6 +10930,12 @@ body[data-density="compact"] .main-content {
   }
 
   .backend-job-row {
+    grid-template-columns: 1fr;
+  }
+
+  .github-conflict-list article,
+  .github-conflict-compare-head,
+  .github-conflict-compare-row {
     grid-template-columns: 1fr;
   }
 

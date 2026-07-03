@@ -647,6 +647,9 @@ function openApiDocument() {
       },
       "/api/integrations/github/webhook": {
         post: publicOperation("GitHub webhook intake", "Receives signed GitHub issue and pull-request webhooks, maps them to tasks, and records conflicts for review.")
+      },
+      "/api/integrations/github/conflicts/{id}/resolve": {
+        post: operation("Resolve GitHub conflict", "Applies Keep Agora, Use GitHub, Merge, or Ignore decisions to an open GitHub conflict.")
       }
     },
     components: {
@@ -1043,6 +1046,18 @@ function createServer(options = {}) {
           records: Array.isArray(body.records) ? body.records.slice(0, 100) : []
         });
         sendJson(response, job.status === "rejected" ? 202 : 201, { job, jobs: backgroundJobSnapshot() });
+        return;
+      }
+
+      const githubConflictResolveMatch = url.pathname.match(/^\/api\/integrations\/github\/conflicts\/([^/]+)\/resolve$/);
+      if (githubConflictResolveMatch && request.method === "POST") {
+        if (!hasPermission(session, "integrations:write") || !hasPermission(session, "tasks:write")) {
+          sendError(response, 403, "Missing integration or task write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const result = await resolveGitHubConflict(storage, decodeURIComponent(githubConflictResolveMatch[1]), body, session);
+        sendJson(response, 200, result);
         return;
       }
 
@@ -5851,8 +5866,7 @@ function isStaleGitHubWebhook(existingTask, githubUpdatedAt) {
   if (!existingTask) return false;
   const lastSyncedAt = cleanString(existingTask.customFields?.githubSyncedAt);
   if (!lastSyncedAt) return false;
-  return Date.parse(cleanString(existingTask.updatedAt)) > Date.parse(lastSyncedAt)
-    && Date.parse(githubUpdatedAt) <= Date.parse(lastSyncedAt);
+  return Date.parse(githubUpdatedAt) <= Date.parse(lastSyncedAt);
 }
 
 function githubConflictRecord({ eventName, action, repo, existingTask, incomingTask, externalUpdatedAt }) {
@@ -5960,6 +5974,128 @@ async function handleGitHubWebhook(storage, request, payload = {}) {
     action: "github_webhook_sync"
   });
   return { accepted: true, eventName, action, repository: repo, task };
+}
+
+function githubConflictResolutionValue(value) {
+  const resolution = cleanString(value).toLowerCase();
+  if (["keep-agora", "agora", "local"].includes(resolution)) return "keep-agora";
+  if (["use-github", "github", "external", "server"].includes(resolution)) return "use-github";
+  if (resolution === "merge") return "merge";
+  if (["ignore", "ignored", "drop"].includes(resolution)) return "ignore";
+  return "merge";
+}
+
+function githubConflictResolvedTask(existingTask, conflict, resolution) {
+  const now = new Date().toISOString();
+  const external = conflict.external || {};
+  const local = conflict.local || {};
+  if (resolution === "keep-agora" || resolution === "ignore") {
+    return normalizeTask({
+      ...existingTask,
+      customFields: {
+        ...(existingTask.customFields || {}),
+        githubConflictResolution: resolution,
+        githubConflictResolvedAt: now
+      },
+      updatedAt: now
+    });
+  }
+  if (resolution === "use-github") {
+    return normalizeTask({
+      ...existingTask,
+      title: cleanString(external.title) || existingTask.title,
+      description: Object.prototype.hasOwnProperty.call(external, "description") ? cleanString(external.description) : existingTask.description,
+      status: cleanString(external.status) || existingTask.status,
+      tags: Array.isArray(external.tags) ? external.tags.map(cleanString).filter(Boolean).slice(0, 16) : existingTask.tags,
+      customFields: {
+        ...(existingTask.customFields || {}),
+        githubSyncedAt: now,
+        githubUpdatedAt: cleanString(conflict.externalRevision) || now,
+        githubConflictResolution: resolution,
+        githubConflictResolvedAt: now
+      },
+      updatedAt: now
+    });
+  }
+  return normalizeTask({
+    ...existingTask,
+    title: cleanString(external.title || local.title || existingTask.title),
+    description: cleanString(local.description || existingTask.description || external.description),
+    status: cleanString(external.status || existingTask.status),
+    tags: Array.from(new Set([
+      ...(Array.isArray(local.tags) ? local.tags : existingTask.tags || []),
+      ...(Array.isArray(external.tags) ? external.tags : [])
+    ].map(cleanString).filter(Boolean))).slice(0, 16),
+    customFields: {
+      ...(existingTask.customFields || {}),
+      githubSyncedAt: now,
+      githubUpdatedAt: cleanString(conflict.externalRevision) || now,
+      githubConflictResolution: resolution,
+      githubConflictResolvedAt: now
+    },
+    updatedAt: now
+  });
+}
+
+async function resolveGitHubConflict(storage, conflictId, body = {}, session) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const conflicts = Array.isArray(snapshot.integrationConflicts) ? snapshot.integrationConflicts : [];
+  const conflict = conflicts.find((item) => item.id === conflictId);
+  if (!conflict) publicError(404, "GitHub conflict not found");
+  if (cleanString(conflict.provider) !== "github") publicError(400, "Conflict is not a GitHub conflict");
+  if (cleanString(conflict.status || "open") !== "open") publicError(409, "GitHub conflict is already closed");
+  const tasks = Array.isArray(snapshot.tasks) ? snapshot.tasks.map(normalizeTask) : [];
+  const existingTask = tasks.find((task) => task.id === conflict.taskId);
+  if (!existingTask) publicError(404, "Conflict task not found");
+  const projects = Array.isArray(snapshot.projects) ? snapshot.projects : [];
+  const project = projects.find((item) => item.id === existingTask.projectId);
+  if (!project) publicError(400, "Conflict task project is not in this workspace");
+  assertProjectCompanyScope(project, session);
+
+  const resolution = githubConflictResolutionValue(body.resolution || body.action);
+  const resolvedAt = new Date().toISOString();
+  const nextConflict = {
+    ...conflict,
+    status: resolution === "ignore" ? "ignored" : "resolved",
+    resolution,
+    resolutionNote: cleanString(body.note).slice(0, 500),
+    resolvedAt,
+    resolvedBy: session.user.id,
+    updatedAt: resolvedAt
+  };
+  const nextTask = githubConflictResolvedTask(existingTask, conflict, resolution);
+  const nextTasks = tasks.map((task) => task.id === existingTask.id ? nextTask : task);
+  const nextConflicts = conflicts.map((item) => item.id === conflict.id ? nextConflict : item);
+
+  await storage.saveWorkspaceSnapshot({
+    ...snapshot,
+    tasks: nextTasks,
+    integrationConflicts: nextConflicts
+  }, {
+    storage: storage.driver || "json-file",
+    updatedBy: session.user.id,
+    action: "github_conflict_resolve"
+  });
+  await storage.appendAuditEvent({
+    actorId: session.user.id,
+    action: "github_conflict_resolve",
+    workspaceId: workspace.id,
+    detail: `${session.user.name} resolved GitHub conflict for ${nextTask.title} with ${resolution}`
+  });
+  broadcastRealtimeEvent({
+    type: "task",
+    collection: "tasks",
+    action: "github_conflict_resolve",
+    id: nextTask.id,
+    projectId: nextTask.projectId,
+    companyId: project.companyId || "",
+    actorId: session.user.id
+  });
+  return {
+    conflict: nextConflict,
+    task: nextTask,
+    conflicts: nextConflicts
+  };
 }
 
 async function archiveProject(storage, projectId, session, archived) {
