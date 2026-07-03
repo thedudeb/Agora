@@ -1304,6 +1304,10 @@ const seedData = {
       auditMode: "Preview, rationale, undo",
       permissions: { ...aiPermissionDefaults }
     },
+    trustMode: {
+      enabled: false,
+      updatedAt: ""
+    },
     integrations: {
       defaultOwner: "mara",
       webhookEndpoint: "",
@@ -10046,6 +10050,18 @@ function aiSettings() {
   };
 }
 
+function trustModeSettings() {
+  return {
+    ...seedData.workspace.trustMode,
+    ...(state.workspace.trustMode || {}),
+    enabled: Boolean(state.workspace.trustMode?.enabled)
+  };
+}
+
+function trustModeEnabled() {
+  return trustModeSettings().enabled;
+}
+
 function aiProviderLabel() {
   const settings = aiSettings();
   return settings.provider === "local"
@@ -10194,6 +10210,26 @@ function applyOperatorPermissionPreset(presetId) {
   saveState();
   render();
   showToast(`${preset.label} preset applied`, "success");
+}
+
+function toggleTrustMode() {
+  const nextEnabled = !trustModeEnabled();
+  state.workspace = {
+    ...state.workspace,
+    trustMode: {
+      ...trustModeSettings(),
+      enabled: nextEnabled,
+      updatedAt: new Date().toISOString()
+    }
+  };
+  addAuditEvent({
+    action: "trust_mode_toggle",
+    detail: `Trust Mode ${nextEnabled ? "enabled" : "disabled"}`,
+    metadata: { enabled: nextEnabled }
+  });
+  saveState();
+  render();
+  showToast(`Trust Mode ${nextEnabled ? "enabled" : "disabled"}`, "success");
 }
 
 function paymentSettings() {
@@ -16959,6 +16995,7 @@ function render() {
   renderConnectionBanner();
   document.querySelector(".brand small").textContent = state.workspace.name;
   document.body.classList.toggle("is-landing-route", state.selectedRoute === "landing");
+  document.body.classList.toggle("is-trust-mode", trustModeEnabled());
 
   const routeRenderers = {
     landing: renderLandingPage,
@@ -28697,6 +28734,75 @@ function renderOpenOwnershipAdvantagePanel() {
   `;
 }
 
+function trustModeLenses() {
+  const recovery = portableRecoveryStatus();
+  const offlineItems = offlineAppReadinessItems();
+  const ai = aiOperatorTrustState();
+  const portalLinks = normalizeClientPortalLinks(state.clientPortalLinks, state.companies);
+  const undoableActions = recentOperatorActions(50).filter((action) => action.undoType && action.status !== "undone");
+  const backups = loadWorkspaceBackups();
+  return [
+    {
+      label: "Exportable",
+      done: recovery.files.some((file) => file.path === "workspace.json"),
+      detail: `${recovery.files.length} portable files, schema v${CURRENT_WORKSPACE_SCHEMA_VERSION}, offline contract included.`
+    },
+    {
+      label: "Offline-safe",
+      done: offlineItems.every((item) => item.done),
+      detail: `${offlineItems.filter((item) => item.done).length}/${offlineItems.length} desktop and mobile readiness checks passing.`
+    },
+    {
+      label: "AI-audited",
+      done: ai.serverSideSecretsOnly && ai.auditMode.toLowerCase().includes("rationale"),
+      detail: `${ai.permissionSummary}, ${ai.actionLedgerEntries} ledger entries, ${ai.auditMode}.`
+    },
+    {
+      label: "Client-visible",
+      done: portalLinks.length > 0 || state.tasks.some((task) => task.clientVisible),
+      detail: portalLinks.length ? `${portalLinks.length} portal link${portalLinks.length === 1 ? "" : "s"} with expiry and revoke controls.` : "Client-visible work is explicitly marked before it appears in portals."
+    },
+    {
+      label: "Reversible",
+      done: backups.length > 0 || undoableActions.length > 0,
+      detail: `${backups.length} local backup${backups.length === 1 ? "" : "s"}, ${undoableActions.length} undoable operator action${undoableActions.length === 1 ? "" : "s"}.`
+    }
+  ];
+}
+
+function renderTrustModePanel() {
+  const settings = trustModeSettings();
+  const lenses = trustModeLenses();
+  const doneCount = lenses.filter((lens) => lens.done).length;
+  return `
+    <section class="panel trust-mode-panel ${settings.enabled ? "is-enabled" : ""}">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Trust Mode</p>
+          <h2>${settings.enabled ? "Ownership highlights are on" : "Turn on ownership highlights"}</h2>
+        </div>
+        <div class="data-actions">
+          <span class="status-pill ${settings.enabled ? "inbox-green" : "inbox-neutral"}">${settings.enabled ? "Active" : "Off"}</span>
+          <button class="button ${settings.enabled ? "button-secondary" : "button-primary"}" type="button" data-trust-mode-toggle>${settings.enabled ? "Turn Off" : "Turn On"}</button>
+        </div>
+      </div>
+      <p class="panel-note">Trust Mode highlights the records, workflows, and controls that answer the buyer questions closed tools make fuzzy: can we export it, recover it, audit it, scope it, and reverse risky actions?</p>
+      <div class="trust-mode-grid">
+        ${lenses.map((lens) => `
+          <article class="${lens.done ? "is-done" : "is-pending"}">
+            <span>${lens.done ? "OK" : "Check"}</span>
+            <div>
+              <strong>${escapeHtml(lens.label)}</strong>
+              <p>${escapeHtml(lens.detail)}</p>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+      <small>${doneCount}/${lenses.length} trust lenses have evidence in this workspace.${settings.updatedAt ? ` Last changed ${escapeHtml(formatTimestamp(settings.updatedAt))}.` : ""}</small>
+    </section>
+  `;
+}
+
 function renderTrustCenterPanel() {
   const stats = trustCenterStats();
   const ai = aiSettings();
@@ -28738,6 +28844,8 @@ function renderTrustCenterPanel() {
         <button class="button button-primary" type="button" data-route="operator">Review AI Ledger</button>
       </div>
     </section>
+
+    ${renderTrustModePanel()}
 
     ${renderOpenOwnershipAdvantagePanel()}
 
@@ -38115,6 +38223,12 @@ document.addEventListener("click", (event) => {
   const pluginToggleButton = event.target.closest("[data-plugin-toggle]");
   if (pluginToggleButton && !pluginToggleButton.disabled) {
     togglePluginEnabled(pluginToggleButton.dataset.pluginToggle);
+    return;
+  }
+
+  const trustModeToggleButton = event.target.closest("[data-trust-mode-toggle]");
+  if (trustModeToggleButton) {
+    toggleTrustMode();
     return;
   }
 

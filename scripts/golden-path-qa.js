@@ -575,6 +575,10 @@ const routeChecks = [
     required: [
       "Trust center",
       "Open, portable, auditable",
+      "Trust Mode",
+      "Turn on ownership highlights",
+      "Exportable",
+      "Reversible",
       "Open ownership advantage",
       "Portability over lock-in",
       "Offline-native continuity",
