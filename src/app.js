@@ -25382,6 +25382,7 @@ function renderDataManagement() {
           <span class="status-pill inbox-blue">Preview first</span>
         </div>
         <div class="settings-form">
+          ${renderSwitcherWizardSteps()}
           <label>
             <span>Source</span>
             <select id="switcher-source">
@@ -25406,6 +25407,7 @@ function renderDataManagement() {
             <span>Export payload</span>
             <textarea id="switcher-import-payload" rows="10" placeholder="Paste a CSV task export or Trello board JSON. Agora will preview mapped projects, tasks, skipped rows, warnings, and source trace metadata before applying anything."></textarea>
           </label>
+          ${renderSwitcherSourceCards()}
           ${renderSwitcherSourceGuide()}
           <div class="switcher-safety-grid">
             <article>
@@ -25442,6 +25444,107 @@ function renderDataManagement() {
         </div>
         ${renderBackendChecklist()}
       </section>
+    </div>
+  `;
+}
+
+function switcherSourcePresets() {
+  return [
+    {
+      id: "trello",
+      source: "Trello",
+      format: "json",
+      label: "Trello",
+      status: "JSON board",
+      detail: "Cards, lists, labels, members, due dates, and source URLs.",
+      sample: "trello"
+    },
+    {
+      id: "asana",
+      source: "Asana",
+      format: "csv",
+      label: "Asana",
+      status: "CSV export",
+      detail: "Tasks, projects or sections, owners, completion, due dates.",
+      sample: "csv"
+    },
+    {
+      id: "jira",
+      source: "Jira",
+      format: "csv",
+      label: "Jira",
+      status: "CSV issues",
+      detail: "Summary, project, status, assignee, priority, due dates.",
+      sample: "csv"
+    },
+    {
+      id: "linear",
+      source: "Linear",
+      format: "csv",
+      label: "Linear",
+      status: "CSV list",
+      detail: "Title, team, status, owner, priority, labels, dates.",
+      sample: "csv"
+    }
+  ];
+}
+
+function renderSwitcherWizardSteps() {
+  const preview = normalizeSwitcherImportPreview(state.switcherImportPreview);
+  const rollback = normalizeSwitcherImportRollback(state.switcherImportRollback);
+  const steps = [
+    {
+      label: "Choose source",
+      done: true,
+      detail: "Pick the tool and export format."
+    },
+    {
+      label: "Paste export",
+      done: Boolean(preview),
+      detail: preview ? `${preview.stats.rows} rows parsed.` : "CSV or Trello JSON stays local until applied."
+    },
+    {
+      label: "Review mapping",
+      done: Boolean(preview && preview.stats.confidence >= 55),
+      detail: preview ? `${preview.stats.confidence}% confidence, ${preview.warnings.length} warnings.` : "Preview shows mapped fields and skipped rows."
+    },
+    {
+      label: "Apply safely",
+      done: Boolean(rollback),
+      detail: rollback ? "Rollback is available for the last merge import." : "Agora creates a backup before changes."
+    }
+  ];
+
+  return `
+    <div class="switcher-wizard-shell">
+      <div class="switcher-wizard-copy">
+        <span class="status-pill inbox-blue">Migration wizard v1</span>
+        <strong>Move projects without losing the trail</strong>
+        <small>Source ids, import batches, previews, backups, and rollback stay visible through the whole flow.</small>
+      </div>
+      <div class="switcher-wizard-steps">
+        ${steps.map((step, index) => `
+          <article class="${step.done ? "is-complete" : ""}">
+            <span>${index + 1}</span>
+            <strong>${escapeHtml(step.label)}</strong>
+            <small>${escapeHtml(step.detail)}</small>
+          </article>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderSwitcherSourceCards() {
+  return `
+    <div class="switcher-source-grid">
+      ${switcherSourcePresets().map((preset) => `
+        <button class="switcher-source-card" type="button" data-switcher-preset="${escapeHtml(preset.id)}">
+          <span>${escapeHtml(preset.status)}</span>
+          <strong>${escapeHtml(preset.label)}</strong>
+          <small>${escapeHtml(preset.detail)}</small>
+        </button>
+      `).join("")}
     </div>
   `;
 }
@@ -25572,6 +25675,28 @@ function renderSwitcherImportPreview() {
 function renderSwitcherApplyChecklist(preview) {
   const tracedTasks = preview.tasks.filter((task) => task.customFields?.sourceId).length;
   const modeLabel = preview.mode === "new-workspace" ? "Separate workspace" : "Merge workspace";
+  const acceptance = [
+    {
+      label: "Task titles",
+      done: preview.mappedFields.includes("title"),
+      detail: "Rows without titles are skipped."
+    },
+    {
+      label: "Project routing",
+      done: preview.mappedFields.includes("project") || preview.stats.projects > 0,
+      detail: "Missing project fields use an import project."
+    },
+    {
+      label: "Owner review",
+      done: preview.mappedFields.includes("assignee"),
+      detail: "Unmapped assignees default to the active user."
+    },
+    {
+      label: "Timeline review",
+      done: preview.mappedFields.includes("due date"),
+      detail: "Missing dates can be filled after import."
+    }
+  ];
   return `
     <div class="switcher-report-grid">
       <article>
@@ -25594,6 +25719,15 @@ function renderSwitcherApplyChecklist(preview) {
         <strong>One-click</strong>
         <small>The last merge import can be restored from this Data screen.</small>
       </article>
+    </div>
+    <div class="switcher-acceptance-grid">
+      ${acceptance.map((item) => `
+        <article class="${item.done ? "is-ready" : "needs-review"}">
+          <span>${item.done ? "Ready" : "Review"}</span>
+          <strong>${escapeHtml(item.label)}</strong>
+          <small>${escapeHtml(item.detail)}</small>
+        </article>
+      `).join("")}
     </div>
   `;
 }
@@ -31669,6 +31803,20 @@ function copySwitcherSampleTrello() {
   }
 }
 
+function selectSwitcherPreset(presetId) {
+  const preset = switcherSourcePresets().find((item) => item.id === presetId);
+  if (!preset) return;
+  const source = document.querySelector("#switcher-source");
+  const format = document.querySelector("#switcher-format");
+  const textarea = document.querySelector("#switcher-import-payload");
+  if (source) source.value = preset.source;
+  if (format) format.value = preset.format;
+  if (textarea && !textarea.value.trim()) {
+    textarea.value = preset.sample === "trello" ? switcherSampleTrelloPayload() : switcherSampleCsvPayload();
+  }
+  showToast(`${preset.label} importer selected`, "success");
+}
+
 function rowsFromSwitcherJson(payload) {
   const parsed = JSON.parse(payload);
   if (parsed && typeof parsed === "object" && Array.isArray(parsed.cards) && Array.isArray(parsed.lists)) return rowsFromTrelloJson(parsed);
@@ -34155,6 +34303,11 @@ document.addEventListener("click", (event) => {
   const switcherImportButton = event.target.closest("#switcher-import-button");
   if (switcherImportButton) {
     importSwitcherPayload();
+    return;
+  }
+  const switcherPresetButton = event.target.closest("[data-switcher-preset]");
+  if (switcherPresetButton) {
+    selectSwitcherPreset(switcherPresetButton.dataset.switcherPreset);
     return;
   }
 

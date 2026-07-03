@@ -382,6 +382,9 @@ const routeChecks = [
       "Create Backup",
       "Import bundle",
       "Preview Bundle",
+      "Migration wizard v1",
+      "Move projects without losing the trail",
+      "Apply safely",
       "Desktop and mobile readiness",
       "Workspace schema",
       "offline-storage-contract.json"

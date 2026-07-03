@@ -6209,6 +6209,95 @@ body[data-tutorial-target="view"] #app-view {
   grid-column: 1 / -1;
 }
 
+.switcher-wizard-shell {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.25fr);
+  gap: 12px;
+  align-items: stretch;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.switcher-wizard-copy {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.switcher-wizard-copy strong {
+  font-size: 1.05rem;
+}
+
+.switcher-wizard-copy small,
+.switcher-wizard-steps small,
+.switcher-source-card small,
+.switcher-acceptance-grid small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.switcher-wizard-steps,
+.switcher-source-grid,
+.switcher-acceptance-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.switcher-wizard-steps article,
+.switcher-source-card,
+.switcher-acceptance-grid article {
+  display: grid;
+  gap: 5px;
+  align-content: start;
+  min-height: 100%;
+  padding: 10px;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.switcher-wizard-steps article.is-complete,
+.switcher-acceptance-grid article.is-ready {
+  border-color: color-mix(in srgb, var(--green), var(--line) 35%);
+}
+
+.switcher-wizard-steps article > span,
+.switcher-source-card > span,
+.switcher-acceptance-grid article > span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.switcher-wizard-steps article.is-complete > span,
+.switcher-acceptance-grid article.is-ready > span {
+  color: var(--green);
+}
+
+.switcher-source-card {
+  cursor: pointer;
+  color: var(--text);
+}
+
+.switcher-source-card:hover {
+  border-color: var(--accent);
+}
+
+.switcher-source-grid,
+.switcher-acceptance-grid {
+  grid-column: 1 / -1;
+}
+
+.switcher-acceptance-grid article.needs-review {
+  border-color: color-mix(in srgb, var(--amber), var(--line) 45%);
+}
+
 .switcher-safety-grid {
   grid-column: 1 / -1;
   display: grid;
@@ -9891,6 +9980,10 @@ body[data-density="compact"] .main-content {
   .notification-role-grid,
   .audit-risk-grid,
   .payment-plan-grid,
+  .switcher-wizard-shell,
+  .switcher-wizard-steps,
+  .switcher-source-grid,
+  .switcher-acceptance-grid,
   .switcher-report-grid,
   .hosted-launch-grid,
   .switcher-safety-grid,
@@ -10397,6 +10490,10 @@ body[data-density="compact"] .main-content {
   .entitlement-grant-form,
   .payment-plan-grid,
   .payment-plan-features,
+  .switcher-wizard-shell,
+  .switcher-wizard-steps,
+  .switcher-source-grid,
+  .switcher-acceptance-grid,
   .switcher-report-grid,
   .hosted-launch-grid,
   .hosted-launch-command,
