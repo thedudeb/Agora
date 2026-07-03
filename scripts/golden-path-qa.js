@@ -431,6 +431,8 @@ const routeChecks = [
     required: [
       "Current access",
       "Admin readiness",
+      "Shared guard helper",
+      "Regression coverage",
       "Danger zone review",
       "Admin activity center",
       "Role preview",

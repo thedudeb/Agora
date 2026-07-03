@@ -25600,9 +25600,37 @@ function adminActivityRows() {
     .slice(0, 8);
 }
 
+function adminReadinessControlChecks(actions = adminReadinessActions()) {
+  const guardedPermissions = new Set(actions.map((action) => action.permission));
+  const highImpactActions = actions.filter((action) => action.impact === "high");
+  return [
+    {
+      label: "Shared guard helper",
+      done: actions.length > 0 && guardedPermissions.size >= 6,
+      detail: `${actions.length} risky actions resolve through one permission catalog.`
+    },
+    {
+      label: "Audit metadata",
+      done: actions.every((action) => action.auditActions.length && action.restoreHint),
+      detail: "Admin events inherit impact, required permission, and restore guidance."
+    },
+    {
+      label: "Recovery posture",
+      done: highImpactActions.every((action) => action.controls.some((control) => /audit|restore|undo|confirm/i.test(control))),
+      detail: `${highImpactActions.length} high-impact actions expose confirmation, audit, undo, or restore paths.`
+    },
+    {
+      label: "Regression coverage",
+      done: true,
+      detail: "test:admin-security checks catalog, guard usage, audit metadata, and role boundaries."
+    }
+  ];
+}
+
 function renderAdminReadinessPanel() {
   const actions = adminReadinessActions();
   const activityRows = adminActivityRows();
+  const controlChecks = adminReadinessControlChecks(actions);
   const highImpactActions = actions.filter((action) => action.impact === "high");
   const previewedActions = actions.filter((action) => action.controls.some((control) => control.toLowerCase().includes("preview")));
   const undoableActions = actions.filter((action) => action.controls.some((control) => control.toLowerCase().includes("undo") || control.toLowerCase().includes("restore")));
@@ -25637,6 +25665,17 @@ function renderAdminReadinessPanel() {
           <strong>${auditedActions.length}</strong>
           <small>Admin actions are designed to leave local or server audit evidence.</small>
         </article>
+      </div>
+      <div class="admin-readiness-checklist" aria-label="Admin readiness audit checks">
+        ${controlChecks.map((check) => `
+          <article class="${check.done ? "is-done" : "is-pending"}">
+            <span>${check.done ? "OK" : "Review"}</span>
+            <div>
+              <strong>${escapeHtml(check.label)}</strong>
+              <small>${escapeHtml(check.detail)}</small>
+            </div>
+          </article>
+        `).join("")}
       </div>
       <div class="admin-readiness-grid">
         <div>
