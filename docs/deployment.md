@@ -1,6 +1,6 @@
 # Agora Deployment Guide
 
-This guide covers the current dependency-free Agora deployment path: static app server, API server, optional Supabase persistence, Supabase Auth, and file uploads.
+This guide covers the blessed production path for Agora: Vercel/static app hosting, one long-running Node API service, Supabase persistence/Auth/Storage, SMTP or webhook email delivery, strict CSP, request observability, and server-side workspace backups.
 
 ## Local First Run
 
@@ -16,10 +16,16 @@ Open `http://127.0.0.1:5174`, go to Settings, create the first owner account, th
 
 For the current product shape, deploy Agora as two surfaces:
 
-- Static app: any static host that can serve the repo root, such as Vercel, Netlify, S3/CloudFront, or a simple Node/static server.
-- API: a long-running Node service that runs `npm run start:api`, owns secrets, sends email, talks to Supabase, and serves authenticated uploads/downloads.
+- Static app: Vercel or another static host that serves the repo root.
+- API: a long-running Node service that runs `npm run start:api`, owns secrets, sends email, talks to Supabase, writes server backups, and serves authenticated uploads/downloads.
 
-The browser app should only know the API URL entered in Settings. Keep Supabase service-role keys, SMTP credentials, AI provider keys, Stripe keys, and webhook secrets on the API server.
+The recommended first production deployment is:
+
+```text
+Browser -> Vercel/static Agora app -> hosted Node API -> Supabase Postgres/Auth/Storage
+```
+
+The browser app should only know the Agora API URL entered in Settings. Keep Supabase service-role keys, SMTP credentials, AI provider keys, payment keys, webhook secrets, and backup paths on the API server.
 
 Recommended first production sequence:
 
@@ -28,8 +34,8 @@ Recommended first production sequence:
 3. Configure Supabase storage/auth and run migrations `001`, `002`, and `003`.
 4. Configure SMTP or password-reset webhook delivery.
 5. Sign in, open Settings > Account, and use Hosted onboarding to complete owner, API sync, invite, email, feedback, and recovery checks.
-6. Refresh Backend Health and confirm production gates, email diagnostics, background jobs, structured records, and Supabase mode are green.
-7. Run `npm run qa` locally and confirm the GitHub Actions `QA` workflow passes for the release commit.
+6. Run `npm run verify:hosted`, refresh Backend Health, and confirm production gates, email diagnostics, background jobs, structured records, backups, and Supabase mode are green.
+7. Run `npm run security`, `npm run qa`, and confirm the GitHub Actions `QA + Security` workflow passes for the release commit.
 
 ## Required Production Environment
 
@@ -46,6 +52,14 @@ AGORA_INVITATION_TTL_DAYS=14
 AGORA_PASSWORD_RESET_TTL_MINUTES=30
 AGORA_DEMO_AUTH=false
 AGORA_PASSWORDLESS_AUTH=false
+AGORA_STRICT_CSP=true
+AGORA_STRUCTURED_LOGS=true
+AGORA_BACKUP_DIR=/var/lib/agora/backups
+AGORA_BACKUP_RETENTION_FILES=20
+AGORA_BACKUP_SCHEDULER_ENABLED=true
+AGORA_BACKUP_INTERVAL_HOURS=24
+AGORA_PUBLIC_FEATURE_REQUESTS=false
+AGORA_GITHUB_WEBHOOK_SECRET=your-github-webhook-secret
 ```
 
 Use HTTPS in front of both app and API in production. Keep `AGORA_ALLOWED_ORIGINS` limited to the browser origins that should call the API.
@@ -59,6 +73,8 @@ Backend Health reports production gates for the hosted path:
 - `Team email delivery`: SMTP, sender, invitations, and feature request owner emails are configured.
 - `Public feature abuse limits`: public feedback body and rate limits are intentionally low.
 - `Rate-limit IP source`: direct socket IPs are used unless `AGORA_TRUST_PROXY=true` is intentionally enabled behind a trusted proxy.
+- `Strict CSP`: hosted app/static servers run with `AGORA_STRICT_CSP=true` or `NODE_ENV=production`.
+- `Workspace backups`: the API can write server-side backups to a durable mounted directory.
 
 Settings > Account also shows Hosted onboarding, which is the operator-facing path for first-owner signup, API sync, teammate/client invite, email delivery, public feedback, and recovery proof.
 

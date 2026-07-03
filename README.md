@@ -173,9 +173,10 @@ For a fast local confidence check while iterating:
 npm run verify:quick
 ```
 
-For hosted Supabase installs, configure `.env`, run both migrations, create the private storage bucket, then run:
+For hosted Supabase installs, configure `.env`, run all three migrations, create the private storage bucket, then run:
 
 ```sh
+npm run verify:hosted
 npm run verify:supabase
 ```
 
