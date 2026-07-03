@@ -122,6 +122,24 @@ const routeChecks = [
     ]
   },
   {
+    name: "Command Inbox work queue",
+    suite: "workspace",
+    route: "inbox",
+    width: 1265,
+    height: 712,
+    required: [
+      "Command Inbox",
+      "What needs you, what changed, and what can be cleared next",
+      "Unified command queue",
+      "Needs decision",
+      "At risk",
+      "Failed syncs",
+      "AI review",
+      "Feedback",
+      "Daily sweep"
+    ]
+  },
+  {
     name: "Portfolio resource planning",
     suite: "workspace",
     route: "portfolio",

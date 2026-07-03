@@ -2612,6 +2612,66 @@ body[data-tutorial-target="view"] #app-view {
   gap: 16px;
 }
 
+.command-inbox-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.7fr);
+  gap: 16px;
+  align-items: stretch;
+  margin-bottom: 16px;
+}
+
+.command-inbox-hero h2 {
+  max-width: 780px;
+  margin: 4px 0 8px;
+  font-size: clamp(1.35rem, 2vw, 2rem);
+}
+
+.command-inbox-hero p {
+  max-width: 780px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.command-inbox-brief {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.command-inbox-brief article {
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.command-inbox-brief span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.command-inbox-brief strong {
+  display: block;
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+}
+
+.command-inbox-brief small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.command-inbox-panel {
+  align-content: start;
+}
+
 .operator-center-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(320px, 0.75fr);
@@ -2773,6 +2833,13 @@ body[data-tutorial-target="view"] #app-view {
   font-size: 0.92rem;
 }
 
+.inbox-lane-header p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
 .inbox-lane-header span,
 .portal-list-header span {
   display: inline-flex;
@@ -2812,6 +2879,18 @@ body[data-tutorial-target="view"] #app-view {
 .inbox-item.is-contextual {
   border-style: dashed;
   box-shadow: none;
+}
+
+.command-inbox-lane[data-command-inbox-group="decision"] {
+  border-color: rgba(36, 90, 88, 0.32);
+}
+
+.command-inbox-lane[data-command-inbox-group="risk"] {
+  border-color: rgba(191, 76, 55, 0.32);
+}
+
+.command-inbox-lane[data-command-inbox-group="sync"] {
+  border-color: rgba(196, 137, 36, 0.34);
 }
 
 .inbox-main {
@@ -11402,6 +11481,7 @@ body[data-density="compact"] .main-content {
 
   .route-header,
   .workspace-trust-strip,
+  .command-inbox-hero,
   .launch-step-grid,
   .launch-flow-grid,
   .launch-complete-panel,
@@ -11542,6 +11622,7 @@ body[data-density="compact"] .main-content {
   .theme-option-grid,
   .trust-mode-grid,
   .trust-grid,
+  .command-inbox-brief,
   .open-ownership-grid,
   .mobile-roadmap-list,
   .native-mobile-grid,

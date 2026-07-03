@@ -13144,7 +13144,9 @@ function getInboxItems({ includeArchived = false } = {}) {
         taskId: task.id,
         projectId: task.projectId,
         createdAt: `${task.dueDate}T23:59:00.000Z`,
-        urgency: 4
+        urgency: 5,
+        sourceLabel: "Schedule",
+        priorityLabel: "P0"
       });
     } else if (task.status !== "done" && task.dueDate && task.dueDate <= dueSoon) {
       items.push({
@@ -13156,7 +13158,26 @@ function getInboxItems({ includeArchived = false } = {}) {
         taskId: task.id,
         projectId: task.projectId,
         createdAt: `${task.dueDate}T09:00:00.000Z`,
-        urgency: 3
+        urgency: 3,
+        sourceLabel: "Schedule",
+        priorityLabel: "P2"
+      });
+    }
+
+    if (task.status !== "done" && isTaskBlocked(task)) {
+      const blockers = openTaskDependencies(task).map((dependency) => dependency.title).filter(Boolean);
+      items.push({
+        id: `blocked-${task.id}`,
+        type: "blocked",
+        tone: "red",
+        title: task.title,
+        message: blockers.length ? `Blocked by ${blockers.join(", ")}.` : "Blocked by unresolved dependencies.",
+        taskId: task.id,
+        projectId: task.projectId,
+        createdAt: task.updatedAt || task.createdAt,
+        urgency: 5,
+        sourceLabel: "Kanban",
+        priorityLabel: "P0"
       });
     }
   });
@@ -13218,7 +13239,81 @@ function getInboxItems({ includeArchived = false } = {}) {
         projectId: approval.projectId,
         approvalId: approval.id,
         createdAt: approval.createdAt,
-        urgency: approval.status === "needs-changes" ? 4 : 3
+        urgency: approval.status === "needs-changes" ? 5 : 4,
+        sourceLabel: "Approvals",
+        priorityLabel: approval.status === "needs-changes" ? "P0" : "P1"
+      });
+    });
+
+  operatorBriefs(8)
+    .filter((brief) => brief.health < 70)
+    .forEach((brief) => {
+      const topRisk = brief.blocked[0] || brief.overdue[0] || brief.dueSoon[0];
+      items.push({
+        id: `project-risk-${brief.project.id}`,
+        type: "project risk",
+        tone: brief.health < 45 ? "red" : "amber",
+        title: brief.project.name,
+        message: topRisk ? `${brief.summary} Next risk: ${topRisk.title}.` : brief.summary,
+        projectId: brief.project.id,
+        createdAt: brief.latestActivity?.createdAt || brief.project.updatedAt || brief.project.createdAt,
+        urgency: brief.health < 45 ? 5 : 4,
+        sourceLabel: "Portfolio",
+        priorityLabel: brief.health < 45 ? "P0" : "P1"
+      });
+    });
+
+  featureRequestTasks()
+    .filter((task) => projectMatchesContext(task.projectId))
+    .filter((task) => featureRequestNeedsTriage(task) || featureRequestNeedsRequesterResponse(task))
+    .forEach((task) => {
+      const needsResponse = featureRequestNeedsRequesterResponse(task);
+      items.push({
+        id: `${needsResponse ? "feature-response" : "feature-triage"}-${task.id}`,
+        type: "feature request",
+        tone: needsResponse ? "amber" : "blue",
+        title: task.title.replace(/^Feature request:\s*/i, ""),
+        message: `${featureRequestLifecycleSummary(task)} ${task.customFields?.requester ? `Requested by ${task.customFields.requester}.` : ""}`.trim(),
+        taskId: task.id,
+        projectId: task.projectId,
+        createdAt: task.updatedAt || task.createdAt,
+        urgency: needsResponse ? 4 : 3,
+        sourceLabel: "Feedback",
+        priorityLabel: needsResponse ? "P1" : "P2"
+      });
+    });
+
+  normalizeApiSyncQueue(apiSyncQueue).forEach((item) => {
+    const conflict = item.status === "conflict";
+    items.push({
+      id: `sync-${item.id}`,
+      type: conflict ? "sync conflict" : "failed sync",
+      tone: conflict ? "red" : item.blockedBy === "network" ? "amber" : "blue",
+      title: syncQueueRecordTitle(item),
+      message: `${syncQueueSafetyMessage(item)} ${item.error || ""}`.trim(),
+      syncId: item.id,
+      createdAt: item.lastAttemptAt || item.updatedAt || item.createdAt,
+      urgency: conflict ? 5 : 4,
+      sourceLabel: "Sync",
+      priorityLabel: conflict ? "P0" : "P1"
+    });
+  });
+
+  operatorReviewQueueItems()
+    .filter((item) => item.status === "pending")
+    .forEach((item) => {
+      items.push({
+        id: `agent-review-${item.id}`,
+        type: "ai review",
+        tone: canOperatorApplyType(item.type) ? "blue" : "neutral",
+        title: item.title,
+        message: item.summary || item.rationale,
+        reviewId: item.id,
+        projectId: item.projectId,
+        createdAt: item.createdAt,
+        urgency: 4,
+        sourceLabel: "AI Operator",
+        priorityLabel: "P1"
       });
     });
 
@@ -21188,13 +21283,98 @@ function renderNotificationHistoryPanel() {
   `;
 }
 
+function commandInboxGroups(items) {
+  return [
+    {
+      id: "decision",
+      title: "Needs decision",
+      description: "Approvals, conflicts, feedback responses, and AI proposals that need a human call.",
+      items: items.filter((item) => ["approval", "sync conflict", "ai review", "feature request"].includes(item.type))
+    },
+    {
+      id: "risk",
+      title: "At risk",
+      description: "Blocked work, overdue tasks, and project health signals that can slip delivery.",
+      items: items.filter((item) => ["blocked", "overdue", "project risk"].includes(item.type))
+    },
+    {
+      id: "sync",
+      title: "Failed syncs",
+      description: "Local changes that need retry, support details, or conflict handling.",
+      items: items.filter((item) => ["failed sync", "sync conflict"].includes(item.type))
+    },
+    {
+      id: "ai",
+      title: "AI review",
+      description: "Operator proposals waiting for approval before they touch workspace data.",
+      items: items.filter((item) => item.type === "ai review")
+    },
+    {
+      id: "feedback",
+      title: "Feedback",
+      description: "Feature requests that need triage or requester follow-up.",
+      items: items.filter((item) => item.type === "feature request")
+    },
+    {
+      id: "today",
+      title: "Today",
+      description: "Assigned, due-soon, reminder, mention, and collaboration signals for daily clearing.",
+      items: items.filter((item) => ["assignment", "due soon", "reminder", "mention", "watched", "comment", "activity"].includes(item.type))
+    }
+  ];
+}
+
+function commandInboxItemSource(item) {
+  if (item.sourceLabel) return item.sourceLabel;
+  if (item.approvalId) return "Approvals";
+  if (item.reviewId) return "AI Operator";
+  if (item.syncId) return "Sync";
+  if (item.type === "mention" || item.type === "watched" || item.type === "comment" || item.type === "activity") return "Collaboration";
+  if (item.type === "assignment") return "My work";
+  if (item.type === "due soon" || item.type === "overdue" || item.type === "reminder") return "Schedule";
+  return "Workspace";
+}
+
+function commandInboxItemPriority(item) {
+  if (item.priorityLabel) return item.priorityLabel;
+  if (item.urgency >= 5) return "P0";
+  if (item.urgency >= 4) return "P1";
+  if (item.urgency >= 3) return "P2";
+  return "P3";
+}
+
+function commandInboxPriorityTone(item) {
+  const priority = commandInboxItemPriority(item);
+  if (priority === "P0") return "red";
+  if (priority === "P1") return "amber";
+  if (priority === "P2") return "blue";
+  return "neutral";
+}
+
+function commandInboxDailyBrief(items) {
+  const unread = items.filter((item) => !isInboxRead(item.id)).length;
+  const decisions = items.filter((item) => ["approval", "sync conflict", "ai review", "feature request"].includes(item.type)).length;
+  const risks = items.filter((item) => ["blocked", "overdue", "project risk"].includes(item.type)).length;
+  const syncs = items.filter((item) => ["failed sync", "sync conflict"].includes(item.type)).length;
+  const top = items.find((item) => !isInboxRead(item.id)) || items[0];
+  return {
+    unread,
+    decisions,
+    risks,
+    syncs,
+    summary: top
+      ? `${top.title} is the top item to clear first.`
+      : "No active command items need attention right now."
+  };
+}
+
 function renderInbox() {
   const items = getInboxItems();
+  const groups = commandInboxGroups(items);
+  const dailyBrief = commandInboxDailyBrief(items);
   const unreadItems = items.filter((item) => !isInboxRead(item.id));
-  const urgentItems = items.filter((item) => item.type === "overdue" || item.type === "assignment" || item.type === "approval" || item.type === "mention");
-  const approvalItems = items.filter((item) => item.type === "approval");
+  const urgentItems = items.filter((item) => ["overdue", "blocked", "project risk", "assignment", "approval", "mention", "sync conflict", "failed sync", "ai review", "feature request"].includes(item.type));
   const dueItems = items.filter((item) => item.type === "due soon");
-  const activityItems = items.filter((item) => item.type === "comment" || item.type === "activity" || item.type === "mention" || item.type === "watched");
   const mentionItems = items.filter((item) => item.type === "mention" || item.type === "watched");
   const briefs = operatorBriefs(3);
   const pulse = workspacePulse();
@@ -21202,17 +21382,37 @@ function renderInbox() {
   els.appView.innerHTML = `
     <div class="metric-grid">
       ${metric("Unread", unreadItems.length)}
-      ${metric("Needs action", urgentItems.length)}
-      ${metric("Due soon", dueItems.length)}
-      ${metric("Mentions", mentionItems.length)}
+      ${metric("Decisions", dailyBrief.decisions)}
+      ${metric("At risk", dailyBrief.risks)}
+      ${metric("Failed syncs", dailyBrief.syncs)}
     </div>
 
+    <section class="panel command-inbox-hero">
+      <div>
+        <p class="eyebrow">Command Inbox</p>
+        <h2>What needs you, what changed, and what can be cleared next</h2>
+        <p>${escapeHtml(dailyBrief.summary)}</p>
+      </div>
+      <div class="command-inbox-brief">
+        <article>
+          <span>Clear first</span>
+          <strong>${urgentItems[0] ? escapeHtml(urgentItems[0].title) : "Nothing urgent"}</strong>
+          <small>${urgentItems[0] ? escapeHtml(urgentItems[0].message) : "The workspace is quiet."}</small>
+        </article>
+        <article>
+          <span>Daily sweep</span>
+          <strong>${dueItems.length + mentionItems.length}</strong>
+          <small>due-soon, mention, and watched-task signals</small>
+        </article>
+      </div>
+    </section>
+
     <div class="command-center-grid">
-      <section class="panel inbox-panel">
+      <section class="panel inbox-panel command-inbox-panel">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">Command center</p>
-            <h2>Inbox</h2>
+            <p class="eyebrow">Work queue</p>
+            <h2>Unified command queue</h2>
           </div>
           <div class="inbox-header-actions">
             <button class="button button-secondary" type="button" data-inbox-bulk="read" ${items.length ? "" : "disabled"}>Mark All Read</button>
@@ -21220,10 +21420,7 @@ function renderInbox() {
           </div>
         </div>
         <div class="inbox-lanes">
-          ${renderInboxLane("Needs action", urgentItems)}
-          ${renderInboxLane("Approvals", approvalItems)}
-          ${renderInboxLane("Due soon", dueItems)}
-          ${renderInboxLane("Activity", activityItems)}
+          ${groups.map(renderInboxLaneGroup).join("")}
         </div>
       </section>
 
@@ -21297,13 +21494,32 @@ function renderInboxLane(title, items) {
   `;
 }
 
+function renderInboxLaneGroup(group) {
+  return `
+    <section class="inbox-lane command-inbox-lane" data-command-inbox-group="${escapeHtml(group.id)}">
+      <div class="inbox-lane-header">
+        <div>
+          <h3>${escapeHtml(group.title)}</h3>
+          <p>${escapeHtml(group.description)}</p>
+        </div>
+        <span>${group.items.length}</span>
+      </div>
+      <div class="inbox-list">
+        ${group.items.length ? group.items.slice(0, 7).map((item) => renderInboxItem(item, group.title)).join("") : emptyState("Nothing here right now.")}
+      </div>
+    </section>
+  `;
+}
+
 function inboxLaneTitles(item) {
   const lanes = [];
-  if (item.type === "overdue" || item.type === "assignment" || item.type === "approval" || item.type === "mention" || item.type === "reminder") lanes.push("Needs action");
-  if (item.type === "approval") lanes.push("Approvals");
-  if (item.type === "due soon" || item.type === "reminder") lanes.push("Due soon");
-  if (item.type === "comment" || item.type === "activity" || item.type === "mention" || item.type === "watched") lanes.push("Activity");
-  return lanes.length ? lanes : ["Activity"];
+  if (["approval", "sync conflict", "ai review", "feature request"].includes(item.type)) lanes.push("Needs decision");
+  if (["blocked", "overdue", "project risk"].includes(item.type)) lanes.push("At risk");
+  if (["failed sync", "sync conflict"].includes(item.type)) lanes.push("Failed syncs");
+  if (item.type === "ai review") lanes.push("AI review");
+  if (item.type === "feature request") lanes.push("Feedback");
+  if (["assignment", "due soon", "reminder", "mention", "watched", "comment", "activity"].includes(item.type)) lanes.push("Today");
+  return lanes.length ? lanes : ["Today"];
 }
 
 function primaryInboxLane(item) {
@@ -21324,6 +21540,12 @@ function inboxItemReason(item) {
   if (item.type === "comment") return "A teammate commented on visible work.";
   if (item.type === "approval") return "An approval is waiting or needs changes.";
   if (item.type === "reminder") return "You asked Agora to bring this item back.";
+  if (item.type === "blocked") return "This task has open dependencies and needs an unblocker.";
+  if (item.type === "project risk") return "Project health is below target based on overdue, blocked, due-soon, and approval signals.";
+  if (item.type === "failed sync") return "A local API write failed and is waiting in the retry queue.";
+  if (item.type === "sync conflict") return "A local write conflicts with server data and needs a merge decision.";
+  if (item.type === "ai review") return "The Operator proposed an action that needs explicit human approval.";
+  if (item.type === "feature request") return "A feedback item needs triage or requester follow-up.";
   return "Recent activity matches your current workspace filters.";
 }
 
@@ -21339,8 +21561,15 @@ function renderInboxActions(item, isPrimary) {
   return `
     ${item.approvalId ? `<button class="button button-primary" type="button" data-approval-action="approved" data-approval-id="${item.approvalId}" data-inbox-id="${item.id}">Approve</button>` : ""}
     ${item.approvalId ? `<button class="button button-secondary" type="button" data-approval-action="needs-changes" data-approval-id="${item.approvalId}" data-inbox-id="${item.id}">Needs Changes</button>` : ""}
+    ${item.reviewId ? `<button class="button button-primary" type="button" data-agent-review-approve="${escapeHtml(item.reviewId)}">Approve AI</button>` : ""}
+    ${item.reviewId ? `<button class="button button-secondary" type="button" data-agent-review-reject="${escapeHtml(item.reviewId)}">Reject AI</button>` : ""}
+    ${item.syncId ? `<button class="button button-primary" type="button" data-sync-item-action="retry" data-sync-id="${escapeHtml(item.syncId)}" ${apiSession ? "" : "disabled"}>Retry Sync</button>` : ""}
+    ${item.syncId ? `<button class="button button-secondary" type="button" data-sync-item-action="open" data-sync-id="${escapeHtml(item.syncId)}">Open Record</button>` : ""}
+    ${item.syncId ? `<button class="button button-secondary" type="button" data-sync-item-action="copy" data-sync-id="${escapeHtml(item.syncId)}">Copy Details</button>` : ""}
     ${item.taskId ? `<button class="button button-secondary" type="button" data-inbox-plan="${item.taskId}" data-inbox-id="${item.id}">Plan Today</button>` : ""}
     ${item.taskId ? `<button class="button button-secondary" type="button" data-edit-task="${item.taskId}" data-inbox-id="${item.id}">Open</button>` : ""}
+    ${!item.taskId && item.projectId ? `<button class="button button-secondary" type="button" data-project-id="${escapeHtml(item.projectId)}">Open Project</button>` : ""}
+    ${item.type === "feature request" ? `<button class="button button-secondary" type="button" data-route="feature-requests">Request Board</button>` : ""}
     <button class="button button-secondary" type="button" data-inbox-remind="tomorrow" data-inbox-id="${item.id}">Remind Tomorrow</button>
     <button class="button button-secondary" type="button" data-inbox-remind="next-week" data-inbox-id="${item.id}">Next Week</button>
     <button class="button button-secondary" type="button" data-inbox-snooze="${item.id}">Snooze</button>
@@ -21390,6 +21619,8 @@ function renderInboxItem(item, laneTitle = "") {
       <div class="inbox-main">
         <div class="inbox-item-kicker">
           <span class="status-pill inbox-${item.tone}">${escapeHtml(item.type)}</span>
+          <span class="status-pill inbox-${commandInboxPriorityTone(item)}">${escapeHtml(commandInboxItemPriority(item))}</span>
+          <span class="status-pill inbox-neutral">${escapeHtml(commandInboxItemSource(item))}</span>
           ${isPrimary ? "" : `<span class="status-pill inbox-neutral">Actions in ${escapeHtml(primaryLane)}</span>`}
           ${secondaryLanes.map((lane) => `<span class="status-pill inbox-neutral">Also ${escapeHtml(lane)}</span>`).join("")}
         </div>
