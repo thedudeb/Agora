@@ -17482,6 +17482,106 @@ function downloadReleaseNotes(releaseId) {
   showToast("Release notes downloaded", "success");
 }
 
+function releaseScopeCsv(release) {
+  const headers = ["id", "title", "status", "priority", "assignee", "dueDate", "github", "tags"];
+  const rows = release.scope.map((task) => [
+    task.id,
+    task.title,
+    statusLabel(task.status),
+    priorityLabel(task.priority),
+    memberName(task.assignee),
+    task.dueDate || "",
+    task.customFields?.githubUrl || task.customFields?.githubExternalId || task.customFields?.githubPullRequestId || "",
+    (task.tags || []).join("; ")
+  ]);
+  return [headers, ...rows].map((row) => row.map(csvValue).join(",")).join("\n");
+}
+
+function releaseEvidenceMarkdown(release) {
+  const gates = releaseGateDefinitions(release);
+  const audit = releaseRecentSignals(release);
+  const risks = release.risks.filter((item) => item.status !== "closed");
+  return [
+    `# ${release.project.name} Release Evidence Pack`,
+    "",
+    `Generated: ${new Date().toISOString()}`,
+    `Owner: ${memberName(release.owner) || "Unowned"}`,
+    `Target date: ${release.targetDate ? formatDate(release.targetDate) : "Unscheduled"}`,
+    `Confidence: ${release.confidence}%`,
+    "",
+    "## Gate Status",
+    "",
+    ...gates.map((gate) => `- ${gate.label}: ${gate.passed ? "pass" : "open"}${gate.override === "waived" ? " (waived)" : ""} / ${gate.detail}`),
+    "",
+    "## Scope",
+    "",
+    ...release.scope.map((task) => `- ${task.title}: ${statusLabel(task.status)} / ${memberName(task.assignee)} / ${task.dueDate ? formatDate(task.dueDate) : "No due date"}`),
+    "",
+    "## Open Risks",
+    "",
+    ...(risks.length ? risks.map((risk) => `- ${risk.title}: ${risk.mitigation || risk.detail || "Needs follow-up."}`) : ["- No open risks linked to this release."]),
+    "",
+    "## Audit Evidence",
+    "",
+    ...(audit.length ? audit.map((event) => `- ${event.createdAt || ""}: ${event.action || "event"} / ${event.detail || "No detail"}`) : ["- No recent audit signal linked to this release."]),
+    "",
+    "## Release Notes",
+    "",
+    releaseNotesDraft(release)
+  ].join("\n");
+}
+
+function releaseEvidenceJson(release) {
+  return JSON.stringify({
+    workspace: {
+      id: state.workspace.id,
+      name: state.workspace.name
+    },
+    release: {
+      id: release.id,
+      project: release.project,
+      owner: release.owner,
+      targetDate: release.targetDate,
+      confidence: release.confidence,
+      blockers: release.blockers,
+      gates: releaseGateDefinitions(release),
+      risks: release.risks,
+      approvals: release.approvals,
+      scope: release.scope,
+      releaseNotes: releaseNotesDraft(release)
+    },
+    auditEvidence: releaseRecentSignals(release),
+    recoverySnapshot: workspaceSnapshot(),
+    generatedAt: new Date().toISOString()
+  }, null, 2);
+}
+
+function downloadReleaseEvidencePack(releaseId) {
+  const release = selectedReleaseRecord(releaseProjectCandidates().filter((item) => item.id === releaseId));
+  if (!release) return;
+  const base = `${slugFromName(release.project.name)}-release-evidence-${todayKey()}`;
+  downloadTextFile(`${base}.md`, releaseEvidenceMarkdown(release), "text/markdown");
+  downloadJsonFile(`${base}.json`, releaseEvidenceJson(release));
+  downloadTextFile(`${base}-scope.csv`, releaseScopeCsv(release), "text/csv");
+  addAuditEvent({
+    action: "release_evidence_export",
+    detail: `Exported release evidence pack for ${release.project.name}`,
+    targetType: "release",
+    targetId: release.id,
+    metadata: {
+      releaseId: release.id,
+      gateCount: releaseGateDefinitions(release).length,
+      scopeCount: release.scope.length,
+      riskCount: release.risks.length
+    },
+    impact: "medium",
+    restoreHint: "Evidence export is a download event; regenerate it from Release Management if needed."
+  });
+  saveState();
+  renderReleaseManagement();
+  showToast("Release evidence pack exported", "success");
+}
+
 function releaseRecentSignals(release) {
   const projectId = release?.project?.id || "";
   return allAuditEvents()
@@ -17528,9 +17628,10 @@ function renderReleaseManagement() {
       title: "Ship room",
       description: "A release command center for scope, owner, date, confidence, blockers, linked projects, and operational readiness.",
       actions: [
+        { label: "Export Evidence", id: "release-evidence-export", primary: true },
         { label: "Open Readiness", route: "readiness" },
         { label: "Open Audit", route: "audit" },
-        { label: "Create Backup", commandId: "backup:create", primary: true }
+        { label: "Create Backup", commandId: "backup:create" }
       ]
     })}
 
@@ -36767,6 +36868,13 @@ document.addEventListener("click", (event) => {
   const releaseNotesDownloadButton = event.target.closest("[data-release-notes-download]");
   if (releaseNotesDownloadButton) {
     downloadReleaseNotes(releaseNotesDownloadButton.dataset.releaseNotesDownload);
+    return;
+  }
+
+  const releaseEvidenceExportButton = event.target.closest("#release-evidence-export");
+  if (releaseEvidenceExportButton) {
+    const release = selectedReleaseRecord(releaseProjectCandidates());
+    if (release) downloadReleaseEvidencePack(release.id);
     return;
   }
 
