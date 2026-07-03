@@ -46,6 +46,18 @@ async function run() {
   try {
     const health = await request(`${baseUrl}/api/health`);
     assert(health.ok === true, "health endpoint failed");
+    assert(health.version, "health endpoint did not expose API version");
+
+    const capabilities = await request(`${baseUrl}/api/capabilities`);
+    assert(capabilities.service === "agora-api", "capabilities endpoint returned wrong service");
+    assert(capabilities.auth?.bearer === true, "capabilities endpoint did not describe bearer auth");
+    assert(capabilities.resources?.structuredCollections?.includes("comments"), "capabilities endpoint missed structured collections");
+    assert(capabilities.agentDefaults?.readOnlyByDefault === true, "capabilities endpoint missed agent defaults");
+
+    const openApi = await request(`${baseUrl}/api/openapi.json`);
+    assert(openApi.openapi === "3.1.0", "openapi endpoint returned wrong version");
+    assert(openApi.paths?.["/api/tasks"]?.get, "openapi endpoint missed tasks list route");
+    assert(openApi.components?.securitySchemes?.bearerAuth, "openapi endpoint missed bearer auth scheme");
 
     const login = await request(`${baseUrl}/api/auth/demo-login`, {
       method: "POST",

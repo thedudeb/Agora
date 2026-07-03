@@ -27,6 +27,7 @@ const INVITATION_TTL_MS = positiveNumber(process.env.AGORA_INVITATION_TTL_DAYS, 
 const PORTAL_LINK_TTL_MS = positiveNumber(process.env.AGORA_PORTAL_LINK_TTL_DAYS, 14) * 24 * 60 * 60 * 1000;
 const PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS = positiveNumber(process.env.AGORA_PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS, 30);
 const PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS = positiveNumber(process.env.AGORA_PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS, 10 * 60 * 1000);
+const API_VERSION = "0.1.0";
 
 const workspace = {
   id: "workspace-acme",
@@ -481,6 +482,159 @@ function backgroundJobAction(jobId, action) {
   publicError(404, "Background job action not found");
 }
 
+function apiCapabilitiesDocument() {
+  return {
+    service: "agora-api",
+    version: API_VERSION,
+    generatedAt: new Date().toISOString(),
+    workspace: {
+      id: workspace.id,
+      slug: workspace.slug
+    },
+    docs: {
+      api: "/api/openapi.json",
+      agentContract: "docs/api-agent-contract.md",
+      mcp: "docs/mcp-server.md"
+    },
+    auth: {
+      bearer: true,
+      publicEndpoints: [
+        "GET /api/health",
+        "GET /api/capabilities",
+        "GET /api/openapi.json",
+        "GET /api/public/feature-requests",
+        "POST /api/public/feature-requests",
+        "GET /api/invitations/:token",
+        "POST /api/invitations/:token/accept",
+        "GET /api/portal-links/validate/:token",
+        "POST /api/portal-links/actions/:token"
+      ],
+      sessionEndpoints: [
+        "POST /api/auth/password-login",
+        "POST /api/auth/supabase-login",
+        "POST /api/auth/logout",
+        "GET /api/session"
+      ]
+    },
+    resources: {
+      canonical: ["projects", "tasks"],
+      structuredCollections: Object.keys(recordCollections),
+      workspaceSnapshot: true,
+      realtime: "GET /api/realtime/events"
+    },
+    permissions: rolePermissions,
+    agentDefaults: {
+      readOnlyByDefault: true,
+      preferCanonicalWrites: true,
+      requireConfirmationFor: [
+        "workspace imports",
+        "archive or restore actions",
+        "external email or webhook sends",
+        "payment actions",
+        "membership or security changes"
+      ]
+    }
+  };
+}
+
+function openApiDocument() {
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "Agora API",
+      version: API_VERSION,
+      summary: "Open source project management API for local-first teams and trusted automation clients."
+    },
+    servers: [
+      {
+        url: "http://127.0.0.1:8787",
+        description: "Local Agora API"
+      }
+    ],
+    security: [{ bearerAuth: [] }],
+    paths: {
+      "/api/health": {
+        get: publicOperation("Service health", "Returns service health and active workspace metadata.")
+      },
+      "/api/capabilities": {
+        get: publicOperation("API capabilities", "Returns auth, permissions, resources, and agent defaults.")
+      },
+      "/api/session": {
+        get: operation("Current session", "Returns authenticated user, membership, permissions, and scope.")
+      },
+      "/api/projects": {
+        get: operation("List projects", "Lists visible projects with limit, offset, query, and companyId filters."),
+        post: operation("Create project", "Creates a project for sessions with project write permission.")
+      },
+      "/api/projects/{id}": {
+        put: operation("Update project", "Updates a project for project-manager/admin roles."),
+        delete: operation("Archive project", "Archives a project and its tasks.")
+      },
+      "/api/tasks": {
+        get: operation("List tasks", "Lists visible tasks with project, company, assignee, status, priority, tag, and query filters."),
+        post: operation("Create task", "Creates a task for sessions with task write permission.")
+      },
+      "/api/tasks/{id}": {
+        put: operation("Update task", "Updates a task for sessions with task write permission."),
+        delete: operation("Archive task", "Archives a task.")
+      },
+      "/api/records": {
+        get: operation("List structured records", "Returns structured collections and bootstrap fallback data.")
+      },
+      "/api/records/{collection}": {
+        get: operation("List collection records", "Lists a structured collection with scope-safe filters."),
+        post: operation("Create or update collection record", "Writes one structured record with server-side permission checks.")
+      },
+      "/api/workspace": {
+        get: operation("Get workspace snapshot", "Returns the current scoped workspace snapshot."),
+        put: operation("Save workspace snapshot", "Saves a workspace snapshot for workspace-wide admin/project-manager roles.")
+      },
+      "/api/workspace/import": {
+        post: operation("Import workspace", "Imports a workspace snapshot for admins.")
+      },
+      "/api/backend/health": {
+        get: operation("Backend health", "Returns authenticated readiness, metrics, jobs, production gates, and session scope.")
+      }
+    },
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer"
+        }
+      }
+    },
+    "x-agora": {
+      capabilitiesUrl: "/api/capabilities",
+      agentContract: "docs/api-agent-contract.md",
+      structuredCollections: Object.keys(recordCollections)
+    }
+  };
+}
+
+function publicOperation(summary, description) {
+  return {
+    summary,
+    description,
+    security: [],
+    responses: {
+      200: { description: "OK" }
+    }
+  };
+}
+
+function operation(summary, description) {
+  return {
+    summary,
+    description,
+    responses: {
+      200: { description: "OK" },
+      401: { description: "Missing or invalid session" },
+      403: { description: "Missing permission" }
+    }
+  };
+}
+
 function createServer(options = {}) {
   const storage = options.storage || createStorage();
   initializeBackgroundJobs(storage);
@@ -516,10 +670,21 @@ function createServer(options = {}) {
         sendJson(response, 200, {
           ok: true,
           service: "agora-api",
+          version: API_VERSION,
           storage: storage.driver || "json-file",
           auth: authDriverLabel(),
           workspace
         });
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/capabilities") {
+        sendJson(response, 200, apiCapabilitiesDocument());
+        return;
+      }
+
+      if (request.method === "GET" && url.pathname === "/api/openapi.json") {
+        sendJson(response, 200, openApiDocument());
         return;
       }
 
