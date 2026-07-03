@@ -5543,6 +5543,68 @@ body[data-tutorial-target="view"] #app-view {
   border-radius: 8px;
 }
 
+.connector-registry-panel,
+.github-connector-panel {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.connector-registry-list,
+.github-link-list {
+  display: grid;
+  gap: 8px;
+}
+
+.connector-registry-list article,
+.github-link-list article {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.connector-registry-list p,
+.connector-registry-list small,
+.github-link-list span,
+.github-link-list small {
+  color: var(--muted);
+}
+
+.github-connector-grid,
+.github-mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.github-mapping-grid article {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.github-mapping-grid span {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.github-link-preview {
+  display: grid;
+  gap: 10px;
+}
+
 .integration-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -10089,6 +10151,8 @@ body[data-density="compact"] .main-content {
   .settings-grid,
   .data-grid,
   .docs-grid,
+  .github-connector-grid,
+  .github-mapping-grid,
   .project-backlog-grid,
   .intake-grid,
   .fields-grid,
@@ -10604,6 +10668,8 @@ body[data-density="compact"] .main-content {
   .admin-action-list article,
   .integration-grid,
   .integration-summary-grid,
+  .github-connector-grid,
+  .github-mapping-grid,
   .sprint-signal-grid,
   .sprint-definition-list,
   .sprint-planning-row,

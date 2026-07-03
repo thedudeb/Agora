@@ -468,6 +468,23 @@ const routeChecks = [
     ]
   },
   {
+    name: "Settings integration registry",
+    suite: "admin",
+    route: "settings",
+    query: { settingsTab: "integrations" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Connected tools",
+      "Connector registry",
+      "Auth, scopes, direction, and health",
+      "GitHub Integration v1",
+      "Issues and pull requests",
+      "Linked work preview",
+      "Repository"
+    ]
+  },
+  {
     name: "Settings plugin registry",
     suite: "admin",
     route: "settings",

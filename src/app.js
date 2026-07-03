@@ -544,7 +544,7 @@ const integrationSyncModes = [
   { id: "two-way", label: "Two-way" }
 ];
 
-const integrationEventOptions = ["task.updated", "approval.requested", "comment.created", "file.shared", "daily.digest", "intake.submitted"];
+const integrationEventOptions = ["task.updated", "approval.requested", "comment.created", "file.shared", "daily.digest", "intake.submitted", "github.issue.opened", "github.issue.closed", "github.pr.opened", "github.pr.merged"];
 
 const automationTriggerOptions = [
   { id: "task_due_soon", label: "Task due soon" },
@@ -1161,6 +1161,30 @@ const seedData = {
       webhookEndpoint: "",
       apiAccess: true,
       eventMirroring: true,
+      github: {
+        repositories: [
+          {
+            id: "agora-main",
+            fullName: "thedudeb/Agora",
+            projectId: "project-launch",
+            syncIssues: true,
+            syncPullRequests: true,
+            closeOnDone: true,
+            labelPrefix: "agora",
+            branchPrefix: "agora/",
+            lastSyncedAt: "",
+            status: "mapped"
+          }
+        ],
+        fieldMapping: {
+          issueTitle: "title",
+          issueBody: "description",
+          issueLabels: "tags",
+          issueAssignee: "assignee",
+          issueState: "status",
+          pullRequestState: "customFields.githubPrState"
+        }
+      },
       connections: [
         {
           id: "api",
@@ -2724,7 +2748,7 @@ function normalizeState(nextState) {
         ...((nextState.workspace || {}).ai || {}),
         permissions: normalizeAiPermissions((nextState.workspace || {}).ai?.permissions)
       },
-      integrations: normalizeWorkspaceIntegrations((nextState.workspace || {}).integrations),
+      integrations: normalizeWorkspaceIntegrations((nextState.workspace || {}).integrations, projects),
       capacity: normalizeWorkspaceCapacity((nextState.workspace || {}).capacity),
       scrum: normalizeWorkspaceScrum((nextState.workspace || {}).scrum),
       payments: normalizeWorkspacePayments((nextState.workspace || {}).payments)
@@ -3388,7 +3412,45 @@ function normalizeIntegrationConnection(connection = {}) {
   };
 }
 
-function normalizeWorkspaceIntegrations(integrations = {}) {
+function normalizeGitHubIntegration(value = {}, projectList = seedData.projects) {
+  const fallback = seedData.workspace.integrations?.github || {};
+  const projectIds = new Set((Array.isArray(projectList) ? projectList : seedData.projects).map((project) => project.id));
+  const repositories = (Array.isArray(value.repositories) ? value.repositories : fallback.repositories || [])
+    .filter((repo) => repo && typeof repo === "object")
+    .map((repo) => {
+      const fullName = String(repo.fullName || "").trim().replace(/^https:\/\/github\.com\//i, "").replace(/\/+$/, "").slice(0, 120);
+      return {
+        id: String(repo.id || `github-${fullName.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "repo"}`).slice(0, 80),
+        fullName,
+        projectId: projectIds.has(repo.projectId) ? repo.projectId : (Array.isArray(projectList) ? projectList[0]?.id : seedData.projects[0]?.id) || "",
+        syncIssues: repo.syncIssues !== false,
+        syncPullRequests: repo.syncPullRequests !== false,
+        closeOnDone: repo.closeOnDone !== false,
+        labelPrefix: String(repo.labelPrefix || "agora").trim().slice(0, 32),
+        branchPrefix: String(repo.branchPrefix || "agora/").trim().slice(0, 48),
+        lastSyncedAt: String(repo.lastSyncedAt || ""),
+        status: ["mapped", "needs-auth", "syncing", "error"].includes(repo.status) ? repo.status : "mapped"
+      };
+    })
+    .filter((repo) => repo.fullName.includes("/"))
+    .slice(0, 12);
+  const mapping = value.fieldMapping && typeof value.fieldMapping === "object" && !Array.isArray(value.fieldMapping)
+    ? value.fieldMapping
+    : fallback.fieldMapping || {};
+  return {
+    repositories,
+    fieldMapping: {
+      issueTitle: String(mapping.issueTitle || "title"),
+      issueBody: String(mapping.issueBody || "description"),
+      issueLabels: String(mapping.issueLabels || "tags"),
+      issueAssignee: String(mapping.issueAssignee || "assignee"),
+      issueState: String(mapping.issueState || "status"),
+      pullRequestState: String(mapping.pullRequestState || "customFields.githubPrState")
+    }
+  };
+}
+
+function normalizeWorkspaceIntegrations(integrations = {}, projectList = seedData.projects) {
   const fallback = seedData.workspace.integrations || {};
   const storedConnections = Array.isArray(integrations.connections) ? integrations.connections : fallback.connections || [];
   const byId = new Map(storedConnections.map((connection) => [connection?.id, connection]));
@@ -3398,6 +3460,7 @@ function normalizeWorkspaceIntegrations(integrations = {}) {
     webhookEndpoint: String(integrations.webhookEndpoint || "").trim().slice(0, 240),
     apiAccess: Object.prototype.hasOwnProperty.call(integrations, "apiAccess") ? Boolean(integrations.apiAccess) : Boolean(fallback.apiAccess),
     eventMirroring: Object.prototype.hasOwnProperty.call(integrations, "eventMirroring") ? Boolean(integrations.eventMirroring) : Boolean(fallback.eventMirroring),
+    github: normalizeGitHubIntegration(integrations.github, projectList),
     connections: integrationCatalog.map((catalogItem) => normalizeIntegrationConnection({
       id: catalogItem.id,
       ...(byId.get(catalogItem.id) || {})
@@ -8204,7 +8267,7 @@ function renderPaymentEntitlement(entitlement) {
 }
 
 function integrationSettings() {
-  return normalizeWorkspaceIntegrations(state.workspace?.integrations);
+  return normalizeWorkspaceIntegrations(state.workspace?.integrations, state.projects);
 }
 
 function integrationStatusLabel(status) {
@@ -8258,12 +8321,152 @@ function renderIntegrationsHubPanel() {
         </label>
       </div>
       ${renderNotificationDeliveryIntegrationPanel()}
+      ${renderConnectorRegistryPanel(integrations)}
+      ${renderGitHubIntegrationPanel(integrations)}
       <div class="integration-grid">
         ${integrationCatalog.map((catalogItem) => renderIntegrationCard(catalogItem, integrations.connections.find((connection) => connection.id === catalogItem.id))).join("")}
       </div>
       <div class="integration-action-row">
         <button class="button button-secondary" type="button" id="integration-test-event" ${canManageIntegrations ? "" : "disabled"}>Log Test Event</button>
         <button class="button button-primary" type="button" id="integrations-save" ${canManageIntegrations ? "" : "disabled"}>Save Integrations</button>
+      </div>
+    </section>
+  `;
+}
+
+function renderConnectorRegistryPanel(integrations) {
+  const rows = integrations.connections.map((connection) => {
+    const catalogItem = integrationCatalog.find((item) => item.id === connection.id) || {};
+    const ready = connection.status === "connected" && connection.health === "healthy";
+    return {
+      id: connection.id,
+      name: catalogItem.name || connection.id,
+      category: catalogItem.category || "Connector",
+      ready,
+      syncMode: integrationSyncLabel(connection.syncMode),
+      health: connection.health || "planned",
+      owner: memberName(connection.owner || integrations.defaultOwner),
+      events: connection.events || []
+    };
+  });
+  return `
+    <section class="connector-registry-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Connector registry</p>
+          <h2>Auth, scopes, direction, and health</h2>
+        </div>
+        <span class="status-pill inbox-blue">${rows.filter((row) => row.ready).length}/${rows.length} ready</span>
+      </div>
+      <div class="connector-registry-list">
+        ${rows.slice(0, 6).map((row) => `
+          <article>
+            <div>
+              <span class="status-pill ${row.ready ? "inbox-green" : row.health === "error" ? "inbox-red" : "inbox-neutral"}">${escapeHtml(row.health)}</span>
+              <strong>${escapeHtml(row.name)}</strong>
+              <p>${escapeHtml(`${row.category} / ${row.syncMode} / owner ${row.owner}`)}</p>
+            </div>
+            <small>${row.events.length} subscribed events</small>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function githubIntegrationPreviewRows(integrations) {
+  const github = normalizeGitHubIntegration(integrations.github, state.projects);
+  const repos = github.repositories.length ? github.repositories : normalizeGitHubIntegration({}, state.projects).repositories;
+  return repos.flatMap((repo) => {
+    const tasks = state.tasks
+      .filter((task) => task.projectId === repo.projectId && task.status !== "archived")
+      .slice(0, 4);
+    return tasks.map((task, index) => {
+      const issueNumber = task.customFields?.githubIssueNumber || task.customFields?.githubIssue || `${100 + index}`;
+      const prNumber = task.customFields?.githubPrNumber || (task.status === "review" || task.status === "done" ? `${200 + index}` : "");
+      return {
+        repo,
+        task,
+        issueNumber,
+        prNumber,
+        issueState: task.status === "done" && repo.closeOnDone ? "closed" : "open",
+        prState: task.status === "done" ? "merged" : task.status === "review" ? "open" : "none"
+      };
+    });
+  }).slice(0, 8);
+}
+
+function renderGitHubIntegrationPanel(integrations) {
+  const github = normalizeGitHubIntegration(integrations.github, state.projects);
+  const connection = integrations.connections.find((item) => item.id === "github") || {};
+  const repo = github.repositories[0] || normalizeGitHubIntegration({}, state.projects).repositories[0] || {};
+  const previewRows = githubIntegrationPreviewRows(integrations);
+  const ready = connection.status === "connected" && ["inbound", "two-way"].includes(connection.syncMode);
+  return `
+    <section class="github-connector-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">GitHub Integration v1</p>
+          <h2>Issues and pull requests</h2>
+        </div>
+        <span class="status-pill ${ready ? "inbox-green" : "inbox-amber"}">${ready ? "Sync ready" : "Configure sync"}</span>
+      </div>
+      <div class="github-connector-grid">
+        <label>
+          <span>Repository</span>
+          <input id="github-repo-full-name" value="${escapeHtml(repo.fullName || "thedudeb/Agora")}" placeholder="owner/repo">
+        </label>
+        <label>
+          <span>Agora project</span>
+          <select id="github-project-id">
+            ${state.projects.map((project) => `<option value="${project.id}" ${project.id === repo.projectId ? "selected" : ""}>${escapeHtml(project.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Label prefix</span>
+          <input id="github-label-prefix" value="${escapeHtml(repo.labelPrefix || "agora")}" placeholder="agora">
+        </label>
+        <label>
+          <span>Branch prefix</span>
+          <input id="github-branch-prefix" value="${escapeHtml(repo.branchPrefix || "agora/")}" placeholder="agora/">
+        </label>
+        <label class="checkbox-label">
+          <input id="github-sync-issues" type="checkbox" ${repo.syncIssues !== false ? "checked" : ""}>
+          <span>Sync issues into tasks</span>
+        </label>
+        <label class="checkbox-label">
+          <input id="github-sync-prs" type="checkbox" ${repo.syncPullRequests !== false ? "checked" : ""}>
+          <span>Show pull request status on cards</span>
+        </label>
+        <label class="checkbox-label">
+          <input id="github-close-on-done" type="checkbox" ${repo.closeOnDone !== false ? "checked" : ""}>
+          <span>Close linked issues when tasks are done</span>
+        </label>
+      </div>
+      <div class="github-mapping-grid">
+        ${Object.entries(github.fieldMapping).map(([githubField, agoraField]) => `
+          <article>
+            <span>${escapeHtml(githubField)}</span>
+            <strong>${escapeHtml(agoraField)}</strong>
+          </article>
+        `).join("")}
+      </div>
+      <div class="github-link-preview">
+        <div class="mini-section-header">
+          <strong>Linked work preview</strong>
+          <span>${previewRows.length} task${previewRows.length === 1 ? "" : "s"} ready to map from Agora to GitHub.</span>
+        </div>
+        <div class="github-link-list">
+          ${previewRows.length ? previewRows.map((row) => `
+            <article>
+              <div>
+                <strong>${escapeHtml(row.task.title)}</strong>
+                <span>${escapeHtml(row.repo.fullName)} #${escapeHtml(row.issueNumber)} / issue ${escapeHtml(row.issueState)}${row.prNumber ? ` / PR #${escapeHtml(row.prNumber)} ${escapeHtml(row.prState)}` : ""}</span>
+              </div>
+              <small>${escapeHtml(statusLabel(row.task.status))}</small>
+            </article>
+          `).join("") : emptyState("Pick a project with tasks to preview GitHub issue and PR links.")}
+        </div>
       </div>
     </section>
   `;
@@ -31681,8 +31884,25 @@ function saveIntegrationSettings() {
       webhookEndpoint: document.querySelector("#integration-webhook-endpoint")?.value || "",
       apiAccess: document.querySelector("#integration-api-access")?.checked,
       eventMirroring: document.querySelector("#integration-event-mirroring")?.checked,
+      github: {
+        ...existing.github,
+        repositories: [
+          {
+            ...(existing.github?.repositories?.[0] || {}),
+            id: "github-primary",
+            fullName: document.querySelector("#github-repo-full-name")?.value || "thedudeb/Agora",
+            projectId: document.querySelector("#github-project-id")?.value || state.projects[0]?.id || "",
+            syncIssues: document.querySelector("#github-sync-issues")?.checked !== false,
+            syncPullRequests: document.querySelector("#github-sync-prs")?.checked !== false,
+            closeOnDone: document.querySelector("#github-close-on-done")?.checked !== false,
+            labelPrefix: document.querySelector("#github-label-prefix")?.value || "agora",
+            branchPrefix: document.querySelector("#github-branch-prefix")?.value || "agora/",
+            status: "mapped"
+          }
+        ]
+      },
       connections
-    })
+    }, state.projects)
   };
   addAuditEvent({
     action: "integrations_update",
@@ -31691,7 +31911,8 @@ function saveIntegrationSettings() {
     targetId: state.workspace.id,
     metadata: {
       connected: connections.filter((connection) => connection.status === "connected").length,
-      eventMirroring: state.workspace.integrations.eventMirroring
+      eventMirroring: state.workspace.integrations.eventMirroring,
+      githubRepositories: state.workspace.integrations.github.repositories.map((repo) => repo.fullName)
     }
   });
   syncIntegrationSettingsToApi();
