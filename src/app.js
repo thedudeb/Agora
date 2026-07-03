@@ -976,6 +976,7 @@ const routes = {
   fields: "Custom Fields",
   audit: "Audit Log",
   permissions: "Permissions",
+  release: "Release",
   beta: "Beta Launch",
   readiness: "Readiness",
   data: "Data",
@@ -5041,6 +5042,7 @@ function canAccessRoute(route) {
     "command-center": "workspace:read",
     audit: "audit:read",
     permissions: "audit:read",
+    release: "workspace:read",
     beta: "workspace:read",
     readiness: "workspace:read",
     data: "workspace:import",
@@ -11026,6 +11028,13 @@ function commandPaletteBaseItems() {
       keywords: "production readiness audit launch gates security recovery"
     },
     {
+      id: "route:release",
+      title: "Open release dashboard",
+      detail: "Review release scope, dates, owners, confidence, blockers, and ship-room readiness",
+      group: "Release",
+      keywords: "release ship room launch checklist gates notes evidence"
+    },
+    {
       id: "template:recommended",
       title: "Start with Client Onboarding",
       detail: "Open the recommended first template for a complete client project flow",
@@ -15902,6 +15911,7 @@ function render() {
     fields: renderCustomFields,
     audit: renderAuditLog,
     permissions: renderPermissionsAudit,
+    release: renderReleaseManagement,
     beta: renderBetaLaunch,
     readiness: renderProductionReadinessAudit,
     data: renderDataManagement,
@@ -15936,7 +15946,7 @@ function sidebarGroupForRoute(route) {
   if (["reports", "decisions", "goals", "operator", "automations"].includes(route)) return "control";
   if (["visibility", "portal", "project-backlog", "intake", "feature-requests", "companies", "company"].includes(route)) return "clients";
   if (["marketplace", "templates", "docs", "fields"].includes(route)) return "library";
-  if (["audit", "permissions", "beta", "readiness", "data", "settings"].includes(route)) return "admin";
+  if (["audit", "permissions", "release", "beta", "readiness", "data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
   if (route === "invite") return "";
   return "";
@@ -17178,6 +17188,232 @@ function renderProductionReadinessAudit() {
     <div class="readiness-audit-grid">
       ${sections.map(renderProductionAuditSection).join("")}
       ${renderReadinessCliPanel()}
+    </div>
+  `;
+}
+
+function releaseProjectCandidates() {
+  const tasks = activeTasks();
+  const reports = activeProjects()
+    .filter((project) => project.dueDate || /release|launch|ship|beta|mvp/i.test(`${project.name} ${project.description || ""}`))
+    .map((project) => {
+      const report = projectReport(project, tasks, getFilteredTimeEntries(), getVisibleIntakeSubmissions());
+      const releaseTasks = report.tasks.filter((task) => !isTaskArchived(task));
+      const releaseApprovals = state.approvals.filter((approval) => approval.projectId === project.id);
+      const openApprovals = releaseApprovals.filter((approval) => approval.status !== "approved");
+      const risks = normalizeRaidItems(state.raidItems).filter((item) => item.projectId === project.id && item.status !== "closed");
+      const releaseKeywords = /release|launch|ship|mvp|beta|qa|docs|rollback|migration|security/i;
+      const releaseScope = releaseTasks.filter((task) => releaseKeywords.test(`${task.title} ${task.description} ${(task.tags || []).join(" ")}`));
+      const scope = releaseScope.length ? releaseScope : releaseTasks;
+      const blockers = [
+        ...report.overdue.map((task) => ({ type: "Overdue", title: task.title, detail: `Due ${formatDate(task.dueDate)} / ${memberName(task.assignee)}` })),
+        ...report.blocked.map((task) => ({ type: "Blocked", title: task.title, detail: `Waiting on ${openTaskDependencies(task).map((dependency) => dependency.title).join(", ")}` })),
+        ...openApprovals.map((approval) => ({ type: "Approval", title: approval.title, detail: `${approval.status} / reviewer ${approval.reviewer}` })),
+        ...risks.filter((item) => ["high", "critical"].includes(item.severity)).map((item) => ({ type: raidTypeLabel(item.type), title: item.title, detail: item.mitigation || item.detail }))
+      ];
+      const readiness = [
+        { label: "Scope", done: scope.length > 0, detail: `${scope.length} scoped task${scope.length === 1 ? "" : "s"}` },
+        { label: "Date", done: Boolean(project.dueDate), detail: project.dueDate ? formatDate(project.dueDate) : "No release date set" },
+        { label: "Owner", done: Boolean(project.owner), detail: memberName(project.owner) || "No owner set" },
+        { label: "Approvals", done: openApprovals.length === 0, detail: openApprovals.length ? `${openApprovals.length} open approval${openApprovals.length === 1 ? "" : "s"}` : "Approvals clear" },
+        { label: "Blockers", done: blockers.length === 0, detail: blockers.length ? `${blockers.length} blocker${blockers.length === 1 ? "" : "s"}` : "No blockers" },
+        { label: "Security", done: securityControlCenterItems().filter((control) => !control.done).length === 0, detail: `${securityControlCenterItems().filter((control) => !control.done).length} open security control${securityControlCenterItems().filter((control) => !control.done).length === 1 ? "" : "s"}` }
+      ];
+      const readinessScoreValue = readinessScore(readiness);
+      const confidence = clamp(Math.round((report.health + report.progress + (readinessScoreValue.done / readinessScoreValue.total) * 100) / 3), 0, 100);
+      return {
+        id: project.id,
+        project,
+        report,
+        scope,
+        blockers,
+        risks,
+        approvals: releaseApprovals,
+        openApprovals,
+        readiness,
+        confidence,
+        tone: confidence >= 80 && blockers.length === 0 ? "green" : confidence >= 55 ? "amber" : "red",
+        targetDate: project.dueDate || report.dueSoon[0]?.dueDate || "",
+        owner: project.owner || scope[0]?.assignee || ""
+      };
+    })
+    .sort((a, b) => cleanString(a.targetDate || "9999-12-31").localeCompare(cleanString(b.targetDate || "9999-12-31")) || b.confidence - a.confidence);
+  return reports.length ? reports : activeProjects().slice(0, 5).map((project) => {
+    const report = projectReport(project, tasks, getFilteredTimeEntries(), getVisibleIntakeSubmissions());
+    return {
+      id: project.id,
+      project,
+      report,
+      scope: report.tasks,
+      blockers: [],
+      risks: [],
+      approvals: [],
+      openApprovals: [],
+      readiness: [{ label: "Release candidate", done: false, detail: "Add a due date or release tags to promote this project." }],
+      confidence: report.health,
+      tone: report.health >= 80 ? "green" : report.health >= 55 ? "amber" : "red",
+      targetDate: project.dueDate || "",
+      owner: project.owner || ""
+    };
+  });
+}
+
+function selectedReleaseRecord(releases = releaseProjectCandidates()) {
+  if (!releases.length) return null;
+  if (state.selectedReleaseId && releases.some((release) => release.id === state.selectedReleaseId)) {
+    return releases.find((release) => release.id === state.selectedReleaseId);
+  }
+  return releases[0];
+}
+
+function releaseRecentSignals(release) {
+  const projectId = release?.project?.id || "";
+  return allAuditEvents()
+    .filter((event) => !projectId || event.targetId === projectId || event.metadata?.projectId === projectId || cleanString(event.detail).toLowerCase().includes(cleanString(release.project.name).toLowerCase()))
+    .slice(0, 5);
+}
+
+function renderReleaseCard(release, selected) {
+  return `
+    <button class="release-card ${selected ? "is-selected" : ""}" type="button" data-release-select="${escapeHtml(release.id)}">
+      <span class="status-pill inbox-${release.tone}">${release.confidence}% confidence</span>
+      <strong>${escapeHtml(release.project.name)}</strong>
+      <small>${escapeHtml(companyName(release.project.companyId))} / ${escapeHtml(memberName(release.owner) || "Unowned")} / ${release.targetDate ? escapeHtml(formatDate(release.targetDate)) : "No date"}</small>
+      <em>${release.scope.length} scope / ${release.blockers.length} blockers / ${release.openApprovals.length} approvals</em>
+    </button>
+  `;
+}
+
+function renderReleaseReadinessList(release) {
+  return `
+    <div class="readiness-list compact-readiness release-readiness-list">
+      ${release.readiness.map((item) => `
+        <article class="readiness-item ${item.done ? "is-done" : "is-pending"}">
+          <span>${item.done ? "OK" : "Gate"}</span>
+          <div>
+            <strong>${escapeHtml(item.label)}</strong>
+            <p>${escapeHtml(item.detail || "")}</p>
+          </div>
+        </article>
+      `).join("")}
+    </div>
+  `;
+}
+
+function renderReleaseManagement() {
+  const releases = releaseProjectCandidates();
+  const selected = selectedReleaseRecord(releases);
+  const openBlockers = releases.reduce((total, release) => total + release.blockers.length, 0);
+  const shippingSoon = releases.filter((release) => release.targetDate && release.targetDate <= shiftDate(todayKey(), 30)).length;
+  const recentSignals = selected ? releaseRecentSignals(selected) : [];
+  els.appView.innerHTML = `
+    ${renderRouteHeader({
+      eyebrow: "Release Management",
+      title: "Ship room",
+      description: "A release command center for scope, owner, date, confidence, blockers, linked projects, and operational readiness.",
+      actions: [
+        { label: "Open Readiness", route: "readiness" },
+        { label: "Open Audit", route: "audit" },
+        { label: "Create Backup", commandId: "backup:create", primary: true }
+      ]
+    })}
+
+    <div class="metric-grid">
+      ${metric("Releases", releases.length)}
+      ${metric("Shipping soon", shippingSoon)}
+      ${metric("Open blockers", openBlockers)}
+      ${metric("Best confidence", `${Math.max(0, ...releases.map((release) => release.confidence))}%`)}
+      ${metric("Security controls", securityControlCenterItems().filter((control) => !control.done).length)}
+      ${metric("Audit signals", recentSignals.length)}
+    </div>
+
+    <div class="release-management-grid">
+      <section class="panel release-dashboard-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Release dashboard</p>
+            <h2>Upcoming releases</h2>
+          </div>
+          <span class="status-pill ${openBlockers ? "inbox-amber" : "inbox-green"}">${openBlockers ? "Review blockers" : "Clear"}</span>
+        </div>
+        <div class="release-card-list">
+          ${releases.map((release) => renderReleaseCard(release, selected?.id === release.id)).join("")}
+        </div>
+      </section>
+
+      ${selected ? `
+        <section class="panel release-detail-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Selected release</p>
+              <h2>${escapeHtml(selected.project.name)}</h2>
+            </div>
+            <span class="status-pill inbox-${selected.tone}">${selected.confidence}% confidence</span>
+          </div>
+          <div class="release-summary-grid">
+            <article><span>Owner</span><strong>${escapeHtml(memberName(selected.owner) || "Unowned")}</strong></article>
+            <article><span>Date</span><strong>${selected.targetDate ? escapeHtml(formatDate(selected.targetDate)) : "No date"}</strong></article>
+            <article><span>Project</span><strong>${escapeHtml(companyName(selected.project.companyId))}</strong></article>
+            <article><span>Progress</span><strong>${selected.report.progress}%</strong></article>
+          </div>
+          <p class="panel-note">${escapeHtml(selected.project.description || "No release description yet.")}</p>
+          ${renderReleaseReadinessList(selected)}
+        </section>
+
+        <section class="panel release-scope-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Scope</p>
+              <h2>Linked projects, sprints, and tasks</h2>
+            </div>
+            <span class="status-pill inbox-blue">${selected.scope.length} tasks</span>
+          </div>
+          <div class="release-scope-list">
+            ${selected.scope.slice(0, 8).map((task) => `
+              <article>
+                <button class="table-task-button" type="button" data-edit-task="${escapeHtml(task.id)}">
+                  <strong>${escapeHtml(task.title)}</strong>
+                  <span>${escapeHtml(statusLabel(task.status))} / ${escapeHtml(priorityLabel(task.priority))} / ${task.dueDate ? escapeHtml(formatDate(task.dueDate)) : "No due date"}</span>
+                </button>
+              </article>
+            `).join("") || emptyState("No scoped tasks are linked to this release yet.")}
+          </div>
+        </section>
+
+        <section class="panel release-blocker-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Blockers</p>
+              <h2>Release risks and approvals</h2>
+            </div>
+            <span class="status-pill ${selected.blockers.length ? "inbox-amber" : "inbox-green"}">${selected.blockers.length ? `${selected.blockers.length} open` : "Clear"}</span>
+          </div>
+          <div class="release-blocker-list">
+            ${selected.blockers.length ? selected.blockers.slice(0, 8).map((blocker) => `
+              <article>
+                <span class="status-pill inbox-amber">${escapeHtml(blocker.type)}</span>
+                <div>
+                  <strong>${escapeHtml(blocker.title)}</strong>
+                  <p>${escapeHtml(blocker.detail || "")}</p>
+                </div>
+              </article>
+            `).join("") : emptyState("No release blocker is open for this candidate.")}
+          </div>
+        </section>
+
+        <section class="panel release-signal-panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">Signals</p>
+              <h2>Recent audit and security readiness</h2>
+            </div>
+            <button class="button button-secondary compact-button" type="button" data-route="audit">Open Audit</button>
+          </div>
+          <div class="audit-list compact-audit-list">
+            ${recentSignals.length ? recentSignals.map(renderAuditEvent).join("") : emptyState("No recent audit event is linked to this release yet.")}
+          </div>
+        </section>
+      ` : emptyState("Add an active project with a due date to create the first release candidate.")}
     </div>
   `;
 }
@@ -36291,6 +36527,14 @@ document.addEventListener("click", (event) => {
   if (auditDetailCloseButton) {
     selectedAuditEventKey = "";
     renderAuditLog();
+    return;
+  }
+
+  const releaseSelectButton = event.target.closest("[data-release-select]");
+  if (releaseSelectButton) {
+    state.selectedReleaseId = releaseSelectButton.dataset.releaseSelect || "";
+    saveState();
+    renderReleaseManagement();
     return;
   }
 

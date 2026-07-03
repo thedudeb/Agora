@@ -1837,6 +1837,111 @@ body[data-tutorial-target="view"] #app-view {
   margin-top: 12px;
 }
 
+.release-management-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.15fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.release-dashboard-panel,
+.release-detail-panel,
+.release-scope-panel,
+.release-blocker-panel,
+.release-signal-panel {
+  align-content: start;
+}
+
+.release-card-list,
+.release-scope-list,
+.release-blocker-list {
+  display: grid;
+  gap: 10px;
+}
+
+.release-card {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  padding: 12px;
+  color: var(--text);
+  text-align: left;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.release-card:hover,
+.release-card.is-selected {
+  border-color: var(--accent);
+}
+
+.release-card strong,
+.release-card small,
+.release-card em {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.release-card small,
+.release-card em {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-style: normal;
+}
+
+.release-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.release-summary-grid article {
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.release-summary-grid span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.release-summary-grid strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.release-scope-list article,
+.release-blocker-list article {
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.release-blocker-list article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.release-blocker-list p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .readiness-cli-panel {
   grid-column: 1 / -1;
 }
@@ -10565,6 +10670,8 @@ body[data-density="compact"] .main-content {
   .switcher-acceptance-grid,
   .switcher-report-grid,
   .hosted-launch-grid,
+  .release-management-grid,
+  .release-summary-grid,
   .audit-workbench,
   .audit-detail-grid,
   .audit-before-after,
