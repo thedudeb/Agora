@@ -24547,6 +24547,231 @@ function portfolioBacklogPriorityItems() {
     .sort((a, b) => b.score - a.score);
 }
 
+function portfolioDecisionItems() {
+  return normalizeRaidItems(state.raidItems)
+    .filter((item) => item.id.startsWith("portfolio-decision-") || (item.linkType === "project" && /portfolio/i.test(`${item.title} ${item.detail}`)))
+    .sort((a, b) => cleanString(b.createdAt).localeCompare(cleanString(a.createdAt)));
+}
+
+function portfolioDecisionLabel(action) {
+  return {
+    approve: "Approve",
+    pause: "Pause",
+    "move-date": "Move date +2w",
+    rebalance: "Rebalance"
+  }[action] || "Record";
+}
+
+function portfolioDecisionDetail(project, action) {
+  if (action === "approve") return `${project.name} approved for active portfolio priority.`;
+  if (action === "pause") return `${project.name} paused from active portfolio priority until leadership reopens it.`;
+  if (action === "move-date") return `${project.name} target date moved two weeks to reduce delivery pressure.`;
+  if (action === "rebalance") return `${project.name} needs capacity rebalancing before the next portfolio review.`;
+  return `${project.name} portfolio decision recorded.`;
+}
+
+function createPortfolioDecision(project, action, detail = portfolioDecisionDetail(project, action), metadata = {}) {
+  const now = new Date().toISOString();
+  const decision = {
+    id: uid(`portfolio-decision-${action}`),
+    type: "decision",
+    projectId: project.id,
+    companyId: project.companyId,
+    title: `${portfolioDecisionLabel(action)} ${project.name}`,
+    detail,
+    owner: project.owner || activeMemberId(),
+    severity: action === "pause" ? "high" : action === "rebalance" ? "medium" : "low",
+    status: action === "rebalance" ? "open" : "decided",
+    mitigation: action === "rebalance" ? "Move due-soon or overloaded work to an available teammate." : "Review this decision during the next portfolio check-in.",
+    visibility: "internal",
+    linkType: "project",
+    linkId: project.id,
+    sourceType: "manual",
+    sourceId: "portfolio",
+    dueDate: action === "rebalance" ? shiftDate(todayKey(), 7) : "",
+    createdAt: now,
+    updatedAt: now
+  };
+  state.raidItems = normalizeRaidItems([decision, ...state.raidItems]);
+  addActivity({
+    projectId: project.id,
+    type: "portfolio_decision",
+    message: `${portfolioDecisionLabel(action).toLowerCase()} portfolio decision for ${project.name}`
+  });
+  addAuditEvent({
+    action: `portfolio_${action.replace(/-/g, "_")}`,
+    detail,
+    targetType: "project",
+    targetId: project.id,
+    impact: action === "pause" ? "high" : "medium",
+    reversible: true,
+    restoreHint: "Open the project or decision log to reverse this portfolio decision.",
+    metadata: {
+      projectId: project.id,
+      action,
+      ...metadata
+    }
+  });
+  return decision;
+}
+
+function portfolioRebalanceTask(projectId) {
+  const priorityScore = { urgent: 4, high: 3, normal: 2, low: 1 };
+  return activeTasks()
+    .filter((task) => task.projectId === projectId && task.status !== "done")
+    .sort((a, b) => {
+      const aDue = a.dueDate ? daysBetween(todayKey(), a.dueDate) : 999;
+      const bDue = b.dueDate ? daysBetween(todayKey(), b.dueDate) : 999;
+      return Number(isOverdue(b)) - Number(isOverdue(a))
+        || Number(isTaskBlocked(b)) - Number(isTaskBlocked(a))
+        || (priorityScore[b.priority] || 0) - (priorityScore[a.priority] || 0)
+        || aDue - bDue;
+    })[0];
+}
+
+function portfolioRecommendedReceiver(projectId, workloadRows = capacityRows(activeTasks(), getFilteredTimeEntries())) {
+  const task = portfolioRebalanceTask(projectId);
+  return workloadRows
+    .filter((row) => row.member.id !== task?.assignee)
+    .sort((a, b) => b.remainingMinutes - a.remainingMinutes || a.utilization - b.utilization)[0]?.member.id || "";
+}
+
+function handlePortfolioDecision(projectId, action) {
+  if (!["approve", "pause", "move-date"].includes(action)) {
+    showToast("Portfolio action is not available", "info");
+    return;
+  }
+  const project = byId(state.projects, projectId);
+  if (!project) {
+    showToast("Project not found", "info");
+    return;
+  }
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot change portfolio decisions", "info");
+    return;
+  }
+
+  const previous = { ...project };
+  const updates = {};
+  let detail = portfolioDecisionDetail(project, action);
+  if (action === "pause") {
+    updates.status = "paused";
+  }
+  if (action === "approve") {
+    updates.status = "active";
+  }
+  if (action === "move-date") {
+    const nextDate = shiftDate(project.dueDate || todayKey(), 14);
+    updates.dueDate = nextDate;
+    detail = `${project.name} target date moved to ${formatDate(nextDate)}.`;
+  }
+  if (Object.keys(updates).length) {
+    state.projects = state.projects.map((item) => item.id === project.id ? { ...item, ...updates, updatedAt: new Date().toISOString() } : item);
+  }
+  const nextProject = byId(state.projects, project.id) || project;
+  createPortfolioDecision(nextProject, action, detail, { previousStatus: previous.status, nextStatus: nextProject.status, previousDueDate: previous.dueDate, nextDueDate: nextProject.dueDate });
+  saveState();
+  render();
+  showToast(`${portfolioDecisionLabel(action)} recorded`, "success");
+  if (Object.keys(updates).length) syncProjectToApi(nextProject, "Portfolio decision synced to API", false, recordRevisionValue(previous));
+}
+
+function rebalancePortfolioProject(projectId, memberId = "") {
+  const project = byId(state.projects, projectId);
+  if (!project) {
+    showToast("Project not found", "info");
+    return;
+  }
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot rebalance tasks", "info");
+    return;
+  }
+  const task = portfolioRebalanceTask(projectId);
+  const receiverId = memberId || portfolioRecommendedReceiver(projectId);
+  const receiver = workspaceMembers().find((member) => member.id === receiverId);
+  if (!task || !receiver) {
+    showToast("No rebalance candidate found", "info");
+    return;
+  }
+  if (task.assignee === receiver.id) {
+    showToast("Pick a different teammate to rebalance work", "info");
+    return;
+  }
+  createPortfolioDecision(project, "rebalance", `${task.title} moved from ${memberName(task.assignee)} to ${receiver.name} to relieve portfolio capacity.`, {
+    taskId: task.id,
+    from: task.assignee,
+    to: receiver.id
+  });
+  updateTask(task.id, { assignee: receiver.id });
+}
+
+function renderPortfolioDecisionPanel() {
+  const decisions = portfolioDecisionItems();
+  return `
+    <section class="panel portfolio-decision-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Portfolio decisions</p>
+          <h2>Leadership action log</h2>
+        </div>
+        <button class="button button-secondary compact-button" type="button" data-route="decisions">Open Decisions</button>
+      </div>
+      <div class="portfolio-decision-list">
+        ${decisions.slice(0, 5).map((decision) => `
+          <article>
+            <span class="status-pill inbox-${decision.status === "decided" ? "green" : "amber"}">${escapeHtml(decision.status)}</span>
+            <div>
+              <strong>${escapeHtml(decision.title)}</strong>
+              <p>${escapeHtml(decision.detail || decision.mitigation)}</p>
+              <small>${escapeHtml(projectName(decision.projectId))} / ${escapeHtml(memberName(decision.owner))} / ${escapeHtml(formatTimestamp(decision.createdAt))}</small>
+            </div>
+          </article>
+        `).join("") || emptyState("No portfolio decisions have been recorded yet.")}
+      </div>
+    </section>
+  `;
+}
+
+function renderPortfolioAllocationPanel(rows, workloadRows) {
+  const availableMembers = [...workloadRows].sort((a, b) => b.remainingMinutes - a.remainingMinutes);
+  const firstProjectId = rows[0]?.project.id || "";
+  const receiverId = firstProjectId ? portfolioRecommendedReceiver(firstProjectId, workloadRows) : availableMembers[0]?.member.id || "";
+  return `
+    <section class="panel portfolio-allocation-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Resource allocation editor</p>
+          <h2>Rebalance work</h2>
+        </div>
+        <span class="status-pill inbox-blue">${availableMembers.filter((row) => row.remainingMinutes > 0).length} with room</span>
+      </div>
+      <div class="portfolio-allocation-form">
+        <label>
+          <span>Project</span>
+          <select id="portfolio-rebalance-project">
+            ${rows.map((row) => `<option value="${escapeHtml(row.project.id)}" ${row.project.id === firstProjectId ? "selected" : ""}>${escapeHtml(row.project.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label>
+          <span>Receiver</span>
+          <select id="portfolio-rebalance-member">
+            ${availableMembers.map((row) => `<option value="${escapeHtml(row.member.id)}" ${row.member.id === receiverId ? "selected" : ""}>${escapeHtml(row.member.name)} (${row.utilization}%)</option>`).join("")}
+          </select>
+        </label>
+        <button class="button button-primary" type="button" data-portfolio-rebalance="manual">Rebalance Task</button>
+      </div>
+      <div class="capacity-action-list">
+        ${workloadRows.slice(0, 4).map((row) => `
+          <article>
+            <strong>${escapeHtml(row.member.name)} / ${escapeHtml(capacityStatusLabel(row.status))}</strong>
+            <span>${escapeHtml(formatDuration(Math.max(row.plannedMinutes, row.loggedMinutes)))} planned or logged against ${escapeHtml(formatDuration(row.capacityMinutes))}; ${escapeHtml(formatDuration(Math.abs(row.remainingMinutes)))} ${row.remainingMinutes >= 0 ? "remaining" : "over"}.</span>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderPortfolioPriorityPanel(rows) {
   const scoredRows = rows
     .map((row) => ({ ...row, priority: portfolioPriorityScore(row) }))
@@ -24613,6 +24838,12 @@ function renderPortfolioRow(row) {
         <span>${row.releaseConfidence}% release</span>
         <span>${formatDuration(row.trackedBudget)}</span>
         <span>${priority.score} priority</span>
+      </div>
+      <div class="portfolio-action-row">
+        <button class="button button-secondary compact-button" type="button" data-portfolio-action="approve" data-portfolio-project="${escapeHtml(row.project.id)}">Approve</button>
+        <button class="button button-secondary compact-button" type="button" data-portfolio-action="pause" data-portfolio-project="${escapeHtml(row.project.id)}">Pause</button>
+        <button class="button button-secondary compact-button" type="button" data-portfolio-action="move-date" data-portfolio-project="${escapeHtml(row.project.id)}">Move date +2w</button>
+        <button class="button button-primary compact-button" type="button" data-portfolio-rebalance="${escapeHtml(row.project.id)}">Rebalance</button>
       </div>
     </article>
   `;
@@ -24682,7 +24913,11 @@ function renderPortfolioResourcePlanning() {
 
       ${renderCapacityPlanningPanel(workloadRows)}
 
+      ${renderPortfolioDecisionPanel()}
+
       ${renderPortfolioPriorityPanel(rows)}
+
+      ${renderPortfolioAllocationPanel(rows, workloadRows)}
 
       <section class="panel portfolio-scenario-panel">
         <div class="panel-header">
@@ -36259,6 +36494,24 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const portfolioActionButton = event.target.closest("[data-portfolio-action]");
+  if (portfolioActionButton) {
+    handlePortfolioDecision(portfolioActionButton.dataset.portfolioProject, portfolioActionButton.dataset.portfolioAction);
+    return;
+  }
+
+  const portfolioRebalanceButton = event.target.closest("[data-portfolio-rebalance]");
+  if (portfolioRebalanceButton) {
+    const projectId = portfolioRebalanceButton.dataset.portfolioRebalance === "manual"
+      ? document.querySelector("#portfolio-rebalance-project")?.value || ""
+      : portfolioRebalanceButton.dataset.portfolioRebalance;
+    const memberId = portfolioRebalanceButton.dataset.portfolioRebalance === "manual"
+      ? document.querySelector("#portfolio-rebalance-member")?.value || ""
+      : "";
+    rebalancePortfolioProject(projectId, memberId);
+    return;
+  }
+
   const routeButton = event.target.closest("[data-route]");
   if (routeButton) setRoute(routeButton.dataset.route);
 
@@ -37672,6 +37925,14 @@ document.addEventListener("change", (event) => {
   if (taskProjectSelect) {
     const taskId = document.querySelector("#task-id")?.value;
     renderTaskDependencies(taskId ? byId(state.tasks, taskId) : null);
+  }
+
+  const portfolioProjectSelect = event.target.closest("#portfolio-rebalance-project");
+  if (portfolioProjectSelect) {
+    const memberSelect = document.querySelector("#portfolio-rebalance-member");
+    const recommended = portfolioRecommendedReceiver(portfolioProjectSelect.value);
+    if (memberSelect && recommended) memberSelect.value = recommended;
+    return;
   }
 
   const subtaskCheckbox = event.target.closest("[data-toggle-subtask]");

@@ -3306,8 +3306,16 @@ body[data-tutorial-target="view"] #app-view {
 
 .portfolio-command-center-panel,
 .portfolio-scenario-panel,
-.portfolio-capacity-panel {
+.portfolio-capacity-panel,
+.portfolio-decision-panel,
+.portfolio-allocation-panel {
   align-content: start;
+}
+
+.portfolio-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .portfolio-scenario-card p,
@@ -3370,6 +3378,48 @@ body[data-tutorial-target="view"] #app-view {
   display: grid;
   gap: 10px;
   margin-top: 14px;
+}
+
+.portfolio-decision-list {
+  display: grid;
+  gap: 10px;
+}
+
+.portfolio-decision-list article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.portfolio-decision-list p,
+.portfolio-decision-list small {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.portfolio-allocation-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 12px;
+}
+
+.portfolio-allocation-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.portfolio-allocation-form label span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
 }
 
 .health-bar,
@@ -11518,6 +11568,7 @@ body[data-density="compact"] .main-content {
 
   .report-metrics,
   .portfolio-report-metrics,
+  .portfolio-allocation-form,
   .risk-item,
   .submission-card,
   .feature-request-row {

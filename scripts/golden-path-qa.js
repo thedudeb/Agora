@@ -112,13 +112,20 @@ const routeChecks = [
       "Health, dates, owners, confidence",
       "Capacity",
       "Team workload plan",
+      "Portfolio decisions",
+      "Leadership action log",
       "Scenario planning",
       "What-if tradeoffs",
+      "Resource allocation editor",
+      "Rebalance work",
       "Capacity planning",
       "Team availability by owner",
       "Priority scoring",
       "What should we prioritize?",
-      "Backlog candidates"
+      "Backlog candidates",
+      "Approve",
+      "Move date +2w",
+      "Rebalance Task"
     ]
   },
   {
