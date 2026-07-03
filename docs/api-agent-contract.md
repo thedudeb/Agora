@@ -42,7 +42,7 @@ Use these endpoints for most automation and assistant context:
 - `GET /api/capabilities`: public capability discovery for auth, resources, structured collections, permissions, and safe agent defaults.
 - `GET /api/openapi.json`: public OpenAPI 3.1 discovery for the core API surface.
 - `GET /api/session`: current user, role, permissions, and scope.
-- `GET /api/backend/health`: authenticated readiness, storage/auth drivers, metrics, collection counts, production gates, and session scope.
+- `GET /api/backend/health`: authenticated readiness, storage/auth drivers, metrics, collection counts, production gates, job state with redacted payload previews, and session scope.
 - `GET /api/projects`: canonical projects with `limit`, `offset`, `query`, and `companyId` filters.
 - `GET /api/tasks`: canonical tasks with `limit`, `offset`, `query`, `projectId`, `companyId`, `assignee`, `status`, `priority`, and `tag` filters.
 - `GET /api/records/:collection`: structured collections such as `comments`, `activities`, `approvals`, `documents`, `files`, `chatMessages`, `whiteboards`, `notificationReminders`, `notificationHistory`, `inboxState`, and `integrationSettings`.

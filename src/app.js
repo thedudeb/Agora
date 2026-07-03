@@ -358,6 +358,7 @@ const settingsTabs = [
   { id: "trust", label: "Trust" },
   { id: "members", label: "Members" },
   { id: "integrations", label: "Integrations" },
+  { id: "jobs", label: "Jobs" },
   { id: "payments", label: "Payments" },
   { id: "sync", label: "Sync" },
   { id: "security", label: "Security" },
@@ -5073,6 +5074,7 @@ function canUseSettingsTab(tabId) {
   if (role === "client") return false;
   if (tabId === "members" || tabId === "security") return role === "admin";
   if (tabId === "integrations") return hasApiPermission("integrations:write") || hasApiPermission("notifications:write");
+  if (tabId === "jobs") return hasApiPermission("scheduler:run") || hasApiPermission("integrations:write");
   if (tabId === "payments") return hasApiPermission("payments:write");
   if (tabId === "workspace" || tabId === "sync" || tabId === "developer" || tabId === "trust" || tabId === "plugins") return role === "admin" || role === "manager";
   return true;
@@ -5111,6 +5113,7 @@ function renderSettingsSectionIntro(activeTab) {
     trust: ["Trust posture", "Review portability, privacy, AI rationale, and auditability."],
     members: ["Team governance", "Confirm ownership, invite authority, client scope, and offboarding posture."],
     integrations: ["Connected tools", "Plan sync adapters, notification delivery, and AI provider settings."],
+    jobs: ["Integration job console", "Inspect sync jobs, retry failures, cancel queued work, and preview safe payload context."],
     payments: ["Marketplace payments", "Configure provider planning, spend caps, entitlements, and audit events."],
     sync: ["Backend sync", "Save, load, repair, and verify API/Supabase health."],
     security: ["Access controls", "Inspect current access, roles, permissions, and operator guardrails."],
@@ -25491,6 +25494,10 @@ function renderSettings() {
       ${renderMobileAppPanel()}
       ` : ""}
 
+      ${activeSettingsTab === "jobs" ? `
+      ${renderIntegrationJobConsolePanel()}
+      ` : ""}
+
       ${activeSettingsTab === "members" ? `
       ${renderWorkspaceGovernancePanel()}
 
@@ -27321,7 +27328,6 @@ function renderBackendObservabilityPanel() {
   const metrics = backendHealth?.observability || {};
   const jobs = backendHealth?.jobs || {};
   const routes = Array.isArray(metrics.routes) ? metrics.routes.slice(0, 6) : [];
-  const recentJobs = Array.isArray(jobs.recent) ? jobs.recent.slice(0, 8) : [];
   return `
     <div class="backend-health-summary">
       <article>
@@ -27351,20 +27357,127 @@ function renderBackendObservabilityPanel() {
         `).join("")}
       </div>
     ` : ""}
-    <div class="backend-job-console">
-      <div class="panel-header compact-panel-header">
+    ${renderIntegrationJobConsolePanel({ compact: true })}
+  `;
+}
+
+function backendJobStatusTone(status = "queued") {
+  if (status === "succeeded") return "inbox-green";
+  if (status === "queued" || status === "running") return "inbox-amber";
+  if (status === "canceled") return "inbox-neutral";
+  return "inbox-red";
+}
+
+function backendJobStats(jobs = {}) {
+  const recent = Array.isArray(jobs.recent) ? jobs.recent : [];
+  return {
+    recent,
+    queued: Number(jobs.queued || 0),
+    maxQueue: Number(jobs.maxQueue || 0),
+    running: Boolean(jobs.running),
+    succeeded: recent.filter((job) => job.status === "succeeded").length,
+    failed: recent.filter((job) => ["failed", "rejected"].includes(job.status)).length,
+    integration: recent.filter((job) => job.type === "integration-sync").length
+  };
+}
+
+function backendJobDetail(job = {}) {
+  const metadata = job.metadata || {};
+  const details = [
+    metadata.provider ? `Provider ${metadata.provider}` : "",
+    metadata.direction ? `Direction ${integrationSyncLabel(metadata.direction)}` : "",
+    metadata.requestedBy ? `Requested by ${memberName(metadata.requestedBy)}` : "",
+    metadata.workspaceId ? `Workspace ${metadata.workspaceId}` : "",
+    metadata.taskId ? `Task ${metadata.taskId}` : "",
+    job.nextRunAt ? `Next ${formatTimestamp(job.nextRunAt)}` : "",
+    job.error ? job.error : ""
+  ].filter(Boolean);
+  return details.join(" / ") || `Updated ${formatTimestamp(job.updatedAt || job.createdAt || new Date().toISOString())}`;
+}
+
+function renderBackendJobPayload(job = {}) {
+  const payloadPreview = job.payloadPreview || {};
+  const metadata = job.metadata && Object.keys(job.metadata).length ? job.metadata : null;
+  const preview = {
+    metadata,
+    payload: payloadPreview.preview || {},
+    payloadBytes: Number(payloadPreview.bytes || 0)
+  };
+  return `
+    <details class="backend-job-payload">
+      <summary>Payload preview</summary>
+      <pre>${escapeHtml(JSON.stringify(preview, null, 2))}</pre>
+    </details>
+  `;
+}
+
+function renderIntegrationJobConsolePanel(options = {}) {
+  const jobs = backendHealth?.jobs || {};
+  const stats = backendJobStats(jobs);
+  const recentJobs = stats.recent.slice(0, options.compact ? 6 : 20);
+  const integrationJobs = stats.recent.filter((job) => job.type === "integration-sync").slice(0, 6);
+  const lastChecked = backendHealth?.generatedAt || apiSession?.lastBackendCheckedAt || "";
+  const tag = options.compact ? "div" : "section";
+  const className = options.compact ? "integration-job-console is-compact" : "panel integration-job-console";
+  return `
+    <${tag} class="${className}">
+      <div class="panel-header">
         <div>
-          <p class="eyebrow">Worker jobs</p>
-          <h3>Background queue</h3>
+          <p class="eyebrow">Integration job console</p>
+          <h2>${options.compact ? "Background queue" : "Sync and worker jobs"}</h2>
         </div>
-        <span class="status-pill ${Number(jobs.queued || 0) ? "inbox-amber" : "inbox-green"}">${Number(jobs.queued || 0)}/${Number(jobs.maxQueue || 0)} queued</span>
+        <div class="panel-actions">
+          <span class="status-pill ${stats.queued ? "inbox-amber" : "inbox-green"}">${stats.queued}/${stats.maxQueue} queued</span>
+          <button class="button button-secondary compact-button" type="button" data-backend-health-refresh ${apiSession ? "" : "disabled"}>Refresh Jobs</button>
+        </div>
       </div>
-      ${recentJobs.length ? `
-        <div class="backend-job-list">
-          ${recentJobs.map(renderBackendJobRow).join("")}
+      <div class="job-console-summary">
+        <article>
+          <span>Running</span>
+          <strong>${stats.running ? "Yes" : "No"}</strong>
+        </article>
+        <article>
+          <span>Integration syncs</span>
+          <strong>${stats.integration}</strong>
+        </article>
+        <article>
+          <span>Failed</span>
+          <strong>${stats.failed}</strong>
+        </article>
+        <article>
+          <span>Last check</span>
+          <strong>${lastChecked ? escapeHtml(formatTimestamp(lastChecked)) : "Never"}</strong>
+        </article>
+      </div>
+      <p class="panel-note">Payload preview redacts sensitive keys and shows enough sync context to debug provider mapping without exposing secrets.</p>
+      <div class="job-console-lane">
+        <div class="mini-section-header">
+          <strong>Integration sync lane</strong>
+          <span>${integrationJobs.length ? `${integrationJobs.length} recent GitHub/provider sync job${integrationJobs.length === 1 ? "" : "s"}` : "Waiting for provider sync jobs"}</span>
         </div>
-      ` : `<p class="empty-state">No background jobs yet.</p>`}
-    </div>
+        ${integrationJobs.length ? `
+          <div class="backend-job-list">
+            ${integrationJobs.map(renderBackendJobRow).join("")}
+          </div>
+        ` : `
+          <div class="switcher-preview-empty">
+          <strong>No integration sync jobs yet</strong>
+          <span>Queue a GitHub sync from Settings > Integrations to see payloads, status, retries, and cancellation here.</span>
+          </div>
+        `}
+      </div>
+      <div class="job-console-lane">
+        <div class="mini-section-header">
+          <strong>All worker jobs</strong>
+          <span>${recentJobs.length}/${stats.recent.length} visible</span>
+        </div>
+        ${recentJobs.length ? `
+          <div class="backend-job-list">
+            ${recentJobs.map(renderBackendJobRow).join("")}
+          </div>
+        ` : `<p class="empty-state">No background jobs yet.</p>`}
+      </div>
+    </${tag}>
   `;
 }
 
@@ -27374,26 +27487,19 @@ function renderBackendJobRow(job = {}) {
   const retryable = canManageJobs && ["failed", "rejected", "canceled"].includes(status);
   const cancelable = canManageJobs && status === "queued";
   const clearable = canManageJobs && ["succeeded", "failed", "rejected", "canceled"].includes(status);
-  const tone = status === "succeeded"
-    ? "inbox-green"
-    : status === "queued" || status === "running"
-      ? "inbox-amber"
-      : "inbox-red";
-  const metadata = job.metadata || {};
-  const detail = [
-    metadata.taskId ? `Task ${metadata.taskId}` : "",
-    job.nextRunAt ? `Next ${formatTimestamp(job.nextRunAt)}` : "",
-    job.error ? job.error : ""
-  ].filter(Boolean).join(" / ");
+  const tone = backendJobStatusTone(status);
+  const detail = backendJobDetail(job);
   return `
     <article class="backend-job-row">
-      <div>
+      <div class="backend-job-main">
         <span class="status-pill ${tone}">${escapeHtml(status)}</span>
         <strong>${escapeHtml(job.type || "background-job")}</strong>
-        <p>${escapeHtml(detail || `Updated ${formatTimestamp(job.updatedAt || job.createdAt || new Date().toISOString())}`)}</p>
+        <p>${escapeHtml(detail)}</p>
+        ${renderBackendJobPayload(job)}
       </div>
       <div class="backend-job-meta">
         <span>${Number(job.attempts || 0)}/${Number(job.maxAttempts || 3)} tries</span>
+        <span>ID ${escapeHtml(job.id || "pending")}</span>
         <span>${job.updatedAt ? escapeHtml(formatTimestamp(job.updatedAt)) : "Not run"}</span>
       </div>
       <div class="backend-job-actions">

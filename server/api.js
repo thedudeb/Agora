@@ -262,6 +262,34 @@ function normalizeBackgroundJob(job = {}) {
   };
 }
 
+function backgroundJobPreviewValue(value, depth = 0) {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string") return value.length > 220 ? `${value.slice(0, 220)}...` : value;
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) {
+    return {
+      count: value.length,
+      sample: value.slice(0, depth > 1 ? 1 : 3).map((item) => backgroundJobPreviewValue(item, depth + 1))
+    };
+  }
+  if (typeof value === "object") {
+    const sensitivePattern = /(token|secret|password|authorization|signature|key)/i;
+    return Object.fromEntries(Object.entries(value).slice(0, 12).map(([key, entryValue]) => [
+      key,
+      sensitivePattern.test(key) ? "[redacted]" : depth > 2 ? "[object]" : backgroundJobPreviewValue(entryValue, depth + 1)
+    ]));
+  }
+  return String(value);
+}
+
+function backgroundJobPayloadPreview(job = {}) {
+  const payload = job.payload && typeof job.payload === "object" && !Array.isArray(job.payload) ? job.payload : {};
+  return {
+    bytes: Buffer.byteLength(JSON.stringify(payload)),
+    preview: backgroundJobPreviewValue(payload)
+  };
+}
+
 function backgroundJobHandler(job, fallbackHandler = null) {
   if (fallbackHandler) return fallbackHandler;
   if (["feature-request-email", "feature-request-update-email", "invitation-email", "portal-action-email"].includes(job.type)) {
@@ -436,6 +464,7 @@ function backgroundJobSnapshot() {
       attempts: job.attempts,
       maxAttempts: job.maxAttempts,
       metadata: job.metadata,
+      payloadPreview: backgroundJobPayloadPreview(job),
       error: job.error || "",
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,

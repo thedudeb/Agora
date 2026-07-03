@@ -407,6 +407,7 @@ const routeChecks = [
       "Auto",
       "Members",
       "Plugins",
+      "Jobs",
       "Sync",
       "Trust"
     ]
@@ -486,6 +487,22 @@ const routeChecks = [
       "Queue GitHub Sync",
       "Linked work preview",
       "Repository"
+    ]
+  },
+  {
+    name: "Settings integration job console",
+    suite: "admin",
+    route: "settings",
+    query: { settingsTab: "jobs" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Integration job console",
+      "Sync and worker jobs",
+      "Refresh Jobs",
+      "Integration sync lane",
+      "All worker jobs",
+      "Payload preview"
     ]
   },
   {

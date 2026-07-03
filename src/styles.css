@@ -7256,6 +7256,47 @@ body[data-tutorial-target="view"] #app-view {
   margin-top: 12px;
 }
 
+.integration-job-console {
+  display: grid;
+  gap: 14px;
+}
+
+.integration-job-console.is-compact {
+  margin-top: 12px;
+}
+
+.job-console-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.job-console-summary article {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.job-console-summary span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.job-console-summary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.job-console-lane {
+  display: grid;
+  gap: 8px;
+}
+
 .compact-panel-header {
   margin-bottom: 8px;
 }
@@ -7268,7 +7309,7 @@ body[data-tutorial-target="view"] #app-view {
 .backend-job-row {
   display: grid;
   grid-template-columns: minmax(0, 1.5fr) minmax(120px, 0.6fr) auto;
-  align-items: center;
+  align-items: start;
   gap: 10px;
   min-width: 0;
   padding: 10px;
@@ -7277,12 +7318,40 @@ body[data-tutorial-target="view"] #app-view {
   border-radius: 8px;
 }
 
+.backend-job-main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
 .backend-job-row p {
-  margin: 6px 0 0;
+  margin: 0;
   color: var(--muted);
   font-size: 0.78rem;
   line-height: 1.35;
   overflow-wrap: anywhere;
+}
+
+.backend-job-payload {
+  min-width: 0;
+}
+
+.backend-job-payload summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.backend-job-payload pre {
+  max-height: 220px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 10px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
 }
 
 .backend-job-meta,
@@ -10810,6 +10879,7 @@ body[data-density="compact"] .main-content {
   .operator-doc-row,
   .api-state-grid,
   .backend-health-summary,
+  .job-console-summary,
   .backend-record-list,
   .source-row,
   .backup-row {

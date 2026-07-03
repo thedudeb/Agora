@@ -136,7 +136,7 @@ The verifier starts a temporary Agora API server with Supabase storage, uses a u
 - `GET /api/health`: service health and active workspace metadata.
 - `GET /api/capabilities`: public API capability document for automation clients, importers, and agent hosts. Includes auth modes, public endpoints, canonical resources, structured collections, role permissions, and agent-safe defaults.
 - `GET /api/openapi.json`: public OpenAPI 3.1 document for the core Agora API surface.
-- `GET /api/backend/health`: authenticated backend readiness, storage/auth drivers, workspace snapshot metadata, structured collection counts, request metrics, background job state, production-mode status, and current session scope.
+- `GET /api/backend/health`: authenticated backend readiness, storage/auth drivers, workspace snapshot metadata, structured collection counts, request metrics, background job state with redacted payload previews, production-mode status, and current session scope.
 - `POST /api/backend/jobs/:id/retry`: retries a failed, rejected, or canceled background job for sessions with `scheduler:run`.
 - `POST /api/backend/jobs/:id/cancel`: cancels a queued background job for sessions with `scheduler:run`.
 - `POST /api/backend/jobs/:id/clear`: clears a completed, failed, rejected, or canceled background job from the recent operator console for sessions with `scheduler:run`.

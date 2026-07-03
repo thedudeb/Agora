@@ -165,6 +165,7 @@ async function run() {
     });
     assert(integrationSync.job?.type === "integration-sync", "integration sync did not enqueue a job");
     assert(integrationSync.job.metadata.provider === "github", "integration sync job missed provider metadata");
+    assert(integrationSync.jobs.recent.some((job) => job.id === integrationSync.job.id && job.payloadPreview?.preview?.records?.count === 1), "integration sync job did not expose payload preview");
     let integrationJobHealth = await request(`${baseUrl}/api/backend/health`, {
       token: login.token
     });
