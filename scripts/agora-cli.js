@@ -21,9 +21,12 @@ const checkFiles = [
   "scripts/recovery-stress-test.js",
   "scripts/capture-screenshots.js",
   "scripts/golden-path-qa.js",
+  "scripts/admin-security-regression.js",
   "scripts/release-qa.js",
   "scripts/agora-cli.js",
   "scripts/agora-mcp-server.js",
+  "scripts/agora-plugin-check.js",
+  "scripts/hosted-env-verify.js",
   "desktop/electron/main.cjs",
   "desktop/electron/preload.cjs"
 ];
@@ -72,6 +75,10 @@ const commands = {
   golden: {
     summary: "Run browser QA for onboarding and golden paths",
     run: async () => runStep("golden path QA", [process.execPath, [path.join(ROOT, "scripts", "golden-path-qa.js")]])
+  },
+  hosted: {
+    summary: "Verify hosted production environment configuration",
+    run: async (args) => runStep("hosted environment verification", [process.execPath, [path.join(ROOT, "scripts", "hosted-env-verify.js"), ...args]])
   },
   qa: {
     summary: "Run release QA: quick verification plus browser golden paths",
@@ -211,6 +218,7 @@ Commands:
   supabase                      Verify real Supabase setup from .env
   screenshots                   Refresh launch screenshots
   golden                        Run onboarding/golden-path browser QA
+  hosted [--json]               Verify hosted production environment config
   bundle inspect <file> [--json] Inspect a portable workspace bundle
   launch check <bundle>         Check first-client launch readiness
   marketplace validate <file>   Validate marketplace/template/automation JSON
@@ -231,6 +239,8 @@ Examples:
   npm run agora -- recovery
   npm run agora -- screenshots
   npm run agora -- golden
+  npm run agora -- hosted
+  npm run agora -- hosted --require-github
   npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
   npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json --json
   npm run agora -- launch check tests/fixtures/portable-workspace-bundle.json --strict

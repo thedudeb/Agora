@@ -161,6 +161,7 @@ Use this before pushing a release candidate:
 
 ```sh
 npm run security
+npm run verify:hosted
 npm run qa
 npm run verify
 npm run launch:check
@@ -179,6 +180,7 @@ npm run verify:supabase
 ```
 
 The Readiness page can export the same hosted launch evidence as JSON or Markdown after Backend Health has been refreshed.
+`npm run verify:hosted` performs the pre-deploy environment check for Supabase mode, hosted URLs, strict CSP, reset/email delivery, public intake limits, and webhook-secret readiness without printing secret values.
 
 Demo auth and passwordless email login are disabled by default. For trusted demos only, set `AGORA_DEMO_AUTH=true` or `AGORA_PASSWORDLESS_AUTH=true` and restart `npm run dev:api`.
 
