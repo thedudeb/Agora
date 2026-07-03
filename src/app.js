@@ -2387,6 +2387,7 @@ let apiSession = apiSessionStore.load();
 let apiSyncQueue = apiSyncQueueStore.load();
 let networkOnline = typeof navigator === "undefined" ? true : navigator.onLine !== false;
 let backendHealth = apiSession?.backendHealth || null;
+let githubIntegrationStatus = apiSession?.githubIntegrationStatus || null;
 let auditEvents = [];
 let auditLoading = false;
 let activeApiSessions = [];
@@ -3866,6 +3867,7 @@ async function apiRequest(path, options = {}) {
 function saveApiSession(session) {
   apiSession = session;
   backendHealth = session?.backendHealth || backendHealth;
+  githubIntegrationStatus = session?.githubIntegrationStatus || githubIntegrationStatus;
   apiSessionStore.save(session);
   startRealtimePolling();
 }
@@ -3873,6 +3875,7 @@ function saveApiSession(session) {
 function clearApiSession() {
   apiSession = null;
   backendHealth = null;
+  githubIntegrationStatus = null;
   auditEvents = [];
   activeApiSessions = [];
   activeApiSessionsStatus = "";
@@ -4051,11 +4054,16 @@ async function refreshBackendHealth(options = {}) {
   }
 
   try {
-    const health = await apiRequest("/api/backend/health");
+    const [health, githubStatus] = await Promise.all([
+      apiRequest("/api/backend/health"),
+      apiRequest("/api/integrations/github/status").catch(() => null)
+    ]);
     backendHealth = health;
+    if (githubStatus) githubIntegrationStatus = githubStatus;
     saveApiSession({
       ...apiSession,
       backendHealth: health,
+      ...(githubStatus ? { githubIntegrationStatus: githubStatus } : {}),
       apiHealth: {
         ok: health.ok,
         service: health.service,
@@ -8554,11 +8562,18 @@ function githubWebhookReceipts() {
     .slice(0, 5);
 }
 
+function liveGitHubIntegrationStatus() {
+  return githubIntegrationStatus || apiSession?.githubIntegrationStatus || null;
+}
+
 function githubSetupChecklist(integrations, conflicts, receipts) {
   const github = normalizeGitHubIntegration(integrations.github, state.projects);
   const connection = integrations.connections.find((item) => item.id === "github") || {};
+  const liveStatus = liveGitHubIntegrationStatus();
   const repoMapped = github.repositories.some((repo) => repo.fullName && repo.projectId);
   const selectedEvents = new Set(connection.events || []);
+  const secretConfigured = liveStatus?.webhookSecretConfigured || connection.secretStatus === "configured";
+  const secretRequired = liveStatus?.webhookSecretRequired;
   return [
     {
       label: "Repo mapped",
@@ -8572,13 +8587,15 @@ function githubSetupChecklist(integrations, conflicts, receipts) {
     },
     {
       label: "Secret configured",
-      done: connection.secretStatus === "configured",
-      detail: connection.secretStatus === "configured" ? "Server reports a configured webhook secret." : "Set AGORA_GITHUB_WEBHOOK_SECRET before production."
+      done: secretConfigured || !secretRequired,
+      detail: secretConfigured
+        ? "Server reports a configured webhook secret."
+        : secretRequired ? "Set AGORA_GITHUB_WEBHOOK_SECRET before production." : "Optional locally; required for hosted production."
     },
     {
       label: "Replay protection",
-      done: true,
-      detail: "Duplicate X-GitHub-Delivery values are ignored."
+      done: liveStatus?.replayProtection !== false,
+      detail: liveStatus ? "Duplicate X-GitHub-Delivery values are ignored." : "Refresh Backend Health to confirm live replay protection."
     },
     {
       label: "Events selected",
@@ -8671,9 +8688,12 @@ function renderGitHubConflictCompare(conflict) {
 
 function renderGitHubWebhookIntakePanel(integrations) {
   const connection = integrations.connections.find((item) => item.id === "github") || {};
+  const liveStatus = liveGitHubIntegrationStatus();
   const conflicts = githubOpenConflicts();
   const receipts = githubWebhookReceipts();
   const endpoint = githubWebhookEndpoint();
+  const secretConfigured = liveStatus?.webhookSecretConfigured || connection.secretStatus === "configured";
+  const secretRequired = liveStatus?.webhookSecretRequired;
   const canResolveConflicts = Boolean(apiSession && canWrite("integrations:write") && canWrite("tasks:write"));
   const canSendTest = Boolean(apiSession && canWrite("integrations:write") && canWrite("tasks:write"));
   return `
@@ -8692,11 +8712,11 @@ function renderGitHubWebhookIntakePanel(integrations) {
         </article>
         <article>
           <span>Signature</span>
-          <strong>${connection.secretStatus === "configured" ? "Secret configured" : "Required in production"}</strong>
+          <strong>${secretConfigured ? "Secret configured" : secretRequired ? "Required now" : "Required in production"}</strong>
         </article>
         <article>
           <span>Replay</span>
-          <strong>X-GitHub-Delivery</strong>
+          <strong>${liveStatus?.replayProtection === false ? "Needs review" : "X-GitHub-Delivery"}</strong>
         </article>
         <article>
           <span>Events</span>
@@ -25810,6 +25830,7 @@ function renderSettings() {
       ` : ""}
 
       ${activeSettingsTab === "security" ? `
+      ${renderSecurityControlCenterPanel()}
       ${renderCurrentAccessPanel()}
       ${renderAdminReadinessPanel()}
       ${renderPortalSecurityPanel()}
@@ -27308,6 +27329,161 @@ function portalSecurityStats() {
     portalActions: portalActions.length,
     recentActions: portalActions.slice(0, 5)
   };
+}
+
+function securityControlCenterItems() {
+  const health = backendHealth || apiSession?.backendHealth || {};
+  const productionGates = Array.isArray(health.productionGates) ? health.productionGates : [];
+  const readiness = Array.isArray(health.readiness) ? health.readiness : [];
+  const gateById = Object.fromEntries(productionGates.map((gate) => [gate.id, gate]));
+  const readinessById = Object.fromEntries(readiness.map((item) => [item.id, item]));
+  const githubStatus = liveGitHubIntegrationStatus();
+  const portalStats = portalSecurityStats();
+  const githubGate = gateById["github-webhook-secret"] || readinessById["github-webhook-intake"];
+  const githubConfigured = Boolean(githubStatus?.configured || githubStatus?.repositories?.length);
+  const githubSecretOk = githubStatus
+    ? !githubStatus.webhookSecretRequired || githubStatus.webhookSecretConfigured
+    : githubGate ? githubGate.done : !githubConfigured;
+  const activeSessionCount = activeApiSessions.filter((session) => session.status === "active").length;
+  const activeSessionsLoaded = Boolean(activeApiSessionsRefreshedAt || activeApiSessions.length);
+  const sessionReviewOk = !activeSessionsLoaded || activeSessionCount <= 5;
+
+  const fromGate = (id, fallback) => {
+    const gate = gateById[id] || readinessById[id];
+    if (!gate) return { id, source: "Backend Health", ...fallback };
+    return {
+      id,
+      label: gate.label || fallback.label,
+      done: Boolean(gate.done),
+      detail: gate.detail || fallback.detail,
+      fix: gate.done ? "No action needed." : gate.fix || fallback.fix,
+      source: "Backend Health"
+    };
+  };
+
+  return [
+    fromGate("auth-entrypoints", {
+      label: "Demo and passwordless auth",
+      done: true,
+      detail: "Refresh Backend Health to verify auth entrypoints.",
+      fix: "Keep AGORA_DEMO_AUTH=false and AGORA_PASSWORDLESS_AUTH=false outside demos."
+    }),
+    fromGate("allowed-origins", {
+      label: "CORS allowed origins",
+      done: false,
+      detail: "Refresh Backend Health to inspect hosted browser origins.",
+      fix: "Set AGORA_ALLOWED_ORIGINS to the exact hosted app origin."
+    }),
+    fromGate("public-app-url", {
+      label: "Public app URL",
+      done: false,
+      detail: "Refresh Backend Health to inspect invite and reset links.",
+      fix: "Set AGORA_PUBLIC_APP_URL to the hosted HTTPS app URL."
+    }),
+    fromGate("password-reset-delivery", {
+      label: "Password reset delivery",
+      done: false,
+      detail: "Refresh Backend Health to inspect reset delivery.",
+      fix: "Use SMTP or webhook reset delivery without returning reset tokens to the browser."
+    }),
+    fromGate("email-delivery", {
+      label: "Team email delivery",
+      done: false,
+      detail: "Refresh Backend Health to inspect SMTP and recipient routes.",
+      fix: "Set SMTP, from address, invite, feature-request, and portal-action recipients."
+    }),
+    fromGate("public-feature-abuse", {
+      label: "Public feature intake abuse limits",
+      done: true,
+      detail: "Refresh Backend Health to inspect public request limits.",
+      fix: "Keep public body size and rate limits low before sharing the feedback URL."
+    }),
+    {
+      id: "github-webhook-status",
+      label: "GitHub webhook status",
+      done: githubSecretOk && githubStatus?.replayProtection !== false,
+      detail: githubStatus
+        ? `${githubStatus.configured ? `${githubStatus.repositories?.length || 0} mapped repo${(githubStatus.repositories?.length || 0) === 1 ? "" : "s"}` : "No mapped repos"}; ${githubStatus.webhookSecretConfigured ? "secret configured" : githubStatus.webhookSecretRequired ? "secret required" : "secret optional locally"}; replay protection ${githubStatus.replayProtection === false ? "needs review" : "on"}`
+        : githubGate?.detail || "Refresh Backend Health to load live GitHub webhook status.",
+      fix: githubSecretOk ? "No action needed." : "Set AGORA_GITHUB_WEBHOOK_SECRET and resend a GitHub test event.",
+      source: githubStatus ? "GitHub status" : "Backend Health"
+    },
+    {
+      id: "storage-auth-mode",
+      label: "Storage and auth mode",
+      done: Boolean(health.storage && health.auth),
+      detail: health.storage && health.auth ? `${health.storage} storage / ${health.auth} auth` : "Connect and refresh Backend Health to confirm API mode.",
+      fix: health.storage && health.auth ? "No action needed." : "Connect the API and run Backend Health.",
+      source: "Backend Health"
+    },
+    {
+      id: "active-sessions",
+      label: "Active sessions",
+      done: sessionReviewOk,
+      detail: activeSessionsLoaded ? `${activeSessionCount} active session${activeSessionCount === 1 ? "" : "s"} loaded.` : "Refresh active sessions to review live tokens.",
+      fix: sessionReviewOk ? "No action needed." : "Revoke stale or unexpected API sessions.",
+      source: "Session console"
+    },
+    {
+      id: "portal-links",
+      label: "Client portal links",
+      done: portalStats.staleLinks + portalStats.expiredLinks === 0,
+      detail: `${portalStats.activeLinks} active, ${portalStats.expiredLinks} expired, ${portalStats.staleLinks} stale.`,
+      fix: portalStats.staleLinks + portalStats.expiredLinks ? "Rotate, revoke, or regenerate stale client portal links." : "No action needed.",
+      source: "Portal access"
+    }
+  ];
+}
+
+function renderSecurityControlCenterPanel() {
+  const controls = securityControlCenterItems();
+  const openControls = controls.filter((control) => !control.done);
+  const health = backendHealth || apiSession?.backendHealth || {};
+  const checkedAt = health.generatedAt || apiSession?.lastBackendCheckedAt || "";
+  return `
+    <section class="panel security-control-center">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Security Control Center</p>
+          <h2>Production controls and fixes</h2>
+        </div>
+        <div class="portal-actions">
+          <span class="status-pill ${openControls.length ? "inbox-amber" : "inbox-green"}">${openControls.length ? `${openControls.length} open` : "Controls pass"}</span>
+          <button class="button button-secondary compact-button" type="button" data-backend-health-refresh ${apiSession ? "" : "disabled"}>Refresh Controls</button>
+        </div>
+      </div>
+      <div class="permissions-risk-grid security-control-metrics">
+        <article>
+          <span class="status-pill ${health.productionMode ? "inbox-green" : apiSession ? "inbox-blue" : "inbox-neutral"}">API mode</span>
+          <strong>${escapeHtml(health.productionMode ? "Production" : apiSession ? "Connected" : "Local")}</strong>
+          <small>${escapeHtml(health.storage && health.auth ? `${health.storage} storage / ${health.auth} auth` : "Connect API for live server controls")}</small>
+        </article>
+        <article>
+          <span class="status-pill ${openControls.length ? "inbox-amber" : "inbox-green"}">Open controls</span>
+          <strong>${openControls.length}</strong>
+          <small>${openControls.length ? escapeHtml(openControls[0].fix || openControls[0].detail) : "No failing controls in the current report"}</small>
+        </article>
+        <article>
+          <span class="status-pill inbox-neutral">Last refresh</span>
+          <strong>${checkedAt ? escapeHtml(formatTimestamp(checkedAt)) : "Never"}</strong>
+          <small>${checkedAt ? "Backend Health plus GitHub status" : "Refresh to load live backend gates"}</small>
+        </article>
+      </div>
+      <div class="readiness-list compact-readiness security-control-list">
+        ${controls.map((control) => `
+          <article class="readiness-item ${control.done ? "is-done" : "is-pending"}">
+            <span>${control.done ? "OK" : "Fix"}</span>
+            <div>
+              <strong>${escapeHtml(control.label)}</strong>
+              <p>${escapeHtml(control.detail || "")}</p>
+              <small>${escapeHtml(control.fix || "")}</small>
+            </div>
+            <em>${escapeHtml(control.source || "Security")}</em>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
 }
 
 function renderPortalSecurityPanel() {

@@ -6049,6 +6049,30 @@ body[data-tutorial-target="view"] #app-view {
   color: var(--muted);
 }
 
+.security-control-center {
+  margin-bottom: 14px;
+}
+
+.security-control-list .readiness-item {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.security-control-list .readiness-item small {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.security-control-list .readiness-item em {
+  align-self: start;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .backend-launch-block {
   display: grid;
   gap: 10px;
@@ -11018,6 +11042,7 @@ body[data-density="compact"] .main-content {
 
   .payment-audit-event,
   .payment-entitlement,
+  .security-control-list .readiness-item,
   .permissions-member-list article {
     grid-template-columns: 1fr;
   }
