@@ -24332,6 +24332,7 @@ function renderProjectOverview(project, details) {
     ${renderProjectCommandCenter(project, details)}
     ${renderProjectNextBestActions(project, details)}
     ${renderProjectRiskDecisionStrip(project, details)}
+    ${renderProjectOverviewSynthesis(project, details)}
 
     <div class="dashboard-grid">
       <section class="panel">
@@ -24382,6 +24383,156 @@ function renderProjectOverview(project, details) {
         ${renderHistoryTimeline(projectHistoryEvents(project.id), "No changes have been recorded for this project yet.")}
       </section>
     </div>
+  `;
+}
+
+function renderProjectOverviewSynthesis(project, details) {
+  return `
+    <div class="project-overview-synthesis">
+      ${renderProjectRecentReality(project)}
+      ${renderProjectAutopilotPanel(project)}
+      ${renderProjectTeamLoadPanel(project, details)}
+    </div>
+  `;
+}
+
+function projectRecentRealityItems(projectId) {
+  const memoryItems = projectMemoryTimelineItems()
+    .filter((item) => item.projectId === projectId)
+    .slice(0, 3)
+    .map((item) => ({
+      tone: item.tone || "blue",
+      label: `Memory ${item.kind}`,
+      title: item.title,
+      detail: item.detail,
+      meta: item.createdAt ? formatTimestamp(item.createdAt) : "",
+      sortAt: item.createdAt || ""
+    }));
+  const activityItems = getProjectActivity(projectId, 3).map((activity) => ({
+    tone: "neutral",
+    label: "Activity",
+    title: activity.message,
+    detail: memberName(activity.memberId),
+    meta: formatTimestamp(activity.createdAt),
+    sortAt: activity.createdAt || ""
+  }));
+  const commentItems = state.comments
+    .filter((comment) => comment.projectId === projectId)
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 2)
+    .map((comment) => ({
+      tone: "blue",
+      label: "Comment",
+      title: comment.body.slice(0, 120),
+      detail: memberName(comment.author),
+      meta: formatTimestamp(comment.createdAt),
+      sortAt: comment.createdAt || ""
+    }));
+  return [...memoryItems, ...commentItems, ...activityItems]
+    .sort((a, b) => new Date(b.sortAt || 0) - new Date(a.sortAt || 0))
+    .slice(0, 5);
+}
+
+function renderProjectRecentReality(project) {
+  const items = projectRecentRealityItems(project.id);
+  return `
+    <section class="panel project-reality-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Recent Reality</p>
+          <h2>What changed lately</h2>
+        </div>
+        <button class="button button-secondary compact-button" type="button" data-route="memory">Open Memory</button>
+      </div>
+      <div class="project-reality-list">
+        ${items.length ? items.map((item) => `
+          <article>
+            <span class="status-pill inbox-${item.tone}">${escapeHtml(item.label)}</span>
+            <strong>${escapeHtml(item.title)}</strong>
+            <p>${escapeHtml(item.detail || "No detail")}</p>
+            <small>${escapeHtml(item.meta || "Recent")}</small>
+          </article>
+        `).join("") : emptyState("Project Memory, comments, and activity will collect the latest reality for this project.")}
+      </div>
+    </section>
+  `;
+}
+
+function renderProjectAutopilotPanel(project) {
+  const drifts = projectAutopilotDriftCards().filter((drift) => drift.projectId === project.id);
+  const scenarios = projectAutopilotRecoveryScenarios(drifts).slice(0, 3);
+  return `
+    <section class="panel project-autopilot-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Autopilot for This Project</p>
+          <h2>Drift and recovery proposals</h2>
+        </div>
+        <button class="button button-secondary compact-button" type="button" data-route="autopilot">Open Autopilot</button>
+      </div>
+      <div class="project-autopilot-summary">
+        <article><span>Drift cards</span><strong>${drifts.length}</strong><small>${drifts[0]?.title || "No project-specific drift detected."}</small></article>
+        <article><span>Recovery proposals</span><strong>${scenarios.length}</strong><small>${scenarios[0]?.strategy || "No recovery action waiting."}</small></article>
+      </div>
+      <div class="project-autopilot-list">
+        ${scenarios.length ? scenarios.map((scenario) => `
+          <article>
+            <span class="status-pill inbox-${autopilotSeverityTone(scenario.severity)}">${escapeHtml(scenario.strategy)}</span>
+            <strong>${escapeHtml(scenario.title)}</strong>
+            <p>${escapeHtml(scenario.summary)}</p>
+            <small>${scenario.confidence}% confidence / ${escapeHtml(scenario.driftTitle)}</small>
+          </article>
+        `).join("") : emptyState("Autopilot has no recovery proposal for this project right now.")}
+      </div>
+    </section>
+  `;
+}
+
+function projectTeamLoadRows(projectId) {
+  const tasks = getProjectTasks(projectId, false).filter((task) => task.status !== "done");
+  return members
+    .map((member) => {
+      const owned = tasks.filter((task) => task.assignee === member.id);
+      return {
+        member,
+        owned,
+        blocked: owned.filter(isTaskBlocked).length,
+        overdue: owned.filter(isOverdue).length,
+        urgent: owned.filter((task) => task.priority === "urgent" || task.priority === "high").length
+      };
+    })
+    .filter((row) => row.owned.length)
+    .sort((a, b) => b.owned.length - a.owned.length || b.blocked - a.blocked)
+    .slice(0, 6);
+}
+
+function renderProjectTeamLoadPanel(project, details) {
+  const rows = projectTeamLoadRows(project.id);
+  const overloaded = rows.filter((row) => row.owned.length >= 4 || row.blocked || row.overdue);
+  return `
+    <section class="panel project-team-load-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Team Load</p>
+          <h2>Owner workload</h2>
+        </div>
+        <span class="status-pill ${overloaded.length ? "inbox-amber" : "inbox-green"}">${overloaded.length ? `${overloaded.length} watch` : "Balanced"}</span>
+      </div>
+      <div class="project-team-load-list">
+        ${rows.length ? rows.map((row) => `
+          <article>
+            <div>
+              <strong>${escapeHtml(row.member.name)}</strong>
+              <p>${row.owned.length} open / ${row.urgent} high priority</p>
+            </div>
+            <div class="project-load-meter" aria-label="${row.member.name} workload">
+              <span style="width: ${clamp(row.owned.length * 18, 8, 100)}%"></span>
+            </div>
+            <small>${row.blocked} blocked / ${row.overdue} overdue</small>
+          </article>
+        `).join("") : emptyState(`${project.name} has no assigned open work yet.`)}
+      </div>
+    </section>
   `;
 }
 
