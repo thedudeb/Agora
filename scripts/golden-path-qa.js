@@ -187,6 +187,7 @@ const routeChecks = [
       "Never automatic",
       "Audit required",
       "Rollback status",
+      "One-click undo",
       "Recent Autopilot changes",
       "Recovery Scenario Builder",
       "Autopilot recovery proposals",

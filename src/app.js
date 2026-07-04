@@ -22064,6 +22064,32 @@ function createAutopilotRaid({ projectId, title, detail, type = "decision", seve
   return item;
 }
 
+function autopilotUndoPayload({
+  scenario,
+  projectId,
+  beforeTasks = [],
+  createdTaskIds = [],
+  createdRaidIds = []
+}) {
+  return {
+    scenarioId: scenario.id,
+    scenarioTitle: scenario.title,
+    projectId,
+    beforeTasks: beforeTasks.map((task) => structuredClone(task)),
+    createdTaskIds,
+    createdRaidIds,
+    createdAt: new Date().toISOString()
+  };
+}
+
+function autopilotAuditUndoAvailable(event) {
+  const undo = event?.metadata?.undo;
+  return event?.action === "autopilot_scenario_applied"
+    && undo
+    && !undo.undoneAt
+    && ((undo.beforeTasks || []).length || (undo.createdTaskIds || []).length || (undo.createdRaidIds || []).length);
+}
+
 function applyAutopilotScenario(scenarioId) {
   const scenario = projectAutopilotRecoveryScenarios().find((item) => item.id === scenarioId);
   if (!scenario) {
@@ -22074,15 +22100,18 @@ function applyAutopilotScenario(scenarioId) {
   const openProjectTasks = projectId ? getProjectTasks(projectId, false).filter((task) => task.status !== "done") : activeTasks().filter((task) => task.status !== "done");
   let appliedRecord = null;
   let appliedType = "audit";
+  const undo = autopilotUndoPayload({ scenario, projectId });
 
   if (scenario.id === "schedule-reset") {
     const overdueTasks = openProjectTasks.filter(isOverdue).slice(0, 3);
+    undo.beforeTasks = overdueTasks.map((task) => structuredClone(task));
     overdueTasks.forEach((task) => {
       task.dueDate = shiftDate(task.dueDate || todayKey(), 3);
       task.updatedAt = new Date().toISOString();
       task.customFields = { ...(task.customFields || {}), autopilotRecovery: "Date reset +3d" };
     });
     appliedRecord = overdueTasks[0] || createAutopilotTask({ projectId, title: scenario.title, summary: scenario.summary, tags: ["schedule"] });
+    if (!overdueTasks.length && appliedRecord?.id) undo.createdTaskIds.push(appliedRecord.id);
     appliedType = overdueTasks.length ? "tasks" : "task";
   } else if (scenario.id === "workload-rebalance") {
     const loadByMember = members.map((member) => ({
@@ -22093,6 +22122,7 @@ function applyAutopilotScenario(scenarioId) {
     const receiver = loadByMember[loadByMember.length - 1];
     const task = sender?.tasks.find((item) => item.projectId === projectId) || sender?.tasks[0];
     if (task && receiver && sender.member.id !== receiver.member.id) {
+      undo.beforeTasks = [structuredClone(task)];
       task.assignee = receiver.member.id;
       task.updatedAt = new Date().toISOString();
       task.customFields = { ...(task.customFields || {}), autopilotRecovery: `Rebalanced from ${sender.member.name}` };
@@ -22100,6 +22130,7 @@ function applyAutopilotScenario(scenarioId) {
       appliedType = "task";
     } else {
       appliedRecord = createAutopilotTask({ projectId, title: scenario.title, summary: scenario.summary, tags: ["capacity"] });
+      if (appliedRecord?.id) undo.createdTaskIds.push(appliedRecord.id);
       appliedType = "task";
     }
   } else if (["schedule-scope-trim", "approval-reset", "scope-triage"].includes(scenario.id)) {
@@ -22110,6 +22141,7 @@ function applyAutopilotScenario(scenarioId) {
       type: "decision",
       severity: scenario.severity === "critical" ? "high" : "medium"
     });
+    if (appliedRecord?.id) undo.createdRaidIds.push(appliedRecord.id);
     appliedType = "decision";
   } else if (scenario.id === "blocker-escalate") {
     appliedRecord = createAutopilotRaid({
@@ -22119,6 +22151,7 @@ function applyAutopilotScenario(scenarioId) {
       type: "issue",
       severity: "high"
     });
+    if (appliedRecord?.id) undo.createdRaidIds.push(appliedRecord.id);
     appliedType = "issue";
   } else {
     appliedRecord = createAutopilotTask({
@@ -22128,6 +22161,7 @@ function applyAutopilotScenario(scenarioId) {
       priority: scenario.severity === "critical" ? "urgent" : "high",
       tags: ["recovery"]
     });
+    if (appliedRecord?.id) undo.createdTaskIds.push(appliedRecord.id);
     appliedType = "task";
   }
 
@@ -22136,18 +22170,90 @@ function applyAutopilotScenario(scenarioId) {
     detail: `Applied Autopilot scenario: ${scenario.title}`,
     targetType: appliedType,
     targetId: appliedRecord?.id || scenario.id,
+    impact: "medium",
+    reversible: true,
+    restoreHint: "Use Autopilot Safety Center > Undo to restore changed tasks or remove created recovery records.",
     metadata: {
       scenarioId: scenario.id,
       driftId: scenario.driftId,
       projectId,
       confidence: scenario.confidence,
-      proposedChanges: scenario.proposedChanges
+      proposedChanges: scenario.proposedChanges,
+      undo
     }
   });
   recordAutopilotLearning(scenario, "applied");
   saveState();
   render();
   showToast("Autopilot scenario applied with audit trail", "success");
+}
+
+function undoAutopilotScenario(auditId) {
+  const event = (state.auditEvents || []).find((item) => item.id === auditId);
+  if (!autopilotAuditUndoAvailable(event)) {
+    showToast("No Autopilot undo is available for that change", "info");
+    return;
+  }
+  if (!canWrite("tasks:write")) {
+    showToast("Your role cannot undo Autopilot changes", "info");
+    return;
+  }
+
+  const undo = event.metadata.undo;
+  const beforeTasks = new Map((undo.beforeTasks || []).map((task) => [task.id, task]));
+  const createdTaskIds = new Set(undo.createdTaskIds || []);
+  const createdRaidIds = new Set(undo.createdRaidIds || []);
+  let restoredTasks = 0;
+  let removedTasks = 0;
+  let removedRaid = 0;
+
+  state.tasks = state.tasks
+    .filter((task) => {
+      const remove = createdTaskIds.has(task.id);
+      if (remove) removedTasks += 1;
+      return !remove;
+    })
+    .map((task) => {
+      const snapshot = beforeTasks.get(task.id);
+      if (!snapshot) return task;
+      restoredTasks += 1;
+      return normalizeTaskRecord(structuredClone(snapshot));
+    });
+
+  state.raidItems = normalizeRaidItems((state.raidItems || []).filter((item) => {
+    const remove = createdRaidIds.has(item.id);
+    if (remove) removedRaid += 1;
+    return !remove;
+  }));
+
+  event.metadata = {
+    ...(event.metadata || {}),
+    undo: {
+      ...undo,
+      undoneAt: new Date().toISOString(),
+      undoneBy: activeMemberId()
+    }
+  };
+  addAuditEvent({
+    action: "autopilot_scenario_undone",
+    detail: `Undid Autopilot scenario: ${undo.scenarioTitle || event.detail}`,
+    targetType: "autopilot",
+    targetId: auditId,
+    impact: "medium",
+    reversible: false,
+    restoreHint: "Review the original audit entry if this undo needs manual inspection.",
+    metadata: {
+      sourceAuditId: auditId,
+      scenarioId: undo.scenarioId,
+      projectId: undo.projectId,
+      restoredTasks,
+      removedTasks,
+      removedRaid
+    }
+  });
+  saveState();
+  render();
+  showToast("Autopilot change undone", "success");
 }
 
 function rejectAutopilotScenario(scenarioId) {
@@ -22175,6 +22281,7 @@ function autopilotSafetyCenterState(scenarios) {
     .slice(0, 4);
   const applyEvents = recentAutopilotEvents.filter((event) => event.action === "autopilot_scenario_applied");
   const rejectedEvents = recentAutopilotEvents.filter((event) => event.action === "autopilot_scenario_rejected");
+  const undoableEvents = (state.auditEvents || []).filter(autopilotAuditUndoAvailable);
   return {
     allowedActions: [
       "Create recovery tasks",
@@ -22189,7 +22296,7 @@ function autopilotSafetyCenterState(scenarios) {
       "No bulk reassignment"
     ],
     auditSummary: `${applyEvents.length} applied / ${rejectedEvents.length} rejected recently`,
-    rollbackStatus: applyEvents.length ? "Audit-backed recovery path" : "Ready before first apply",
+    rollbackStatus: undoableEvents.length ? `${undoableEvents.length} one-click undo ready` : "Ready before first apply",
     reviewQueue: `${scenarios.length} human approval option${scenarios.length === 1 ? "" : "s"}`,
     recentAutopilotEvents
   };
@@ -22228,7 +22335,7 @@ function renderAutopilotSafetyCenter(scenarios) {
         <article>
           <span>Rollback status</span>
           <strong>${escapeHtml(safety.rollbackStatus)}</strong>
-          <small>Recovery tasks and RAID items are traceable today; one-click undo is the next safety upgrade.</small>
+          <small>One-click undo restores changed tasks and removes Autopilot-created recovery records from the audit trail.</small>
         </article>
       </div>
       <div class="autopilot-safety-recent">
@@ -22243,11 +22350,14 @@ function renderAutopilotSafetyCenter(scenarios) {
 
 function renderAutopilotSafetyEvent(event) {
   const applied = event.action === "autopilot_scenario_applied";
+  const undone = event.action === "autopilot_scenario_undone";
+  const undoAvailable = autopilotAuditUndoAvailable(event);
   return `
     <article>
-      <span class="status-pill ${applied ? "inbox-green" : "inbox-red"}">${applied ? "Applied" : "Rejected"}</span>
+      <span class="status-pill ${applied ? "inbox-green" : undone ? "inbox-blue" : "inbox-red"}">${applied ? "Applied" : undone ? "Undone" : "Rejected"}</span>
       <strong>${escapeHtml(event.detail || event.action.replaceAll("_", " "))}</strong>
       <small>${escapeHtml(memberName(event.actorId))} / ${escapeHtml(formatTimestamp(event.createdAt))}</small>
+      ${undoAvailable ? `<button class="button button-secondary compact-button" type="button" data-autopilot-undo="${escapeHtml(event.id)}">Undo</button>` : event.metadata?.undo?.undoneAt ? `<small>Undone ${escapeHtml(formatTimestamp(event.metadata.undo.undoneAt))}</small>` : ""}
     </article>
   `;
 }
@@ -40101,6 +40211,12 @@ document.addEventListener("click", (event) => {
   const autopilotApplyButton = event.target.closest("[data-autopilot-apply]");
   if (autopilotApplyButton) {
     applyAutopilotScenario(autopilotApplyButton.dataset.autopilotApply);
+    return;
+  }
+
+  const autopilotUndoButton = event.target.closest("[data-autopilot-undo]");
+  if (autopilotUndoButton) {
+    undoAutopilotScenario(autopilotUndoButton.dataset.autopilotUndo);
     return;
   }
 
