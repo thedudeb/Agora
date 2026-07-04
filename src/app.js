@@ -24169,6 +24169,72 @@ function renderProjectSummary(project) {
   `;
 }
 
+function projectHealthSnapshot(project, tasks = getProjectTasks(project.id, false)) {
+  const openTasks = tasks.filter((task) => task.status !== "done");
+  const overdueTasks = openTasks.filter(isOverdue);
+  const blockedTasks = openTasks.filter(isTaskBlocked);
+  const approvals = state.approvals.filter((approval) => approval.projectId === project.id && approval.status !== "approved");
+  const staleTasks = openTasks.filter((task) => daysBetween((task.updatedAt || task.createdAt || todayKey()).slice(0, 10), todayKey()) >= 7);
+  const progress = projectProgress(tasks);
+  const healthScore = clamp(
+    100
+      - overdueTasks.length * 12
+      - blockedTasks.length * 10
+      - approvals.length * 8
+      - staleTasks.length * 5
+      + Math.round(progress / 8),
+    0,
+    100
+  );
+  const confidence = healthScore >= 82 ? "High" : healthScore >= 58 ? "Medium" : "Low";
+  const tone = healthScore >= 80 ? "green" : healthScore >= 55 ? "amber" : "red";
+  return {
+    openTasks,
+    overdueTasks,
+    blockedTasks,
+    approvals,
+    staleTasks,
+    progress,
+    healthScore,
+    confidence,
+    tone,
+    company: projectCompany(project.id),
+    owner: memberName(project.owner)
+  };
+}
+
+function renderProjectHealthHeader(project, snapshot) {
+  return `
+    <div class="project-health-header" aria-label="Project health header">
+      <article>
+        <span>Health</span>
+        <strong>${snapshot.healthScore}%</strong>
+        <small>${snapshot.healthScore >= 80 ? "Execution is healthy" : snapshot.healthScore >= 55 ? "Watch pressure points" : "Needs PM intervention"}</small>
+      </article>
+      <article>
+        <span>Confidence</span>
+        <strong>${escapeHtml(snapshot.confidence)}</strong>
+        <small>${snapshot.blockedTasks.length} blockers / ${snapshot.overdueTasks.length} overdue</small>
+      </article>
+      <article>
+        <span>Owner</span>
+        <strong>${escapeHtml(snapshot.owner)}</strong>
+        <small>${snapshot.openTasks.length} open tasks</small>
+      </article>
+      <article>
+        <span>Client / Company</span>
+        <strong>${escapeHtml(snapshot.company?.name || companyName(project.companyId))}</strong>
+        <small>${escapeHtml(snapshot.company?.type || "Workspace project")}</small>
+      </article>
+      <article>
+        <span>Due date</span>
+        <strong>${escapeHtml(formatDate(project.dueDate))}</strong>
+        <small>${project.dueDate < todayKey() ? "Past due" : `${daysBetween(todayKey(), project.dueDate)} days left`}</small>
+      </article>
+    </div>
+  `;
+}
+
 function renderProjectPage() {
   const project = byId(state.projects, state.selectedProject);
   if (!project || isProjectArchived(project)) {
@@ -24189,9 +24255,10 @@ function renderProjectPage() {
     .filter((milestone) => milestone.status !== "completed")
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
   const progress = projectProgress(allProjectTasks);
+  const healthSnapshot = projectHealthSnapshot(project, allProjectTasks);
 
   els.appView.innerHTML = `
-    <section class="project-hero">
+    <section class="project-hero project-health-hero">
       <div>
         <p class="eyebrow">Project workspace</p>
         <h2>${escapeHtml(project.name)}</h2>
@@ -24214,6 +24281,7 @@ function renderProjectPage() {
         <strong>${progress}%</strong>
         <span class="progress-track"><span style="width: ${progress}%"></span></span>
       </div>
+      ${renderProjectHealthHeader(project, healthSnapshot)}
     </section>
 
     <nav class="tab-list" aria-label="Project sections">

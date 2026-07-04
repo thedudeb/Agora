@@ -9665,6 +9665,50 @@ body[data-tutorial-target="view"] #app-view {
   box-shadow: var(--shadow);
 }
 
+.project-health-hero {
+  grid-template-columns: minmax(0, 1fr) 220px;
+}
+
+.project-health-header {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.project-health-header article {
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.project-health-header span,
+.project-health-header strong,
+.project-health-header small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.project-health-header span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.project-health-header strong {
+  margin-top: 5px;
+}
+
+.project-health-header small {
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .project-hero h2 {
   margin: 0;
   font-size: 1.65rem;
@@ -12621,6 +12665,7 @@ body[data-density="compact"] .main-content {
   .client-portal-grid,
   .client-handoff-grid,
   .project-hero,
+  .project-health-header,
   .form-grid,
   .collaboration-grid,
   .collab-hub-grid,
@@ -12726,6 +12771,7 @@ body[data-density="compact"] .main-content {
   .onboarding-grid,
   .project-command-grid,
   .real-project-grid,
+  .project-health-header,
   .mobile-roadmap-list,
   .native-offline-contract,
   .native-mobile-grid,

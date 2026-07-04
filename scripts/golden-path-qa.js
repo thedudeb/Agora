@@ -329,6 +329,10 @@ const routeChecks = [
     required: [
       "Project command center",
       "Project health",
+      "Confidence",
+      "Owner",
+      "Client / Company",
+      "Due date",
       "Action queue",
       "Change history",
       "What to do next",
