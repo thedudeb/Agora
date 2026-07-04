@@ -21774,6 +21774,42 @@ function autopilotLearningStats() {
   return { log, applied, rejected, preferredStrategy };
 }
 
+function projectMemoryAutopilotSignals() {
+  const captures = normalizeUpdateCaptures(state.updateCaptures);
+  const previews = normalizeUpdateExtractionPreviews(state.updateExtractionPreviews);
+  const captureById = new Map(captures.map((capture) => [capture.id, capture]));
+  const driftTypes = new Set(["task", "blocker", "risk", "approval", "date_change"]);
+  const signals = previews.flatMap((preview) => preview.proposals
+    .filter((proposal) => driftTypes.has(proposal.type))
+    .map((proposal) => {
+      const capture = captureById.get(preview.captureId);
+      return {
+        ...proposal,
+        previewId: preview.id,
+        captureId: preview.captureId,
+        captureTitle: capture?.title || "Project Memory update",
+        source: capture?.source || preview.source || "other",
+        createdAt: preview.createdAt,
+        feedsDrift: ["proposed", "accepted", "applied"].includes(proposal.status),
+        driftArea: {
+          task: "Scope",
+          blocker: "Blockers",
+          risk: "Scope",
+          approval: "Approvals",
+          date_change: "Schedule"
+        }[proposal.type] || "Scope"
+      };
+    }));
+  return {
+    captures,
+    previews,
+    signals,
+    feedSignals: signals.filter((signal) => signal.feedsDrift),
+    appliedSignals: signals.filter((signal) => signal.status === "applied"),
+    readyCaptures: captures.filter((capture) => capture.status === "captured")
+  };
+}
+
 function projectAutopilotDriftCards() {
   const openTasks = activeTasks().filter((task) => task.status !== "done");
   const overdue = openTasks.filter(isOverdue);
@@ -21781,8 +21817,7 @@ function projectAutopilotDriftCards() {
   const dueSoon = openTasks.filter((task) => task.dueDate && task.dueDate <= shiftDate(todayKey(), 7));
   const pendingApprovals = state.approvals.filter((approval) => approval.status !== "approved" && projectMatchesContext(approval.projectId));
   const featureRequests = featureRequestTasks().filter((task) => !["shipped", "declined"].includes(featureRequestStatus(task)));
-  const memorySignals = normalizeUpdateExtractionPreviews(state.updateExtractionPreviews)
-    .flatMap((preview) => preview.proposals.filter((proposal) => ["task", "blocker", "risk", "date_change"].includes(proposal.type)));
+  const memorySignals = projectMemoryAutopilotSignals().feedSignals;
   const loadByMember = members.map((member) => ({
     member,
     tasks: openTasks.filter((task) => task.assignee === member.id)
@@ -22362,6 +22397,55 @@ function renderAutopilotSafetyEvent(event) {
   `;
 }
 
+function renderProjectMemoryAutopilotBridge() {
+  const memory = projectMemoryAutopilotSignals();
+  const topSignals = memory.feedSignals
+    .sort((a, b) => (b.confidence || 0) - (a.confidence || 0))
+    .slice(0, 6);
+  return `
+    <section class="panel autopilot-memory-bridge">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Project Memory Autopilot Bridge</p>
+          <h2>Captured reality feeds drift detection</h2>
+        </div>
+        <button class="button button-secondary compact-button" type="button" data-route="memory">Open Memory</button>
+      </div>
+      <p class="panel-note">Captured updates from meetings, email, chat, GitHub, clients, docs, and CLI/MCP sources become Autopilot evidence for schedule, scope, blocker, approval, and client promise drift.</p>
+      <div class="autopilot-memory-summary">
+        <article><span>Captured updates</span><strong>${memory.captures.length}</strong><small>raw reality saved in Project Memory</small></article>
+        <article><span>Structured signals</span><strong>${memory.signals.length}</strong><small>extracted updates Autopilot can inspect</small></article>
+        <article><span>Feeds Autopilot</span><strong>${memory.feedSignals.length}</strong><small>signals available to drift detection</small></article>
+        <article><span>Needs preview</span><strong>${memory.readyCaptures.length}</strong><small>captures waiting for extraction</small></article>
+      </div>
+      <div class="autopilot-memory-feed">
+        <strong>Memory signals in drift feed</strong>
+        <div class="autopilot-memory-list">
+          ${topSignals.length ? topSignals.map(renderProjectMemoryAutopilotSignal).join("") : emptyState("Preview Project Memory updates to feed Autopilot with schedule, scope, blocker, risk, and approval signals.")}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderProjectMemoryAutopilotSignal(signal) {
+  const tone = signal.status === "applied" ? "green" : signal.confidence >= 78 ? "blue" : "amber";
+  return `
+    <article>
+      <div>
+        <div class="autopilot-chip-row">
+          <span class="status-pill inbox-${tone}">${escapeHtml(signal.driftArea)}</span>
+          <span class="status-pill inbox-neutral">${escapeHtml(signal.type.replace("_", " "))}</span>
+          <span class="status-pill inbox-blue">${signal.confidence}% confidence</span>
+          <span class="status-pill inbox-neutral">${escapeHtml(updateCaptureSourceLabel(signal.source))}</span>
+        </div>
+        <strong>${escapeHtml(signal.title)}</strong>
+        <p>${escapeHtml(signal.captureTitle)} / ${escapeHtml(signal.status)}</p>
+      </div>
+    </article>
+  `;
+}
+
 function renderProjectAutopilot() {
   const drifts = projectAutopilotDriftCards();
   const scenarios = projectAutopilotRecoveryScenarios(drifts);
@@ -22411,6 +22495,8 @@ function renderProjectAutopilot() {
     </section>
 
     ${renderAutopilotSafetyCenter(scenarios)}
+
+    ${renderProjectMemoryAutopilotBridge()}
 
     <section class="panel autopilot-scenario-panel">
       <div class="panel-header">

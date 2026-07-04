@@ -2919,12 +2919,15 @@ body[data-tutorial-target="view"] #app-view {
 .autopilot-drift-list,
 .autopilot-scenario-grid,
 .autopilot-safety-grid,
-.autopilot-safety-events {
+.autopilot-safety-events,
+.autopilot-memory-summary,
+.autopilot-memory-list {
   display: grid;
   gap: 10px;
 }
 
-.autopilot-scenario-grid {
+.autopilot-scenario-grid,
+.autopilot-memory-summary {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -2937,7 +2940,9 @@ body[data-tutorial-target="view"] #app-view {
 .autopilot-drift-card,
 .autopilot-scenario-card,
 .autopilot-safety-grid article,
-.autopilot-safety-events article {
+.autopilot-safety-events article,
+.autopilot-memory-summary article,
+.autopilot-memory-list article {
   min-width: 0;
   padding: 12px;
   background: var(--surface-strong);
@@ -2946,7 +2951,8 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .autopilot-hero-proof span,
-.autopilot-safety-grid span {
+.autopilot-safety-grid span,
+.autopilot-memory-summary span {
   display: block;
   color: var(--muted);
   font-size: 0.72rem;
@@ -2956,7 +2962,9 @@ body[data-tutorial-target="view"] #app-view {
 
 .autopilot-hero-proof strong,
 .autopilot-safety-grid strong,
-.autopilot-safety-events strong {
+.autopilot-safety-events strong,
+.autopilot-memory-summary strong,
+.autopilot-memory-list strong {
   display: block;
   margin-top: 6px;
   overflow-wrap: anywhere;
@@ -2964,14 +2972,16 @@ body[data-tutorial-target="view"] #app-view {
 
 .autopilot-hero-proof small,
 .autopilot-safety-grid small,
-.autopilot-safety-events small {
+.autopilot-safety-events small,
+.autopilot-memory-summary small {
   display: block;
   margin-top: 6px;
   color: var(--muted);
   line-height: 1.4;
 }
 
-.autopilot-safety-recent {
+.autopilot-safety-recent,
+.autopilot-memory-feed {
   display: grid;
   gap: 10px;
   margin-top: 12px;
@@ -2979,9 +2989,16 @@ body[data-tutorial-target="view"] #app-view {
   border-top: 1px solid var(--line);
 }
 
-.autopilot-safety-recent > strong {
+.autopilot-safety-recent > strong,
+.autopilot-memory-feed > strong {
   font-size: 0.78rem;
   text-transform: uppercase;
+}
+
+.autopilot-memory-list article p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .autopilot-drift-card h3,
@@ -12101,6 +12118,7 @@ body[data-density="compact"] .main-content {
   .autopilot-hero-proof,
   .autopilot-scenario-grid,
   .autopilot-safety-grid,
+  .autopilot-memory-summary,
   .autopilot-learning-summary,
   .project-memory-form,
   .project-memory-source-grid,
