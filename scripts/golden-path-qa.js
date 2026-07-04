@@ -12,6 +12,8 @@ const BASE_URL = process.env.AGORA_GOLDEN_BASE_URL || "";
 const CHROME_TIMEOUT_MS = Number(process.env.AGORA_GOLDEN_TIMEOUT_MS || 60000);
 const ROUTE_WAIT_MS = Number(process.env.AGORA_GOLDEN_WAIT_MS || 5000);
 const ARTIFACT_DIR = process.env.AGORA_GOLDEN_ARTIFACT_DIR || "";
+const ONLY_FILTER = String(process.env.AGORA_GOLDEN_ONLY || "").trim().toLowerCase();
+const SUITE_FILTER = String(process.env.AGORA_GOLDEN_SUITE || "").trim().toLowerCase();
 
 const staticChecks = [
   {
@@ -885,6 +887,15 @@ main().catch((error) => {
 
 async function main() {
   const chromePath = findChrome();
+  const selectedRouteChecks = routeChecks.filter((check) => {
+    const suiteMatches = !SUITE_FILTER || String(check.suite || "").toLowerCase() === SUITE_FILTER;
+    const onlyText = `${check.name} ${check.suite || ""} ${check.route || ""}`.toLowerCase();
+    const onlyMatches = !ONLY_FILTER || onlyText.includes(ONLY_FILTER);
+    return suiteMatches && onlyMatches;
+  });
+  if (!selectedRouteChecks.length) {
+    throw new Error(`No golden route checks matched filters: suite=${SUITE_FILTER || "all"} only=${ONLY_FILTER || "all"}`);
+  }
   const server = BASE_URL
     ? { baseUrl: trimTrailingSlash(BASE_URL), stop: async () => {} }
     : await startStaticServer();
@@ -902,10 +913,11 @@ async function main() {
       }
     }
 
-    for (const check of routeChecks) {
+    for (const check of selectedRouteChecks) {
       const url = buildRouteUrl(server.baseUrl, check);
       let dom = "";
       try {
+        console.log(`Running ${check.name} [${check.suite}]`);
         dom = await runChrome(chromePath, [
           "--headless=new",
           "--disable-gpu",
@@ -933,7 +945,7 @@ async function main() {
   }
 
   console.log("");
-  console.log(`Golden path QA passed: ${staticChecks.length} static checks, ${routeChecks.length} route checks`);
+  console.log(`Golden path QA passed: ${staticChecks.length} static checks, ${selectedRouteChecks.length} route checks`);
 }
 
 function buildRouteUrl(baseUrl, check) {
