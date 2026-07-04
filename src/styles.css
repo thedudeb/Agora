@@ -2917,7 +2917,9 @@ body[data-tutorial-target="view"] #app-view {
 
 .autopilot-hero-proof,
 .autopilot-drift-list,
-.autopilot-scenario-grid {
+.autopilot-scenario-grid,
+.autopilot-safety-grid,
+.autopilot-safety-events {
   display: grid;
   gap: 10px;
 }
@@ -2926,13 +2928,16 @@ body[data-tutorial-target="view"] #app-view {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.autopilot-hero-proof {
+.autopilot-hero-proof,
+.autopilot-safety-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .autopilot-hero-proof article,
 .autopilot-drift-card,
-.autopilot-scenario-card {
+.autopilot-scenario-card,
+.autopilot-safety-grid article,
+.autopilot-safety-events article {
   min-width: 0;
   padding: 12px;
   background: var(--surface-strong);
@@ -2940,7 +2945,8 @@ body[data-tutorial-target="view"] #app-view {
   border-radius: 8px;
 }
 
-.autopilot-hero-proof span {
+.autopilot-hero-proof span,
+.autopilot-safety-grid span {
   display: block;
   color: var(--muted);
   font-size: 0.72rem;
@@ -2948,17 +2954,34 @@ body[data-tutorial-target="view"] #app-view {
   text-transform: uppercase;
 }
 
-.autopilot-hero-proof strong {
+.autopilot-hero-proof strong,
+.autopilot-safety-grid strong,
+.autopilot-safety-events strong {
   display: block;
   margin-top: 6px;
   overflow-wrap: anywhere;
 }
 
-.autopilot-hero-proof small {
+.autopilot-hero-proof small,
+.autopilot-safety-grid small,
+.autopilot-safety-events small {
   display: block;
   margin-top: 6px;
   color: var(--muted);
   line-height: 1.4;
+}
+
+.autopilot-safety-recent {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.autopilot-safety-recent > strong {
+  font-size: 0.78rem;
+  text-transform: uppercase;
 }
 
 .autopilot-drift-card h3,
@@ -12077,6 +12100,7 @@ body[data-density="compact"] .main-content {
   .command-inbox-brief,
   .autopilot-hero-proof,
   .autopilot-scenario-grid,
+  .autopilot-safety-grid,
   .autopilot-learning-summary,
   .project-memory-form,
   .project-memory-source-grid,

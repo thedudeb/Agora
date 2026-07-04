@@ -22169,6 +22169,89 @@ function rejectAutopilotScenario(scenarioId) {
   showToast("Autopilot scenario rejected and learned", "success");
 }
 
+function autopilotSafetyCenterState(scenarios) {
+  const recentAutopilotEvents = (state.auditEvents || [])
+    .filter((event) => String(event.action || "").startsWith("autopilot_"))
+    .slice(0, 4);
+  const applyEvents = recentAutopilotEvents.filter((event) => event.action === "autopilot_scenario_applied");
+  const rejectedEvents = recentAutopilotEvents.filter((event) => event.action === "autopilot_scenario_rejected");
+  return {
+    allowedActions: [
+      "Create recovery tasks",
+      "Create RAID decisions/issues",
+      "Shift overdue task dates",
+      "Rebalance one owner"
+    ],
+    blockedActions: [
+      "No silent client messages",
+      "No deletion or archive",
+      "No budget changes",
+      "No bulk reassignment"
+    ],
+    auditSummary: `${applyEvents.length} applied / ${rejectedEvents.length} rejected recently`,
+    rollbackStatus: applyEvents.length ? "Audit-backed recovery path" : "Ready before first apply",
+    reviewQueue: `${scenarios.length} human approval option${scenarios.length === 1 ? "" : "s"}`,
+    recentAutopilotEvents
+  };
+}
+
+function renderAutopilotSafetyCenter(scenarios) {
+  const safety = autopilotSafetyCenterState(scenarios);
+  const recentEvents = safety.recentAutopilotEvents.length
+    ? safety.recentAutopilotEvents.map(renderAutopilotSafetyEvent).join("")
+    : emptyState("No Autopilot changes have been applied or rejected yet.");
+  return `
+    <section class="panel autopilot-safety-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Autopilot Safety Center</p>
+          <h2>Human approval stays in charge</h2>
+        </div>
+        <span class="status-pill inbox-green">${escapeHtml(safety.reviewQueue)}</span>
+      </div>
+      <div class="autopilot-safety-grid">
+        <article>
+          <span>Allowed with approval</span>
+          <strong>${escapeHtml(safety.allowedActions.join(", "))}</strong>
+          <small>Autopilot can prepare and apply these scoped recovery moves only after a project manager approves a scenario.</small>
+        </article>
+        <article>
+          <span>Never automatic</span>
+          <strong>${escapeHtml(safety.blockedActions.join(", "))}</strong>
+          <small>External communication, destructive actions, money movement, and broad rewrites remain manual controls.</small>
+        </article>
+        <article>
+          <span>Audit required</span>
+          <strong>${escapeHtml(safety.auditSummary)}</strong>
+          <small>Every approval or rejection writes an audit event with scenario, project, confidence, and proposed changes.</small>
+        </article>
+        <article>
+          <span>Rollback status</span>
+          <strong>${escapeHtml(safety.rollbackStatus)}</strong>
+          <small>Recovery tasks and RAID items are traceable today; one-click undo is the next safety upgrade.</small>
+        </article>
+      </div>
+      <div class="autopilot-safety-recent">
+        <strong>Recent Autopilot changes</strong>
+        <div class="autopilot-safety-events">
+          ${recentEvents}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderAutopilotSafetyEvent(event) {
+  const applied = event.action === "autopilot_scenario_applied";
+  return `
+    <article>
+      <span class="status-pill ${applied ? "inbox-green" : "inbox-red"}">${applied ? "Applied" : "Rejected"}</span>
+      <strong>${escapeHtml(event.detail || event.action.replaceAll("_", " "))}</strong>
+      <small>${escapeHtml(memberName(event.actorId))} / ${escapeHtml(formatTimestamp(event.createdAt))}</small>
+    </article>
+  `;
+}
+
 function renderProjectAutopilot() {
   const drifts = projectAutopilotDriftCards();
   const scenarios = projectAutopilotRecoveryScenarios(drifts);
@@ -22216,6 +22299,8 @@ function renderProjectAutopilot() {
         ${drifts.length ? drifts.map(renderAutopilotDriftCard).join("") : emptyState("No schedule, scope, approval, blocker, workload, or client promise drift detected.")}
       </div>
     </section>
+
+    ${renderAutopilotSafetyCenter(scenarios)}
 
     <section class="panel autopilot-scenario-panel">
       <div class="panel-header">
