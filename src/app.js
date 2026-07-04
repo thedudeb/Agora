@@ -24330,6 +24330,8 @@ function renderProjectOverview(project, details) {
     </div>
 
     ${renderProjectCommandCenter(project, details)}
+    ${renderProjectNextBestActions(project, details)}
+    ${renderProjectRiskDecisionStrip(project, details)}
 
     <div class="dashboard-grid">
       <section class="panel">
@@ -24380,6 +24382,145 @@ function renderProjectOverview(project, details) {
         ${renderHistoryTimeline(projectHistoryEvents(project.id), "No changes have been recorded for this project yet.")}
       </section>
     </div>
+  `;
+}
+
+function projectVisibilityWarnings(projectId) {
+  return (clientVisibilityReviewData().warnings || []).filter((item) => item.projectId === projectId);
+}
+
+function projectAutopilotScenarios(projectId) {
+  return projectAutopilotRecoveryScenarios().filter((scenario) => scenario.projectId === projectId).slice(0, 3);
+}
+
+function projectNextBestActions(project, details) {
+  const { openTasks, overdueTasks, nextMilestone } = details;
+  const blockedTasks = openTasks.filter(isTaskBlocked);
+  const approvals = state.approvals.filter((approval) => approval.projectId === project.id && approval.status !== "approved");
+  const visibilityWarnings = projectVisibilityWarnings(project.id);
+  const autopilotScenarios = projectAutopilotScenarios(project.id);
+  const raidItems = projectRaidItems(project.id).filter((item) => item.status !== "closed");
+  const dueSoon = openTasks
+    .filter((task) => task.dueDate && task.dueDate <= shiftDate(todayKey(), 7) && !isOverdue(task))
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  return [
+    ...blockedTasks.slice(0, 2).map((task) => ({
+      tone: "red",
+      label: "Clear blocker",
+      title: task.title,
+      detail: `${openTaskDependencies(task).map((item) => item.title).join(", ") || "Dependency needs review"}`,
+      action: "Open Task",
+      taskId: task.id
+    })),
+    ...overdueTasks.slice(0, 2).map((task) => ({
+      tone: "amber",
+      label: "Recover overdue work",
+      title: task.title,
+      detail: `${memberName(task.assignee)} / due ${formatDate(task.dueDate)}`,
+      action: "Open Task",
+      taskId: task.id
+    })),
+    ...approvals.slice(0, 1).map((approval) => ({
+      tone: "blue",
+      label: "Chase approval",
+      title: approval.title,
+      detail: `${approvalStatusLabel(approval.status)} / due ${formatDate(approval.dueDate)}`,
+      action: "Client Visibility",
+      route: "visibility"
+    })),
+    ...autopilotScenarios.slice(0, 1).map((scenario) => ({
+      tone: "amber",
+      label: "Review Autopilot",
+      title: scenario.title,
+      detail: `${scenario.strategy} / ${scenario.confidence}% confidence`,
+      action: "Open Autopilot",
+      route: "autopilot"
+    })),
+    ...visibilityWarnings.slice(0, 1).map((warning) => ({
+      tone: "amber",
+      label: "Fix client packet",
+      title: warning.title,
+      detail: warning.warning,
+      action: "Client Visibility",
+      route: "visibility"
+    })),
+    ...raidItems.slice(0, 1).map((item) => ({
+      tone: raidTone(item),
+      label: "Resolve RAID",
+      title: item.title,
+      detail: `${raidTypeLabel(item.type)} / ${raidSeverityLabel(item.severity)}`,
+      action: "Open Decisions",
+      route: "decisions"
+    })),
+    ...dueSoon.slice(0, 1).map((task) => ({
+      tone: "blue",
+      label: "Protect date",
+      title: task.title,
+      detail: `${memberName(task.assignee)} / due ${formatDate(task.dueDate)}`,
+      action: "Open Task",
+      taskId: task.id
+    })),
+    !nextMilestone ? {
+      tone: "neutral",
+      label: "Add milestone",
+      title: "Anchor the delivery plan",
+      detail: "No upcoming milestone is set for this project.",
+      action: "Open Timeline",
+      projectTab: "timeline"
+    } : null
+  ].filter(Boolean).slice(0, 6);
+}
+
+function renderProjectNextBestActions(project, details) {
+  const actions = projectNextBestActions(project, details);
+  return `
+    <section class="panel project-next-actions-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Next Best Actions</p>
+          <h2>What should happen next</h2>
+        </div>
+        <span class="status-pill ${actions.length ? "inbox-amber" : "inbox-green"}">${actions.length ? `${actions.length} actions` : "Clear"}</span>
+      </div>
+      <div class="project-next-action-grid">
+        ${actions.length ? actions.map((item) => `
+          <article>
+            <span class="status-pill inbox-${item.tone}">${escapeHtml(item.label)}</span>
+            <strong>${escapeHtml(item.title)}</strong>
+            <p>${escapeHtml(item.detail)}</p>
+            <button class="button button-secondary compact-button" type="button" ${item.taskId ? `data-edit-task="${escapeHtml(item.taskId)}"` : item.projectTab ? `data-project-tab="${escapeHtml(item.projectTab)}"` : `data-route="${escapeHtml(item.route)}"`}>${escapeHtml(item.action)}</button>
+          </article>
+        `).join("") : emptyState("No urgent project action is waiting. Use the time to groom scope, confirm dates, or prepare a client update.")}
+      </div>
+    </section>
+  `;
+}
+
+function renderProjectRiskDecisionStrip(project, details) {
+  const { openTasks, overdueTasks } = details;
+  const blockedTasks = openTasks.filter(isTaskBlocked);
+  const approvals = state.approvals.filter((approval) => approval.projectId === project.id && approval.status !== "approved");
+  const raidItems = projectRaidItems(project.id).filter((item) => item.status !== "closed");
+  const visibilityWarnings = projectVisibilityWarnings(project.id);
+  const autopilotScenarios = projectAutopilotScenarios(project.id);
+  const rows = [
+    { label: "Open RAID", value: raidItems.length, detail: raidItems[0]?.title || "No open risk, issue, decision, or change.", tone: raidItems.length ? "amber" : "green", route: "decisions" },
+    { label: "Pending decisions", value: raidItems.filter((item) => item.type === "decision").length, detail: raidItems.find((item) => item.type === "decision")?.title || "No project decision is waiting.", tone: raidItems.some((item) => item.type === "decision") ? "blue" : "green", route: "decisions" },
+    { label: "Approvals", value: approvals.length, detail: approvals[0]?.title || "No approval is blocking delivery.", tone: approvals.length ? "blue" : "green", route: "visibility" },
+    { label: "Client visibility warnings", value: visibilityWarnings.length, detail: visibilityWarnings[0]?.warning || "Client packet is clear.", tone: visibilityWarnings.length ? "amber" : "green", route: "visibility" },
+    { label: "Blocked / overdue", value: blockedTasks.length + overdueTasks.length, detail: `${blockedTasks.length} blocked / ${overdueTasks.length} overdue`, tone: blockedTasks.length || overdueTasks.length ? "red" : "green", projectTab: "tasks" },
+    { label: "Autopilot review", value: autopilotScenarios.length, detail: autopilotScenarios[0]?.title || "No recovery proposal is waiting.", tone: autopilotScenarios.length ? "amber" : "neutral", route: "autopilot" }
+  ];
+  return `
+    <section class="project-risk-strip" aria-label="Risk and decisions strip">
+      ${rows.map((row) => `
+        <button class="project-risk-pill" type="button" ${row.projectTab ? `data-project-tab="${escapeHtml(row.projectTab)}"` : `data-route="${escapeHtml(row.route)}"`}>
+          <span class="status-pill inbox-${row.tone}">${escapeHtml(row.label)}</span>
+          <strong>${escapeHtml(row.value)}</strong>
+          <small>${escapeHtml(row.detail)}</small>
+        </button>
+      `).join("")}
+    </section>
   `;
 }
 

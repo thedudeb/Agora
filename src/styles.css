@@ -5557,6 +5557,58 @@ body[data-tutorial-target="view"] #app-view {
   margin-bottom: 16px;
 }
 
+.project-next-actions-panel {
+  margin-bottom: 16px;
+}
+
+.project-next-action-grid,
+.project-risk-strip {
+  display: grid;
+  gap: 10px;
+}
+
+.project-next-action-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.project-risk-strip {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin-bottom: 16px;
+}
+
+.project-next-action-grid article,
+.project-risk-pill {
+  min-width: 0;
+  padding: 12px;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.project-risk-pill {
+  display: grid;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.project-next-action-grid strong,
+.project-next-action-grid p,
+.project-risk-pill strong,
+.project-risk-pill small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.project-next-action-grid p,
+.project-risk-pill small {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .project-command-hero,
 .project-action-queue,
 .project-command-status {
@@ -12194,6 +12246,8 @@ body[data-density="compact"] .main-content {
   .client-portal-grid,
   .client-handoff-grid,
   .project-command-grid,
+  .project-next-action-grid,
+  .project-risk-strip,
   .real-project-grid,
   .integration-grid,
   .integration-summary-grid,
@@ -12770,6 +12824,8 @@ body[data-density="compact"] .main-content {
   .operator-preset-list,
   .onboarding-grid,
   .project-command-grid,
+  .project-next-action-grid,
+  .project-risk-strip,
   .real-project-grid,
   .project-health-header,
   .mobile-roadmap-list,
