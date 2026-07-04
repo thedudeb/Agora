@@ -1906,7 +1906,7 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .launch-step-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
 .launch-step {

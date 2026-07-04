@@ -7728,6 +7728,13 @@ function renderFirstRunCommandCenter() {
       value: "Trust and Recovery",
       detail: "Review backups, export paths, backend health, release metadata, and permissions.",
       route: "readiness"
+    },
+    {
+      label: "What will AI do?",
+      value: "Autopilot Demo",
+      detail: "See drift detection, Safety Center, Memory bridge, impact simulation, and one-click undo before trusting automation.",
+      action: "autopilot-demo",
+      primary: !state.onboarding?.autopilotDemoSeen
     }
   ];
   return `
@@ -12540,6 +12547,13 @@ function commandPaletteBaseItems() {
       keywords: "launch first client workspace guided flow onboarding"
     },
     {
+      id: "autopilot:demo",
+      title: "Try Autopilot demo",
+      detail: "Open a first-run demo of drift detection, Safety Center, Memory bridge, impact simulation, and undo",
+      group: "Golden path",
+      keywords: "autopilot demo ai safety first run memory bridge undo"
+    },
+    {
       id: "readiness:open",
       title: "Open readiness audit",
       detail: "Review launch, backend, recovery, permissions, and production gates",
@@ -13171,6 +13185,11 @@ function executeCommand(commandId) {
 
   if (commandId === "launch:workspace") {
     openLaunchWorkspaceFlow();
+    return;
+  }
+
+  if (commandId === "autopilot:demo") {
+    startAutopilotDemoPath();
     return;
   }
 
@@ -16035,6 +16054,11 @@ function handleOnboardingAction(action) {
     return;
   }
 
+  if (action === "autopilot-demo") {
+    startAutopilotDemoPath();
+    return;
+  }
+
   if (action === "start-clean") {
     state = createBlankWorkspaceState();
     state.onboarding = {
@@ -18705,6 +18729,40 @@ function openLaunchWorkspaceFlow() {
   render();
 }
 
+function startAutopilotDemoPath() {
+  if (!activeProjects().length) {
+    state = normalizeState({
+      ...structuredClone(seedData),
+      selectedRoute: "autopilot",
+      onboarding: {
+        ...seedData.onboarding,
+        dismissed: false,
+        sampleMode: "demo",
+        autopilotDemoSeen: true,
+        wizardActive: false
+      }
+    });
+  } else {
+    state.onboarding = {
+      ...state.onboarding,
+      dismissed: false,
+      autopilotDemoSeen: true
+    };
+    state.selectedRoute = "autopilot";
+  }
+  openSidebarGroupForRoute("autopilot");
+  addAuditEvent({
+    action: "first_run_autopilot_demo_opened",
+    detail: "Opened the first-run Autopilot demo path",
+    targetType: "autopilot",
+    targetId: state.workspace.id,
+    metadata: { sampleMode: state.onboarding?.sampleMode || "existing-workspace" }
+  });
+  saveState();
+  render();
+  showToast("Autopilot demo path opened", "success");
+}
+
 function launchWorkspaceItems() {
   const template = recommendedFirstTemplate();
   const pack = recommendedAutomationPack();
@@ -18742,6 +18800,12 @@ function launchWorkspaceItems() {
       detail: hasTeamAccess ? "Members or pending invitations are configured." : "Prepare the first teammate invite.",
       done: hasTeamAccess,
       action: "Prep Invite"
+    },
+    {
+      label: "Autopilot demo",
+      detail: state.onboarding?.autopilotDemoSeen ? "Drift detection and safety controls have been previewed." : "Preview Safety Center, Memory bridge, impact simulator, and undo before using AI.",
+      done: Boolean(state.onboarding?.autopilotDemoSeen),
+      action: "Try Demo"
     }
   ];
 }
@@ -18881,6 +18945,25 @@ function renderLaunchInviteSetupPanel() {
   `;
 }
 
+function renderLaunchAutopilotDemoPanel() {
+  return `
+    <section class="panel launch-flow-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Step 5</p>
+          <h2>Try the Autopilot demo</h2>
+        </div>
+        <span class="status-pill ${state.onboarding?.autopilotDemoSeen ? "inbox-green" : "inbox-blue"}">${state.onboarding?.autopilotDemoSeen ? "Previewed" : "Guided demo"}</span>
+      </div>
+      <p class="panel-note">Before trusting AI, review the Safety Center, Project Memory bridge, Impact Simulator, recovery proposals, audit trail, and one-click undo on realistic demo data.</p>
+      <div class="launch-action-row">
+        <button class="button button-primary" type="button" data-onboarding-action="autopilot-demo">Open Autopilot Demo</button>
+        <button class="button button-secondary" type="button" data-route="memory">Open Project Memory</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderLaunchWorkspaceFlow() {
   const items = launchWorkspaceItems();
   const doneCount = items.filter((item) => item.done).length;
@@ -18902,6 +18985,7 @@ function renderLaunchWorkspaceFlow() {
       ${renderLaunchAutomationSetupPanel()}
       ${renderLaunchRecoverySetupPanel()}
       ${renderLaunchInviteSetupPanel()}
+      ${renderLaunchAutopilotDemoPanel()}
     </div>
 
     ${doneCount === items.length ? `

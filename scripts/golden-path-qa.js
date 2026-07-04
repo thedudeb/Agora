@@ -81,7 +81,10 @@ const routeChecks = [
       "Agency PM",
       "Software lead",
       "Pick your launch path",
-      "Create recovery proof"
+      "Create recovery proof",
+      "Autopilot Demo",
+      "What will AI do?",
+      "one-click undo"
     ]
   },
   {
@@ -96,7 +99,12 @@ const routeChecks = [
       "Create the client workspace",
       "Install the handoff workflow",
       "Prove recovery",
-      "Invite the first teammate"
+      "Invite the first teammate",
+      "Try the Autopilot demo",
+      "Safety Center",
+      "Memory bridge",
+      "Impact Simulator",
+      "one-click undo"
     ]
   },
   {
