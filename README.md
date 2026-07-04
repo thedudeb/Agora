@@ -144,6 +144,8 @@ npm run agora -- migrate preview asana-export.csv --source asana-csv
 npm run agora -- migrate apply tasks.csv --source generic-csv --workspace tests/fixtures/workspace.json --out imported-workspace.json
 ```
 
+For focused browser QA, see [`docs/qa-gate.md`](./docs/qa-gate.md) for `AGORA_GOLDEN_SUITE`, `AGORA_GOLDEN_ONLY`, retry, timeout, and artifact options.
+
 To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`. Add browser origins to `AGORA_ALLOWED_ORIGINS` when hosting the app somewhere other than localhost.
 
 For MCP clients, set `AGORA_API_URL`, `AGORA_API_TOKEN`, and optionally `AGORA_MCP_ALLOW_WRITES=true`, then run `npm run mcp`. See [`docs/mcp-server.md`](./docs/mcp-server.md) for client config examples, tools, resources, and security notes.

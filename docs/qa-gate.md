@@ -55,6 +55,24 @@ The runner accepts `AGORA_GOLDEN_BASE_URL` for hosted smoke tests:
 AGORA_GOLDEN_BASE_URL=https://example.com npm run test:golden
 ```
 
+For faster route debugging, narrow the browser pass by suite or route text:
+
+```sh
+AGORA_GOLDEN_SUITE=workspace npm run test:golden
+AGORA_GOLDEN_ONLY="Project command center" npm run test:golden
+AGORA_GOLDEN_SUITE=admin AGORA_GOLDEN_ONLY=settings npm run test:golden
+```
+
+Useful suites today are `marketing`, `first-run`, `workspace`, `ai`, `release`, `security`, `data`, `admin`, `offline`, `feedback`, and `mobile`. `AGORA_GOLDEN_ONLY` matches the check name, suite, or route as a case-insensitive substring.
+
+Chrome route checks retry once by default when Chrome times out. Tune that with:
+
+```sh
+AGORA_GOLDEN_RETRIES=2 AGORA_GOLDEN_TIMEOUT_MS=120000 npm run test:golden
+```
+
+Set `AGORA_GOLDEN_ARTIFACT_DIR=qa-artifacts` to write route DOM, failure metadata, Chrome stdout/stderr tails, and screenshots when Chrome can capture one. Timeout failures still write metadata even when no DOM is available.
+
 ## Manual Follow-Up
 
 Automation is the gate, not the whole bug bash. After `npm run qa` passes, do one manual pass on:

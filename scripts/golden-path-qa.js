@@ -9,11 +9,17 @@ const ROOT = path.resolve(__dirname, "..");
 const START_PORT = Number(process.env.AGORA_GOLDEN_PORT || 5300 + Math.floor(Math.random() * 1000));
 const HOST = process.env.AGORA_GOLDEN_HOST || "127.0.0.1";
 const BASE_URL = process.env.AGORA_GOLDEN_BASE_URL || "";
-const CHROME_TIMEOUT_MS = Number(process.env.AGORA_GOLDEN_TIMEOUT_MS || 60000);
-const ROUTE_WAIT_MS = Number(process.env.AGORA_GOLDEN_WAIT_MS || 5000);
+const CHROME_TIMEOUT_MS = readPositiveNumber(process.env.AGORA_GOLDEN_TIMEOUT_MS, 60000);
+const ROUTE_WAIT_MS = readPositiveNumber(process.env.AGORA_GOLDEN_WAIT_MS, 5000);
 const ARTIFACT_DIR = process.env.AGORA_GOLDEN_ARTIFACT_DIR || "";
 const ONLY_FILTER = String(process.env.AGORA_GOLDEN_ONLY || "").trim().toLowerCase();
 const SUITE_FILTER = String(process.env.AGORA_GOLDEN_SUITE || "").trim().toLowerCase();
+const CHROME_OUTPUT_TAIL = 4000;
+const CHROME_RETRY_COUNT = readNonNegativeNumber(process.env.AGORA_GOLDEN_RETRIES, 1);
+const SCREENSHOT_TIMEOUT_MS = Math.min(
+  CHROME_TIMEOUT_MS,
+  readPositiveNumber(process.env.AGORA_GOLDEN_SCREENSHOT_TIMEOUT_MS, 30000)
+);
 
 const staticChecks = [
   {
@@ -933,21 +939,7 @@ async function main() {
       let dom = "";
       try {
         console.log(`Running ${check.name} [${check.suite}]`);
-        dom = await runChrome(chromePath, [
-          "--headless=new",
-          "--disable-gpu",
-          "--force-device-scale-factor=1",
-          "--high-dpi-support=1",
-          "--no-first-run",
-          "--no-default-browser-check",
-          "--disable-extensions",
-          "--disable-background-networking",
-          "--run-all-compositor-stages-before-draw",
-          `--window-size=${check.width},${check.height}`,
-          `--virtual-time-budget=${ROUTE_WAIT_MS}`,
-          "--dump-dom",
-          url
-        ]);
+        dom = await runRouteChromeWithRetry(chromePath, check, url);
         assertGoldenPath(check, dom);
         console.log(`Passed ${check.name} [${check.suite}]`);
       } catch (error) {
@@ -972,6 +964,43 @@ function buildRouteUrl(baseUrl, check) {
     params.set(key, value);
   });
   return `${baseUrl}/?${params.toString()}`;
+}
+
+async function runRouteChromeWithRetry(chromePath, check, url) {
+  const maxAttempts = CHROME_RETRY_COUNT + 1;
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await runChrome(chromePath, routeDomArgs(check, url), { label: check.name });
+    } catch (error) {
+      error.attempt = attempt;
+      error.maxAttempts = maxAttempts;
+      error.routeName = check.name;
+      error.routeSuite = check.suite || "";
+      lastError = error;
+      if (!error.timedOut || attempt >= maxAttempts) throw error;
+      console.warn(`Retrying ${check.name} [${check.suite}] after Chrome timeout (${attempt}/${maxAttempts})`);
+    }
+  }
+  throw lastError;
+}
+
+function routeDomArgs(check, url) {
+  return [
+    "--headless=new",
+    "--disable-gpu",
+    "--force-device-scale-factor=1",
+    "--high-dpi-support=1",
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-extensions",
+    "--disable-background-networking",
+    "--run-all-compositor-stages-before-draw",
+    `--window-size=${check.width},${check.height}`,
+    `--virtual-time-budget=${ROUTE_WAIT_MS}`,
+    "--dump-dom",
+    url
+  ];
 }
 
 function assertStaticSurface(check, response) {
@@ -1062,10 +1091,17 @@ async function writeRouteFailureArtifacts(chromePath, check, url, dom, error) {
     `Suite: ${check.suite || ""}`,
     `URL: ${url}`,
     `Viewport: ${check.width}x${check.height}`,
-    `Error: ${error.message || error}`
+    `Timed out: ${error.timedOut ? "yes" : "no"}`,
+    `Attempt: ${error.attempt || 1}${error.maxAttempts ? ` of ${error.maxAttempts}` : ""}`,
+    `Error: ${error.message || error}`,
+    "",
+    "Chrome stdout tail:",
+    tailOutput(error.stdout),
+    "",
+    "Chrome stderr tail:",
+    tailOutput(error.stderr)
   ].join("\n"));
 
-  if (!dom) return;
   const screenshotPath = path.join(artifactDirectory(), `${baseName}.png`);
   try {
     await runChrome(chromePath, [
@@ -1083,7 +1119,7 @@ async function writeRouteFailureArtifacts(chromePath, check, url, dom, error) {
       `--virtual-time-budget=${ROUTE_WAIT_MS}`,
       `--screenshot=${screenshotPath}`,
       url
-    ]);
+    ], { label: `${check.name} screenshot`, timeoutMs: SCREENSHOT_TIMEOUT_MS });
   } catch (screenshotError) {
     writeArtifact(`${baseName}-screenshot-error.txt`, screenshotError.message || String(screenshotError));
   }
@@ -1109,6 +1145,12 @@ function safeArtifactName(value) {
 
 function escapeComment(value) {
   return String(value).replace(/--/g, "- -");
+}
+
+function tailOutput(value) {
+  const text = String(value || "").trim();
+  if (!text) return "(empty)";
+  return text.slice(-CHROME_OUTPUT_TAIL);
 }
 
 async function startStaticServer() {
@@ -1247,8 +1289,11 @@ function requestUrlWithBody(url) {
   });
 }
 
-function runChrome(chromePath, args) {
+function runChrome(chromePath, args, options = {}) {
   return new Promise((resolve, reject) => {
+    const timeoutMs = Number(options.timeoutMs || CHROME_TIMEOUT_MS);
+    const label = options.label || "Chrome";
+    let settled = false;
     const child = spawn(chromePath, args, {
       cwd: ROOT,
       env: process.env,
@@ -1258,8 +1303,13 @@ function runChrome(chromePath, args) {
     let stderr = "";
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      reject(new Error(`Chrome timed out after ${CHROME_TIMEOUT_MS}ms`));
-    }, CHROME_TIMEOUT_MS);
+      rejectChromeError(`${label} timed out after ${timeoutMs}ms`, {
+        timedOut: true,
+        stdout,
+        stderr,
+        reject
+      });
+    }, timeoutMs);
 
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
@@ -1269,17 +1319,57 @@ function runChrome(chromePath, args) {
     });
     child.once("error", (error) => {
       clearTimeout(timer);
+      if (settled) return;
+      settled = true;
+      error.stdout = stdout;
+      error.stderr = stderr;
       reject(error);
     });
     child.once("exit", (code) => {
       clearTimeout(timer);
       if (code === 0) {
+        if (settled) return;
+        settled = true;
         resolve(stdout);
         return;
       }
-      reject(new Error(`Chrome exited with code ${code}\n${stderr.trim()}`));
+      rejectChromeError(`${label} exited with code ${code}`, {
+        code,
+        stdout,
+        stderr,
+        reject
+      });
     });
+
+    function rejectChromeError(message, details) {
+      if (settled) return;
+      settled = true;
+      const error = new Error([
+        message,
+        "",
+        "stdout:",
+        tailOutput(details.stdout),
+        "",
+        "stderr:",
+        tailOutput(details.stderr)
+      ].join("\n"));
+      error.exitCode = details.code;
+      error.stdout = details.stdout;
+      error.stderr = details.stderr;
+      error.timedOut = Boolean(details.timedOut);
+      details.reject(error);
+    }
   });
+}
+
+function readNonNegativeNumber(value, fallback) {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : fallback;
+}
+
+function readPositiveNumber(value, fallback) {
+  const parsed = Number(value ?? fallback);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
 }
 
 function trimTrailingSlash(value) {
