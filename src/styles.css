@@ -1457,7 +1457,36 @@ body[data-tutorial-target="view"] #app-view {
   gap: 8px;
 }
 
-.role-profile-card {
+.pm-preference-picker {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.pm-preference-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.pm-preference-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.pm-preference-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.role-profile-card,
+.pm-preference-card {
   display: grid;
   gap: 6px;
   min-height: 132px;
@@ -1471,12 +1500,15 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .role-profile-card:hover,
-.role-profile-card.is-selected {
+.role-profile-card.is-selected,
+.pm-preference-card:hover,
+.pm-preference-card.is-selected {
   border-color: var(--accent);
   box-shadow: var(--shadow-soft);
 }
 
 .role-profile-card span,
+.pm-preference-card span,
 .launch-checklist article > span {
   color: var(--muted);
   font-size: 0.72rem;
@@ -1485,12 +1517,14 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .role-profile-card small,
+.pm-preference-card small,
 .launch-checklist small {
   color: var(--muted);
   line-height: 1.4;
 }
 
-.role-profile-card em {
+.role-profile-card em,
+.pm-preference-card em {
   align-self: end;
   color: var(--accent-strong);
   font-size: 0.76rem;
@@ -3455,6 +3489,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .digest-list,
 .reminder-list,
+.daily-command-digest-grid,
 .notification-intelligence-list,
 .notification-history-list {
   display: grid;
@@ -3463,6 +3498,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .digest-row,
 .reminder-row,
+.daily-command-digest-grid article,
 .notification-intelligence-list article,
 .notification-history-list article {
   display: grid;
@@ -3475,6 +3511,14 @@ body[data-tutorial-target="view"] #app-view {
 
 .digest-row.is-muted {
   opacity: 0.62;
+}
+
+.daily-command-digest-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.daily-command-digest-grid article strong {
+  font-size: 1.45rem;
 }
 
 .reminder-row {
@@ -3498,6 +3542,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .digest-row p,
 .digest-row small,
+.daily-command-digest-grid p,
 .reminder-row p,
 .reminder-row small,
 .notification-intelligence-list p,
@@ -12071,6 +12116,7 @@ body[data-density="compact"] .main-content {
   .conflict-center-body,
   .workspace-health-grid,
   .notification-role-grid,
+  .daily-command-digest-grid,
   .plugin-readiness-strip,
   .plugin-card-grid,
   .audit-risk-grid,
@@ -12115,6 +12161,7 @@ body[data-density="compact"] .main-content {
   .trust-mode-grid,
   .trust-grid,
   .command-inbox-brief,
+  .pm-preference-grid,
   .autopilot-hero-proof,
   .autopilot-scenario-grid,
   .autopilot-safety-grid,
@@ -12581,6 +12628,8 @@ body[data-density="compact"] .main-content {
   .conflict-center-body,
   .workspace-health-grid,
   .notification-role-grid,
+  .daily-command-digest-grid,
+  .pm-preference-grid,
   .plugin-readiness-strip,
   .plugin-card-grid,
   .task-time-grid,

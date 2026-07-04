@@ -80,6 +80,13 @@ const routeChecks = [
       "10 minute launch",
       "Agency PM",
       "Software lead",
+      "Project management style",
+      "How do you like to run projects?",
+      "Kanban board",
+      "Scrum sprints",
+      "Timeline / Gantt",
+      "Client delivery",
+      "Simple list",
       "Pick your launch path",
       "Create recovery proof",
       "Autopilot Demo",
@@ -144,7 +151,13 @@ const routeChecks = [
       "Failed syncs",
       "AI review",
       "Feedback",
-      "Daily sweep"
+      "Daily sweep",
+      "Daily command digest",
+      "What changed, failed, and needs review",
+      "Failed sync attempts",
+      "Autopilot proposals",
+      "Client visibility warnings",
+      "Autopilot review digest"
     ]
   },
   {

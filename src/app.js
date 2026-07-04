@@ -7385,6 +7385,56 @@ function onboardingRoleProfile() {
   return onboardingRoleProfiles().find((profile) => profile.id === state.onboarding?.roleProfile) || null;
 }
 
+function onboardingProjectManagementPreferences() {
+  return [
+    {
+      id: "kanban",
+      label: "Kanban board",
+      value: "Move work by flow",
+      detail: "Default to Board with visible owners, blockers, limits, and fast drag/drop triage.",
+      route: "board",
+      starterProfile: "agency"
+    },
+    {
+      id: "scrum",
+      label: "Scrum sprints",
+      value: "Plan by sprint",
+      detail: "Default to Sprint with roadmap, burndown, velocity, carryover, and closeout checks.",
+      route: "sprint",
+      starterProfile: "scrum"
+    },
+    {
+      id: "timeline",
+      label: "Timeline / Gantt",
+      value: "Manage by dates",
+      detail: "Default to the project timeline with dependencies, milestones, workload, and date risk.",
+      route: "project",
+      projectTab: "timeline",
+      starterProfile: "software"
+    },
+    {
+      id: "client",
+      label: "Client delivery",
+      value: "Manage by promises",
+      detail: "Default to Client Visibility with approvals, shared packets, portal safety, and status updates.",
+      route: "visibility",
+      starterProfile: "agency"
+    },
+    {
+      id: "simple",
+      label: "Simple list",
+      value: "Keep it lightweight",
+      detail: "Default to List with clean task triage, due dates, owners, and recovery backups.",
+      route: "list",
+      starterProfile: "consultant"
+    }
+  ];
+}
+
+function onboardingProjectManagementPreference() {
+  return onboardingProjectManagementPreferences().find((preference) => preference.id === state.onboarding?.pmPreference) || null;
+}
+
 function onboardingLaunchChecklist() {
   const items = Object.fromEntries(onboardingItems().map((item) => [item.id, item]));
   return [
@@ -7623,6 +7673,7 @@ function renderOnboardingPanel() {
         <button class="button button-primary compact-button" type="button" data-onboarding-action="${escapeHtml(nextAction.action || "wizard")}">${setupComplete ? "Review Sync" : "Continue"}</button>
       </div>
       ${renderActivationLoop()}
+      ${renderProjectManagementPreferencePicker()}
       ${renderFirstRunCommandCenter()}
       ${renderFirstValuePath()}
       <div class="onboarding-choice-row">
@@ -7684,6 +7735,31 @@ function renderActivationLoop() {
             </div>
             <button class="button ${item.done ? "button-secondary" : "button-primary"} compact-button" type="button" data-onboarding-action="${escapeHtml(item.action)}">${item.done ? "Open" : "Start"}</button>
           </article>
+        `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderProjectManagementPreferencePicker() {
+  const selected = onboardingProjectManagementPreference();
+  return `
+    <div class="pm-preference-picker" aria-label="Project management preference">
+      <div class="pm-preference-header">
+        <div>
+          <p class="eyebrow">Project management style</p>
+          <h3>How do you like to run projects?</h3>
+        </div>
+        <span class="status-pill ${selected ? "inbox-green" : "inbox-amber"}">${selected ? escapeHtml(selected.label) : "Choose one"}</span>
+      </div>
+      <div class="pm-preference-grid">
+        ${onboardingProjectManagementPreferences().map((preference) => `
+          <button class="pm-preference-card ${preference.id === state.onboarding?.pmPreference ? "is-selected" : ""}" type="button" data-onboarding-action="pm-pref:${escapeHtml(preference.id)}">
+            <span>${escapeHtml(preference.label)}</span>
+            <strong>${escapeHtml(preference.value)}</strong>
+            <small>${escapeHtml(preference.detail)}</small>
+            <em>${preference.id === state.onboarding?.pmPreference ? "Applied" : "Set this up"}</em>
+          </button>
         `).join("")}
       </div>
     </div>
@@ -15937,9 +16013,51 @@ function promoteWhiteboardItemToDecision(itemId) {
   });
 }
 
+function applyProjectManagementPreference(preferenceId) {
+  const preference = onboardingProjectManagementPreferences().find((item) => item.id === preferenceId);
+  if (!preference) return;
+  const shouldLoadStarter = !activeProjects().length;
+
+  if (shouldLoadStarter) {
+    state = createRoleStarterWorkspaceState(preference.starterProfile);
+  }
+
+  state.onboarding = {
+    ...state.onboarding,
+    dismissed: false,
+    pmPreference: preference.id,
+    roleProfile: state.onboarding?.roleProfile || preference.starterProfile,
+    sampleMode: state.onboarding?.sampleMode || (shouldLoadStarter ? "starter" : "custom")
+  };
+  state.selectedRoute = preference.route;
+  if (preference.projectTab) state.selectedProjectTab = preference.projectTab;
+  openSidebarGroupForRoute(preference.route);
+  addAuditEvent({
+    action: "onboarding_project_management_preference",
+    detail: `Set project management preference to ${preference.label}`,
+    targetType: "onboarding",
+    targetId: state.workspace.id,
+    metadata: {
+      preferenceId: preference.id,
+      route: preference.route,
+      projectTab: preference.projectTab || "",
+      loadedStarter: shouldLoadStarter
+    }
+  });
+  saveState();
+  render();
+  showToast(`${preference.label} setup applied`, "success");
+}
+
 function handleOnboardingAction(action) {
   const wizardSteps = onboardingWizardSteps();
   const wizardIndex = clamp(Number(state.onboarding?.wizardStep || 0), 0, wizardSteps.length - 1);
+
+  if (action.startsWith("pm-pref:")) {
+    const preferenceId = action.slice("pm-pref:".length);
+    applyProjectManagementPreference(preferenceId);
+    return;
+  }
 
   if (action === "role") {
     openOnboardingWizard(0);
@@ -21364,6 +21482,8 @@ function notificationDigestRows() {
   const pendingApprovals = getPendingApprovals().filter((approval) => projectMatchesContext(approval.projectId));
   const blockedTasks = openTasks.filter(isTaskBlocked);
   const quietProjects = activeProjects().filter((project) => !getProjectActivity(project.id, 1).length);
+  const syncQueue = apiSyncQueueSummary();
+  const autopilotScenarios = projectAutopilotRecoveryScenarios();
 
   return [
     {
@@ -21397,6 +21517,22 @@ function notificationDigestRows() {
       count: quietProjects.length,
       message: `${quietProjects.length} active ${quietProjects.length === 1 ? "project has" : "projects have"} no recent activity.`,
       reason: "Active projects without recent activity records."
+    },
+    {
+      id: "failedSyncs",
+      title: "Failed sync attempts digest",
+      enabled: settings.digests.failedSyncs !== false,
+      count: syncQueue.total,
+      message: `${syncQueue.pending} pending, ${syncQueue.conflicts} conflict${syncQueue.conflicts === 1 ? "" : "s"}, ${syncQueue.highAttempts} repeated attempt${syncQueue.highAttempts === 1 ? "" : "s"}.`,
+      reason: "Local/API writes that need retry, conflict resolution, or support detail."
+    },
+    {
+      id: "autopilot",
+      title: "Autopilot review digest",
+      enabled: settings.digests.autopilot !== false,
+      count: autopilotScenarios.length,
+      message: `${autopilotScenarios.length} recovery proposal${autopilotScenarios.length === 1 ? "" : "s"} waiting for human approval.`,
+      reason: "Drift detection, Safety Center review, impact simulation, and undoable recovery proposals."
     }
   ];
 }
@@ -22773,6 +22909,86 @@ function commandInboxDailyBrief(items) {
   };
 }
 
+function dailyCommandDigestRows(items) {
+  const syncQueue = apiSyncQueueSummary();
+  const visibilityWarnings = clientVisibilityReviewData().warnings || [];
+  const autopilotScenarios = projectAutopilotRecoveryScenarios();
+  const featureRequests = featureRequestTasks().filter((task) => !["shipped", "declined"].includes(featureRequestStatus(task)));
+  const pendingDecisions = items.filter((item) => ["approval", "sync conflict", "ai review"].includes(item.type));
+  const changed = items.filter((item) => ["mention", "watched", "comment", "activity", "feature request"].includes(item.type));
+  return [
+    {
+      label: "Needs decision",
+      value: pendingDecisions.length,
+      tone: pendingDecisions.length ? "amber" : "green",
+      detail: "Approvals, sync conflicts, and AI proposals waiting for a human call.",
+      route: "inbox"
+    },
+    {
+      label: "What changed",
+      value: changed.length,
+      tone: changed.length ? "blue" : "neutral",
+      detail: "Mentions, watched tasks, comments, activity, and requester updates since the last sweep.",
+      route: "inbox"
+    },
+    {
+      label: "Failed sync attempts",
+      value: syncQueue.total,
+      tone: syncQueue.conflicts ? "red" : syncQueue.total ? "amber" : "green",
+      detail: syncQueue.total ? `${syncQueue.pending} pending / ${syncQueue.conflicts} conflicts / ${syncQueue.highAttempts} repeated attempts.` : "No local writes are blocked.",
+      route: "settings",
+      settingsTab: "sync"
+    },
+    {
+      label: "Autopilot proposals",
+      value: autopilotScenarios.length,
+      tone: autopilotScenarios.length ? "amber" : "neutral",
+      detail: "Recovery scenarios that need Safety Center review, impact simulation, approval, or rejection.",
+      route: "autopilot"
+    },
+    {
+      label: "Feature requests",
+      value: featureRequests.length,
+      tone: featureRequests.length ? "blue" : "neutral",
+      detail: "Open requester asks that may need triage, owner updates, or client follow-up.",
+      route: "feature-requests"
+    },
+    {
+      label: "Client visibility warnings",
+      value: visibilityWarnings.length,
+      tone: visibilityWarnings.length ? "amber" : "green",
+      detail: "Client-visible items missing owner, due date, reviewer, or approval context.",
+      route: "visibility"
+    }
+  ];
+}
+
+function renderDailyCommandDigestPanel(items) {
+  const rows = dailyCommandDigestRows(items);
+  const reviewCount = rows.filter((row) => Number(row.value || 0) > 0).length;
+  return `
+    <section class="panel daily-command-digest-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Daily command digest</p>
+          <h2>What changed, failed, and needs review</h2>
+        </div>
+        <span class="status-pill ${reviewCount ? "inbox-amber" : "inbox-green"}">${reviewCount ? `${reviewCount} review` : "Clear"}</span>
+      </div>
+      <div class="daily-command-digest-grid">
+        ${rows.map((row) => `
+          <article>
+            <span class="status-pill inbox-${row.tone}">${escapeHtml(row.label)}</span>
+            <strong>${escapeHtml(row.value)}</strong>
+            <p>${escapeHtml(row.detail)}</p>
+            <button class="button button-secondary compact-button" type="button" ${row.settingsTab ? `data-open-settings-tab="${escapeHtml(row.settingsTab)}"` : `data-route="${escapeHtml(row.route)}"`}>Review</button>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderInbox() {
   const items = getInboxItems();
   const groups = commandInboxGroups(items);
@@ -22829,6 +23045,7 @@ function renderInbox() {
         </div>
       </section>
 
+      ${renderDailyCommandDigestPanel(items)}
       ${renderNotificationDigestPanel()}
       ${renderNotificationRoleDefaultsPanel()}
       ${renderNotificationPreferencesPanel()}
