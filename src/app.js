@@ -1184,6 +1184,7 @@ const seedData = {
     completedAt: "",
     wizardActive: false,
     wizardStep: 0,
+    evaluationProgress: {},
     notificationsReviewed: false,
     templatesReviewed: false
   },
@@ -2900,7 +2901,10 @@ function normalizeState(nextState) {
     onboarding: {
       ...seedData.onboarding,
       ...(nextState.onboarding || {}),
-      wizardStep: clamp(Number((nextState.onboarding || {}).wizardStep || 0), 0, 6)
+      evaluationProgress: {
+        ...((nextState.onboarding || {}).evaluationProgress || {})
+      },
+      wizardStep: clamp(Number((nextState.onboarding || {}).wizardStep || 0), 0, 8)
     },
     tutorial: {
       ...seedData.tutorial,
@@ -6017,7 +6021,8 @@ function createBlankWorkspaceState(options = {}) {
     onboarding: {
       dismissed: false,
       sampleMode: "clean",
-      completedAt: ""
+      completedAt: "",
+      evaluationProgress: {}
     }
   });
 }
@@ -6186,12 +6191,13 @@ function createRoleStarterWorkspaceState(profileId, options = {}) {
   const day = (offset) => shiftDate(today, offset);
   const at = (offset, hour, minute = 0) => `${day(offset)}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00.000Z`;
   const workspaceId = options.id || activeWorkspaceId;
+  const workspaceName = options.name || config.workspaceName;
   const projectId = `starter-${profileId}-project`;
   const companyId = `starter-${profileId}-company`;
   const starter = createBlankWorkspaceState({
     id: workspaceId,
-    name: config.workspaceName,
-    slug: slugFromName(config.workspaceName)
+    name: workspaceName,
+    slug: options.slug || slugFromName(workspaceName)
   });
   const company = normalizeCompanyRecord({
     id: companyId,
@@ -6339,8 +6345,8 @@ function createRoleStarterWorkspaceState(profileId, options = {}) {
     ],
     workspace: {
       ...starter.workspace,
-      name: config.workspaceName,
-      slug: slugFromName(config.workspaceName),
+      name: workspaceName,
+      slug: options.slug || slugFromName(workspaceName),
       backendTarget: "API + local offline",
       defaultRole: "member",
       integrations: normalizeWorkspaceIntegrations({
@@ -6370,6 +6376,7 @@ function createRoleStarterWorkspaceState(profileId, options = {}) {
       sampleMode: "starter",
       roleProfile: profileId,
       completedAt: "",
+      evaluationProgress: {},
       wizardActive: true,
       wizardStep: 2,
       notificationsReviewed: true,
@@ -7212,6 +7219,7 @@ function createBetaWorkspaceState(options = {}) {
       dismissed: false,
       sampleMode: "beta",
       completedAt: "",
+      evaluationProgress: {},
       wizardActive: true,
       wizardStep: 1,
       notificationsReviewed: false,
@@ -7675,6 +7683,7 @@ function renderOnboardingPanel() {
       ${renderActivationLoop()}
       ${renderProjectManagementPreferencePicker()}
       ${renderFirstRunCommandCenter()}
+      ${renderGuidedEvaluationChecklist()}
       ${renderFirstValuePath()}
       <div class="onboarding-choice-row">
         <button class="button button-primary" type="button" data-onboarding-action="wizard">${state.onboarding?.wizardActive ? "Hide Wizard" : "Open Wizard"}</button>
@@ -7699,6 +7708,101 @@ function renderOnboardingPanel() {
         `).join("")}
       </div>
     </section>
+  `;
+}
+
+function guidedEvaluationItems() {
+  const firstProject = activeProjects()[0];
+  return [
+    {
+      id: "sample",
+      label: "Load a realistic workspace",
+      detail: state.onboarding?.sampleMode?.startsWith("sample-") || state.onboarding?.sampleMode === "starter" || state.onboarding?.sampleMode === "beta"
+        ? `${state.workspace.name} is loaded`
+        : "Start with Agency, Software, or Ops sample data.",
+      action: "sample:agency",
+      done: Boolean(state.onboarding?.evaluationProgress?.sample || state.onboarding?.sampleMode?.startsWith("sample-") || state.onboarding?.sampleMode === "starter" || state.onboarding?.sampleMode === "beta")
+    },
+    {
+      id: "command",
+      label: "Judge the PM command center",
+      detail: "Review attention queue, client promises, risks, decisions, load, and next actions.",
+      action: "eval:command",
+      route: "command-center"
+    },
+    {
+      id: "kanban",
+      label: "Inspect power Kanban",
+      detail: "Check saved views, WIP limits, swimlanes, templates, flow health, and card detail.",
+      action: "eval:kanban",
+      route: "board"
+    },
+    {
+      id: "timeline",
+      label: "Review timeline confidence",
+      detail: "Open the Gantt view for dependencies, critical path, slips, milestones, and workload warnings.",
+      action: "eval:timeline",
+      route: "project",
+      projectTab: "timeline",
+      projectId: firstProject?.id || "all"
+    },
+    {
+      id: "sprint",
+      label: "Check sprint operating rhythm",
+      detail: "Look at sprint timeline, burndown, forecast, carryover, standup, retro, and closeout.",
+      action: "eval:sprint",
+      route: "sprint"
+    },
+    {
+      id: "memory",
+      label: "Test Project Memory",
+      detail: "Confirm captured reality can become structured tasks, risks, decisions, and Autopilot signals.",
+      action: "eval:memory",
+      route: "memory"
+    },
+    {
+      id: "autopilot",
+      label: "Audit Autopilot safety",
+      detail: "Inspect Safety Center, impact simulator, approval controls, learning log, and undo.",
+      action: "eval:autopilot",
+      route: "autopilot"
+    },
+    {
+      id: "recovery",
+      label: "Prove exit and recovery",
+      detail: "Create a backup and inspect portable export, schema, migration, and offline readiness.",
+      action: "eval:recovery",
+      route: "data"
+    }
+  ].map((item) => ({
+    ...item,
+    done: Boolean(item.done || state.onboarding?.evaluationProgress?.[item.id])
+  }));
+}
+
+function renderGuidedEvaluationChecklist() {
+  const items = guidedEvaluationItems();
+  const doneCount = items.filter((item) => item.done).length;
+  return `
+    <div class="guided-evaluation" aria-label="Guided product evaluation">
+      <div class="guided-evaluation-header">
+        <div>
+          <p class="eyebrow">Guided evaluation</p>
+          <h3>See if Agora can run a real project</h3>
+        </div>
+        <span class="status-pill ${doneCount === items.length ? "inbox-green" : "inbox-blue"}">${doneCount}/${items.length}</span>
+      </div>
+      <div class="guided-evaluation-grid">
+        ${items.map((item) => `
+          <article class="${item.done ? "is-done" : "is-open"}">
+            <span>${item.done ? "Seen" : "Try"}</span>
+            <strong>${escapeHtml(item.label)}</strong>
+            <small>${escapeHtml(item.detail)}</small>
+            <button class="button ${item.done ? "button-secondary" : "button-primary"} compact-button" type="button" data-onboarding-action="${escapeHtml(item.action)}">${item.done ? "Open again" : "Open"}</button>
+          </article>
+        `).join("")}
+      </div>
+    </div>
   `;
 }
 
@@ -15538,6 +15642,56 @@ function duplicateWorkspaceWithName(name) {
   showToast(`Duplicated ${source?.name || "workspace"}`, "success");
 }
 
+function sampleWorkspacePresets() {
+  return {
+    agency: { profileId: "agency", name: "Agency Client Delivery Demo", label: "Agency client delivery" },
+    software: { profileId: "software", name: "Software Release Demo", label: "Software release" },
+    ops: { profileId: "scrum", name: "Internal Ops Sprint Demo", label: "Internal ops sprint" }
+  };
+}
+
+function createSampleWorkspace(sampleId) {
+  const preset = sampleWorkspacePresets()[sampleId];
+  if (!preset) return;
+  const workspaceId = uniqueWorkspaceId(preset.name);
+  const now = new Date().toISOString();
+  saveState();
+  workspaceRegistry = normalizeWorkspaceRegistry([
+    {
+      id: workspaceId,
+      name: preset.name,
+      slug: slugFromName(preset.name),
+      status: "active",
+      template: `sample-${sampleId}`,
+      createdAt: now,
+      updatedAt: now
+    },
+    ...workspaceRegistry
+  ]);
+  saveWorkspaceRegistry();
+  activeWorkspaceId = workspaceId;
+  saveActiveWorkspaceId(activeWorkspaceId);
+  state = createRoleStarterWorkspaceState(preset.profileId, {
+    id: workspaceId,
+    name: preset.name,
+    slug: slugFromName(preset.name)
+  });
+  state.onboarding = {
+    ...state.onboarding,
+    sampleMode: `sample-${sampleId}`,
+    evaluationProgress: {
+      sample: true
+    },
+    wizardActive: true,
+    wizardStep: 1
+  };
+  resetWorkspaceViewState();
+  state.selectedRoute = "dashboard";
+  saveState();
+  render();
+  showToast(`${preset.label} sample workspace created`, "success");
+}
+
 function createWorkspaceFromSwitcher() {
   populateWorkspaceForm("create");
   openDialog(els.workspaceDialog);
@@ -16049,9 +16203,44 @@ function applyProjectManagementPreference(preferenceId) {
   showToast(`${preference.label} setup applied`, "success");
 }
 
+function openGuidedEvaluationStep(stepId) {
+  const item = guidedEvaluationItems().find((candidate) => candidate.id === stepId);
+  if (!item) return;
+  if (item.projectId && item.projectId !== "all") {
+    state.selectedProject = item.projectId;
+  } else if (item.route === "project" && activeProjects()[0]) {
+    state.selectedProject = activeProjects()[0].id;
+  }
+  state.selectedRoute = routeFallback(item.route || "dashboard");
+  if (item.projectTab) state.selectedProjectTab = item.projectTab;
+  if (state.selectedRoute !== "project" && !item.projectTab) state.selectedProjectTab = "overview";
+  state.onboarding = {
+    ...state.onboarding,
+    dismissed: false,
+    evaluationProgress: {
+      ...(state.onboarding?.evaluationProgress || {}),
+      [stepId]: true
+    }
+  };
+  openSidebarGroupForRoute(state.selectedRoute);
+  saveState();
+  render();
+  showToast(`${item.label} opened`, "success");
+}
+
 function handleOnboardingAction(action) {
   const wizardSteps = onboardingWizardSteps();
   const wizardIndex = clamp(Number(state.onboarding?.wizardStep || 0), 0, wizardSteps.length - 1);
+
+  if (action.startsWith("sample:")) {
+    createSampleWorkspace(action.slice("sample:".length));
+    return;
+  }
+
+  if (action.startsWith("eval:")) {
+    openGuidedEvaluationStep(action.slice("eval:".length));
+    return;
+  }
 
   if (action.startsWith("pm-pref:")) {
     const preferenceId = action.slice("pm-pref:".length);
@@ -16435,6 +16624,10 @@ function runGoldenActionFromLocation() {
   if (params.get("goldenAction") === "startBetaWorkspace") {
     const startButton = document.querySelector('[data-onboarding-action="start-beta"]');
     if (startButton) startButton.click();
+  }
+  if (params.get("goldenAction") === "sampleAgencyWorkspace") {
+    const sampleButton = document.querySelector('[data-onboarding-action="sample:agency"]');
+    if (sampleButton) sampleButton.click();
   }
 }
 

@@ -86,8 +86,13 @@ const routeChecks = [
       "Workspace health",
       "Workspace setup",
       "10 minute launch",
+      "Guided evaluation",
+      "See if Agora can run a real project",
+      "Load a realistic workspace",
+      "Audit Autopilot safety",
       "Agency PM",
       "Software lead",
+      "Ops",
       "Project management style",
       "How do you like to run projects?",
       "Kanban board",
@@ -120,6 +125,23 @@ const routeChecks = [
       "Memory bridge",
       "Impact Simulator",
       "one-click undo"
+    ]
+  },
+  {
+    name: "Sample workspace launch path",
+    suite: "first-run",
+    route: "dashboard",
+    query: { goldenAction: "sampleAgencyWorkspace" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Agency Client Delivery Demo",
+      "Guided evaluation",
+      "Load a realistic workspace",
+      "Client onboarding launch",
+      "Northstar Client",
+      "Project management style",
+      "Workspace setup"
     ]
   },
   {

@@ -207,6 +207,30 @@ button {
   border-radius: 8px;
 }
 
+.workspace-sample-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.workspace-sample-actions button {
+  min-height: 28px;
+  padding: 5px 6px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.workspace-sample-actions button:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
 .workspace-switcher label {
   display: grid;
   gap: 4px;
@@ -1589,6 +1613,66 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .first-run-command-grid .button {
+  align-self: end;
+}
+
+.guided-evaluation {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.guided-evaluation-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+}
+
+.guided-evaluation-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.guided-evaluation-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+  gap: 8px;
+}
+
+.guided-evaluation-grid article {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-height: 154px;
+  padding: 11px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.guided-evaluation-grid article.is-done {
+  border-color: color-mix(in srgb, var(--green) 40%, var(--line));
+}
+
+.guided-evaluation-grid span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.guided-evaluation-grid small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.guided-evaluation-grid .button {
+  justify-self: start;
   align-self: end;
 }
 
