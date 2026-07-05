@@ -176,6 +176,8 @@ Current product state:
 - Done: `npm run package:check` verifies source, Docker Compose, hosted web/API, offline PWA, macOS desktop, Windows desktop, CLI, MCP server, and portable data channels.
 - Done: `docs/packaging-audit-2026-07-05.md` records beta-ready, internal-ready, and remaining polish status per channel.
 - Done: `docs/install.md` routes users by install intent across local, Docker, hosted, PWA, desktop, CLI, MCP, and portable data paths.
+- Done: `docs/hosted-provider-recipes.md` gives operators a static-app/API/Supabase/Docker handoff with secrets placement and acceptance checks.
+- Done: `docs/release-candidate-handoff-template.md` records version, commit, gate output, platform notes, known gaps, rollback plan, and sign-off.
 - Done: packaging docs define release gate output, recovery proof, known gaps, and per-platform notes required for a release handoff.
 
 Remaining release polish:
@@ -183,8 +185,7 @@ Remaining release polish:
 - Add signed/notarized desktop release evidence for macOS and Windows.
 - Add registry image publishing and digest pinning for Docker releases.
 - Run real iOS/Android PWA install and airplane-mode checks per release candidate.
-- Add provider-specific hosted deployment recipes after the first real deployments.
-- Add a release-candidate handoff template that records version, commit, outputs, gaps, and platform notes.
+- Fill out the release-candidate handoff template for the next beta candidate.
 
 ## Step 9: Demo Dataset And Story
 

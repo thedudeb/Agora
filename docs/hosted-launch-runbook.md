@@ -2,6 +2,8 @@
 
 Use this runbook when moving Agora from a local pilot to a hosted workspace with real users.
 
+For provider-specific handoff shape, use [`hosted-provider-recipes.md`](./hosted-provider-recipes.md) alongside this runbook. It separates static app hosting, long-running API hosting, Supabase, Docker-hosted deployments, secrets placement, and acceptance checks.
+
 ## 1. Freeze The Candidate
 
 - Confirm the GitHub Actions `QA` workflow is green for the release commit.

@@ -62,6 +62,8 @@ npm run verify:production -- --env .env.production --backup <server-backup.json>
 
 For an early dry rehearsal before a production backup exists, use `npm run verify:production -- --env .env.production --quick --skip-audit --allow-missing-backup`.
 
+For platform handoff details, use [`hosted-provider-recipes.md`](./hosted-provider-recipes.md). It separates the static app host, long-running API host, Supabase setup, Docker-hosted path, secrets placement, and cutover checks.
+
 ## Offline PWA Install
 
 Run the local app or open the hosted app in a supported browser, then install Agora from the browser's app/install menu. The PWA path is the current iOS and Android install story.
