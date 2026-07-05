@@ -2263,6 +2263,39 @@ const seedData = {
       }
     },
     {
+      id: "template-agency-retainer-os",
+      name: "Agency Retainer OS",
+      category: "Agency OS",
+      description: "Run a monthly client retainer with health scoring, outcome planning, scope control, approvals, billing notes, and renewal prep.",
+      owner: "mara",
+      creatorName: "Agora Workflow Lab",
+      durationDays: 30,
+      tasks: [
+        { key: "health", title: "Score client health", description: "Review delivery confidence, relationship strength, open risks, and renewal signals before planning the month.", assignee: "mara", priority: "high", startOffset: 0, dueOffset: 2, tags: ["retainer", "health"], blockedBy: [], subtasks: ["Score delivery health", "Score relationship health", "Capture renewal signal"] },
+        { key: "outcomes", title: "Plan monthly outcomes", description: "Turn client goals into a scoped monthly plan with owners, acceptance criteria, and client-visible success measures.", assignee: "sam", priority: "urgent", startOffset: 1, dueOffset: 5, tags: ["planning", "outcomes"], blockedBy: ["health"], subtasks: ["Confirm client goals", "Write outcome list", "Assign owners"] },
+        { key: "capacity", title: "Confirm retainer capacity", description: "Check team load, reserved hours, billable expectations, and delivery risk before the client plan is approved.", assignee: "eli", priority: "high", startOffset: 4, dueOffset: 8, tags: ["capacity", "time"], blockedBy: ["outcomes"], subtasks: ["Review workload", "Confirm reserved hours", "Flag delivery risk"] },
+        { key: "scope", title: "Review scope and change requests", description: "Compare requested work to retainer scope and prepare change-order recommendations for out-of-scope asks.", assignee: "eli", priority: "high", startOffset: 7, dueOffset: 14, tags: ["scope", "change-control"], blockedBy: ["outcomes"], subtasks: ["Review scope log", "Tag change requests", "Draft recommendation"] },
+        { key: "approvals", title: "Package client approvals", description: "Collect deliverables, decision notes, files, and approval requests into a client-safe review packet.", assignee: "nina", priority: "normal", startOffset: 14, dueOffset: 22, tags: ["approval", "portal"], blockedBy: ["scope"], subtasks: ["Collect deliverables", "Add decision notes", "Send approval packet"] },
+        { key: "renewal", title: "Prepare billing and renewal notes", description: "Capture billable context, expansion ideas, renewal risks, and next-month commitments for account review.", assignee: "mara", priority: "normal", startOffset: 22, dueOffset: 30, tags: ["billing", "renewal"], blockedBy: ["approvals"], subtasks: ["Write billing notes", "Log expansion ideas", "Draft next-month plan"] }
+      ],
+      milestones: [
+        { title: "Retainer plan approved", description: "Monthly outcomes, owners, capacity, and success measures are approved.", owner: "sam", dueOffset: 8, status: "planned", taskKeys: ["outcomes", "capacity"] },
+        { title: "Client review packet sent", description: "Approvals, deliverables, and decision notes are client-safe and ready for review.", owner: "nina", dueOffset: 22, status: "planned", taskKeys: ["scope", "approvals"] },
+        { title: "Renewal review ready", description: "Billing, renewal, expansion, and next-month notes are ready for account review.", owner: "mara", dueOffset: 30, status: "planned", taskKeys: ["renewal"] }
+      ],
+      docs: [
+        { title: "Client Health Scorecard", type: "Template", body: "Delivery health, relationship health, business impact, open risks, renewal signal, account owner notes, and next action." },
+        { title: "Monthly Outcomes Plan", type: "Brief", body: "Approved outcomes, owner map, success criteria, capacity assumptions, client-visible dates, and reporting cadence." },
+        { title: "Retainer Scope Log", type: "Log", body: "Included work, out-of-scope requests, change-order notes, approvals, billing context, and renewal implications." },
+        { title: "Renewal Prep Notes", type: "Brief", body: "Value delivered, usage signals, relationship risks, expansion ideas, unresolved asks, and next-month commitments." }
+      ],
+      intakeForm: {
+        title: "Retainer Request Intake",
+        assignee: "mara",
+        description: "Capture client requests, urgency, scope fit, budget impact, and approval needs."
+      }
+    },
+    {
       id: "template-software-launch",
       name: "Software Launch",
       category: "Product",

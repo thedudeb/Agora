@@ -119,7 +119,7 @@ Agora should ship a few excellent operating systems before it tries to be everyt
 
 Priority workflow packs:
 
-- Agency retainer OS
+- Done: Agency retainer OS
 - Client onboarding and delivery
 - Scrum sprint command center
 - Founder launch room
