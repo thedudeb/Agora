@@ -23,7 +23,7 @@ npm run release:evidence
 | Gate | Required Evidence | Status |
 | --- | --- | --- |
 | Release discipline | `npm run release:check` | Passed in latest local evidence |
-| Hosted demo | `npm run demo:check` | Local gate passed; public demo URL pending |
+| Hosted demo | `npm run demo:check` and `npm run demo:hosted:check -- --base <demo-url> --write-evidence` | Local gate passed; public demo URL pending |
 | Screenshots | `npm run screenshots` and inspect Acme screenshot set | Pending for release commit |
 | Distribution proof | `npm run distribution:check` and fill `docs/distribution-proof.md` evidence rows | Ledger gate passed; channel proof pending |
 | Beta feedback loop | `npm run beta:check` and submit one feature request through the beta path | Local gate passed; tester proof pending |
@@ -68,6 +68,7 @@ The release demo must use [`acme-client-launch-demo.md`](./acme-client-launch-de
 - Demo URL: pending
 - Public feedback URL: pending
 - Generated Acme links: pending
+- Hosted demo evidence bundle: pending
 - `npm run demo:hosted:check -- --base <demo-url>`: pending
 - `npm run demo:hosted:check -- --base <demo-url> --golden`: pending
 - Reset timestamp: pending
@@ -80,6 +81,7 @@ Required before publishing:
 - Follow [`hosted-demo-runbook.md`](./hosted-demo-runbook.md).
 - Generate hosted links with `npm run demo:links -- --base <demo-url> --demo acme-client-launch --markdown`.
 - Run `npm run demo:hosted:check -- --base <demo-url>`.
+- Run `npm run demo:hosted:check -- --base <demo-url> --write-evidence` and link the generated `release/evidence/hosted-demo-<timestamp>-<commit>/README.md`.
 - Run `npm run demo:check`.
 - Run `AGORA_GOLDEN_SUITE=demo npm run test:golden`.
 - Refresh the screenshots named in [`screenshot-demo-plan.md`](./screenshot-demo-plan.md).

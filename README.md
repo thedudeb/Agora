@@ -111,6 +111,7 @@ npm run setup     # create .env and local persistent directories
 npm run demo:links # generate shareable demo tour links
 npm run demo:check # validate hosted demo handoff and Acme route links
 npm run demo:hosted:check -- --base https://demo.example.com # smoke-check a deployed demo
+npm run demo:hosted:check -- --base https://demo.example.com --write-evidence # capture hosted demo evidence
 npm run distribution:check # validate per-channel release evidence matrix
 npm run beta:check # validate beta feedback loop docs and taskboard surfaces
 npm run migrate:concierge -- tests/fixtures/trello-board.json --source trello-json --workspace tests/fixtures/workspace.json
@@ -164,7 +165,7 @@ For MCP clients, set `AGORA_API_URL`, `AGORA_API_TOKEN`, and optionally `AGORA_M
 
 For one-command setup and Docker Compose packaging, see [`docs/install.md`](./docs/install.md). The shortest path is `npm run setup`, then `npm run dev` and `npm run dev:api`; Docker users can run `npm run setup -- --profile docker` and `docker compose up --build`.
 
-For hosted evaluation, run `npm run demo:check`, deploy with [`docs/hosted-demo-deployment.md`](./docs/hosted-demo-deployment.md), then run `npm run demo:hosted:check -- --base <app-url>` and generate scenario-specific demo links with `npm run demo:links -- --base <app-url> --markdown`. See [`docs/demo-workspaces.md`](./docs/demo-workspaces.md) and [`docs/hosted-demo-runbook.md`](./docs/hosted-demo-runbook.md) for the Acme buyer demo, safety settings, reset cadence, and follow-up scenario catalog.
+For hosted evaluation, run `npm run demo:check`, deploy with [`docs/hosted-demo-deployment.md`](./docs/hosted-demo-deployment.md), then run `npm run demo:hosted:check -- --base <app-url> --write-evidence` and generate scenario-specific demo links with `npm run demo:links -- --base <app-url> --markdown`. See [`docs/demo-workspaces.md`](./docs/demo-workspaces.md) and [`docs/hosted-demo-runbook.md`](./docs/hosted-demo-runbook.md) for the Acme buyer demo, safety settings, reset cadence, and follow-up scenario catalog.
 
 For guided beta feedback, run `npm run beta:check` and use [`docs/beta-feedback-loop.md`](./docs/beta-feedback-loop.md) with [`docs/beta-test-script.md`](./docs/beta-test-script.md).
 

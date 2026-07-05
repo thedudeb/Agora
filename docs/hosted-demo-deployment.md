@@ -55,13 +55,19 @@ Keep production secrets out of the demo. Use demo-only SMTP/webhook credentials,
    npm run demo:hosted:check -- --base https://demo.your-domain.example
    ```
 
-6. Run hosted browser QA when Chrome is available:
+6. Capture the hosted smoke evidence bundle:
+
+   ```sh
+   npm run demo:hosted:check -- --base https://demo.your-domain.example --write-evidence
+   ```
+
+7. Run hosted browser QA when Chrome is available:
 
    ```sh
    npm run demo:hosted:check -- --base https://demo.your-domain.example --golden
    ```
 
-7. Paste the URL, generated links, smoke output, and reset proof into [`release-candidate-v0.1-beta.md`](./release-candidate-v0.1-beta.md).
+8. Paste the URL, generated links, evidence bundle path, and reset proof into [`release-candidate-v0.1-beta.md`](./release-candidate-v0.1-beta.md).
 
 ## Reset Proof
 
@@ -76,9 +82,19 @@ Before publishing, record:
 - portable bundle or server backup location if API-backed;
 - screenshot or note confirming no real customer data is visible.
 
+## Evidence Bundle
+
+Use `--write-evidence` when the hosted demo URL is pointed at the release candidate commit. The command writes:
+
+- `release/evidence/hosted-demo-<timestamp>-<commit>/summary.json`;
+- `release/evidence/hosted-demo-<timestamp>-<commit>/README.md`.
+
+The bundle records the demo URL, branch, commit, dirty-worktree state, generated Acme links, route checks, and hosted golden-path result when `--golden` is also passed. Use `--evidence-dir <dir>` only for rehearsal output that should not become the release record.
+
 ## Acceptance Checks
 
 - `npm run demo:hosted:check -- --base <demo-url>` passes.
+- `npm run demo:hosted:check -- --base <demo-url> --write-evidence` creates a release evidence bundle.
 - `npm run demo:hosted:check -- --base <demo-url> --golden` passes before broad sharing.
 - Acme links open command center, project backlog, client visibility, timeline, reports, and recovery proof.
 - Public feedback is disabled or rate-limited and routed to the maintainer inbox.

@@ -1,9 +1,12 @@
 #!/usr/bin/env node
+const fs = require("node:fs");
 const http = require("node:http");
 const https = require("node:https");
-const { spawn } = require("node:child_process");
+const path = require("node:path");
+const { spawn, spawnSync } = require("node:child_process");
 const { buildDemoLinks, readCatalog } = require("./demo-links");
 
+const ROOT = path.resolve(__dirname, "..");
 const args = parseArgs(process.argv.slice(2));
 
 main().catch((error) => {
@@ -68,6 +71,19 @@ async function main() {
     console.log(goldenResult.output.trim());
   }
 
+  if (args.writeEvidence) {
+    const evidence = writeHostedEvidence({
+      base,
+      mode: args.noLive ? "links-only" : args.golden ? "live+golden" : "live",
+      summary,
+      checks,
+      acme,
+      goldenResult
+    });
+    console.log("");
+    console.log(`Evidence bundle: ${evidence.relativeDir}`);
+  }
+
   if (summary.fail) process.exitCode = 1;
 }
 
@@ -83,6 +99,9 @@ function parseArgs(values) {
     else if (value === "--golden") result.golden = true;
     else if (value === "--timeout") result.pending = "timeoutMs";
     else if (value.startsWith("--timeout=")) result.timeoutMs = Number(value.slice("--timeout=".length));
+    else if (value === "--write-evidence") result.writeEvidence = true;
+    else if (value === "--evidence-dir") result.pending = "evidenceDir";
+    else if (value.startsWith("--evidence-dir=")) result.evidenceDir = value.slice("--evidence-dir=".length);
     else if (value === "--help" || value === "-h") {
       printHelp();
       process.exit(0);
@@ -90,7 +109,7 @@ function parseArgs(values) {
       throw new Error(`Unknown option: ${value}`);
     }
     return result;
-  }, { base: "", noLive: false, allowHttp: false, golden: false, timeoutMs: 10000, pending: "" });
+  }, { base: "", noLive: false, allowHttp: false, golden: false, timeoutMs: 10000, writeEvidence: false, evidenceDir: "", pending: "" });
 }
 
 function hostedRouteChecks(report) {
@@ -156,9 +175,96 @@ function check(title, pass, detail = "", fix = "") {
   return { title, status: pass ? "pass" : "fail", detail, fix };
 }
 
+function writeHostedEvidence({ base, mode, summary, checks, acme, goldenResult }) {
+  const generatedAt = new Date().toISOString();
+  const commit = git(["rev-parse", "--short", "HEAD"]) || "unknown";
+  const branch = git(["branch", "--show-current"]) || "unknown";
+  const dirty = Boolean(git(["status", "--short"]));
+  const stamp = generatedAt.replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const bundleDir = args.evidenceDir
+    ? path.resolve(process.cwd(), args.evidenceDir)
+    : path.join(ROOT, "release", "evidence", `hosted-demo-${stamp}-${commit}`);
+  fs.mkdirSync(bundleDir, { recursive: true });
+
+  const payload = {
+    type: "agora.hosted-demo-evidence",
+    generatedAt,
+    branch,
+    commit,
+    dirty,
+    base,
+    mode,
+    ok: summary.fail === 0,
+    summary,
+    checks,
+    links: {
+      entry: acme.entryUrl,
+      tour: acme.tour.map((stop) => ({ label: stop.label, url: stop.url }))
+    },
+    golden: goldenResult ? {
+      ok: goldenResult.ok,
+      exitCode: goldenResult.exitCode
+    } : null
+  };
+
+  fs.writeFileSync(path.join(bundleDir, "summary.json"), `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  fs.writeFileSync(path.join(bundleDir, "README.md"), renderHostedEvidence(payload), "utf8");
+
+  return {
+    dir: bundleDir,
+    relativeDir: path.relative(ROOT, bundleDir) || "."
+  };
+}
+
+function renderHostedEvidence(payload) {
+  return `# Hosted Demo Evidence
+
+- Generated: ${payload.generatedAt}
+- Branch: ${payload.branch}
+- Commit: ${payload.commit}
+- Dirty worktree: ${payload.dirty ? "yes" : "no"}
+- Base URL: ${payload.base}
+- Mode: ${payload.mode}
+- Status: ${payload.ok ? "PASS" : "FAIL"}
+
+## Checks
+
+| Check | Status | Detail |
+| --- | --- | --- |
+${payload.checks.map((item) => `| ${escapeCell(item.title)} | ${item.status === "pass" ? "PASS" : "FAIL"} | ${escapeCell(item.detail || "")} |`).join("\n")}
+
+## Acme Links
+
+- Entry: ${payload.links.entry}
+${payload.links.tour.map((stop) => `- ${stop.label}: ${stop.url}`).join("\n")}
+
+## Golden Path
+
+${payload.golden ? `- Status: ${payload.golden.ok ? "PASS" : "FAIL"}\n- Exit code: ${payload.golden.exitCode}` : "- Not run for this bundle."}
+
+## Release Candidate Paste-In
+
+- Demo URL: ${payload.base}
+- Generated Acme links: see Acme Links above
+- \`npm run demo:hosted:check -- --base ${payload.base}${payload.mode === "links-only" ? " --no-live" : ""}\`: ${payload.ok ? "passed" : "failed"}
+- Reset timestamp: fill after the demo workspace reset
+- Reset owner: fill before publishing
+- Demo data hygiene review: fill before publishing
+`;
+}
+
+function escapeCell(value) {
+  return String(value).replace(/\|/g, "\\|").replace(/\n/g, " ");
+}
+
 function normalizeBase(base) {
   const url = new URL(base);
   return url.toString().replace(/\/+$/, "");
+}
+
+function git(argsList) {
+  const result = spawnSync("git", argsList, { cwd: ROOT, encoding: "utf8" });
+  return result.status === 0 ? result.stdout.trim() : "";
 }
 
 function printHelp() {
@@ -175,5 +281,9 @@ Options:
   --no-live       Validate generated hosted links without network requests.
   --allow-http    Allow http:// URLs for local rehearsals.
   --timeout <ms>  Request timeout. Default: 10000.
+  --write-evidence
+                  Write summary.json and README.md for release evidence.
+  --evidence-dir <dir>
+                  Evidence output directory. Default: release/evidence/hosted-demo-<timestamp>-<commit>.
 `);
 }
