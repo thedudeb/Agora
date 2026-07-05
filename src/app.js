@@ -2364,6 +2364,41 @@ const seedData = {
       }
     },
     {
+      id: "template-founder-launch-room",
+      name: "Founder Launch Room",
+      category: "Startup OS",
+      description: "Run a focused product launch with roadmap decisions, beta feedback, feature requests, launch assets, release evidence, and post-launch monitoring.",
+      owner: "mara",
+      creatorName: "Agora Workflow Lab",
+      durationDays: 28,
+      tasks: [
+        { key: "positioning", title: "Lock launch positioning", description: "Write the audience, promise, proof points, objections, and launch narrative before building more surface area.", assignee: "mara", priority: "urgent", startOffset: 0, dueOffset: 3, tags: ["positioning", "launch"], blockedBy: [], subtasks: ["Name audience", "Write promise", "List proof"] },
+        { key: "roadmap", title: "Cut launch roadmap", description: "Choose launch scope, defer nice-to-haves, and record tradeoffs in the roadmap and decision log.", assignee: "eli", priority: "high", startOffset: 2, dueOffset: 6, tags: ["roadmap"], blockedBy: ["positioning"], subtasks: ["Pick must-haves", "Cut deferred scope", "Record tradeoffs"] },
+        { key: "beta", title: "Run beta feedback loop", description: "Invite testers, collect feedback, triage feature requests, and convert launch blockers into owned work.", assignee: "sam", priority: "high", startOffset: 5, dueOffset: 14, tags: ["beta", "feedback"], blockedBy: ["roadmap"], subtasks: ["Invite testers", "Triage requests", "Name blockers"] },
+        { key: "assets", title: "Prepare launch assets", description: "Create screenshots, demo links, landing copy, changelog, and short launch narrative.", assignee: "nina", priority: "normal", startOffset: 8, dueOffset: 18, tags: ["assets", "marketing"], blockedBy: ["positioning"], subtasks: ["Capture screenshots", "Draft copy", "Prepare demo links"] },
+        { key: "evidence", title: "Export launch evidence", description: "Run verification, trust, package, hosted readiness, and recovery evidence before public launch.", assignee: "eli", priority: "urgent", startOffset: 16, dueOffset: 23, tags: ["evidence", "qa"], blockedBy: ["beta", "assets"], subtasks: ["Run checks", "Export evidence", "Create backup"] },
+        { key: "launch", title: "Run launch day", description: "Publish, monitor feedback, watch support signals, and record follow-up commitments.", assignee: "mara", priority: "urgent", startOffset: 23, dueOffset: 28, tags: ["launch"], blockedBy: ["evidence"], subtasks: ["Publish", "Monitor support", "Record follow-ups"] }
+      ],
+      milestones: [
+        { title: "Launch story locked", description: "Positioning, proof, and launch scope are clear.", owner: "mara", dueOffset: 6, status: "planned", taskKeys: ["positioning", "roadmap"] },
+        { title: "Beta feedback triaged", description: "Tester feedback and feature requests have owners and launch decisions.", owner: "sam", dueOffset: 15, status: "planned", taskKeys: ["beta"] },
+        { title: "Launch ready", description: "Assets, QA evidence, recovery proof, and publish plan are ready.", owner: "eli", dueOffset: 24, status: "planned", taskKeys: ["assets", "evidence"] },
+        { title: "Post-launch loop open", description: "Support, feedback, and follow-up commitments are being monitored.", owner: "mara", dueOffset: 28, status: "planned", taskKeys: ["launch"] }
+      ],
+      docs: [
+        { title: "Launch Positioning Brief", type: "Brief", body: "Audience, problem, promise, proof, objections, channels, and launch narrative." },
+        { title: "Launch Scope Decision Log", type: "Log", body: "Must-haves, cut scope, deferred requests, tradeoffs, and decision owners." },
+        { title: "Beta Feedback Triage", type: "Template", body: "Tester, feedback theme, severity, launch blocker, owner, decision, and follow-up." },
+        { title: "Launch Evidence Checklist", type: "Template", body: "Verification commands, trust report, package check, hosted readiness, recovery bundle, screenshots, and release notes." },
+        { title: "Post-launch Monitor", type: "Report", body: "Feedback, support issues, conversion signals, reliability notes, roadmap commitments, and next release candidates." }
+      ],
+      intakeForm: {
+        title: "Beta Feedback Intake",
+        assignee: "sam",
+        description: "Capture beta feedback, launch blockers, feature requests, severity, and follow-up contact."
+      }
+    },
+    {
       id: "template-finance-close",
       name: "Finance Close",
       category: "Finance",
