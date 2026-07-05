@@ -658,6 +658,24 @@ const routeChecks = [
     ]
   },
   {
+    name: "Evaluator landing path",
+    suite: "release",
+    route: "evaluate",
+    width: 1265,
+    height: 712,
+    required: [
+      "Evaluator mode",
+      "Evaluate Agora in 10 minutes",
+      "Review packet preview",
+      "Shareable demo links",
+      "Start Evaluation",
+      "Copy Evaluator Link",
+      "First 10 minutes mode",
+      "Evaluation scorecard",
+      "Download Packet"
+    ]
+  },
+  {
     name: "Start beta workspace click path",
     suite: "release",
     route: "beta",

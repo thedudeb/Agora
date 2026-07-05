@@ -1085,6 +1085,7 @@ const routes = {
   audit: "Audit Log",
   permissions: "Permissions",
   release: "Release",
+  evaluate: "Evaluate",
   beta: "Beta Launch",
   readiness: "Readiness",
   data: "Data",
@@ -5812,6 +5813,7 @@ function canAccessRoute(route) {
     audit: "audit:read",
     permissions: "audit:read",
     release: "workspace:read",
+    evaluate: "workspace:read",
     beta: "workspace:read",
     readiness: "workspace:read",
     data: "workspace:import",
@@ -7850,6 +7852,14 @@ function currentAppBaseUrl() {
   return `${window.location.origin}${window.location.pathname}`;
 }
 
+function evaluatorShareUrl() {
+  const baseUrl = currentAppBaseUrl();
+  if (!baseUrl) return "";
+  const url = new URL(baseUrl);
+  url.searchParams.set("route", "evaluate");
+  return url.toString();
+}
+
 function evaluationDemoLinks(baseUrl = currentAppBaseUrl()) {
   const routeUrl = (route, params = {}) => {
     if (!baseUrl) return "";
@@ -7874,10 +7884,41 @@ function evaluationDemoLinks(baseUrl = currentAppBaseUrl()) {
   ];
 }
 
+function evaluationPacketSummary(rows = evaluationScorecardRows()) {
+  const counts = evaluationScorecardCounts(rows);
+  const tested = rows.length - counts["not-tested"];
+  const passRate = tested ? Math.round((counts.pass / tested) * 100) : 0;
+  const reviewRows = rows.filter((row) => row.status === "review");
+  const nextFixes = (reviewRows.length ? reviewRows : rows.filter((row) => row.status === "not-tested")).slice(0, 4).map((row) => ({
+    label: row.label,
+    recommendation: row.status === "review"
+      ? row.note || `Tighten the ${row.label.toLowerCase()} workflow before a paid rollout.`
+      : `Run this workflow during the next evaluation pass: ${row.detail}`
+  }));
+  const verdict = counts.review
+    ? "Needs product follow-up before a confident rollout"
+    : counts["not-tested"]
+      ? "Promising, with untested workflows remaining"
+      : "Ready for a confident evaluator handoff";
+  return {
+    verdict,
+    passRate,
+    tested,
+    total: rows.length,
+    strongestSignals: rows.filter((row) => row.status === "pass").slice(0, 4).map((row) => row.label),
+    openRisks: reviewRows.map((row) => ({
+      label: row.label,
+      note: row.note || row.detail
+    })),
+    nextFixes
+  };
+}
+
 function evaluationPacketPayload() {
   const rows = evaluationScorecardRows();
   const counts = evaluationScorecardCounts(rows);
   const recovery = portableRecoveryStatus();
+  const summary = evaluationPacketSummary(rows);
   return {
     type: "agora.evaluation-packet",
     version: 1,
@@ -7893,6 +7934,7 @@ function evaluationPacketPayload() {
     },
     scorecard: {
       counts,
+      summary,
       rows
     },
     demoLinks: evaluationDemoLinks(),
@@ -7924,6 +7966,18 @@ function evaluationPacketMarkdown() {
     `Generated: ${formatTimestamp(packet.generatedAt)}`,
     `Workspace: ${packet.workspace.name}`,
     `Scope: ${packet.workspace.projects} projects / ${packet.workspace.tasks} tasks / ${packet.workspace.companies} companies`,
+    "",
+    "## Executive Summary",
+    "",
+    `Verdict: ${packet.scorecard.summary.verdict}`,
+    `Pass rate: ${packet.scorecard.summary.passRate}% across ${packet.scorecard.summary.tested}/${packet.scorecard.summary.total} tested workflows`,
+    `Strongest signals: ${packet.scorecard.summary.strongestSignals.length ? packet.scorecard.summary.strongestSignals.join(", ") : "No pass signals marked yet"}`,
+    "",
+    "## Recommended Fixes",
+    "",
+    ...(packet.scorecard.summary.nextFixes.length
+      ? packet.scorecard.summary.nextFixes.map((item) => `- ${item.label}: ${item.recommendation}`)
+      : ["- No open fixes recorded. Keep validating with another evaluator."]),
     "",
     "## Scorecard",
     "",
@@ -9207,6 +9261,89 @@ function renderFirstTenModePanel() {
         <button class="button button-secondary" type="button" data-evaluation-action="copy-markdown">Copy Evaluation Packet</button>
       </div>
     </section>
+  `;
+}
+
+function renderEvaluatorLanding() {
+  const rows = evaluationScorecardRows();
+  const counts = evaluationScorecardCounts(rows);
+  const summary = evaluationPacketSummary(rows);
+  const links = evaluationDemoLinks();
+  const recovery = portableRecoveryStatus();
+  els.appView.innerHTML = `
+    ${renderRouteHeader({
+      eyebrow: "Evaluator mode",
+      title: "Evaluate Agora in 10 minutes",
+      description: "A focused path for project managers, customers, contributors, and investors to load realistic work, judge the core workflows, and leave with an evidence packet.",
+      actions: [
+        { label: "Start Evaluation", id: "evaluate-start", primary: true },
+        { label: "Copy Link", id: "evaluate-copy-link" },
+        { label: "Open Beta Launch", route: "beta" }
+      ]
+    })}
+
+    <div class="metric-grid">
+      ${metric("Verdict", summary.verdict)}
+      ${metric("Pass rate", `${summary.passRate}%`)}
+      ${metric("Scorecard", `${counts.pass}/${rows.length} pass`)}
+      ${metric("Recovery", `${recovery.score}/${recovery.total}`)}
+    </div>
+
+    <section class="panel evaluator-summary-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Review packet preview</p>
+          <h2>${escapeHtml(summary.verdict)}</h2>
+        </div>
+        <span class="status-pill ${counts.review ? "inbox-amber" : counts["not-tested"] ? "inbox-blue" : "inbox-green"}">${summary.tested}/${summary.total} tested</span>
+      </div>
+      <div class="evaluator-summary-grid">
+        <article>
+          <span>Strongest signals</span>
+          <strong>${escapeHtml(summary.strongestSignals.length ? summary.strongestSignals.join(", ") : "No passes marked yet")}</strong>
+          <small>Pass marks from the scorecard become the top proof points in the exported packet.</small>
+        </article>
+        <article>
+          <span>Open risks</span>
+          <strong>${summary.openRisks.length || "None marked"}</strong>
+          <small>${escapeHtml(summary.openRisks[0]?.note || "Use Needs work notes to capture the sharp product gaps.")}</small>
+        </article>
+        <article>
+          <span>Next fix</span>
+          <strong>${escapeHtml(summary.nextFixes[0]?.label || "Keep validating")}</strong>
+          <small>${escapeHtml(summary.nextFixes[0]?.recommendation || "Run the first 10 minutes with another PM and compare notes.")}</small>
+        </article>
+      </div>
+      <div class="data-actions">
+        <button class="button button-primary" type="button" data-evaluation-action="download-markdown">Download Packet</button>
+        <button class="button button-secondary" type="button" data-evaluation-action="download-json">Download JSON</button>
+        <button class="button button-secondary" type="button" data-evaluation-action="copy-markdown">Copy Markdown</button>
+        <button class="button button-secondary" type="button" data-evaluation-action="copy-link">Copy Evaluator Link</button>
+      </div>
+    </section>
+
+    <section class="panel evaluator-link-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Shareable demo links</p>
+          <h2>Open the right proof fast</h2>
+        </div>
+        <span class="status-pill inbox-blue">${links.length} links</span>
+      </div>
+      <div class="evaluator-link-grid">
+        ${links.map((link) => `
+          <article>
+            <span>${escapeHtml(link.label)}</span>
+            <strong>${escapeHtml(link.inspect)}</strong>
+            <small>${escapeHtml(link.url)}</small>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+
+    ${renderFirstTenModePanel()}
+    ${renderEvaluationScorecardPanel()}
+    ${renderBetaExitProofPanel()}
   `;
 }
 
@@ -16479,6 +16616,10 @@ function handleEvaluationAction(action) {
   }
   if (action === "copy-markdown") {
     copyCommandText(evaluationPacketMarkdown(), "Evaluation packet copied").catch(() => showToast("Could not copy evaluation packet", "info"));
+    return;
+  }
+  if (action === "copy-link") {
+    copyCommandText(evaluatorShareUrl(), "Evaluator link copied").catch(() => showToast("Could not copy evaluator link", "info"));
   }
 }
 
@@ -18534,6 +18675,7 @@ function render() {
     audit: renderAuditLog,
     permissions: renderPermissionsAudit,
     release: renderReleaseManagement,
+    evaluate: renderEvaluatorLanding,
     beta: renderBetaLaunch,
     readiness: renderProductionReadinessAudit,
     data: renderDataManagement,
@@ -18568,7 +18710,7 @@ function sidebarGroupForRoute(route) {
   if (["reports", "portfolio", "decisions", "goals", "autopilot", "operator", "automations"].includes(route)) return "control";
   if (["visibility", "portal", "project-backlog", "intake", "feature-requests", "companies", "company"].includes(route)) return "clients";
   if (["marketplace", "templates", "docs", "memory", "fields"].includes(route)) return "library";
-  if (["audit", "permissions", "release", "beta", "readiness", "data", "settings"].includes(route)) return "admin";
+  if (["audit", "permissions", "release", "evaluate", "beta", "readiness", "data", "settings"].includes(route)) return "admin";
   if (route === "project") return "projects";
   if (route === "invite") return "";
   return "";
@@ -41796,6 +41938,18 @@ document.addEventListener("click", (event) => {
   const evaluationScoreButton = event.target.closest("[data-evaluation-score]");
   if (evaluationScoreButton) {
     setEvaluationScorecardStatus(evaluationScoreButton.dataset.evaluationScore, evaluationScoreButton.dataset.evaluationStatus);
+    return;
+  }
+
+  const evaluateStartButton = event.target.closest("#evaluate-start");
+  if (evaluateStartButton) {
+    handleFirstTenAction("start");
+    return;
+  }
+
+  const evaluateCopyLinkButton = event.target.closest("#evaluate-copy-link");
+  if (evaluateCopyLinkButton) {
+    handleEvaluationAction("copy-link");
     return;
   }
 

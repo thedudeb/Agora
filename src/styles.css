@@ -1792,6 +1792,56 @@ body[data-tutorial-target="view"] #app-view {
   width: 100%;
 }
 
+.evaluator-summary-panel,
+.evaluator-link-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.evaluator-summary-grid,
+.evaluator-link-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.evaluator-link-grid {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
+.evaluator-summary-grid article,
+.evaluator-link-grid article {
+  display: grid;
+  gap: 7px;
+  align-content: start;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.evaluator-summary-grid span,
+.evaluator-link-grid span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.evaluator-summary-grid strong,
+.evaluator-link-grid strong,
+.evaluator-link-grid small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.evaluator-summary-grid small,
+.evaluator-link-grid small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .onboarding-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -13109,6 +13159,7 @@ body[data-density="compact"] .main-content {
   .onboarding-grid,
   .first-ten-mode-list article,
   .evaluation-scorecard-row,
+  .evaluator-summary-grid,
   .project-command-grid,
   .project-next-action-grid,
   .project-risk-strip,
