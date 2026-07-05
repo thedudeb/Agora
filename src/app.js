@@ -24398,6 +24398,244 @@ function projectAutopilotRecoveryScenarios(drifts = projectAutopilotDriftCards()
   });
 }
 
+function autopilotLoopCloserActions(drifts = projectAutopilotDriftCards()) {
+  const actions = [];
+  const projectFallback = activeProjects()[0]?.id || "";
+  drifts.forEach((drift) => {
+    const projectId = drift.projectId || projectFallback;
+    const project = byId(state.projects, projectId);
+    const projectTasks = projectId ? getProjectTasks(projectId, false).filter((task) => task.status !== "done") : activeTasks().filter((task) => task.status !== "done");
+    const overdueTask = projectTasks.find(isOverdue);
+    const blockedTask = projectTasks.find(isTaskBlocked);
+    const dueSoonTask = projectTasks.find((task) => task.dueDate && task.dueDate <= shiftDate(todayKey(), 7));
+    const approval = state.approvals.find((item) => item.projectId === projectId && item.status !== "approved");
+    const company = projectCompany(projectId);
+    const base = {
+      id: `loop-${drift.id}`,
+      driftId: drift.id,
+      projectId,
+      projectName: project?.name || projectName(projectId),
+      companyId: company?.id || project?.companyId || "",
+      health: project ? operatorBriefForProject(project).health : 100,
+      impact: `${drift.type} / ${drift.severity} / ${drift.confidence}% confidence`,
+      evidence: drift.evidence || [],
+      rationale: `${drift.title}: ${drift.reality}`,
+      permission: "Human review required",
+      status: "preview"
+    };
+
+    if (drift.id === "approval-drift" && approval) {
+      actions.push({
+        ...base,
+        type: "approval_chase",
+        title: `Close approval loop: ${approval.title}`,
+        summary: "Creates a same-day approval chase task, keeps the approval unchanged, and leaves an Operator audit trail.",
+        outcome: "Reviewer gets a clear ask; PM gets an owned follow-up in Today.",
+        sourceTaskId: approval.taskId || dueSoonTask?.id || "",
+        approvalId: approval.id,
+        confirmLabel: "Queue Approval Chase"
+      });
+      return;
+    }
+
+    if (drift.id === "client-promise-drift" && company?.type === "Client") {
+      actions.push({
+        ...base,
+        type: "client_update",
+        title: `Close client update loop: ${company.name}`,
+        summary: "Drafts an internal client-safe update from current project, approval, blocker, and portal context.",
+        outcome: "PM reviews the update before any external message is sent.",
+        sourceTaskId: overdueTask?.id || blockedTask?.id || dueSoonTask?.id || "",
+        approvalId: approval?.id || "",
+        confirmLabel: "Queue Client Update"
+      });
+      return;
+    }
+
+    if (drift.id === "blocker-drift" && blockedTask) {
+      actions.push({
+        ...base,
+        type: "task",
+        title: `Close blocker loop: ${blockedTask.title}`,
+        summary: "Creates an unblock task with owner, next date, dependency context, and Today placement.",
+        outcome: "Blocked work gets a concrete owner-driven recovery task.",
+        sourceTaskId: blockedTask.id,
+        approvalId: "",
+        confirmLabel: "Queue Unblock Task"
+      });
+      return;
+    }
+
+    if (drift.id === "schedule-drift" && overdueTask) {
+      actions.push({
+        ...base,
+        type: "task",
+        title: `Close schedule loop: ${overdueTask.title}`,
+        summary: "Creates an urgent recovery task and asks the owner to reset the next date and status.",
+        outcome: "Overdue work gets a visible recovery action before the next check-in.",
+        sourceTaskId: overdueTask.id,
+        approvalId: "",
+        confirmLabel: "Queue Recovery Task"
+      });
+      return;
+    }
+
+    if (drift.id === "workload-drift") {
+      actions.push({
+        ...base,
+        type: "plan",
+        title: `Close planning loop: ${project?.name || "workspace"}`,
+        summary: "Moves the highest-signal task into Today and adds an Operator rationale note.",
+        outcome: "The overloaded owner gets one explicit next task instead of another dashboard warning.",
+        sourceTaskId: overdueTask?.id || blockedTask?.id || dueSoonTask?.id || projectTasks[0]?.id || "",
+        approvalId: "",
+        confirmLabel: "Queue Today Plan"
+      });
+      return;
+    }
+
+    if (drift.id === "scope-drift") {
+      actions.push({
+        ...base,
+        type: company?.type === "Client" ? "approval_request" : "task",
+        title: `Close scope loop: ${project?.name || "workspace"}`,
+        summary: company?.type === "Client"
+          ? "Creates an approval request so new scope gets an explicit reviewer and due date."
+          : "Creates a triage task so new scope is reviewed before it becomes a delivery commitment.",
+        outcome: "Scope signals become a decision path instead of unmanaged promises.",
+        sourceTaskId: dueSoonTask?.id || projectTasks[0]?.id || "",
+        approvalId: "",
+        confirmLabel: company?.type === "Client" ? "Queue Approval Request" : "Queue Scope Triage"
+      });
+    }
+  });
+
+  return actions
+    .filter((action) => action.projectId && canOperatorApplyType(action.type))
+    .slice(0, 8);
+}
+
+function autopilotLoopReviewItem(action) {
+  const item = operatorReviewItemFromSuggestion({
+    id: action.id,
+    type: action.type,
+    title: action.title,
+    summary: action.summary,
+    projectId: action.projectId,
+    projectName: action.projectName,
+    companyId: action.companyId,
+    sourceTaskId: action.sourceTaskId,
+    approvalId: action.approvalId,
+    health: action.health,
+    impact: action.impact
+  });
+  return {
+    ...item,
+    id: `review-${action.id}`,
+    suggestionId: action.id,
+    rationale: action.rationale,
+    affectedRecords: [
+      ...item.affectedRecords,
+      `Loop: ${action.driftId}`,
+      ...action.evidence.slice(0, 3)
+    ].slice(0, 6),
+    decisionNote: "Queued from PM Autopilot Loop Closer"
+  };
+}
+
+function queueAutopilotLoopAction(actionId) {
+  const action = autopilotLoopCloserActions().find((item) => item.id === actionId);
+  if (!action) {
+    showToast("Autopilot loop is no longer available", "info");
+    return 0;
+  }
+  const queue = operatorReviewQueueItems();
+  if (queue.some((item) => item.suggestionId === action.id)) {
+    showToast("That loop is already in the review queue", "info");
+    return 0;
+  }
+  state.operatorReviewQueue = [autopilotLoopReviewItem(action), ...queue].slice(0, 40);
+  addAuditEvent({
+    action: "autopilot_loop_queued",
+    detail: `Queued PM Autopilot loop: ${action.title}`,
+    targetType: "operator_review",
+    targetId: action.id,
+    metadata: {
+      driftId: action.driftId,
+      projectId: action.projectId,
+      type: action.type,
+      evidence: action.evidence.slice(0, 4)
+    }
+  });
+  return 1;
+}
+
+function queueTopAutopilotLoops(limit = 3) {
+  const candidates = autopilotLoopCloserActions().slice(0, limit);
+  let queued = 0;
+  candidates.forEach((action) => {
+    queued += queueAutopilotLoopAction(action.id);
+  });
+  if (!queued) {
+    showToast("PM Autopilot loops are already queued", "info");
+    return;
+  }
+  saveState();
+  render();
+  showToast(`${queued} PM Autopilot loop${queued === 1 ? "" : "s"} queued for review`, "success");
+}
+
+function renderAutopilotLoopCloserPanel(drifts) {
+  const actions = autopilotLoopCloserActions(drifts);
+  const queuedIds = new Set(operatorReviewQueueItems().map((item) => item.suggestionId));
+  return `
+    <section class="panel autopilot-loop-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">PM Autopilot Loop Closer</p>
+          <h2>From signal to reviewed action</h2>
+        </div>
+        <div class="portal-actions">
+          <span class="status-pill ${actions.length ? "inbox-amber" : "inbox-green"}">${actions.length ? `${actions.length} loops` : "Clear"}</span>
+          <button class="button button-secondary compact-button" type="button" id="autopilot-queue-top-loops" ${actions.length ? "" : "disabled"}>Queue Top Loops</button>
+        </div>
+      </div>
+      <p class="panel-note">Autopilot does not message clients or rewrite plans by itself. It turns drift into reviewable Operator actions with evidence, expected outcome, permissions, and undo-ready audit records.</p>
+      <div class="autopilot-loop-grid">
+        ${actions.length ? actions.map((action) => renderAutopilotLoopCard(action, queuedIds.has(action.id))).join("") : starterEmptyState("autopilot", {
+          message: "No PM loops need closure right now.",
+          detail: "When schedule, blocker, approval, scope, workload, or client-promise drift appears, Autopilot will propose the next reviewed action here."
+        })}
+      </div>
+    </section>
+  `;
+}
+
+function renderAutopilotLoopCard(action, queued = false) {
+  return `
+    <article class="autopilot-loop-card ${queued ? "is-queued" : ""}">
+      <div class="autopilot-chip-row">
+        <span class="status-pill ${queued ? "inbox-green" : "inbox-blue"}">${queued ? "Queued" : "Preview"}</span>
+        <span class="status-pill inbox-neutral">${escapeHtml(operatorPermissionForActionType(action.type))}</span>
+        <span class="status-pill inbox-neutral">${escapeHtml(action.projectName)}</span>
+      </div>
+      <h3>${escapeHtml(action.title)}</h3>
+      <p>${escapeHtml(action.summary)}</p>
+      <div class="autopilot-loop-outcome">
+        <span>Expected outcome</span>
+        <strong>${escapeHtml(action.outcome)}</strong>
+      </div>
+      <div class="autopilot-evidence-list">
+        ${(action.evidence.length ? action.evidence : [action.rationale]).slice(0, 4).map((item) => `<span>${escapeHtml(item)}</span>`).join("")}
+      </div>
+      <div class="autopilot-scenario-actions">
+        <button class="button button-primary compact-button" type="button" data-autopilot-loop-queue="${escapeHtml(action.id)}" ${queued ? "disabled" : ""}>${queued ? "In Review Queue" : escapeHtml(action.confirmLabel)}</button>
+        <button class="button button-secondary compact-button" type="button" data-route="operator">Open Review Queue</button>
+      </div>
+    </article>
+  `;
+}
+
 function autopilotScenarioImpact(scenario) {
   const projectTasks = scenario.projectId ? getProjectTasks(scenario.projectId, false).filter((task) => task.status !== "done") : activeTasks().filter((task) => task.status !== "done");
   const overdue = projectTasks.filter(isOverdue).length;
@@ -24868,6 +25106,8 @@ function renderProjectAutopilot() {
     </section>
 
     ${renderAutopilotSafetyCenter(scenarios)}
+
+    ${renderAutopilotLoopCloserPanel(drifts)}
 
     ${renderProjectMemoryAutopilotBridge()}
 
@@ -43313,6 +43553,23 @@ document.addEventListener("click", (event) => {
   const autopilotRejectButton = event.target.closest("[data-autopilot-reject]");
   if (autopilotRejectButton) {
     rejectAutopilotScenario(autopilotRejectButton.dataset.autopilotReject);
+    return;
+  }
+
+  const autopilotLoopQueueButton = event.target.closest("[data-autopilot-loop-queue]");
+  if (autopilotLoopQueueButton) {
+    const queued = queueAutopilotLoopAction(autopilotLoopQueueButton.dataset.autopilotLoopQueue);
+    if (queued) {
+      saveState();
+      render();
+      showToast("PM Autopilot loop queued for review", "success");
+    }
+    return;
+  }
+
+  const autopilotQueueTopLoopsButton = event.target.closest("#autopilot-queue-top-loops");
+  if (autopilotQueueTopLoopsButton) {
+    queueTopAutopilotLoops();
     return;
   }
 

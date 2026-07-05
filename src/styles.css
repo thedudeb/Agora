@@ -3366,6 +3366,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .autopilot-hero-proof,
 .autopilot-drift-list,
+.autopilot-loop-grid,
 .autopilot-scenario-grid,
 .autopilot-safety-grid,
 .autopilot-safety-events,
@@ -3387,6 +3388,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .autopilot-hero-proof article,
 .autopilot-drift-card,
+.autopilot-loop-card,
 .autopilot-scenario-card,
 .autopilot-safety-grid article,
 .autopilot-safety-events article,
@@ -3451,11 +3453,13 @@ body[data-tutorial-target="view"] #app-view {
 }
 
 .autopilot-drift-card h3,
+.autopilot-loop-card h3,
 .autopilot-scenario-card h3 {
   margin: 8px 0;
   font-size: 1rem;
 }
 
+.autopilot-loop-card p,
 .autopilot-scenario-card p {
   margin: 0;
   color: var(--muted);
@@ -3502,6 +3506,31 @@ body[data-tutorial-target="view"] #app-view {
 
 .autopilot-change-list {
   margin-top: 10px;
+}
+
+.autopilot-loop-card.is-queued {
+  border-color: color-mix(in srgb, var(--green) 42%, var(--line));
+}
+
+.autopilot-loop-outcome {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.autopilot-loop-outcome span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.autopilot-loop-outcome strong {
+  overflow-wrap: anywhere;
 }
 
 .autopilot-impact-simulator {
