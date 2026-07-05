@@ -2399,6 +2399,40 @@ const seedData = {
       }
     },
     {
+      id: "template-internal-ops-tracker",
+      name: "Internal Ops Tracker",
+      category: "Operations OS",
+      description: "Run internal requests, recurring workflows, approvals, reporting, owner follow-up, and operational improvement from one project.",
+      owner: "sam",
+      creatorName: "Agora Workflow Lab",
+      durationDays: 21,
+      tasks: [
+        { key: "intake", title: "Set up request intake", description: "Define request types, required fields, triage owner, SLA expectations, and escalation rules.", assignee: "sam", priority: "high", startOffset: 0, dueOffset: 2, tags: ["intake", "ops"], blockedBy: [], subtasks: ["Define request types", "Assign triage owner", "Publish SLA"] },
+        { key: "triage", title: "Triage open requests", description: "Review urgency, impact, owner, due date, approval need, and whether the request belongs in this workflow.", assignee: "mara", priority: "urgent", startOffset: 1, dueOffset: 5, tags: ["triage"], blockedBy: ["intake"], subtasks: ["Score urgency", "Assign owner", "Set due date"] },
+        { key: "recurring", title: "Map recurring workflows", description: "Document recurring tasks, cadence, owner, backup owner, dependencies, and automation candidates.", assignee: "eli", priority: "normal", startOffset: 3, dueOffset: 8, tags: ["recurring", "automation"], blockedBy: ["intake"], subtasks: ["List recurring work", "Name backup owners", "Mark automation candidates"] },
+        { key: "approvals", title: "Route approval requests", description: "Package requests that need signoff with context, reviewer, due date, and decision criteria.", assignee: "nina", priority: "high", startOffset: 5, dueOffset: 12, tags: ["approval"], blockedBy: ["triage"], subtasks: ["Add context", "Name reviewer", "Capture decision"] },
+        { key: "reporting", title: "Publish ops status report", description: "Summarize request volume, overdue work, blocked items, approvals, recurring work health, and next actions.", assignee: "sam", priority: "normal", startOffset: 12, dueOffset: 17, tags: ["reporting"], blockedBy: ["triage", "recurring"], subtasks: ["Count requests", "Summarize blockers", "Send report"] },
+        { key: "improve", title: "Prioritize ops improvements", description: "Turn repeated blockers and high-volume requests into process improvements, automations, or template changes.", assignee: "mara", priority: "normal", startOffset: 17, dueOffset: 21, tags: ["improvement"], blockedBy: ["reporting"], subtasks: ["Find repeated blockers", "Pick improvements", "Assign owners"] }
+      ],
+      milestones: [
+        { title: "Ops intake live", description: "Request intake, triage ownership, and SLA expectations are published.", owner: "sam", dueOffset: 3, status: "planned", taskKeys: ["intake"] },
+        { title: "Recurring work mapped", description: "Recurring workflows, backup owners, and automation candidates are documented.", owner: "eli", dueOffset: 9, status: "planned", taskKeys: ["recurring"] },
+        { title: "Ops report published", description: "Request health, approvals, blockers, and improvement candidates are visible.", owner: "sam", dueOffset: 17, status: "planned", taskKeys: ["approvals", "reporting"] },
+        { title: "Improvement backlog ready", description: "Repeated ops pain has owners and next actions.", owner: "mara", dueOffset: 21, status: "planned", taskKeys: ["improve"] }
+      ],
+      docs: [
+        { title: "Ops Intake Rules", type: "Template", body: "Request types, required fields, triage owner, SLA expectations, escalation rules, and out-of-scope guidance." },
+        { title: "Recurring Workflow Map", type: "Brief", body: "Workflow, cadence, owner, backup owner, dependency, risk, automation candidate, and reporting need." },
+        { title: "Approval Routing Guide", type: "Template", body: "Decision type, reviewer, due date, context, evidence, risk, and final decision record." },
+        { title: "Ops Status Report", type: "Report", body: "Request volume, overdue work, blocked items, approvals, recurring work health, improvements, and next actions." }
+      ],
+      intakeForm: {
+        title: "Internal Ops Request",
+        assignee: "sam",
+        description: "Capture internal requests, urgency, impact, approval needs, due date, and requester context."
+      }
+    },
+    {
       id: "template-finance-close",
       name: "Finance Close",
       category: "Finance",

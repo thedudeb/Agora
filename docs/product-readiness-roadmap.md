@@ -16,8 +16,8 @@ The broader promise stays intact: open source project management without ads, tr
 | 2. Ruthless first-run experience | Complete | A new workspace reaches "I can run a real project here" in under 10 minutes. | First-run asks preferred project-management style, recommends a starter setup, creates/imports a project, and shows a visible completion path. |
 | 3. Production hosted path | Complete | A self-hoster can deploy and verify Agora without hand-holding. | Install, deployment, health checks, backups, upgrade checks, and env validation form one boring, repeatable path. |
 | 4. Real collaboration confidence | Complete | Teams trust multi-person work instead of treating Agora as a solo local app. | Presence, stale edit warnings, comments/chat, notifications, permissions, and audit logs have clear user-facing states and failure handling. |
-| 5. Opinionated workflows | In progress | Agora ships useful operating systems, not just flexible primitives. | Agency retainer, client onboarding, scrum delivery, and solo founder presets produce boards, timelines, reports, templates, automations, and dashboards. |
-| 6. Polished migration story | Planned | A team can bring real work from competitors safely. | Import concierge previews mappings, warnings, rollback, skipped data, and clean next steps for Asana, Trello, Jira, Linear, ClickUp, and generic CSV/JSON. |
+| 5. Opinionated workflows | Complete | Agora ships useful operating systems, not just flexible primitives. | Agency retainer, client onboarding, scrum delivery, and solo founder presets produce boards, timelines, reports, templates, automations, and dashboards. |
+| 6. Polished migration story | In progress | A team can bring real work from competitors safely. | Import concierge previews mappings, warnings, rollback, skipped data, and clean next steps for Asana, Trello, Jira, Linear, ClickUp, and generic CSV/JSON. |
 | 7. Trust center and proof | Planned | Buyers and self-hosters can verify security, privacy, portability, and AI behavior. | Trust Center links to evidence reports, security audits, export guarantees, AI policy, backup drills, and dependency/runtime checks. |
 | 8. Real packaging and distribution | Planned | Users can install Agora where they work. | PWA, desktop, Docker, hosted deploy, MCP, and CLI paths have clear release checks, version metadata, and upgrade guidance. |
 | 9. Focused demo dataset and story | Planned | The demo shows one memorable real workflow instead of a feature inventory. | Demo links, screenshots, sample data, and video script follow the same agency/client delivery scenario from intake to approval to report. |
@@ -123,7 +123,7 @@ Priority workflow packs:
 - Done: Client onboarding and delivery
 - Done: Scrum sprint command center
 - Done: Founder launch room
-- Internal operations tracker
+- Done: Internal operations tracker
 
 Each pack should include a template, board, timeline, reports, automations, docs, and a "what good looks like" demo state.
 
