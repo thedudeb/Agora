@@ -17,6 +17,7 @@ Paste command output or link CI artifacts for the exact commit being released.
 | Gate | Required Evidence | Status |
 | --- | --- | --- |
 | Release discipline | `npm run release:check` | Pending for release commit |
+| Hosted demo | `npm run demo:check` | Pending for release commit |
 | Packaging | `npm run package:check` | Pending for release commit |
 | Trust evidence | `npm run trust` | Pending for release commit |
 | QA | `npm run qa` | Pending for release commit |
@@ -30,7 +31,9 @@ The release demo must use [`acme-client-launch-demo.md`](./acme-client-launch-de
 
 Required before publishing:
 
+- Follow [`hosted-demo-runbook.md`](./hosted-demo-runbook.md).
 - Generate hosted links with `npm run demo:links -- --base <demo-url> --demo acme-client-launch --markdown`.
+- Run `npm run demo:check`.
 - Run `AGORA_GOLDEN_SUITE=demo npm run test:golden`.
 - Refresh the screenshots named in [`screenshot-demo-plan.md`](./screenshot-demo-plan.md).
 - Record or re-record the short demo using [`demo-video-script.md`](./demo-video-script.md).

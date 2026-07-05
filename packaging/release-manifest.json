@@ -6,6 +6,7 @@
   "releaseOwner": "Agora maintainer",
   "releaseGate": [
     "npm run release:check",
+    "npm run demo:check",
     "npm run package:check",
     "npm run trust",
     "npm run verify:production -- --env .env.production --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict",
@@ -34,6 +35,7 @@
     "start",
     "start:api",
     "agora",
+    "demo:check",
     "mcp",
     "trust",
     "qa",

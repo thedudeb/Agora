@@ -6,14 +6,16 @@ const path = require("node:path");
 const ROOT = path.resolve(__dirname, "..");
 const CATALOG_PATH = path.join(ROOT, "demos", "workspaces.json");
 
-const args = parseArgs(process.argv.slice(2));
-const catalog = readCatalog();
-const report = buildDemoLinks(catalog, args);
+if (require.main === module) {
+  const args = parseArgs(process.argv.slice(2));
+  const catalog = readCatalog();
+  const report = buildDemoLinks(catalog, args);
 
-if (args.json) {
-  console.log(JSON.stringify(report, null, 2));
-} else {
-  printReport(report);
+  if (args.json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    printReport(report, args);
+  }
 }
 
 function parseArgs(values) {
@@ -128,8 +130,8 @@ function routeUrl(base, route, options = {}) {
   return url.toString();
 }
 
-function printReport(report) {
-  if (args.markdown) {
+function printReport(report, options = {}) {
+  if (options.markdown) {
     console.log(`# Agora Demo Links`);
     console.log("");
     console.log(`Base: ${report.base}`);
@@ -201,3 +203,9 @@ Options:
   --json         Print machine-readable JSON
 `);
 }
+
+module.exports = {
+  buildDemoLinks,
+  readCatalog,
+  routeUrl
+};

@@ -1,6 +1,6 @@
 # Acme Client Launch Demo
 
-Use this as the default hosted-demo handoff for project managers evaluating Agora. The goal is to show one believable client-delivery story, not every feature.
+Use this as the default hosted-demo handoff for project managers evaluating Agora. The goal is to show one believable client-delivery story, not every feature. Use [`hosted-demo-runbook.md`](./hosted-demo-runbook.md) before publishing public links.
 
 ## Generate Links
 
@@ -62,6 +62,7 @@ Then keep the story practical:
 Run the focused demo golden path before recording or sharing hosted links:
 
 ```sh
+npm run demo:check
 AGORA_GOLDEN_SUITE=demo npm run test:golden
 ```
 

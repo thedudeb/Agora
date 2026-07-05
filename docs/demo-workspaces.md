@@ -1,6 +1,6 @@
 # Demo Workspaces
 
-Agora's hosted demo should let a project manager understand the product before reading setup docs. The repository now includes a reusable demo catalog in [`../demos/workspaces.json`](../demos/workspaces.json) and a link generator for local or hosted deployments.
+Agora's hosted demo should let a project manager understand the product before reading setup docs. The repository now includes a reusable demo catalog in [`../demos/workspaces.json`](../demos/workspaces.json) and a link generator for local or hosted deployments. Use [`hosted-demo-runbook.md`](./hosted-demo-runbook.md) before publishing public demo links.
 
 ## Generate Demo Links
 
@@ -62,10 +62,12 @@ AGORA_GOLDEN_SUITE=demo npm run test:golden
 
 ## Hosted Demo Checklist
 
-1. Deploy the static app and API with `AGORA_DEMO_AUTH=false` and `AGORA_PASSWORDLESS_AUTH=false`.
-2. Keep the demo workspace seeded and resettable; do not store real customer data.
-3. Generate links with `npm run demo:links -- --base <hosted-app-url> --markdown`.
-4. Add the generated entry links to the README, launch page, social posts, and support replies.
-5. Refresh screenshots after major UI changes with `npm run screenshots`.
+1. Follow [`hosted-demo-runbook.md`](./hosted-demo-runbook.md).
+2. Deploy the static app and API with `AGORA_DEMO_AUTH=false` and `AGORA_PASSWORDLESS_AUTH=false`.
+3. Keep the demo workspace seeded and resettable; do not store real customer data.
+4. Generate links with `npm run demo:links -- --base <hosted-app-url> --markdown`.
+5. Run `npm run demo:check` and `AGORA_GOLDEN_SUITE=demo npm run test:golden`.
+6. Add the generated entry links to the README, launch page, social posts, and support replies.
+7. Refresh screenshots after major UI changes with `npm run screenshots`.
 
 The default demo should feel like a guided Acme Studio project story, not a feature inventory. Use the other scenarios as follow-up deep dives for scrum, client portal, trust, and marketplace-specific buyers.

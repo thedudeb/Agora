@@ -17,6 +17,7 @@ const requiredFiles = [
 ];
 const requiredGateCommands = [
   "npm run release:check",
+  "npm run demo:check",
   "npm run package:check",
   "npm run trust",
   "npm run qa",
