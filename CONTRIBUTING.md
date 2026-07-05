@@ -1,6 +1,6 @@
-# Contributing to Agora
+# Contributing To Agora
 
-Thanks for helping shape Agora. The project is early, but the direction is clear: open source project management without ads, trackers, or lock-in.
+Thanks for helping make Agora a real open source product. The best first contributions are small, testable, and tied to the client-facing project-management wedge: agencies, consultants, self-hosters, and power users who need no ads, no lock-in, portable data, and auditable AI.
 
 ## What Helps Most
 
@@ -12,6 +12,21 @@ Thanks for helping shape Agora. The project is early, but the direction is clear
 - Accessibility and mobile/iPad polish.
 - API, Supabase, import/export, and portable bundle test coverage.
 - Focused implementation PRs that match the existing dependency-light architecture.
+
+## Start Here
+
+1. Read [`docs/contributor-path.md`](./docs/contributor-path.md).
+2. Pick a starter issue lane from [`docs/starter-issues.md`](./docs/starter-issues.md).
+3. Run the quick local checks:
+
+```sh
+npm run check
+npm run demo:check
+npm run release:check
+```
+
+4. For product-facing changes, include the smallest useful acceptance test or screenshot note.
+5. For security, migration, data export, plugin, MCP, or API changes, include rollback and portability notes.
 
 ## Local Setup
 
@@ -34,12 +49,22 @@ Open `http://127.0.0.1:8787/api/health`, then connect from Settings in the app.
 
 ## Checks Before A PR
 
-Run these before opening a pull request:
+Run these before opening most pull requests:
 
 ```sh
 npm run check
 npm run test:fixtures
 npm run test:api
+```
+
+Use focused gates when your change touches those surfaces:
+
+```sh
+npm run demo:check
+npm run release:check
+npm run test:importers
+npm run test:plugins
+npm run test:mcp
 ```
 
 Run `npm run test:supabase` when you change Supabase migrations, storage/auth behavior, file uploads, or deployment docs that affect Supabase setup.
@@ -54,18 +79,14 @@ Run `npm run test:supabase` when you change Supabase migrations, storage/auth be
 - Use existing app patterns before introducing new abstractions.
 - Update docs when behavior, setup, routes, or public positioning changes.
 
-## Good First Issues
+## Contribution Lanes
 
-These are good starter lanes for contributors:
-
-- Add a project template for a real workflow, such as nonprofit campaigns, podcast production, construction punch lists, course launches, research labs, finance closes, or art exhibitions.
-- Add an automation pack for recurring client updates, overdue approvals, meeting follow-ups, release readiness, or weekly reporting.
-- Improve docs around Supabase setup, API sync, portable exports, or marketplace packs.
-- Capture screenshots listed in `docs/screenshot-demo-plan.md`.
-- Audit a route for keyboard navigation and focus states.
-- Polish a mobile layout for iPhone and iPad widths.
-- Add fixture coverage for portable workspace bundles or automation pack imports.
-- Improve empty states with clearer next actions.
+- Bug fix: reproduce, patch narrowly, add a regression check when practical.
+- Docs improvement: make setup, hosting, release, or trust evidence easier to follow.
+- Template pack: contribute reusable project workflows that can be represented as portable Agora JSON.
+- Automation pack: contribute previewable rules with clear trigger, condition, action, and rollback language.
+- Migration fixture: add anonymized competitor exports or importer edge cases.
+- Plugin/MCP proposal: use the least-privilege extension contracts and document read/write behavior.
 
 ## Opening Issues
 
@@ -85,15 +106,17 @@ For feature proposals, include:
 - The smallest useful version.
 - How the feature should preserve portability, self-hosting, and auditability.
 
-## Pull Request Checklist
+## Review Bar
 
-- Keep the change focused.
-- Explain the user-facing behavior.
-- Include screenshots for visual changes.
-- Run the relevant checks.
-- Update README/docs when public behavior changes.
-- Avoid unrelated refactors.
-- Do not commit secrets, `.env`, local database files, or generated screenshots unless they belong in an intentional asset folder.
+A good PR explains:
+
+- user problem and affected route/docs/script;
+- exact verification commands run;
+- data ownership, export, auth, permission, or privacy impact;
+- rollback behavior for state-changing work;
+- screenshots or generated artifacts when UI/launch assets change.
+
+Keep changes scoped. If a PR touches app behavior, release gates, docs, and screenshots all at once, split it unless the story truly needs one atomic change.
 
 ## Project Style
 

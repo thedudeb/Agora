@@ -21,7 +21,7 @@ The broader promise stays intact: open source project management without ads, tr
 | 7. Trust center and proof | Complete | Buyers and self-hosters can verify security, privacy, portability, and AI behavior. | Trust Center links to evidence reports, security audits, export guarantees, AI policy, backup drills, and dependency/runtime checks. |
 | 8. Real packaging and distribution | In progress | Users can install Agora where they work. | PWA, desktop, Docker, hosted deploy, MCP, and CLI paths have clear release checks, version metadata, and upgrade guidance. |
 | 9. Focused demo dataset and story | In progress | The demo shows one memorable real workflow instead of a feature inventory. | Demo links, screenshots, sample data, and video script follow the same agency/client delivery scenario from intake to approval to report. |
-| 10. Sustainable contributor path | Planned | Open source contributors know where to help without becoming maintainers first. | Issue templates, starter issues, extension contracts, fixture examples, contribution lanes, and review criteria are easy to find. |
+| 10. Sustainable contributor path | Complete | Open source contributors know where to help without becoming maintainers first. | Issue templates, starter issues, extension contracts, fixture examples, contribution lanes, and review criteria are easy to find. |
 
 ## Step 1: Primary Persona
 
@@ -210,16 +210,14 @@ Next polish:
 
 Agora should make contribution feel safe and useful.
 
-Needed surfaces:
+Current product state:
 
-- Bug report template
-- Feature request template
-- Template pack proposal template
-- Automation pack proposal template
-- Docs improvement template
-- Starter issue labels
-- Fixture examples
-- Extension review checklist
+- Done: `CONTRIBUTING.md` gives contributors the top-level contribution workflow and review bar.
+- Done: `.github/ISSUE_TEMPLATE/*` covers bugs, production issues, feature requests, support diagnostics, product questions, docs, templates, and automation packs.
+- Done: `.github/PULL_REQUEST_TEMPLATE.md` asks for verification, product/trust impact, rollback notes, and fixture hygiene.
+- Done: `docs/contributor-path.md` defines contribution lanes, fixture rules, and review criteria.
+- Done: `docs/contributor-labels.md` defines starter labels, product-area labels, and priority semantics.
+- Done: `docs/starter-issues.md` gives ready-to-copy starter issues for docs, UI polish, fixtures, trust/release, plugin, and MCP work.
 
 ## Review Cadence
 

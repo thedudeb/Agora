@@ -16,6 +16,8 @@ Agora is a self-hostable project command center for agencies and consultants run
 
 See the [product readiness roadmap](./docs/product-readiness-roadmap.md) for the working checklist Agora is using to become a full product.
 
+Contributors can start with [CONTRIBUTING.md](./CONTRIBUTING.md), the [contributor path](./docs/contributor-path.md), and [starter issues](./docs/starter-issues.md).
+
 ## Product Snapshot
 
 | Acme command center | Project backlog | Client visibility |
