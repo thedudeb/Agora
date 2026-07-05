@@ -8,6 +8,8 @@ npm run agora -- package-check
 npm run agora -- package-check --json
 ```
 
+For the current channel audit, see [`packaging-audit-2026-07-05.md`](./packaging-audit-2026-07-05.md). It records which paths are beta-ready, which are internal-ready, and what still blocks a polished public release.
+
 ## Release Channels
 
 | Channel | Artifact | Best For | Primary Check |
@@ -27,12 +29,24 @@ Before publishing a release candidate:
 ```sh
 npm run package:check
 npm run trust
-npm run verify:hosted
-npm run verify:upgrade -- --allow-missing-backup
+npm run verify:production -- --env .env.production --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict
 npm run qa
+npm run security
 ```
 
-Use a real backup path instead of `--allow-missing-backup` for production upgrades. For desktop releases, run the platform pack command on the target OS, then test launch with Wi-Fi disabled.
+Use `--allow-missing-backup` only for local dry rehearsals. For desktop releases, run the platform pack command on the target OS, then test launch with Wi-Fi disabled.
+
+## Release Handoff
+
+Every release candidate should include:
+
+- Product version and Git commit.
+- `npm run package:check` output.
+- `npm run trust` output.
+- Hosted verification output for the target environment.
+- Recovery proof from a current server backup or portable workspace bundle.
+- Known gaps from `packaging/release-manifest.json`.
+- Platform notes for source, Docker, hosted, PWA, desktop, CLI, MCP, and portable data.
 
 ## Packaging Rules
 

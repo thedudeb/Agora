@@ -2,6 +2,29 @@
   "type": "agora.release-manifest",
   "version": 1,
   "productVersion": "0.1.0",
+  "releaseStatus": "beta-ready packaging path, not a signed public app-store release",
+  "releaseOwner": "Agora maintainer",
+  "releaseGate": [
+    "npm run package:check",
+    "npm run trust",
+    "npm run verify:production -- --env .env.production --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict",
+    "npm run qa",
+    "npm run security"
+  ],
+  "handoffArtifacts": [
+    "README.md",
+    "docs/install.md",
+    "docs/packaging.md",
+    "docs/release-checklist.md",
+    "docs/trust-center.md",
+    "packaging/release-manifest.json"
+  ],
+  "knownGaps": [
+    "Desktop builds require platform-specific packaging and code signing before broad public distribution.",
+    "Native iOS and Android wrappers are not included yet; the current mobile install path is the offline PWA.",
+    "Hosted production launches still require operator-provided Supabase, SMTP/webhook, backup, and domain configuration.",
+    "Real production upgrades should use a fresh server backup instead of --allow-missing-backup dry runs."
+  ],
   "requiredRootCommands": [
     "setup",
     "start",
