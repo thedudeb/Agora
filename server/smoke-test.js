@@ -731,11 +731,22 @@ async function run() {
       method: "POST",
       headers: {
         "X-GitHub-Event": "issues",
+        "X-GitHub-Delivery": "smoke-signed-replay",
         "X-Hub-Signature-256": githubSignature(signedBody, "smoke-secret")
       },
       rawBody: signedBody
     });
     assert(signedWebhook.accepted === true && signedWebhook.stale === true, "signed stale github webhook should be accepted without overwriting");
+    const duplicateSignedWebhook = await request(`${baseUrl}/api/integrations/github/webhook`, {
+      method: "POST",
+      headers: {
+        "X-GitHub-Event": "issues",
+        "X-GitHub-Delivery": "smoke-signed-replay",
+        "X-Hub-Signature-256": githubSignature(signedBody, "smoke-secret")
+      },
+      rawBody: signedBody
+    });
+    assert(duplicateSignedWebhook.duplicate === true && duplicateSignedWebhook.ignored === true, "signed github webhook replay should be ignored");
     delete process.env.AGORA_GITHUB_WEBHOOK_SECRET;
     const testEvent = await request(`${baseUrl}/api/integrations/github/test-event`, {
       method: "POST",
@@ -891,6 +902,33 @@ async function run() {
     assert(publicFeatureRequest.task.tags.includes("public"), "public feature request task failed");
     assert(publicFeatureRequest.email.delivered === false, "public feature request email should be skipped without SMTP");
 
+    for (let index = 0; index < 2; index += 1) {
+      const repeatedPublicEmail = await request(`${baseUrl}/api/public/feature-requests`, {
+        method: "POST",
+        body: {
+          projectId: "project-smoke",
+          title: `Repeated public email ${index + 1}`,
+          details: "Same requester email should be limited before IP limits are exhausted.",
+          requester: "Public Tester",
+          email: "public@example.test",
+          impact: "nice-to-have"
+        }
+      });
+      assert(repeatedPublicEmail.task.id, "public feature email limiter warmup failed");
+    }
+    const rateLimitedPublicEmail = await requestError(`${baseUrl}/api/public/feature-requests`, {
+      method: "POST",
+      body: {
+        projectId: "project-smoke",
+        title: "Repeated public email blocked",
+        details: "This should hit the per-email public feature limit.",
+        requester: "Public Tester",
+        email: "public@example.test",
+        impact: "nice-to-have"
+      }
+    });
+    assert(rateLimitedPublicEmail.status === 429, "public feature requests should rate limit repeated requester email");
+
     const oversizedPublicFeatureRequest = await requestError(`${baseUrl}/api/public/feature-requests`, {
       method: "POST",
       body: {
@@ -903,6 +941,31 @@ async function run() {
       }
     });
     assert(oversizedPublicFeatureRequest.status === 413, "oversized public feature request should be rejected");
+    const honeypotPublicFeatureRequest = await request(`${baseUrl}/api/public/feature-requests`, {
+      method: "POST",
+      body: {
+        projectId: "project-smoke",
+        title: "Honeypot public feedback",
+        details: "A filled website field should be silently rejected.",
+        requester: "Spam Bot",
+        email: "honeypot-public@example.test",
+        website: "https://spam.example.test",
+        impact: "nice-to-have"
+      }
+    });
+    assert(honeypotPublicFeatureRequest.accepted === false, "public feature honeypot should silently reject submissions");
+    const rateLimitedPublicFeatureRequest = await requestError(`${baseUrl}/api/public/feature-requests`, {
+      method: "POST",
+      body: {
+        projectId: "project-smoke",
+        title: "Public feedback over IP limit",
+        details: "This request should hit the public IP rate limit.",
+        requester: "Public Tester",
+        email: "rate-limited-public@example.test",
+        impact: "nice-to-have"
+      }
+    });
+    assert(rateLimitedPublicFeatureRequest.status === 429, "public feature requests should hit the IP rate limit");
 
     const pagedTasks = await request(`${baseUrl}/api/tasks?projectId=project-smoke&limit=1&offset=0`, {
       token: login.token
@@ -1668,6 +1731,24 @@ async function testAccountAuth() {
     assert(portalFeatureAction.action.notification.kind === "portal-feature-request", "hosted portal feature request did not create notification history");
     assert(portalFeatureAction.action.notification.email?.mode, "hosted portal feature request did not report email delivery status");
     assert(!portalFeatureAction.action.notification.email.to, "hosted portal feature request leaked owner email");
+    const invalidPortalAction = await requestError(`${baseUrl}/api/portal-links/actions/${encodeURIComponent(portalLink.token)}`, {
+      method: "POST",
+      body: {
+        action: "delete-everything",
+        taskId: "portal-task-record",
+        body: "This action should not be accepted from the public portal."
+      }
+    });
+    assert(invalidPortalAction.status === 400, "hosted portal should reject unsupported public actions");
+    const oversizedPortalAction = await requestError(`${baseUrl}/api/portal-links/actions/${encodeURIComponent(portalLink.token)}`, {
+      method: "POST",
+      body: {
+        action: "comment",
+        taskId: "portal-task-record",
+        body: "x".repeat(30000)
+      }
+    });
+    assert(oversizedPortalAction.status === 413, "hosted portal should reject oversized public action bodies");
     const portalAutomationRuns = await request(`${baseUrl}/api/records/automationRuns`, {
       token: signup.token
     });
