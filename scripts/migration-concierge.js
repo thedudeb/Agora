@@ -71,6 +71,11 @@ function buildConciergeReport(options = {}) {
   if (options.strict && (warnings.length || blockers.length)) blockers.push("Strict mode blocks until warnings are resolved.");
 
   const ok = blockers.length === 0;
+  const fieldCoverage = migrationFieldCoverage(plan);
+  const cleanupChecklist = migrationCleanupChecklist(plan);
+  const rollbackPlan = migrationRollbackPlan(backup);
+  const applyStrategy = migrationApplyStrategy(options, plan);
+  const reviewerChecklist = migrationReviewerChecklist(plan, backup);
   return {
     ok,
     generatedAt: new Date().toISOString(),
@@ -84,12 +89,140 @@ function buildConciergeReport(options = {}) {
     mappedFields: plan.mappedFields,
     missingCoreFields: plan.review?.missingCoreFields || [],
     followUpCounts: plan.review?.followUpCounts || {},
+    fieldCoverage,
+    cleanupChecklist,
+    rollbackPlan,
+    applyStrategy,
+    reviewerChecklist,
     warnings: [...plan.warnings, ...warnings],
     blockers,
     samples: plan.samples,
     backup,
     nextCommands: nextCommands(options, plan)
   };
+}
+
+function migrationFieldCoverage(plan = {}) {
+  const mapped = new Set((plan.mappedFields || []).map(String));
+  const fields = [
+    ["title", "Task titles"],
+    ["project", "Project/list grouping"],
+    ["status", "Workflow status"],
+    ["assignee", "Owners"],
+    ["priority", "Priority"],
+    ["due date", "Due dates"],
+    ["description", "Descriptions"],
+    ["tags", "Tags/labels"],
+    ["source url", "Source links"],
+    ["attachments", "Attachment links"],
+    ["comments", "Comments"],
+    ["completed", "Completed/closed state"]
+  ];
+  return fields.map(([id, label]) => ({
+    id,
+    label,
+    mapped: mapped.has(id),
+    importance: ["title", "project", "status", "assignee", "priority", "due date"].includes(id) ? "core" : "context"
+  }));
+}
+
+function migrationCleanupChecklist(plan = {}) {
+  const review = plan.review || {};
+  const counts = review.followUpCounts || {};
+  const items = [
+    {
+      id: "owners",
+      label: "Assign missing owners",
+      count: Number(counts.unassignedTasks || 0),
+      done: Number(counts.unassignedTasks || 0) === 0,
+      detail: "Imported tasks without owners should be assigned before the workspace is invited into."
+    },
+    {
+      id: "dates",
+      label: "Add missing due dates",
+      count: Number(counts.unscheduledTasks || 0),
+      done: Number(counts.unscheduledTasks || 0) === 0,
+      detail: "Unscheduled imported work should get dates or be moved into backlog."
+    },
+    {
+      id: "skipped",
+      label: "Review skipped rows",
+      count: Number(counts.skippedRows || plan.counts?.skipped || 0),
+      done: Number(counts.skippedRows || plan.counts?.skipped || 0) === 0,
+      detail: "Skipped rows usually need title mapping or cleanup in the source export."
+    },
+    {
+      id: "warnings",
+      label: "Resolve warnings",
+      count: (plan.warnings || []).length,
+      done: !(plan.warnings || []).length,
+      detail: "Warnings do not always block import, but they should be understood before apply."
+    }
+  ];
+  return items;
+}
+
+function migrationRollbackPlan(backup = {}) {
+  return {
+    ready: Boolean(backup.ok),
+    status: backup.status || "missing",
+    detail: backup.detail || "No rollback evidence supplied.",
+    steps: backup.ok
+      ? [
+          "Keep this backup unchanged until the imported workspace is accepted.",
+          "Apply into a copied workspace JSON or use new-workspace mode first.",
+          "If review fails, restore the referenced backup or keep the original workspace active."
+        ]
+      : [
+          "Create a portable workspace bundle or server backup before applying.",
+          "Keep the backup beside the import report.",
+          "Apply only after rollback evidence is available."
+        ]
+  };
+}
+
+function migrationApplyStrategy(options = {}, plan = {}) {
+  const output = `imported-${plan.importBatchId || "workspace"}.json`;
+  return {
+    mode: plan.mode,
+    safestMode: plan.mode === "new-workspace" ? "new-workspace" : "merge with reviewed backup",
+    previewCommand: [
+      "npm run agora -- migrate preview",
+      shellQuote(options.file),
+      "--source",
+      shellQuote(plan.source)
+    ].join(" "),
+    applyCommand: nextCommands(options, plan).find((command) => command.startsWith("npm run agora -- migrate apply")) || "",
+    output,
+    handoff: "Open the imported JSON as a separate review artifact before replacing the active workspace."
+  };
+}
+
+function migrationReviewerChecklist(plan = {}, backup = {}) {
+  return [
+    {
+      label: "Fields mapped",
+      done: !(plan.review?.missingCoreFields || []).length,
+      detail: (plan.review?.missingCoreFields || []).length
+        ? `Missing: ${(plan.review?.missingCoreFields || []).join(", ")}`
+        : "Core fields are mapped."
+    },
+    {
+      label: "Samples believable",
+      done: (plan.samples || []).length > 0,
+      detail: (plan.samples || []).slice(0, 3).map((sample) => sample.title).join(", ") || "No task samples available."
+    },
+    {
+      label: "Rollback covered",
+      done: Boolean(backup.ok),
+      detail: backup.ok ? backup.detail : "Add --backup <file> before apply."
+    },
+    {
+      label: "Cleanup understood",
+      done: (plan.review?.recommendedActions || []).length <= 1 && !(plan.review?.blockers || []).length,
+      detail: (plan.review?.recommendedActions || []).join(" ") || "No extra cleanup actions."
+    }
+  ];
 }
 
 function inspectBackup(backupPath = "") {
@@ -161,6 +294,25 @@ function printReport(report) {
   console.log(`Backup: ${report.backup.status} - ${report.backup.detail}`);
   if (report.mappedFields.length) console.log(`Mapped fields: ${report.mappedFields.join(", ")}`);
   if (report.missingCoreFields.length) console.log(`Missing core fields: ${report.missingCoreFields.join(", ")}`);
+  console.log("");
+  console.log("Field Coverage:");
+  report.fieldCoverage.forEach((field) => {
+    console.log(`- ${field.mapped ? "OK" : "Review"} ${field.label} (${field.importance})`);
+  });
+  console.log("");
+  console.log("Cleanup Checklist:");
+  report.cleanupChecklist.forEach((item) => {
+    console.log(`- ${item.done ? "OK" : "Review"} ${item.label}: ${item.count}`);
+  });
+  console.log("");
+  console.log("Rollback Plan:");
+  console.log(`- ${report.rollbackPlan.ready ? "Ready" : "Missing"}: ${report.rollbackPlan.detail}`);
+  report.rollbackPlan.steps.forEach((step) => console.log(`- ${step}`));
+  console.log("");
+  console.log("Reviewer Checklist:");
+  report.reviewerChecklist.forEach((item) => {
+    console.log(`- ${item.done ? "OK" : "Review"} ${item.label}: ${item.detail}`);
+  });
   if (report.warnings.length) {
     console.log("");
     console.log("Warnings:");
@@ -176,6 +328,12 @@ function printReport(report) {
     console.log("Samples:");
     report.samples.forEach((sample) => console.log(`- ${sample.title} (${sample.status}, ${sample.priority})`));
   }
+  console.log("");
+  console.log("Apply Strategy:");
+  console.log(`- Mode: ${report.applyStrategy.mode}`);
+  console.log(`- Safest path: ${report.applyStrategy.safestMode}`);
+  console.log(`- Preview: ${report.applyStrategy.previewCommand}`);
+  console.log(`- Handoff: ${report.applyStrategy.handoff}`);
   console.log("");
   console.log("Next:");
   report.nextCommands.forEach((command) => console.log(`- ${command}`));
