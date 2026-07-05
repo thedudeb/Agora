@@ -72,6 +72,14 @@ assert(envExample.includes("AGORA_PUBLIC_FEATURE_REQUESTS=false"), ".env.example
 assert(api.includes('["__proto__", "constructor", "prototype"].includes(key)'), "workspace import must reject prototype pollution keys");
 assert(api.includes("validateWorkspaceSnapshotShape(snapshot);"), "workspace import must validate snapshot shape before persistence");
 assert(api.includes('validateRequiredStringRecords(snapshot.tasks, "tasks", ["id", "projectId", "title"])'), "workspace import must require core task fields");
+assert(app.includes("function portableExportSnapshot()"), "portable exports must use a redacted export snapshot");
+assert(app.includes("function redactExportInvitations"), "portable exports must redact invitation tokens");
+assert(app.includes("function redactExportPortalLinks"), "portable exports must redact portal link tokens");
+assert(!app.includes('searchParams.set("token", apiSession.token)'), "realtime events must not put bearer tokens in URLs");
+assert(app.includes("connectRealtimeStream(connection)") && app.includes("Authorization: `Bearer ${apiSession.token}`"), "realtime events must authenticate with bearer headers");
+assert(api.includes('assertRateLimit(request, "invitation-lookup", 12);'), "public invitation lookup must be rate limited");
+assert(api.includes("function authorizedClientAiBaseUrl") && api.includes("AGORA_AI_ALLOWED_BASE_URLS"), "client AI base URLs must be admin gated and allowlisted");
+assert(api.includes("function localCorsOriginsAllowed()"), "localhost CORS origins must be environment gated");
 
 assert(staticServer.includes("function isProductionCsp()"), "static server must expose production CSP mode");
 assert(staticServer.includes("AGORA_STRICT_CSP"), "static server must support strict CSP flag");

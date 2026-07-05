@@ -53,6 +53,30 @@ async function run() {
     assert(health.release?.version === health.version, "health endpoint did not expose release metadata");
     const rawHealth = await requestRaw(`${baseUrl}/api/health`);
     assert(rawHealth.headers.get("x-request-id"), "health endpoint did not include request id header");
+    const corsEnv = {
+      nodeEnv: process.env.NODE_ENV,
+      allowedOrigins: process.env.AGORA_ALLOWED_ORIGINS,
+      allowLocalhostOrigins: process.env.AGORA_ALLOW_LOCALHOST_ORIGINS
+    };
+    try {
+      process.env.NODE_ENV = "production";
+      delete process.env.AGORA_ALLOWED_ORIGINS;
+      delete process.env.AGORA_ALLOW_LOCALHOST_ORIGINS;
+      const blockedLocalhostCors = await fetch(`${baseUrl}/api/health`, {
+        headers: { Origin: "http://localhost:5174" }
+      });
+      assert(blockedLocalhostCors.status === 403, "production CORS should reject implicit localhost origins");
+      process.env.AGORA_ALLOWED_ORIGINS = "http://localhost:5174";
+      const allowedConfiguredCors = await fetch(`${baseUrl}/api/health`, {
+        headers: { Origin: "http://localhost:5174" }
+      });
+      assert(allowedConfiguredCors.status === 200, "configured production CORS origin should be allowed");
+      assert(allowedConfiguredCors.headers.get("access-control-allow-origin") === "http://localhost:5174", "configured CORS origin was not echoed");
+    } finally {
+      restoreOptionalEnv("NODE_ENV", corsEnv.nodeEnv);
+      restoreOptionalEnv("AGORA_ALLOWED_ORIGINS", corsEnv.allowedOrigins);
+      restoreOptionalEnv("AGORA_ALLOW_LOCALHOST_ORIGINS", corsEnv.allowLocalhostOrigins);
+    }
 
     const capabilities = await request(`${baseUrl}/api/capabilities`);
     assert(capabilities.service === "agora-api", "capabilities endpoint returned wrong service");
@@ -260,6 +284,12 @@ async function run() {
 
     const invitationPreview = await request(`${baseUrl}/api/invitations/${invitation.invitation.token}`);
     assert(invitationPreview.invitation.email === "jordan@example.test", "public invitation lookup failed");
+    for (let index = 0; index < 11; index += 1) {
+      const missingInvitation = await requestError(`${baseUrl}/api/invitations/missing-${index}`);
+      assert(missingInvitation.status === 404, "missing invite should fail before lookup rate limit is exhausted");
+    }
+    const rateLimitedInvitationLookup = await requestError(`${baseUrl}/api/invitations/missing-rate-limited`);
+    assert(rateLimitedInvitationLookup.status === 429, "public invitation lookup should be rate limited");
 
     const accepted = await request(`${baseUrl}/api/invitations/${invitation.invitation.token}/accept`, {
       method: "POST",
@@ -275,6 +305,37 @@ async function run() {
       body: { to: "jordan@example.test" }
     });
     assert(blockedMemberEmailTest.status === 403, "member should not send server notification test email");
+    const aiEnv = {
+      allowClientBaseUrl: process.env.AGORA_AI_ALLOW_CLIENT_BASE_URL,
+      allowedBaseUrls: process.env.AGORA_AI_ALLOWED_BASE_URLS
+    };
+    try {
+      process.env.AGORA_AI_ALLOW_CLIENT_BASE_URL = "true";
+      process.env.AGORA_AI_ALLOWED_BASE_URLS = "http://127.0.0.1:11434";
+      const blockedMemberAiBaseUrl = await requestError(`${baseUrl}/api/ai/operator`, {
+        method: "POST",
+        token: accepted.token,
+        body: {
+          mode: "workspace_brief",
+          settings: { provider: "local", baseUrl: "http://127.0.0.1:11434" },
+          context: { workspace: { name: "Blocked AI Base URL" } }
+        }
+      });
+      assert(blockedMemberAiBaseUrl.status === 403, "member should not select client AI base URLs");
+      const adminAiBaseUrl = await request(`${baseUrl}/api/ai/operator`, {
+        method: "POST",
+        token: login.token,
+        body: {
+          mode: "workspace_brief",
+          settings: { provider: "local", baseUrl: "http://127.0.0.1:11434" },
+          context: { workspace: { name: "Allowed AI Base URL" } }
+        }
+      });
+      assert(adminAiBaseUrl.provider.includes("local"), "admin allowlisted AI base URL should keep local provider working");
+    } finally {
+      restoreOptionalEnv("AGORA_AI_ALLOW_CLIENT_BASE_URL", aiEnv.allowClientBaseUrl);
+      restoreOptionalEnv("AGORA_AI_ALLOWED_BASE_URLS", aiEnv.allowedBaseUrls);
+    }
     const notificationEmailTest = await request(`${baseUrl}/api/notifications/test-email`, {
       method: "POST",
       token: login.token,
@@ -2211,6 +2272,14 @@ async function requestRaw(url, options = {}) {
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function restoreOptionalEnv(name, value) {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
 }
 
 function githubSignature(body, secret) {

@@ -5538,9 +5538,7 @@ function stopRealtimePolling() {
 }
 
 function realtimeEventsUrl() {
-  const url = new URL(`${API_BASE_URL}/api/realtime/events`, window.location.href);
-  url.searchParams.set("token", apiSession.token);
-  return url.toString();
+  return `${API_BASE_URL}/api/realtime/events`;
 }
 
 function stopRealtimeEvents() {
@@ -5560,7 +5558,7 @@ function stopRealtimeEvents() {
 }
 
 function startRealtimeEvents() {
-  if (!apiSession || !apiSession.token || !canAttemptApiRequest() || typeof EventSource === "undefined") {
+  if (!apiSession || !apiSession.token || !canAttemptApiRequest() || typeof fetch !== "function" || typeof ReadableStream === "undefined") {
     realtimeTransportStatus = apiSession ? "polling" : "offline";
     return;
   }
@@ -5571,30 +5569,92 @@ function startRealtimeEvents() {
   }
 
   realtimeTransportStatus = "connecting";
-  realtimeEventSource = new EventSource(realtimeEventsUrl());
-  realtimeEventSource.addEventListener("connected", () => {
-    realtimeTransportStatus = "events";
-    realtimeLastError = "";
-    if (["collaboration", "dashboard", "inbox", "settings"].includes(state.selectedRoute)) render();
-  });
-  realtimeEventSource.addEventListener("heartbeat", () => {
-    realtimeTransportStatus = "events";
-  });
-  realtimeEventSource.onmessage = handleRealtimeEventMessage;
-  ["workspace", "project", "task", "record"].forEach((eventName) => {
-    realtimeEventSource.addEventListener(eventName, handleRealtimeEventMessage);
-  });
-  realtimeEventSource.onerror = () => {
-    realtimeTransportStatus = "polling";
-    realtimeEventSource?.close();
-    realtimeEventSource = null;
-    if (!realtimeEventReconnectTimer && apiSession && canAttemptApiRequest()) {
-      realtimeEventReconnectTimer = window.setTimeout(() => {
-        realtimeEventReconnectTimer = null;
-        startRealtimeEvents();
-      }, 5000);
-    }
+  const controller = new AbortController();
+  const connection = {
+    controller,
+    close: () => controller.abort()
   };
+  realtimeEventSource = connection;
+  connectRealtimeStream(connection).catch(() => {
+    if (connection.controller.signal.aborted) return;
+    realtimeLastError = "Realtime events unavailable";
+  }).finally(() => {
+    if (realtimeEventSource !== connection) return;
+    realtimeTransportStatus = "polling";
+    realtimeEventSource = null;
+    scheduleRealtimeReconnect();
+  });
+}
+
+async function connectRealtimeStream(connection) {
+  const response = await fetch(realtimeEventsUrl(), {
+    headers: {
+      Authorization: `Bearer ${apiSession.token}`
+    },
+    cache: "no-store",
+    signal: connection.controller.signal
+  });
+  if (!response.ok || !response.body) throw new Error("Realtime stream unavailable");
+
+  realtimeTransportStatus = "events";
+  realtimeLastError = "";
+  if (["collaboration", "dashboard", "inbox", "settings"].includes(state.selectedRoute)) render();
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (!connection.controller.signal.aborted) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    buffer = dispatchRealtimeFrames(buffer);
+  }
+  buffer += decoder.decode();
+  dispatchRealtimeFrames(`${buffer}\n\n`);
+}
+
+function dispatchRealtimeFrames(buffer) {
+  let next = nextRealtimeFrame(buffer);
+  while (next) {
+    dispatchRealtimeFrame(next.frame);
+    buffer = buffer.slice(next.end);
+    next = nextRealtimeFrame(buffer);
+  }
+  return buffer;
+}
+
+function nextRealtimeFrame(buffer) {
+  const lf = buffer.indexOf("\n\n");
+  const crlf = buffer.indexOf("\r\n\r\n");
+  const indexes = [
+    lf >= 0 ? { index: lf, length: 2 } : null,
+    crlf >= 0 ? { index: crlf, length: 4 } : null
+  ].filter(Boolean).sort((a, b) => a.index - b.index);
+  if (!indexes.length) return null;
+  const match = indexes[0];
+  return {
+    frame: buffer.slice(0, match.index),
+    end: match.index + match.length
+  };
+}
+
+function dispatchRealtimeFrame(frame) {
+  const data = frame
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice("data:".length).trimStart())
+    .join("\n");
+  if (!data) return;
+  handleRealtimeEventMessage({ data });
+}
+
+function scheduleRealtimeReconnect() {
+  if (!realtimeEventReconnectTimer && apiSession && canAttemptApiRequest()) {
+    realtimeEventReconnectTimer = window.setTimeout(() => {
+      realtimeEventReconnectTimer = null;
+      startRealtimeEvents();
+    }, 5000);
+  }
 }
 
 function handleRealtimeEventMessage(event) {
@@ -5602,6 +5662,10 @@ function handleRealtimeEventMessage(event) {
   try {
     payload = JSON.parse(event.data || "{}");
   } catch {
+    return;
+  }
+  if (payload.type === "connected" || payload.type === "heartbeat") {
+    realtimeTransportStatus = "events";
     return;
   }
   if (payload.actorId && payload.actorId === activeMemberId()) return;
@@ -11981,6 +12045,42 @@ function workspaceSnapshot() {
   };
 }
 
+function portableExportSnapshot() {
+  const snapshot = workspaceSnapshot();
+  return {
+    ...snapshot,
+    invitations: redactExportInvitations(snapshot.invitations),
+    clientPortalLinks: redactExportPortalLinks(snapshot.clientPortalLinks),
+    offlineStorageContract: {
+      ...snapshot.offlineStorageContract,
+      security: {
+        ...(snapshot.offlineStorageContract?.security || {}),
+        rawTokensExported: false,
+        bearerLinksRedacted: true
+      }
+    }
+  };
+}
+
+function redactExportInvitations(invitations = []) {
+  return Array.isArray(invitations) ? invitations.map((invitation) => ({
+    ...invitation,
+    token: "",
+    acceptUrl: "",
+    status: invitation.status === "pending" ? "redacted" : invitation.status,
+    exportRedacted: invitation.status === "pending" || Boolean(invitation.token || invitation.acceptUrl)
+  })) : [];
+}
+
+function redactExportPortalLinks(links = []) {
+  return Array.isArray(links) ? links.map((link) => ({
+    ...link,
+    token: "",
+    status: clientPortalLinkStatus(link) === "active" ? "redacted" : link.status,
+    exportRedacted: Boolean(link.token)
+  })) : [];
+}
+
 function offlineStorageContract() {
   const queueSummary = apiSyncQueueSummary();
   return {
@@ -12052,7 +12152,7 @@ function offlineStorageContract() {
 }
 
 function exportWorkspaceJson() {
-  return JSON.stringify(workspaceSnapshot(), null, 2);
+  return JSON.stringify(portableExportSnapshot(), null, 2);
 }
 
 function downloadTextFile(filename, text, type = "text/plain") {
@@ -12331,7 +12431,7 @@ function portableProjectMarkdown(project) {
 }
 
 function portableWorkspaceManifest() {
-  const snapshot = workspaceSnapshot();
+  const snapshot = portableExportSnapshot();
   const ai = aiSettings();
   const contract = snapshot.offlineStorageContract || offlineStorageContract();
   const companies = Array.isArray(state.companies) ? state.companies : [];
@@ -15066,6 +15166,7 @@ function clientPacketSignature(companyId) {
 
 function clientPortalLinkStatus(link) {
   if (!link) return "missing";
+  if (link.status === "redacted" || link.exportRedacted) return "redacted";
   if (link.status === "revoked" || link.revokedAt) return "revoked";
   if (link.expiresAt && Date.parse(link.expiresAt) <= Date.now()) return "expired";
   if (link.packetSignature && link.packetSignature !== clientPacketSignature(link.companyId)) return "stale";
@@ -21034,7 +21135,7 @@ function releaseEvidenceJson(release) {
       releaseNotes: releaseNotesDraft(release)
     },
     auditEvidence: releaseRecentSignals(release),
-    recoverySnapshot: workspaceSnapshot(),
+    recoverySnapshot: portableExportSnapshot(),
     generatedAt: new Date().toISOString()
   }, null, 2);
 }

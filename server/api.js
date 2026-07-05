@@ -1080,6 +1080,7 @@ function createServer(options = {}) {
 
       const publicInvitationMatch = url.pathname.match(/^\/api\/invitations\/([^/]+)$/);
       if (publicInvitationMatch && request.method === "GET") {
+        assertRateLimit(request, "invitation-lookup", 12);
         const invitation = await getInvitation(storage, decodeURIComponent(publicInvitationMatch[1]));
         sendJson(response, 200, { invitation });
         return;
@@ -3290,7 +3291,7 @@ function boundedInteger(value, min, max) {
 }
 
 async function runAiOperator(body, session) {
-  const config = aiProviderConfig(body.settings || {});
+  const config = aiProviderConfig(body.settings || {}, session);
   const context = compactAiContext(body.context || {});
   const mode = body.mode ? String(body.mode) : "workspace_brief";
 
@@ -3310,16 +3311,54 @@ async function runAiOperator(body, session) {
   };
 }
 
-function aiProviderConfig(settings = {}) {
+function aiProviderConfig(settings = {}, session = {}) {
   const provider = String(settings.provider || process.env.AGORA_AI_PROVIDER || "local").toLowerCase();
   const model = String(settings.model || process.env.AGORA_AI_MODEL || defaultAiModel(provider));
-  const configuredBaseUrl = process.env.AGORA_AI_BASE_URL || "";
-  const clientBaseUrlAllowed = process.env.AGORA_AI_ALLOW_CLIENT_BASE_URL === "true";
-  const clientBaseUrl = clientBaseUrlAllowed ? String(settings.baseUrl || "") : "";
+  const configuredBaseUrl = normalizeAiBaseUrl(process.env.AGORA_AI_BASE_URL || "");
+  const clientBaseUrl = authorizedClientAiBaseUrl(settings.baseUrl, session);
   const baseUrl = (configuredBaseUrl || clientBaseUrl || defaultAiBaseUrl(provider)).replace(/\/+$/, "");
   const apiKey = process.env.AGORA_AI_API_KEY || process.env.OPENAI_API_KEY || "";
 
   return { provider, model, baseUrl, apiKey };
+}
+
+function authorizedClientAiBaseUrl(value, session = {}) {
+  const requested = cleanString(value);
+  if (!requested) return "";
+  if (!envFlag("AGORA_AI_ALLOW_CLIENT_BASE_URL", false)) return "";
+  if (!hasPermission(session, "members:write")) {
+    publicError(403, "Client AI base URLs can only be selected by workspace admins");
+  }
+  const requestedBaseUrl = normalizeAiBaseUrl(requested);
+  const allowed = aiBaseUrlAllowlist();
+  if (!allowed.has(requestedBaseUrl)) {
+    publicError(400, "Client AI base URL is not in AGORA_AI_ALLOWED_BASE_URLS");
+  }
+  return requestedBaseUrl;
+}
+
+function aiBaseUrlAllowlist() {
+  return new Set(cleanString(process.env.AGORA_AI_ALLOWED_BASE_URLS || process.env.AGORA_AI_BASE_URL_ALLOWLIST)
+    .split(",")
+    .map(normalizeAiBaseUrl)
+    .filter(Boolean));
+}
+
+function normalizeAiBaseUrl(value) {
+  const raw = cleanString(value);
+  if (!raw) return "";
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    publicError(400, "AI base URL must be a valid URL");
+  }
+  if (!["http:", "https:"].includes(url.protocol)) {
+    publicError(400, "AI base URL must use http or https");
+  }
+  url.hash = "";
+  url.search = "";
+  return url.toString().replace(/\/+$/, "");
 }
 
 function defaultAiModel(provider) {
@@ -7842,6 +7881,7 @@ function applyCors(request, response) {
 function isAllowedOrigin(origin) {
   const allowed = allowedOrigins();
   if (allowed.has(origin)) return true;
+  if (!localCorsOriginsAllowed()) return false;
   try {
     const url = new URL(origin);
     return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(url.hostname) && url.protocol === "http:";
@@ -7855,6 +7895,13 @@ function allowedOrigins() {
     .split(",")
     .map((origin) => origin.trim().replace(/\/+$/, ""))
     .filter(Boolean));
+}
+
+function localCorsOriginsAllowed() {
+  const productionLike = cleanString(process.env.NODE_ENV).toLowerCase() === "production"
+    || cleanString(process.env.AGORA_STORAGE_DRIVER).toLowerCase() === "supabase"
+    || authDriverLabel() === "supabase";
+  return envFlag("AGORA_ALLOW_LOCALHOST_ORIGINS", !productionLike);
 }
 
 function setSecurityHeaders(response) {
