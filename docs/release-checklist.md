@@ -60,7 +60,7 @@ npm run test:golden
 npm run test:api
 ```
 
-Fix any failure before releasing. `qa` runs quick verification plus browser golden-path QA. `trust` verifies the customer-facing trust evidence. `package:check` verifies the source, Docker, hosted, PWA, desktop, and portable-data release manifest. `verify:upgrade` checks migration-file presence and latest server-backup validity before production upgrades. `drill:recovery` proves the selected backup can restore into an isolated workspace file with matching identity and counts. `launch:check` remains the shorter launch-focused gate. `test:importers` checks generic CSV and Trello JSON migration planning/apply behavior. `test:golden` browser-checks the app shell, PWA/offline fallback, first-run dashboard, template-to-project path, marketplace automation path, Data recovery/schema/offline readiness, Settings sync/security/feedback tabs, feature request triage, and mobile/public feedback paths. `test:api` covers auth, permissions, structured records, payments, marketplace publishing, scheduler behavior, audit logs, and API persistence.
+Fix any failure before releasing. `qa` runs quick verification plus browser golden-path QA. `trust` verifies the customer-facing trust evidence. `package:check` verifies the source, Docker, hosted, PWA, desktop, and portable-data release manifest. `verify:upgrade` checks migration-file presence and latest server-backup validity before production upgrades. `drill:recovery` proves the selected backup can restore into an isolated workspace file with matching identity and counts. `launch:check` remains the shorter launch-focused gate. `test:importers` checks generic CSV, Trello JSON, and migration concierge planning/apply behavior. `test:golden` browser-checks the app shell, PWA/offline fallback, first-run dashboard, template-to-project path, marketplace automation path, Data recovery/schema/offline readiness, Settings sync/security/feedback tabs, feature request triage, and mobile/public feedback paths. `test:api` covers auth, permissions, structured records, payments, marketplace publishing, scheduler behavior, audit logs, and API persistence.
 
 ## 5. Security Gate
 
@@ -70,7 +70,7 @@ Fix any failure before releasing. `qa` runs quick verification plus browser gold
 - Confirm Email diagnostics is acceptable for the environment: SMTP/sender configured for invites and feature requests, and SMTP or webhook configured for password reset in production.
 - Review Admin > Permissions for excess admins, workspace import access, and Operator client-data access.
 - If enabling MCP, review `docs/mcp-server.md` and `docs/mcp-security-audit.md`, keep `AGORA_MCP_ALLOW_WRITES=false` by default, and use a least-privilege user token.
-- For customer migrations, run `npm run agora -- migrate preview` first, review warnings/confidence/source metadata, and export a recovery bundle before applying the imported workspace.
+- For customer migrations, run `npm run migrate:concierge -- <export-file> --source <source> --workspace <workspace.json> --backup <backup-or-bundle.json>` first, review field coverage, skipped data, warnings, confidence, rollback evidence, and sample tasks, then run `npm run agora -- migrate preview` before applying the imported workspace to a new output file.
 - Export a recovery bundle before importing data, changing auth settings, or switching storage drivers.
 
 ## 6. Deploy

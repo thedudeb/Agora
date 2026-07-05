@@ -17,8 +17,8 @@ The broader promise stays intact: open source project management without ads, tr
 | 3. Production hosted path | Complete | A self-hoster can deploy and verify Agora without hand-holding. | Install, deployment, health checks, backups, upgrade checks, and env validation form one boring, repeatable path. |
 | 4. Real collaboration confidence | Complete | Teams trust multi-person work instead of treating Agora as a solo local app. | Presence, stale edit warnings, comments/chat, notifications, permissions, and audit logs have clear user-facing states and failure handling. |
 | 5. Opinionated workflows | Complete | Agora ships useful operating systems, not just flexible primitives. | Agency retainer, client onboarding, scrum delivery, and solo founder presets produce boards, timelines, reports, templates, automations, and dashboards. |
-| 6. Polished migration story | In progress | A team can bring real work from competitors safely. | Import concierge previews mappings, warnings, rollback, skipped data, and clean next steps for Asana, Trello, Jira, Linear, ClickUp, and generic CSV/JSON. |
-| 7. Trust center and proof | Planned | Buyers and self-hosters can verify security, privacy, portability, and AI behavior. | Trust Center links to evidence reports, security audits, export guarantees, AI policy, backup drills, and dependency/runtime checks. |
+| 6. Polished migration story | Complete | A team can bring real work from competitors safely. | Import concierge previews mappings, warnings, rollback, skipped data, and clean next steps for Asana, Trello, Jira, Linear, ClickUp, and generic CSV/JSON. |
+| 7. Trust center and proof | In progress | Buyers and self-hosters can verify security, privacy, portability, and AI behavior. | Trust Center links to evidence reports, security audits, export guarantees, AI policy, backup drills, and dependency/runtime checks. |
 | 8. Real packaging and distribution | Planned | Users can install Agora where they work. | PWA, desktop, Docker, hosted deploy, MCP, and CLI paths have clear release checks, version metadata, and upgrade guidance. |
 | 9. Focused demo dataset and story | Planned | The demo shows one memorable real workflow instead of a feature inventory. | Demo links, screenshots, sample data, and video script follow the same agency/client delivery scenario from intake to approval to report. |
 | 10. Sustainable contributor path | Planned | Open source contributors know where to help without becoming maintainers first. | Issue templates, starter issues, extension contracts, fixture examples, contribution lanes, and review criteria are easy to find. |
@@ -133,12 +133,19 @@ Migration should feel reversible and understandable.
 
 Core behaviors:
 
-- Preview before apply.
-- Show mapped, skipped, and risky fields.
-- Preserve original IDs when possible.
-- Create backups before mutation.
-- Generate a human-readable migration report.
-- Offer rollback for applied imports.
+- Done: preview before apply through the CLI migration plan.
+- Done: show mapped, skipped, and risky fields in the migration concierge.
+- Done: preserve original IDs, source URLs, import batch IDs, and raw source fields where possible.
+- Done: require an explicit output workspace for apply so the source workspace remains untouched.
+- Done: generate human-readable and JSON migration concierge reports.
+- Done: include rollback readiness, backup evidence, and restore steps in the concierge report.
+- Done: cover generic CSV, Trello JSON, Asana CSV, Jira CSV, Linear CSV, and ClickUp CSV in importer tests.
+
+Next polish:
+
+- Add real-world fixture exports from beta users as opt-in anonymized test cases.
+- Add attachment metadata previews before supporting attachment import.
+- Add a UI wrapper around the concierge once the CLI flow has enough customer mileage.
 
 ## Step 7: Trust Center And Proof
 
