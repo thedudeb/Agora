@@ -50,6 +50,9 @@ function validateCatalog(catalog) {
   catalog.demos.forEach((demo) => {
     if (!demo.id || !demo.name || !demo.entryRoute) throw new Error("Every demo needs id, name, and entryRoute");
     if (!Array.isArray(demo.tour) || !demo.tour.length) throw new Error(`${demo.id} needs a tour`);
+    ["storyBeats", "proofMoments", "nextClicks"].forEach((field) => {
+      if (demo[field] && !Array.isArray(demo[field])) throw new Error(`${demo.id} ${field} must be an array`);
+    });
   });
 }
 
@@ -116,10 +119,12 @@ function normalizeBaseUrl(base) {
 function routeUrl(base, route, options = {}) {
   const url = new URL(normalizeBaseUrl(base));
   url.searchParams.set("route", route);
-  if (options.settingsTab) url.searchParams.set("settingsTab", options.settingsTab);
-  if (options.projectId) url.searchParams.set("projectId", options.projectId);
-  if (options.projectTab) url.searchParams.set("projectTab", options.projectTab);
-  if (options.demoAction) url.searchParams.set("demoAction", options.demoAction);
+  Object.entries(options).forEach(([key, value]) => {
+    if (["label", "route", "url", "use", "outcome"].includes(key)) return;
+    if (value === undefined || value === null || value === "") return;
+    if (Array.isArray(value) || typeof value === "object") return;
+    url.searchParams.set(key, String(value));
+  });
   return url.toString();
 }
 
@@ -131,13 +136,18 @@ function printReport(report) {
     console.log(`Workspace: ${report.catalog.baseWorkspace}`);
     console.log("");
     console.log("## Evaluation Links");
-    report.evaluationLinks.forEach((link) => console.log(`- ${link.label}: ${link.url}`));
+    report.evaluationLinks.forEach((link) => console.log(`- **${link.label}**: ${link.url} - ${link.use}`));
     report.demos.forEach((demo) => {
       console.log("");
       console.log(`## ${demo.name}`);
       console.log("");
       console.log(`${demo.description}`);
       console.log("");
+      console.log(`Audience: ${demo.audience}`);
+      console.log(`Highlights: ${demo.highlights.join(", ")}`);
+      printMarkdownList("Story Beats", demo.storyBeats, (beat) => `${beat.label}: ${beat.outcome}`);
+      printMarkdownList("Proof Moments", demo.proofMoments, (item) => item);
+      printMarkdownList("What To Click Next", demo.nextClicks, (item) => item);
       console.log(`Entry: ${demo.entryUrl}`);
       console.log("");
       console.log("Tour:");
@@ -157,8 +167,24 @@ function printReport(report) {
     console.log(`${demo.name} (${demo.audience})`);
     console.log(`Entry: ${demo.entryUrl}`);
     console.log(`Highlights: ${demo.highlights.join(", ")}`);
+    if (demo.storyBeats?.length) {
+      console.log("Story beats:");
+      demo.storyBeats.forEach((beat) => console.log(`- ${beat.label}: ${beat.outcome}`));
+    }
+    if (demo.nextClicks?.length) {
+      console.log("What to click next:");
+      demo.nextClicks.forEach((item) => console.log(`- ${item}`));
+    }
     demo.tour.forEach((stop) => console.log(`- ${stop.label}: ${stop.url}`));
   });
+}
+
+function printMarkdownList(title, items, formatter) {
+  if (!Array.isArray(items) || !items.length) return;
+  console.log(`### ${title}`);
+  console.log("");
+  items.forEach((item) => console.log(`- ${formatter(item)}`));
+  console.log("");
 }
 
 function printHelp() {

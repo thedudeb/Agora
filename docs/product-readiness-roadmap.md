@@ -196,13 +196,14 @@ Recommended story: Acme Studio runs a client onboarding project, receives a new 
 Current product state:
 
 - Done: `acme-client-launch` is the canonical demo story in `demos/workspaces.json`.
-- Done: `npm run demo:links -- --demo acme-client-launch --markdown` generates a direct handoff for the story.
-- Done: `docs/demo-workspaces.md` and `docs/demo-video-script.md` now lead with the Acme intake-to-recovery flow instead of a feature inventory.
+- Done: `npm run demo:links -- --demo acme-client-launch --markdown` generates a direct handoff with story beats, proof moments, and next clicks.
+- Done: `docs/acme-client-launch-demo.md` gives launch, sales, and support a single Acme route handoff.
+- Done: `docs/demo-workspaces.md`, `docs/demo-video-script.md`, and `docs/screenshot-demo-plan.md` now lead with the Acme intake-to-recovery flow instead of a feature inventory.
+- Done: `AGORA_GOLDEN_SUITE=demo npm run test:golden` covers the canonical Acme route sequence.
 
 Next polish:
 
 - Refresh screenshots against the canonical story.
-- Add one launch-page/demo handoff that uses the generated story links.
 - Record a short demo using the canonical route sequence.
 
 ## Step 10: Contributor Path

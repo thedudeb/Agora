@@ -1,7 +1,7 @@
 {
   "type": "agora.demo-workspace-catalog",
   "version": 1,
-  "updatedAt": "2026-07-03",
+  "updatedAt": "2026-07-05",
   "baseWorkspace": "Acme Studio seeded workspace",
   "demos": [
     {
@@ -11,11 +11,57 @@
       "entryRoute": "command-center",
       "description": "One guided story: intake a client request, scope it into a project, review approvals, inspect timeline risk, draft a client update, and prove export/recovery.",
       "highlights": ["Client request", "Scoped project", "Approval packet", "Timeline risk", "Client update", "Recovery proof"],
+      "storyBeats": [
+        {
+          "label": "1. Triage request",
+          "route": "command-center",
+          "outcome": "The PM sees the new Acme launch request, the promises at risk, and the next best actions from one command center."
+        },
+        {
+          "label": "2. Scope project",
+          "route": "project-backlog",
+          "outcome": "The request becomes scoped future work with owner, priority, and promotion path instead of a loose note."
+        },
+        {
+          "label": "3. Review approvals",
+          "route": "visibility",
+          "outcome": "The team checks client-safe packets, approval needs, portal links, and visibility warnings before sharing."
+        },
+        {
+          "label": "4. Inspect timeline risk",
+          "route": "project",
+          "project": "launch",
+          "tab": "timeline",
+          "outcome": "The PM sees dependency risk, slipped paths, workload warnings, and the critical path behind the board."
+        },
+        {
+          "label": "5. Draft client update",
+          "route": "reports",
+          "outcome": "Agora turns project health, risk, workload, and open work into a copyable client status update."
+        },
+        {
+          "label": "6. Prove recovery",
+          "route": "data",
+          "outcome": "The buyer sees exports, backups, restore language, and portable workspace evidence for the no-lock-in promise."
+        }
+      ],
+      "proofMoments": [
+        "The command center ties work, risk, decisions, visibility warnings, and follow-up into one PM morning view.",
+        "Client sharing has an explicit review step so internal notes do not leak into stakeholder updates.",
+        "Timeline and reporting views use the same project data, reducing manual status-report drift.",
+        "Recovery proof shows how a team can export, back up, inspect, and restore its workspace."
+      ],
+      "nextClicks": [
+        "From command center, open Project Backlog to scope the client request.",
+        "From Project Backlog, open Client Visibility to review approvals and portal packets.",
+        "From Client Visibility, open the Launch project timeline to inspect schedule risk.",
+        "From Reports, copy the status report and then open Data for export/recovery proof."
+      ],
       "tour": [
         { "label": "1. Triage request", "route": "command-center", "demoAction": "sampleAgencyWorkspace" },
         { "label": "2. Scope project", "route": "project-backlog" },
-        { "label": "3. Review approvals", "route": "portal" },
-        { "label": "4. Inspect timeline risk", "route": "gantt" },
+        { "label": "3. Review approvals", "route": "visibility" },
+        { "label": "4. Inspect timeline risk", "route": "project", "project": "launch", "tab": "timeline" },
         { "label": "5. Draft client update", "route": "reports" },
         { "label": "6. Prove recovery", "route": "data", "demoAction": "recoveryPlan" }
       ]

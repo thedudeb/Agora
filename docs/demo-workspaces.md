@@ -30,7 +30,7 @@ npm run agora -- demo links --base https://demo.your-domain.example --markdown
 
 ## Canonical Demo Story
 
-Use `acme-client-launch` as the default buyer demo. It follows one memorable project-manager workflow instead of touring disconnected features:
+Use `acme-client-launch` as the default buyer demo. It follows one memorable project-manager workflow instead of touring disconnected features. The full handoff lives in [`acme-client-launch-demo.md`](./acme-client-launch-demo.md).
 
 1. Triage a new client request in the command center.
 2. Scope the request into a project/backlog item.
@@ -43,6 +43,12 @@ Generate that story directly:
 
 ```sh
 npm run demo:links -- --demo acme-client-launch --markdown
+```
+
+QA the story before recording or publishing hosted links:
+
+```sh
+AGORA_GOLDEN_SUITE=demo npm run test:golden
 ```
 
 ## Demo Scenarios

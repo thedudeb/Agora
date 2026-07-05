@@ -974,6 +974,106 @@ const routeChecks = [
     ]
   },
   {
+    name: "Acme demo triage request",
+    suite: "demo",
+    route: "command-center",
+    query: { demoAction: "sampleAgencyWorkspace" },
+    width: 1265,
+    height: 712,
+    required: [
+      "PM command center",
+      "What needs attention now?",
+      "Attention queue",
+      "Highest-risk items",
+      "Next best actions",
+      "Client promises",
+      "Client visibility warnings",
+      "Decisions and RAID"
+    ]
+  },
+  {
+    name: "Acme demo scope project",
+    suite: "demo",
+    route: "project-backlog",
+    width: 1265,
+    height: 712,
+    required: [
+      "Capture future work",
+      "Backlog projects",
+      "Project intake",
+      "Pipeline",
+      "Approved",
+      "Promote"
+    ]
+  },
+  {
+    name: "Acme demo review approvals",
+    suite: "demo",
+    route: "visibility",
+    width: 1265,
+    height: 712,
+    required: [
+      "Client visibility review",
+      "Preview what clients can see",
+      "Share packet composer",
+      "Client portal link",
+      "Visible packet",
+      "Visibility warnings",
+      "Visibility audit trail"
+    ]
+  },
+  {
+    name: "Acme demo inspect timeline risk",
+    suite: "demo",
+    route: "project",
+    query: { project: "launch", tab: "timeline" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Timeline",
+      "Gantt",
+      "Schedule and dependencies",
+      "Critical path",
+      "Slipped path",
+      "Workload warnings",
+      "Export Markdown"
+    ]
+  },
+  {
+    name: "Acme demo draft client update",
+    suite: "demo",
+    route: "reports",
+    width: 1265,
+    height: 712,
+    required: [
+      "Status report",
+      "Copy Report",
+      "Delivery risk",
+      "Team workload plan",
+      "Company comparison",
+      "Workload",
+      "Risk queue"
+    ]
+  },
+  {
+    name: "Acme demo recovery proof",
+    suite: "demo",
+    route: "data",
+    query: { demoAction: "recoveryPlan" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Recovery confidence",
+      "Backup first",
+      "previewable rollback path",
+      "Portable workspace OS",
+      "Download Bundle",
+      "Create Backup",
+      "Import bundle",
+      "Preview Bundle"
+    ]
+  },
+  {
     name: "Mobile dashboard golden paths",
     suite: "mobile",
     route: "dashboard",

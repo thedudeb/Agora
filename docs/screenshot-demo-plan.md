@@ -49,6 +49,20 @@ These checked-in screenshots are ready for README, landing-page proof, and launc
 - `assets/screenshots/agora-marketplace.png`
 - `assets/screenshots/agora-mobile-today.png`
 
+## Canonical Acme Launch Set
+
+The next screenshot refresh should follow the same Acme Studio story as [`acme-client-launch-demo.md`](./acme-client-launch-demo.md). Use these as the primary Product Hunt, README, landing-page, and demo-video assets:
+
+- `assets/screenshots/agora-landing.png`: public promise and CTA.
+- `assets/screenshots/agora-acme-command-center.png`: triage request, attention queue, client promises, next best actions.
+- `assets/screenshots/agora-acme-project-backlog.png`: scoped request, backlog projects, pipeline, approved work.
+- `assets/screenshots/agora-acme-client-visibility.png`: approval packet, portal link, visibility warnings.
+- `assets/screenshots/agora-acme-timeline-risk.png`: Launch project timeline, dependency risk, slipped path, workload warnings.
+- `assets/screenshots/agora-acme-client-update.png`: copyable report, delivery risk, capacity, workload, risk queue.
+- `assets/screenshots/agora-acme-recovery-proof.png`: recovery confidence, backups, import preview, portable export.
+
+Supporting trust assets can still include marketplace, permissions, operator, and mobile Today, but the first public gallery should read as one client-delivery story.
+
 ## Required Screenshots
 
 ### 1. Landing Hero
@@ -69,103 +83,109 @@ Use for:
 - Product Hunt gallery.
 - Social launch thread.
 
-### 2. Dashboard
+### 2. Acme Command Center
 
-Purpose: prove the app is an operational command center.
+Purpose: prove the app is an operational command center for a real client request.
 
-Route: `?route=dashboard`
+Route: `?route=command-center&demoAction=sampleAgencyWorkspace`
 
 Show:
 
-- Setup or launch readiness.
-- Active project metrics.
-- Operator or due-soon widgets.
-- Connection/readiness signals if API is connected.
+- Attention queue.
+- Highest-risk items.
+- Client promises.
+- Next best actions.
 
 Use for:
 
 - README feature overview.
 - Demo video opening after landing.
 
-### 3. Today
+### 3. Project Backlog
 
-Purpose: show daily planning and practical work focus.
+Purpose: show that new client work is scoped before active delivery.
 
-Route: `?route=daily`
+Route: `?route=project-backlog`
 
 Show:
 
-- Planned tasks.
-- Focus blocks or daily lanes.
-- Clear next actions.
+- Backlog projects.
+- Project intake.
+- Pipeline.
+- Approved work and promote controls.
 
 Use for:
 
-- Social post about daily work.
-- Mobile screenshot.
+- Acme demo step 2.
+- Product-management workflow proof.
 
-### 4. Board
+### 4. Client Visibility
 
-Purpose: show familiar project management.
+Purpose: show stakeholder-safe workflow.
 
-Route: `?route=board`
-
-Show:
-
-- Multiple columns.
-- Realistic tasks.
-- Priority/status/assignee metadata.
-
-Use for:
-
-- Product Hunt gallery.
-- README "project views" section.
-
-### 5. Client Portal
-
-Purpose: show multi-company/client-ready workflow.
-
-Route: `?route=portal`
+Route: `?route=visibility`
 
 Show:
 
-- Client-safe updates.
-- Approvals or shared project status.
-- Scoped stakeholder visibility.
+- Share packet composer.
+- Client portal link.
+- Approval needs.
+- Visibility warnings.
 
 Use for:
 
 - Agency and consultant positioning.
+- Client collaboration proof.
 
-### 6. Marketplace
+### 5. Timeline Risk
 
-Purpose: show templates, automations, and extensibility.
+Purpose: show delivery risk behind the board.
 
-Route: `?route=marketplace`
+Route: `?route=project&project=launch&tab=timeline`
 
 Show:
 
-- Project template marketplace.
-- Automation packs.
-- API catalog publish/load panel if connected.
-- Creator/pricing/charity payout metadata where visible.
+- Gantt timeline.
+- Critical path.
+- Slipped path.
+- Workload warnings.
 
 Use for:
 
-- Open marketplace story.
-- Template contributor call.
+- Demo video midpoint.
+- PM risk-management proof.
 
-### 7. Data Export
+### 6. Client Update
 
-Purpose: prove portability.
+Purpose: show status reporting from real project state.
 
-Route: `?route=data`
+Route: `?route=reports`
 
 Show:
 
+- Status report.
+- Delivery risk.
+- Capacity planning.
+- Workload.
+- Risk queue.
+
+Use for:
+
+- Client-update proof.
+- Social post about replacing manual status scramble.
+
+### 7. Recovery Proof
+
+Purpose: prove portability and recovery.
+
+Route: `?route=data&demoAction=recoveryPlan`
+
+Show:
+
+- Recovery confidence.
+- Backup-first language.
+- Previewable rollback path.
 - Portable workspace export.
-- Backup or import preview panel.
-- JSON/CSV/Markdown language.
 
 Use for:
 
@@ -231,13 +251,13 @@ Target length: 75 to 120 seconds.
 Use [`docs/demo-video-script.md`](./demo-video-script.md) for the full time-coded script, route list, voiceover, and editing notes.
 
 1. Landing: "Agora is open source project management without ads or lock-in."
-2. Dashboard: show command center and launch readiness.
-3. Today: plan the day.
-4. Board/List: move normal project work.
-5. Client Portal: show stakeholder-safe visibility.
-6. Marketplace: install or publish a pack.
-7. Data: export a portable workspace bundle.
-8. Permissions: show roles and Operator guardrails.
+2. Command Center: triage the Acme client request.
+3. Project Backlog: scope the request into delivery work.
+4. Client Visibility: review approvals, portal packet, and warnings.
+5. Timeline: inspect dependency and workload risk.
+6. Reports: copy the client update.
+7. Data: prove export, backup, import preview, and recovery.
+8. Permissions: show roles and Operator guardrails as supporting trust proof.
 9. Close: "Run it locally, connect the API, export your data, and shape it in the open."
 
 ## File Naming
@@ -245,15 +265,15 @@ Use [`docs/demo-video-script.md`](./demo-video-script.md) for the full time-code
 Use predictable names:
 
 - `assets/screenshots/agora-landing.png`
-- `assets/screenshots/agora-dashboard.png`
-- `assets/screenshots/agora-mobile-today.png`
-- `assets/screenshots/agora-board.png`
-- `assets/screenshots/agora-client-portal.png`
-- `assets/screenshots/agora-marketplace.png`
-- `assets/screenshots/data-export-desktop.png`
+- `assets/screenshots/agora-acme-command-center.png`
+- `assets/screenshots/agora-acme-project-backlog.png`
+- `assets/screenshots/agora-acme-client-visibility.png`
+- `assets/screenshots/agora-acme-timeline-risk.png`
+- `assets/screenshots/agora-acme-client-update.png`
+- `assets/screenshots/agora-acme-recovery-proof.png`
 - `assets/screenshots/permissions-audit-desktop.png`
 - `assets/screenshots/operator-trust-desktop.png`
-- `assets/screenshots/ipad-dashboard.png`
+- `assets/screenshots/agora-mobile-today.png`
 
 ## Quality Checklist
 

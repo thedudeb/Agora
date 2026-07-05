@@ -1,6 +1,6 @@
 # Agora Demo Video Script
 
-Use this script for a 75 to 120 second launch demo. Keep the pacing calm: the point is to show that Agora is already a real workspace, not to tour every feature. The default story is Acme Studio taking one client request from intake to recovery proof.
+Use this script for a 75 to 120 second launch demo. Keep the pacing calm: the point is to show that Agora is already a real workspace, not to tour every feature. The default story is Acme Studio taking one client request from intake to recovery proof. Use [`acme-client-launch-demo.md`](./acme-client-launch-demo.md) as the canonical route handoff.
 
 ## Recording Setup
 
@@ -26,7 +26,7 @@ It is built for teams that need a practical command center for projects, clients
 | 0:08-0:22 | `?route=command-center&demoAction=sampleAgencyWorkspace` | New client request, blockers, promises, and next best actions. | "Here is the PM morning view: one client request, the promises at risk, and the next actions to keep delivery moving." |
 | 0:22-0:36 | `?route=project-backlog` | Scope request into active work. | "Agora keeps future work visible before it becomes a project, then lets the team promote scoped work deliberately." |
 | 0:36-0:52 | `?route=portal` and `?route=visibility` | Client portal, approval packet, and visibility warnings. | "For agencies and consultants, client-safe portals and visibility review keep approvals moving without exposing internal noise." |
-| 0:52-1:08 | `?route=gantt` | Timeline, dependency risk, and delivery pressure. | "Timeline and Gantt views show the delivery risk behind the board so a PM can act before a date slips." |
+| 0:52-1:08 | `?route=project&project=launch&tab=timeline` | Timeline, dependency risk, and delivery pressure. | "Timeline and Gantt views show the delivery risk behind the board so a PM can act before a date slips." |
 | 1:08-1:24 | `?route=reports` | Copyable client update. | "When the client asks where things stand, reports turn project state into a useful update instead of another manual status scramble." |
 | 1:24-1:38 | `?route=data` | Portable export and backup language. | "The no-lock-in promise is practical: export a portable workspace with JSON, CSV, Markdown, templates, automations, audit, and operator context." |
 | 1:38-1:50 | `?route=permissions` | Role matrix and Operator guardrails. | "AI actions are permissioned, previewable, and auditable, with rationale and undo paths where possible." |
@@ -37,21 +37,22 @@ It is built for teams that need a practical command center for projects, clients
 Use this 35 to 45 second version for social clips:
 
 1. Landing: no ads, self-hostable, portable exports, auditable AI.
-2. Dashboard: setup and launch readiness.
-3. Today: daily planning.
-4. Board: real project work.
-5. Marketplace: templates and automations.
-6. Data or Permissions: portability or AI governance.
+2. Command Center: triage the Acme client request.
+3. Project Backlog: scope the request.
+4. Client Visibility: review approvals and portal sharing.
+5. Timeline: inspect delivery risk.
+6. Reports or Data: copy the update or prove recovery.
 7. Close on GitHub.
 
 ## Screenshot Pairings
 
 - `assets/screenshots/agora-landing.png`: opening frame, Product Hunt gallery cover, social first image.
-- `assets/screenshots/agora-dashboard.png`: README and demo proof that the app is real.
-- `assets/screenshots/agora-mobile-today.png`: mobile planning proof.
-- `assets/screenshots/agora-board.png`: familiar project management proof.
-- `assets/screenshots/agora-inbox.png`: command-center and notification proof.
-- `assets/screenshots/agora-marketplace.png`: templates, automations, and open marketplace proof.
+- `assets/screenshots/agora-acme-command-center.png`: PM morning view and Acme request triage.
+- `assets/screenshots/agora-acme-project-backlog.png`: scoped request and promotion path.
+- `assets/screenshots/agora-acme-client-visibility.png`: approvals, portal packet, and visibility warnings.
+- `assets/screenshots/agora-acme-timeline-risk.png`: dependency and workload risk.
+- `assets/screenshots/agora-acme-client-update.png`: copyable client status report.
+- `assets/screenshots/agora-acme-recovery-proof.png`: export, backup, and restore proof.
 
 ## Editing Notes
 
