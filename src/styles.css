@@ -1973,6 +1973,23 @@ body[data-tutorial-target="view"] #app-view {
   margin: 0 0 16px;
 }
 
+.trust-moment {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.trust-moment strong {
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
 .workspace-trust-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

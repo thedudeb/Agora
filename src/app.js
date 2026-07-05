@@ -7646,7 +7646,7 @@ function renderConnectionBanner() {
     <div>
       <span class="status-pill ${offlineCapabilityTone()}">${escapeHtml(syncLabel)}</span>
       <strong>${escapeHtml(state.workspace.name)}</strong>
-      <small>${escapeHtml(offlineCapabilityDetail())} / ${escapeHtml(queueLabel)}</small>
+      <small>${escapeHtml(offlineCapabilityDetail())} / Local changes stay on this device / ${escapeHtml(queueLabel)}</small>
     </div>
     <div class="connection-actions">
       ${setupComplete ? `<span class="status-pill inbox-green">Setup complete</span>` : `<span class="status-pill inbox-amber">${score.done}/${score.total} setup</span>`}
@@ -15689,7 +15689,7 @@ function createSampleWorkspace(sampleId) {
   state.selectedRoute = "dashboard";
   saveState();
   render();
-  showToast(`${preset.label} sample workspace created`, "success");
+  showToast(`${preset.label} sample created locally without overwriting existing work`, "success");
 }
 
 function createWorkspaceFromSwitcher() {
@@ -18866,6 +18866,7 @@ function renderDashboard() {
       ]
     })}
     ${renderWorkspaceTrustStrip()}
+    ${state.onboarding?.sampleMode?.startsWith("sample-") ? renderTrustMoment("sample") : ""}
     ${renderGoldenPathPanel()}
 
     <div class="metric-grid">
@@ -19031,6 +19032,23 @@ function workspaceTrustSignals() {
       commandId: "settings:sync"
     }
   ];
+}
+
+function renderTrustMoment(kind) {
+  const moments = {
+    sample: ["Local sample", "Creates a separate browser workspace and leaves existing work untouched."],
+    autopilot: ["Human approval", "Autopilot is preview-only until a person approves the exact recovery action."],
+    recovery: ["Backup first", "Imports, restores, and experiments should start with a local recovery point and previewable rollback path."],
+    offline: ["Offline-first", "Local changes stay on this device and queued sync can retry when the API is available."],
+    visibility: ["Client-safe sharing", "Internal notes stay hidden unless a task, file, approval, or decision is explicitly shared."]
+  };
+  const [label, detail] = moments[kind] || moments.offline;
+  return `
+    <section class="trust-moment trust-moment-${escapeHtml(kind)}" aria-label="${escapeHtml(label)}">
+      <span class="status-pill inbox-green">${escapeHtml(label)}</span>
+      <strong>${escapeHtml(detail)}</strong>
+    </section>
+  `;
 }
 
 function renderWorkspaceTrustStrip() {
@@ -20775,6 +20793,8 @@ function renderClientVisibilityReview() {
       ${metric("Visibility warnings", review.warnings.length)}
       ${metric("Companies", review.companies.length)}
     </div>
+
+    ${renderTrustMoment("visibility")}
 
     ${selected ? `<section class="panel">${renderClientShareComposer(selected.company.id)}</section>` : ""}
     ${selected ? renderClientHandoffBrief(selected.company.id) : ""}
@@ -22911,6 +22931,7 @@ function renderProjectAutopilot() {
       </div>
     </section>
 
+    ${renderTrustMoment("autopilot")}
     ${!drifts.length ? starterEmptyState("autopilot") : ""}
 
     <section class="panel autopilot-drift-panel">
@@ -31719,6 +31740,7 @@ function renderDataManagement() {
       ${metric("Backups", backups.length)}
     </div>
 
+    ${renderTrustMoment("recovery")}
     ${!backups.length ? starterEmptyState("data") : ""}
 
     ${renderPortableRecoveryConfidencePanel()}
