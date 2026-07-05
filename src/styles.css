@@ -1393,6 +1393,11 @@ body[data-tutorial-target="view"] #app-view {
   box-shadow: var(--shadow);
 }
 
+.connection-banner.is-demo-receipt {
+  background: color-mix(in srgb, var(--blue) 9%, var(--surface));
+  border-color: color-mix(in srgb, var(--blue) 34%, var(--line));
+}
+
 .connection-banner[hidden] {
   display: none;
 }
@@ -2130,6 +2135,16 @@ body[data-tutorial-target="view"] #app-view {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+  max-width: min(540px, 100%);
+}
+
+.evaluator-route-header {
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+
+.evaluator-route-header .route-header-actions {
+  justify-content: flex-start;
 }
 
 .workspace-trust-strip {

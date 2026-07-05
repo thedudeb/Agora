@@ -1192,6 +1192,7 @@ const seedData = {
       startedAt: "",
       completedAt: ""
     },
+    demoReceipt: {},
     notificationsReviewed: false,
     templatesReviewed: false
   },
@@ -2917,6 +2918,7 @@ function normalizeState(nextState) {
         startedAt: (nextState.onboarding || {}).firstTenMode?.startedAt || "",
         completedAt: (nextState.onboarding || {}).firstTenMode?.completedAt || ""
       },
+      demoReceipt: normalizeDemoReceipt((nextState.onboarding || {}).demoReceipt),
       wizardStep: clamp(Number((nextState.onboarding || {}).wizardStep || 0), 0, 8)
     },
     tutorial: {
@@ -5945,9 +5947,9 @@ function renderSettingsSectionIntro(activeTab) {
   `;
 }
 
-function renderRouteHeader({ eyebrow = "", title, description = "", actions = [] }) {
+function renderRouteHeader({ eyebrow = "", title, description = "", actions = [], className = "" }) {
   return `
-    <section class="route-header">
+    <section class="route-header ${escapeHtml(className)}">
       <div>
         ${eyebrow ? `<p class="eyebrow">${escapeHtml(eyebrow)}</p>` : ""}
         <h1>${escapeHtml(title)}</h1>
@@ -7655,18 +7657,30 @@ function renderConnectionBanner() {
   const setupComplete = score.done === score.total;
   const syncLabel = offlineCapabilityLabel();
   const queueLabel = apiSyncQueue.length ? `${apiSyncQueue.length} queued` : "Queue clear";
+  const demoReceipt = activeDemoReceipt();
   els.connectionBanner.hidden = false;
+  els.connectionBanner.classList.toggle("is-demo-receipt", Boolean(demoReceipt));
   els.connectionBanner.innerHTML = `
     <div>
-      <span class="status-pill ${offlineCapabilityTone()}">${escapeHtml(syncLabel)}</span>
+      <span class="status-pill ${demoReceipt ? "inbox-blue" : offlineCapabilityTone()}">${escapeHtml(demoReceipt ? demoReceipt.label : syncLabel)}</span>
       <strong>${escapeHtml(state.workspace.name)}</strong>
-      <small>${escapeHtml(offlineCapabilityDetail())} / Local changes stay on this device / ${escapeHtml(queueLabel)}</small>
+      <small>${demoReceipt
+        ? `${escapeHtml(demoReceipt.detail)} / Created ${escapeHtml(formatTimestamp(demoReceipt.createdAt))}`
+        : `${escapeHtml(offlineCapabilityDetail())} / Local changes stay on this device / ${escapeHtml(queueLabel)}`}</small>
     </div>
     <div class="connection-actions">
-      ${setupComplete ? `<span class="status-pill inbox-green">Setup complete</span>` : `<span class="status-pill inbox-amber">${score.done}/${score.total} setup</span>`}
-      ${setupComplete ? "" : `<button class="button button-secondary compact-button" type="button" data-onboarding-action="show">Continue setup</button>`}
-      <button class="button button-secondary compact-button" type="button" data-tutorial-action="start">${state.tutorial?.completedAt ? "Tutorial" : "Start Tutorial"}</button>
-      <button class="button button-secondary compact-button" type="button" data-onboarding-action="sync">Sync</button>
+      ${demoReceipt
+        ? `
+          <button class="button button-secondary compact-button" type="button" data-demo-receipt-action="restart">Restart Demo</button>
+          <button class="button button-secondary compact-button" type="button" data-demo-receipt-action="reset-scorecard">Reset Scorecard</button>
+          <button class="button button-secondary compact-button" type="button" data-demo-receipt-action="dismiss">Dismiss</button>
+        `
+        : `
+          ${setupComplete ? `<span class="status-pill inbox-green">Setup complete</span>` : `<span class="status-pill inbox-amber">${score.done}/${score.total} setup</span>`}
+          ${setupComplete ? "" : `<button class="button button-secondary compact-button" type="button" data-onboarding-action="show">Continue setup</button>`}
+          <button class="button button-secondary compact-button" type="button" data-tutorial-action="start">${state.tutorial?.completedAt ? "Tutorial" : "Start Tutorial"}</button>
+          <button class="button button-secondary compact-button" type="button" data-onboarding-action="sync">Sync</button>
+        `}
     </div>
   `;
 }
@@ -7805,6 +7819,68 @@ function normalizeEvaluationScorecard(input) {
     };
     return scorecard;
   }, {});
+}
+
+function normalizeDemoReceipt(input) {
+  if (!input || typeof input !== "object") return {};
+  return {
+    label: String(input.label || "").slice(0, 80),
+    detail: String(input.detail || "").slice(0, 220),
+    source: String(input.source || "").slice(0, 60),
+    createdAt: input.createdAt || "",
+    localOnly: input.localOnly !== false,
+    dismissed: Boolean(input.dismissed)
+  };
+}
+
+function activeDemoReceipt() {
+  const receipt = normalizeDemoReceipt(state.onboarding?.demoReceipt);
+  return receipt.label && !receipt.dismissed ? receipt : null;
+}
+
+function setDemoReceipt({ label, detail, source = "demo-link" }) {
+  state.onboarding = {
+    ...state.onboarding,
+    demoReceipt: normalizeDemoReceipt({
+      label,
+      detail,
+      source,
+      createdAt: new Date().toISOString(),
+      localOnly: true,
+      dismissed: false
+    })
+  };
+}
+
+function resetEvaluationScorecard() {
+  state.onboarding = {
+    ...state.onboarding,
+    evaluationProgress: {},
+    evaluationScorecard: {},
+    firstTenMode: {
+      active: false,
+      startedAt: "",
+      completedAt: ""
+    }
+  };
+  saveState();
+  render();
+  showToast("Evaluation scorecard reset", "success");
+}
+
+function restartEvaluationDemo() {
+  state = createBetaWorkspaceState();
+  startFirstTenMode();
+  setDemoReceipt({
+    label: "Demo workspace created",
+    detail: "Agora loaded a fresh beta workspace in this browser. Existing saved workspaces stay separate, and no production data or API secrets are exported.",
+    source: "restart-demo"
+  });
+  state.selectedRoute = "evaluate";
+  openSidebarGroupForRoute("evaluate");
+  saveState();
+  render();
+  showToast("Fresh evaluation demo started", "success");
 }
 
 function evaluationScorecardEntry(itemId) {
@@ -7949,6 +8025,14 @@ function evaluationPacketPayload() {
       files: recovery.files.map((file) => ({ path: file.path, kind: file.kind, size: file.content.length })),
       latestBackupAt: recovery.latestBackup?.createdAt || ""
     },
+    demoSafety: {
+      localOnly: true,
+      sampleMode: state.onboarding?.sampleMode || "custom",
+      receipt: normalizeDemoReceipt(state.onboarding?.demoReceipt),
+      productionDataExported: false,
+      apiSecretsExported: false,
+      note: "This evaluation uses local workspace/demo data. Portable evaluation packets do not export raw provider secrets or API tokens."
+    },
     instructions: [
       "Open the demo links and mark each workflow Pass, Needs work, or Not tested.",
       "Use the notes field to capture missing PM workflow, trust, or scale concerns.",
@@ -8000,6 +8084,14 @@ function evaluationPacketMarkdown() {
     `Recovery checks: ${packet.recovery.ready}/${packet.recovery.total}`,
     `Latest backup: ${packet.recovery.latestBackupAt ? formatTimestamp(packet.recovery.latestBackupAt) : "No backup yet"}`,
     `Portable files: ${packet.recovery.files.map((file) => file.path).join(", ")}`,
+    "",
+    "## Demo Safety",
+    "",
+    `Local-only evaluation: ${packet.demoSafety.localOnly ? "Yes" : "No"}`,
+    `Sample mode: ${packet.demoSafety.sampleMode}`,
+    `Production data exported: ${packet.demoSafety.productionDataExported ? "Yes" : "No"}`,
+    `API secrets exported: ${packet.demoSafety.apiSecretsExported ? "Yes" : "No"}`,
+    packet.demoSafety.receipt?.label ? `Receipt: ${packet.demoSafety.receipt.label} - ${packet.demoSafety.receipt.detail}` : "Receipt: No active demo receipt",
     "",
     "## Evaluation Instructions",
     "",
@@ -9275,8 +9367,11 @@ function renderEvaluatorLanding() {
       eyebrow: "Evaluator mode",
       title: "Evaluate Agora in 10 minutes",
       description: "A focused path for project managers, customers, contributors, and investors to load realistic work, judge the core workflows, and leave with an evidence packet.",
+      className: "evaluator-route-header",
       actions: [
         { label: "Start Evaluation", id: "evaluate-start", primary: true },
+        { label: "Restart Demo", id: "evaluate-restart-demo" },
+        { label: "Reset Scorecard", id: "evaluate-reset-scorecard" },
         { label: "Copy Link", id: "evaluate-copy-link" },
         { label: "Open Beta Launch", route: "beta" }
       ]
@@ -16177,6 +16272,14 @@ function createSampleWorkspace(sampleId) {
     evaluationProgress: {
       sample: true
     },
+    demoReceipt: normalizeDemoReceipt({
+      label: "Demo workspace created",
+      detail: `${preset.label} sample was created as a separate local workspace. Existing saved workspaces stay separate, and no production data or API secrets are exported.`,
+      source: `sample-${sampleId}`,
+      createdAt: new Date().toISOString(),
+      localOnly: true,
+      dismissed: false
+    }),
     wizardActive: true,
     wizardStep: 1
   };
@@ -16623,6 +16726,29 @@ function handleEvaluationAction(action) {
   }
 }
 
+function handleDemoReceiptAction(action) {
+  if (action === "restart") {
+    restartEvaluationDemo();
+    return;
+  }
+  if (action === "reset-scorecard") {
+    resetEvaluationScorecard();
+    return;
+  }
+  if (action === "dismiss") {
+    state.onboarding = {
+      ...state.onboarding,
+      demoReceipt: {
+        ...normalizeDemoReceipt(state.onboarding?.demoReceipt),
+        dismissed: true
+      }
+    };
+    saveState();
+    render();
+    showToast("Demo receipt dismissed", "success");
+  }
+}
+
 function startFirstTenMode() {
   state.onboarding = {
     ...state.onboarding,
@@ -16639,6 +16765,11 @@ function handleFirstTenAction(action) {
   if (action === "start") {
     state = createBetaWorkspaceState();
     startFirstTenMode();
+    setDemoReceipt({
+      label: "Demo workspace created",
+      detail: "Agora loaded a fresh beta workspace in this browser. Existing saved workspaces stay separate, and no production data or API secrets are exported.",
+      source: "first-ten-start"
+    });
     saveState();
     render();
     showToast("10-minute evaluation started", "success");
@@ -16650,6 +16781,11 @@ function handleFirstTenAction(action) {
   if (action === "workspace") {
     state = createBetaWorkspaceState();
     startFirstTenMode();
+    setDemoReceipt({
+      label: "Demo workspace created",
+      detail: "Agora loaded a fresh beta workspace in this browser. Existing saved workspaces stay separate, and no production data or API secrets are exported.",
+      source: "first-ten-workspace"
+    });
     saveState();
     render();
     showToast("Beta workspace ready for review", "success");
@@ -17253,6 +17389,11 @@ function runDemoActionFromLocation() {
   if (action === "startBetaWorkspace") {
     state = createBetaWorkspaceState();
     startFirstTenMode();
+    setDemoReceipt({
+      label: "Demo workspace created",
+      detail: "Agora loaded a fresh beta workspace in this browser from a direct demo link. Existing saved workspaces stay separate, and no production data or API secrets are exported.",
+      source: "demo-link-beta"
+    });
     saveState();
     routeFromLocation({ shouldRender: true });
     showToast("Beta demo workspace loaded", "success");
@@ -17268,11 +17409,25 @@ function runDemoActionFromLocation() {
 
   if (action === "autopilotDemo") {
     startAutopilotDemoPath();
+    setDemoReceipt({
+      label: "Demo path opened",
+      detail: "Agora opened the Autopilot safety demo with local workspace data only. No production data or API secrets are exported.",
+      source: "demo-link-autopilot"
+    });
+    saveState();
+    render();
     return true;
   }
 
   if (action === "recoveryPlan") {
     openRecoveryPlanFlow();
+    setDemoReceipt({
+      label: "Demo path opened",
+      detail: "Agora opened recovery proof with local workspace data only. Portable exports exclude raw provider secrets and API tokens.",
+      source: "demo-link-recovery"
+    });
+    saveState();
+    render();
     return true;
   }
 
@@ -41947,9 +42102,27 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const evaluateRestartDemoButton = event.target.closest("#evaluate-restart-demo");
+  if (evaluateRestartDemoButton) {
+    restartEvaluationDemo();
+    return;
+  }
+
+  const evaluateResetScorecardButton = event.target.closest("#evaluate-reset-scorecard");
+  if (evaluateResetScorecardButton) {
+    resetEvaluationScorecard();
+    return;
+  }
+
   const evaluateCopyLinkButton = event.target.closest("#evaluate-copy-link");
   if (evaluateCopyLinkButton) {
     handleEvaluationAction("copy-link");
+    return;
+  }
+
+  const demoReceiptActionButton = event.target.closest("[data-demo-receipt-action]");
+  if (demoReceiptActionButton) {
+    handleDemoReceiptAction(demoReceiptActionButton.dataset.demoReceiptAction);
     return;
   }
 

@@ -669,6 +669,8 @@ const routeChecks = [
       "Review packet preview",
       "Shareable demo links",
       "Start Evaluation",
+      "Restart Demo",
+      "Reset Scorecard",
       "Copy Evaluator Link",
       "First 10 minutes mode",
       "Evaluation scorecard",
@@ -710,6 +712,8 @@ const routeChecks = [
       "Agency Client Delivery Beta",
       "First 10 minutes mode",
       "Run the evaluator path live",
+      "Demo workspace created",
+      "Reset Scorecard",
       "Evaluation scorecard",
       "Can Agora run this project?"
     ]
