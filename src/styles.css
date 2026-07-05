@@ -12692,6 +12692,28 @@ body[data-density="compact"] .main-content {
 }
 
 @media (max-width: 680px) {
+  .is-evaluator-route .sidebar,
+  .is-evaluator-route .topbar,
+  .is-evaluator-route .toolbar {
+    display: none;
+  }
+
+  .is-evaluator-route .main-content {
+    padding: 12px;
+  }
+
+  .is-evaluator-route .connection-banner {
+    margin-bottom: 10px;
+  }
+
+  .is-evaluator-route .route-header {
+    margin-bottom: 10px;
+  }
+
+  .is-evaluator-route .route-header p:not(.eyebrow) {
+    font-size: 0.94rem;
+  }
+
   .command-result {
     grid-template-columns: minmax(0, 1fr) auto;
   }

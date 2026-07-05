@@ -18793,6 +18793,7 @@ function render() {
   renderConnectionBanner();
   document.querySelector(".brand small").textContent = state.workspace.name;
   document.body.classList.toggle("is-landing-route", state.selectedRoute === "landing");
+  document.body.classList.toggle("is-evaluator-route", state.selectedRoute === "evaluate");
   document.body.classList.toggle("is-trust-mode", trustModeEnabled());
 
   const routeRenderers = {

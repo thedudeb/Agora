@@ -988,6 +988,21 @@ const routeChecks = [
     ]
   },
   {
+    name: "Mobile evaluator first screen",
+    suite: "mobile",
+    route: "evaluate",
+    width: 500,
+    height: 844,
+    required: [
+      "Evaluator mode",
+      "Evaluate Agora in 10 minutes",
+      "Start Evaluation",
+      "Restart Demo",
+      "Reset Scorecard",
+      "Review packet preview"
+    ]
+  },
+  {
     name: "Mobile app native offline plan",
     suite: "mobile",
     route: "settings",
