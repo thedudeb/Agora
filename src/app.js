@@ -16366,6 +16366,11 @@ function handleOnboardingAction(action) {
     return;
   }
 
+  if (action === "memory-sample") {
+    addSampleProjectMemoryCapture();
+    return;
+  }
+
   if (action === "start-clean") {
     state = createBlankWorkspaceState();
     state.onboarding = {
@@ -16628,6 +16633,18 @@ function runGoldenActionFromLocation() {
   if (params.get("goldenAction") === "sampleAgencyWorkspace") {
     const sampleButton = document.querySelector('[data-onboarding-action="sample:agency"]');
     if (sampleButton) sampleButton.click();
+  }
+  if (params.get("goldenAction") === "cleanWorkspace") {
+    state = createBlankWorkspaceState();
+    state.selectedRoute = routeFallback(params.get("route") || "dashboard");
+    state.selectedProject = "all";
+    state.selectedCompany = "all";
+    openSidebarGroupForRoute(state.selectedRoute);
+    saveState();
+    render();
+  }
+  if (params.get("goldenAction") === "memorySampleCapture") {
+    addSampleProjectMemoryCapture();
   }
 }
 
@@ -22894,6 +22911,8 @@ function renderProjectAutopilot() {
       </div>
     </section>
 
+    ${!drifts.length ? starterEmptyState("autopilot") : ""}
+
     <section class="panel autopilot-drift-panel">
       <div class="panel-header">
         <div>
@@ -22903,7 +22922,10 @@ function renderProjectAutopilot() {
         <span class="status-pill ${critical.length ? "inbox-amber" : "inbox-green"}">${critical.length ? `${critical.length} need review` : "No major drift"}</span>
       </div>
       <div class="autopilot-drift-list">
-        ${drifts.length ? drifts.map(renderAutopilotDriftCard).join("") : emptyState("No schedule, scope, approval, blocker, workload, or client promise drift detected.")}
+        ${drifts.length ? drifts.map(renderAutopilotDriftCard).join("") : starterEmptyState("autopilot", {
+          message: "No schedule, scope, approval, blocker, workload, or client promise drift detected.",
+          detail: "Use the demo path to see the review-first safety model before trusting automation on real work."
+        })}
       </div>
     </section>
 
@@ -22921,7 +22943,10 @@ function renderProjectAutopilot() {
       </div>
       <p class="panel-note">Each option is review-first: Autopilot names the likely recovery path, simulates impact, then applies audited changes only after approval. Strategies include Move deadline, Reduce scope, Reassign owner, Escalate approval, Split task, and Notify client.</p>
       <div class="autopilot-scenario-grid">
-        ${scenarios.length ? scenarios.map(renderAutopilotScenarioCard).join("") : emptyState("No recovery scenarios are needed while drift is clear.")}
+        ${scenarios.length ? scenarios.map(renderAutopilotScenarioCard).join("") : starterEmptyState("autopilot", {
+          message: "No recovery scenarios are needed while drift is clear.",
+          detail: "Open the demo or load a sample to inspect impact simulation, approval gates, and undo."
+        })}
       </div>
     </section>
 
@@ -25649,7 +25674,11 @@ function renderBoardColumn(column, tasks) {
           <button class="button button-secondary compact-button" type="submit">Add</button>
         </form>
         <div class="task-stack" data-drop-status="${column.id}">
-          ${columnTasks.length ? columnTasks.map(renderTaskCard).join("") : emptyState("No tasks here.", { label: "Add a card", detail: "Use the quick-add field above to capture the next piece of work for this lane." })}
+          ${columnTasks.length ? columnTasks.map(renderTaskCard).join("") : emptyState("No tasks here.", [
+            { label: "Add a card", commandId: "create:task", detail: "Use the quick-add field above to capture the next piece of work for this lane." },
+            { label: "Import Tasks", commandId: "migration:open" },
+            { label: "Load Sample", onboardingAction: "sample:agency" }
+          ])}
         </div>
       `}
     </section>
@@ -25770,10 +25799,14 @@ function renderProjectTimeline(project, tasks, milestones) {
       ${gantt}
 
       <div class="timeline-list">
-        ${timelineItems.length ? timelineItems.map(renderTimelineItem).join("") : emptyState("Add dates to tasks or milestones to build this timeline.", [
-          { label: "Add Milestone", detail: "Create a dated milestone above, or add due dates to project tasks." },
-          { label: "Open Tasks", projectTab: "tasks" }
-        ])}
+        ${timelineItems.length ? timelineItems.map(renderTimelineItem).join("") : starterEmptyState("timeline", {
+          message: "Add dates to tasks or milestones to build this timeline.",
+          actions: [
+            { label: "Add Milestone", projectTab: "timeline", detail: "Create a dated milestone above, or add due dates to project tasks." },
+            { label: "Open Tasks", projectTab: "tasks" },
+            { label: "Load Software Sample", onboardingAction: "sample:software" }
+          ]
+        })}
       </div>
 
       ${undatedTasks.length ? `
@@ -25904,10 +25937,15 @@ function renderGanttZoomControls() {
 
 function renderProjectGantt(project, tasks, milestones) {
   const scheduledTasks = tasks.filter((task) => task.dueDate);
-  if (!scheduledTasks.length) return emptyState("Add task start and due dates to build a Gantt chart.", [
-    { label: "Open Tasks", projectTab: "tasks", detail: "A useful Gantt starts with at least one task that has start and due dates." },
-    { label: "Add Milestone", projectTab: "timeline" }
-  ]);
+  if (!scheduledTasks.length) return starterEmptyState("timeline", {
+    message: "Add task start and due dates to build a Gantt chart.",
+    detail: "A useful Gantt starts with at least one task that has start and due dates.",
+    actions: [
+      { label: "Open Tasks", projectTab: "tasks" },
+      { label: "Add Milestone", projectTab: "timeline" },
+      { label: "Load Software Sample", onboardingAction: "sample:software" }
+    ]
+  });
 
   const dates = [
     project.startDate,
@@ -26536,7 +26574,11 @@ function renderComment(comment, depth = 0) {
 
 function renderBoard() {
   const tasks = getFilteredTasks();
-  els.appView.innerHTML = renderKanbanBoard(tasks, { controls: true, label: "Task board" });
+  const hasWorkspaceWork = activeTasks().length || activeProjects().length;
+  els.appView.innerHTML = `
+    ${!hasWorkspaceWork ? starterEmptyState("board") : ""}
+    ${renderKanbanBoard(tasks, { controls: true, label: "Task board" })}
+  `;
 }
 
 function renderList() {
@@ -28311,6 +28353,8 @@ function renderSprintCommandCenter() {
         <button class="button button-primary compact-button" type="submit" ${canManage ? "" : "disabled"}>Save Sprint</button>
       </form>
     </section>
+
+    ${!tasks.length ? starterEmptyState("sprint") : ""}
 
     <div class="sprint-grid">
       ${renderSprintTimeline(tasks, scrum, metrics)}
@@ -31675,6 +31719,8 @@ function renderDataManagement() {
       ${metric("Backups", backups.length)}
     </div>
 
+    ${!backups.length ? starterEmptyState("data") : ""}
+
     ${renderPortableRecoveryConfidencePanel()}
     ${renderOpenOwnershipAdvantagePanel()}
     ${renderOfflineAppReadinessPanel()}
@@ -33936,6 +33982,8 @@ function renderProjectMemory() {
       ${metric("Ready to parse", captures.filter((capture) => capture.status === "captured").length)}
     </div>
 
+    ${!captures.length ? starterEmptyState("memory") : ""}
+
     <div class="project-memory-grid">
       <section class="panel project-memory-capture">
         <div class="panel-header">
@@ -33999,7 +34047,9 @@ function renderProjectMemory() {
           <span class="status-pill inbox-neutral">${captures.length} total</span>
         </div>
         <div class="project-memory-list">
-          ${captures.length ? captures.slice(0, 12).map(renderUpdateCaptureCard).join("") : emptyState("No updates captured yet. Paste a meeting note, email, or chat thread to start building project memory.")}
+          ${captures.length ? captures.slice(0, 12).map(renderUpdateCaptureCard).join("") : starterEmptyState("memory", {
+            message: "No updates captured yet. Paste a meeting note, email, or chat thread to start building project memory."
+          })}
         </div>
       </section>
 
@@ -34013,7 +34063,10 @@ function renderProjectMemory() {
         </div>
         <p class="panel-note">Agora turns raw updates into proposed tasks, blockers, decisions, risks, approvals, date changes, and comments before anything is applied.</p>
         <div class="project-memory-preview-list">
-          ${latestPreview ? latestPreview.proposals.map((proposal) => renderExtractionProposalCard(proposal, latestPreview)).join("") : emptyState("Preview a captured update to see structured project changes here.")}
+          ${latestPreview ? latestPreview.proposals.map((proposal) => renderExtractionProposalCard(proposal, latestPreview)).join("") : starterEmptyState("memory", {
+            message: "Preview a captured update to see structured project changes here.",
+            detail: "Try the sample capture to see tasks, risks, decisions, and date changes before applying anything."
+          })}
         </div>
       </section>
 
@@ -34027,7 +34080,9 @@ function renderProjectMemory() {
         </div>
         <p class="panel-note">The timeline keeps source snippets, structured previews, and applied outcomes together so the project narrative stays inspectable.</p>
         <div class="project-memory-timeline">
-          ${timeline.length ? timeline.map(renderProjectMemoryTimelineItem).join("") : emptyState("Capture and preview updates to build a memory timeline for each project.")}
+          ${timeline.length ? timeline.map(renderProjectMemoryTimelineItem).join("") : starterEmptyState("memory", {
+            message: "Capture and preview updates to build a memory timeline for each project."
+          })}
         </div>
       </section>
 
@@ -34174,6 +34229,46 @@ function captureProjectUpdate() {
   saveState();
   render();
   showToast("Update captured into Project Memory", "success");
+}
+
+function addSampleProjectMemoryCapture() {
+  const project = activeProjects()[0] || null;
+  const capture = {
+    id: uid("capture"),
+    source: "meeting",
+    sourceLabel: updateCaptureSourceLabel("meeting"),
+    projectId: project?.id || "",
+    companyId: project?.companyId || "",
+    title: "Sample kickoff notes",
+    body: [
+      "Decision: Use the client portal as the weekly source of truth for status.",
+      "Risk: Approval owner is not confirmed and the launch packet might slip.",
+      "Task: Sam should send the first approval request by Friday.",
+      "Blocker: Analytics access is still waiting on the client admin.",
+      "Date change: Move stakeholder review to next Wednesday if assets are not received."
+    ].join("\n"),
+    capturedBy: activeMemberId(),
+    createdAt: new Date().toISOString(),
+    status: "captured"
+  };
+  const preview = extractUpdatePreview(capture);
+  state.updateCaptures = normalizeUpdateCaptures([{ ...capture, status: "previewed" }, ...(state.updateCaptures || [])]);
+  state.updateExtractionPreviews = normalizeUpdateExtractionPreviews([
+    preview,
+    ...(state.updateExtractionPreviews || [])
+  ]);
+  state.selectedRoute = "memory";
+  openSidebarGroupForRoute("memory");
+  addAuditEvent({
+    action: "project_memory_sample_capture",
+    detail: "Seeded a sample Project Memory capture and extraction preview",
+    targetType: "updateCapture",
+    targetId: capture.id,
+    metadata: { projectId: capture.projectId, proposalCount: preview.proposals.length }
+  });
+  saveState();
+  render();
+  showToast("Sample Project Memory capture previewed", "success");
 }
 
 function renderProjectDocs(project) {
@@ -35059,6 +35154,7 @@ function emptyState(message, action = null) {
             ${item.commandId ? `data-command-id="${escapeHtml(item.commandId)}"` : ""}
             ${item.route ? `data-route="${escapeHtml(item.route)}"` : ""}
             ${item.projectTab ? `data-project-tab="${escapeHtml(item.projectTab)}"` : ""}
+            ${item.onboardingAction ? `data-onboarding-action="${escapeHtml(item.onboardingAction)}"` : ""}
             ${item.id ? `id="${escapeHtml(item.id)}"` : ""}
             ${item.disabled ? "disabled" : ""}
           >${escapeHtml(item.label)}</button>`).join("")}
@@ -35066,6 +35162,73 @@ function emptyState(message, action = null) {
       ` : ""}
     </div>
   `;
+}
+
+function starterEmptyState(kind, overrides = {}) {
+  const configs = {
+    board: {
+      message: "This board is ready for real work.",
+      detail: "Create the first card, import tasks from another tool, or load a sample workspace to see the power-user board in context.",
+      actions: [
+        { label: "Create Card", commandId: "create:task" },
+        { label: "Import Tasks", commandId: "migration:open" },
+        { label: "Load Agency Sample", onboardingAction: "sample:agency" }
+      ]
+    },
+    timeline: {
+      message: "Your timeline needs dated work.",
+      detail: "Add milestones and task dates, or load a release sample to see Gantt dependencies, critical path, and workload warnings.",
+      actions: [
+        { label: "Open Tasks", projectTab: "tasks" },
+        { label: "Add Milestone", projectTab: "timeline" },
+        { label: "Load Software Sample", onboardingAction: "sample:software" }
+      ]
+    },
+    sprint: {
+      message: "No sprint work is planned yet.",
+      detail: "Create a task, load the Ops sprint sample, or use the backlog to build a sprint that has capacity, burndown, carryover, and retro signals.",
+      actions: [
+        { label: "Create Task", commandId: "create:task" },
+        { label: "Load Ops Sample", onboardingAction: "sample:ops" },
+        { label: "Open Backlog", route: "project-backlog" }
+      ]
+    },
+    memory: {
+      message: "Project Memory is waiting for its first real-world update.",
+      detail: "Paste meeting notes, try a sample capture, or load a sample workspace to see how messy updates become tasks, risks, decisions, and Autopilot signals.",
+      actions: [
+        { label: "Try Sample Capture", onboardingAction: "memory-sample" },
+        { label: "Load Agency Sample", onboardingAction: "sample:agency" },
+        { label: "Open Autopilot", route: "autopilot" }
+      ]
+    },
+    autopilot: {
+      message: "Autopilot has nothing risky to recover yet.",
+      detail: "Preview the demo path or load a realistic workspace to inspect Safety Center, review-first proposals, impact simulation, and one-click undo.",
+      actions: [
+        { label: "Open Autopilot Demo", onboardingAction: "autopilot-demo" },
+        { label: "Load Software Sample", onboardingAction: "sample:software" },
+        { label: "Open Project Memory", route: "memory" }
+      ]
+    },
+    data: {
+      message: "Create a recovery point before this workspace becomes important.",
+      detail: "Backups, portable bundles, and import previews make it safe to experiment, migrate, and leave with your data.",
+      actions: [
+        { label: "Create Backup", commandId: "backup:create" },
+        { label: "Import Tasks", commandId: "migration:open" },
+        { label: "Open Recovery Plan", commandId: "recovery:plan" }
+      ]
+    }
+  };
+  const config = {
+    ...(configs[kind] || configs.board),
+    ...overrides
+  };
+  return emptyState(config.message, config.actions.map((action) => ({
+    ...action,
+    detail: action.detail || config.detail
+  })));
 }
 
 function populateTaskForm(task = null) {

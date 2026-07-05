@@ -145,6 +145,66 @@ const routeChecks = [
     ]
   },
   {
+    name: "Clean board starter empty state",
+    suite: "first-run",
+    route: "board",
+    query: { goldenAction: "cleanWorkspace" },
+    width: 1265,
+    height: 712,
+    required: [
+      "This board is ready for real work.",
+      "Create the first card, import tasks from another tool",
+      "Create Card",
+      "Import Tasks",
+      "Load Agency Sample"
+    ]
+  },
+  {
+    name: "Clean sprint starter empty state",
+    suite: "first-run",
+    route: "sprint",
+    query: { goldenAction: "cleanWorkspace" },
+    width: 1265,
+    height: 712,
+    required: [
+      "No sprint work is planned yet.",
+      "load the Ops sprint sample",
+      "Create Task",
+      "Load Ops Sample",
+      "Open Backlog"
+    ]
+  },
+  {
+    name: "Clean Data recovery empty state",
+    suite: "first-run",
+    route: "data",
+    query: { goldenAction: "cleanWorkspace" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Create a recovery point before this workspace becomes important.",
+      "Backups, portable bundles, and import previews",
+      "Create Backup",
+      "Import Tasks",
+      "Open Recovery Plan"
+    ]
+  },
+  {
+    name: "Project Memory sample capture empty path",
+    suite: "first-run",
+    route: "memory",
+    query: { goldenAction: "memorySampleCapture" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Sample kickoff notes",
+      "Structured Extraction Preview",
+      "Approval owner is not confirmed",
+      "Project Memory Timeline",
+      "Date change"
+    ]
+  },
+  {
     name: "PM command center",
     suite: "workspace",
     route: "command-center",
