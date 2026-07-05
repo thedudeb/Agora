@@ -7535,7 +7535,18 @@ function onboardingProjectManagementPreferences() {
       value: "Move work by flow",
       detail: "Default to Board with visible owners, blockers, limits, and fast drag/drop triage.",
       route: "board",
-      starterProfile: "agency"
+      starterProfile: "agency",
+      boardTemplate: "default",
+      board: {
+        swimlane: "assignee",
+        sort: "manual",
+        density: "comfortable",
+        cardFields: { description: true, meta: true, signals: true, tags: true, actions: true }
+      },
+      dashboardName: "Flow Command",
+      dashboardVisibleWidgets: ["projects", "capacity", "operator", "due-soon"],
+      automationKinds: ["blocked-alert", "due-risk"],
+      savedViewName: "Flow review"
     },
     {
       id: "scrum",
@@ -7543,7 +7554,19 @@ function onboardingProjectManagementPreferences() {
       value: "Plan by sprint",
       detail: "Default to Sprint with roadmap, burndown, velocity, carryover, and closeout checks.",
       route: "sprint",
-      starterProfile: "scrum"
+      starterProfile: "scrum",
+      boardTemplate: "software",
+      board: {
+        swimlane: "priority",
+        sort: "priority",
+        density: "compact",
+        cardFields: { description: false, meta: true, signals: true, tags: true, actions: true }
+      },
+      dashboardName: "Sprint Control",
+      dashboardVisibleWidgets: ["projects", "capacity", "operator", "due-soon"],
+      automationKinds: ["blocked-alert", "due-risk", "milestone-watch"],
+      savedViewName: "Sprint risk review",
+      sprintChartMode: "burndown"
     },
     {
       id: "timeline",
@@ -7552,7 +7575,19 @@ function onboardingProjectManagementPreferences() {
       detail: "Default to the project timeline with dependencies, milestones, workload, and date risk.",
       route: "project",
       projectTab: "timeline",
-      starterProfile: "software"
+      starterProfile: "software",
+      boardTemplate: "software",
+      board: {
+        swimlane: "overdue",
+        sort: "due",
+        density: "comfortable",
+        cardFields: { description: true, meta: true, signals: true, tags: false, actions: true }
+      },
+      dashboardName: "Timeline Control",
+      dashboardVisibleWidgets: ["projects", "capacity", "due-soon"],
+      automationKinds: ["due-risk", "milestone-watch"],
+      savedViewName: "Date risk review",
+      ganttZoom: "week"
     },
     {
       id: "client",
@@ -7560,7 +7595,19 @@ function onboardingProjectManagementPreferences() {
       value: "Manage by promises",
       detail: "Default to Client Visibility with approvals, shared packets, portal safety, and status updates.",
       route: "visibility",
-      starterProfile: "agency"
+      starterProfile: "agency",
+      boardTemplate: "client-delivery",
+      board: {
+        swimlane: "client",
+        sort: "due",
+        density: "comfortable",
+        cardFields: { description: true, meta: true, signals: true, tags: true, actions: true }
+      },
+      dashboardName: "Client Delivery",
+      dashboardVisibleWidgets: ["projects", "goals", "capacity", "operator", "due-soon"],
+      automationKinds: ["client-update", "approval-chase", "due-risk"],
+      savedViewName: "Client promises",
+      workspaceVisibility: "Invite only"
     },
     {
       id: "simple",
@@ -7568,13 +7615,175 @@ function onboardingProjectManagementPreferences() {
       value: "Keep it lightweight",
       detail: "Default to List with clean task triage, due dates, owners, and recovery backups.",
       route: "list",
-      starterProfile: "consultant"
+      starterProfile: "consultant",
+      boardTemplate: "default",
+      board: {
+        swimlane: "none",
+        sort: "due",
+        density: "minimal",
+        cardFields: { description: false, meta: true, signals: false, tags: false, actions: true }
+      },
+      dashboardName: "Simple Delivery",
+      dashboardVisibleWidgets: ["projects", "due-soon"],
+      automationKinds: ["due-risk"],
+      savedViewName: "Simple next actions"
     }
   ];
 }
 
 function onboardingProjectManagementPreference() {
   return onboardingProjectManagementPreferences().find((preference) => preference.id === state.onboarding?.pmPreference) || null;
+}
+
+function dashboardWidgetsForPreference(preference) {
+  const visibleIds = new Set(preference.dashboardVisibleWidgets || dashboardWidgetCatalog.map((widget) => widget.id));
+  return dashboardWidgetCatalog.map((widget) => ({
+    id: widget.id,
+    visible: visibleIds.has(widget.id)
+  }));
+}
+
+function boardColumnsForTemplate(templateId) {
+  const template = boardWorkflowTemplates.find((item) => item.id === templateId) || boardWorkflowTemplates[0];
+  return template.columns.map((column) => ({ ...column }));
+}
+
+function preferenceAutomationRule(kind, preference, now) {
+  const base = {
+    id: `automation-onboarding-${preference.id}-${kind}`,
+    enabled: true,
+    runCount: 0,
+    lastRun: "",
+    source: "onboarding",
+    creatorName: "Agora setup",
+    installedAt: now
+  };
+  const rules = {
+    "blocked-alert": {
+      name: `${preference.label}: flag blockers`,
+      trigger: "Task has open dependencies",
+      action: "Record an activity alert for the task owner",
+      triggerKind: "task_blocked",
+      conditionKind: "any",
+      conditionValue: "",
+      actionKind: "add_activity",
+      actionTarget: "task owner"
+    },
+    "due-risk": {
+      name: `${preference.label}: escalate due-soon risk`,
+      trigger: "Open task is due within 7 days",
+      action: "Set Risk custom field to High",
+      triggerKind: "task_due_soon",
+      conditionKind: "priority",
+      conditionValue: "high",
+      actionKind: "set_risk",
+      actionTarget: "High"
+    },
+    "milestone-watch": {
+      name: `${preference.label}: watch milestones`,
+      trigger: "Milestone is due within 14 days",
+      action: "Record a milestone watch activity",
+      triggerKind: "milestone_due",
+      conditionKind: "any",
+      conditionValue: "",
+      actionKind: "add_activity",
+      actionTarget: "project activity"
+    },
+    "client-update": {
+      name: `${preference.label}: draft client update`,
+      trigger: "Client-visible work changes",
+      action: "Draft a client-safe status update",
+      triggerKind: "board_review_ready",
+      conditionKind: "any",
+      conditionValue: "",
+      actionKind: "draft_update",
+      actionTarget: "client update"
+    },
+    "approval-chase": {
+      name: `${preference.label}: chase approval`,
+      trigger: "Portal approval is waiting",
+      action: "Create a follow-up task for the approval owner",
+      triggerKind: "portal_approval",
+      conditionKind: "any",
+      conditionValue: "",
+      actionKind: "create_task",
+      actionTarget: "approval follow-up"
+    }
+  };
+  return normalizeAutomationRule({ ...base, ...(rules[kind] || rules["due-risk"]) });
+}
+
+function preferenceSavedView(preference, projectId, companyId, now) {
+  return {
+    id: `view-onboarding-${preference.id}`,
+    name: preference.savedViewName || `${preference.label} view`,
+    route: preference.route,
+    selectedProject: projectId || "all",
+    selectedCompany: companyId || "all",
+    filters: {
+      company: companyId || "all",
+      assignee: "all",
+      status: "all",
+      priority: preference.id === "simple" ? "all" : "high",
+      query: ""
+    },
+    createdAt: now
+  };
+}
+
+function applyProjectManagementPreferenceDefaults(preference) {
+  const now = new Date().toISOString();
+  const projectId = activeProjects()[0]?.id || state.selectedProject || "all";
+  const companyId = visibleCompanies()[0]?.id || state.selectedCompany || "all";
+  const widgets = dashboardWidgetsForPreference(preference);
+  const layout = {
+    id: `layout-onboarding-${preference.id}`,
+    name: preference.dashboardName || preference.label,
+    widgets,
+    createdAt: now,
+    updatedAt: now
+  };
+  const existingLayouts = normalizeDashboardLayouts(state.dashboardLayouts).filter((item) => item.id !== layout.id);
+  const automationIds = new Set(preference.automationKinds || []);
+  const automationRules = [...automationIds].map((kind) => preferenceAutomationRule(kind, preference, now));
+  const existingAutomationIds = new Set(automationRules.map((rule) => rule.id));
+  const savedView = preferenceSavedView(preference, projectId, companyId, now);
+
+  state.workspace = {
+    ...state.workspace,
+    visibility: preference.workspaceVisibility || state.workspace.visibility,
+    board: normalizeWorkspaceBoard({
+      ...(state.workspace.board || {}),
+      columns: boardColumnsForTemplate(preference.boardTemplate),
+      ...preference.board,
+      cardFields: {
+        ...boardCardFieldDefaults,
+        ...(preference.board?.cardFields || {})
+      }
+    })
+  };
+  state.dashboardWidgets = widgets;
+  state.dashboardLayouts = normalizeDashboardLayouts([layout, ...existingLayouts]);
+  state.selectedDashboardLayoutId = layout.id;
+  state.savedViews = [
+    savedView,
+    ...(state.savedViews || []).filter((view) => view.id !== savedView.id)
+  ].slice(0, 20);
+  state.automations = normalizeAutomations([
+    ...automationRules,
+    ...(state.automations || []).filter((automation) => !existingAutomationIds.has(automation.id))
+  ]);
+  state.filters = {
+    ...state.filters,
+    company: companyId,
+    status: "all",
+    priority: preference.id === "simple" ? "all" : "high",
+    query: ""
+  };
+  state.selectedProject = projectId;
+  state.selectedCompany = companyId;
+  if (preference.sprintChartMode) state.selectedSprintChartMode = preference.sprintChartMode;
+  if (preference.ganttZoom) state.selectedGanttZoom = preference.ganttZoom;
 }
 
 function onboardingLaunchChecklist() {
@@ -17076,6 +17285,7 @@ function applyProjectManagementPreference(preferenceId) {
     state = createRoleStarterWorkspaceState(preference.starterProfile);
   }
 
+  applyProjectManagementPreferenceDefaults(preference);
   state.onboarding = {
     ...state.onboarding,
     dismissed: false,
@@ -17085,6 +17295,7 @@ function applyProjectManagementPreference(preferenceId) {
   };
   state.selectedRoute = preference.route;
   if (preference.projectTab) state.selectedProjectTab = preference.projectTab;
+  if (!preference.projectTab && preference.route !== "project") state.selectedProjectTab = "overview";
   openSidebarGroupForRoute(preference.route);
   addAuditEvent({
     action: "onboarding_project_management_preference",
@@ -17095,7 +17306,10 @@ function applyProjectManagementPreference(preferenceId) {
       preferenceId: preference.id,
       route: preference.route,
       projectTab: preference.projectTab || "",
-      loadedStarter: shouldLoadStarter
+      loadedStarter: shouldLoadStarter,
+      dashboardLayout: state.selectedDashboardLayoutId,
+      boardTemplate: preference.boardTemplate || "default",
+      automations: preference.automationKinds || []
     }
   });
   saveState();

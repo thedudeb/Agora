@@ -13,8 +13,8 @@ The broader promise stays intact: open source project management without ads, tr
 | Step | Status | Outcome | Acceptance Criteria |
 | --- | --- | --- | --- |
 | 1. Crystal-clear primary persona | Complete | A visitor, new user, and contributor can explain who Agora is best for in one sentence. | README, roadmap, demo copy, and first-run setup all name the agency/consultant client-work wedge without excluding open source teams. |
-| 2. Ruthless first-run experience | In progress | A new workspace reaches "I can run a real project here" in under 10 minutes. | First-run asks preferred project-management style, recommends a starter setup, creates/imports a project, and shows a visible completion path. |
-| 3. Production hosted path | Planned | A self-hoster can deploy and verify Agora without hand-holding. | Install, deployment, health checks, backups, upgrade checks, and env validation form one boring, repeatable path. |
+| 2. Ruthless first-run experience | Complete | A new workspace reaches "I can run a real project here" in under 10 minutes. | First-run asks preferred project-management style, recommends a starter setup, creates/imports a project, and shows a visible completion path. |
+| 3. Production hosted path | In progress | A self-hoster can deploy and verify Agora without hand-holding. | Install, deployment, health checks, backups, upgrade checks, and env validation form one boring, repeatable path. |
 | 4. Real collaboration confidence | Planned | Teams trust multi-person work instead of treating Agora as a solo local app. | Presence, stale edit warnings, comments/chat, notifications, permissions, and audit logs have clear user-facing states and failure handling. |
 | 5. Opinionated workflows | Planned | Agora ships useful operating systems, not just flexible primitives. | Agency retainer, client onboarding, scrum delivery, and solo founder presets produce boards, timelines, reports, templates, automations, and dashboards. |
 | 6. Polished migration story | Planned | A team can bring real work from competitors safely. | Import concierge previews mappings, warnings, rollback, skipped data, and clean next steps for Asana, Trello, Jira, Linear, ClickUp, and generic CSV/JSON. |
@@ -70,7 +70,7 @@ Current product state:
 - Done: the First run panel asks for a project-management style.
 - Done: the onboarding wizard counts project style as a setup step.
 - Done: choosing a style can route the user to the right first workspace surface.
-- Next: make each preference tune more workspace defaults, including dashboard layout, board fields, suggested automations, reports, and client/privacy defaults.
+- Done: each preference applies workspace defaults, including dashboard layout, board fields, saved views, suggested automations, route, sprint/timeline settings, and client/privacy defaults where relevant.
 
 ## Step 3: Production Hosted Path
 
