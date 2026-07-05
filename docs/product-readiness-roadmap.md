@@ -18,8 +18,8 @@ The broader promise stays intact: open source project management without ads, tr
 | 4. Real collaboration confidence | Complete | Teams trust multi-person work instead of treating Agora as a solo local app. | Presence, stale edit warnings, comments/chat, notifications, permissions, and audit logs have clear user-facing states and failure handling. |
 | 5. Opinionated workflows | Complete | Agora ships useful operating systems, not just flexible primitives. | Agency retainer, client onboarding, scrum delivery, and solo founder presets produce boards, timelines, reports, templates, automations, and dashboards. |
 | 6. Polished migration story | Complete | A team can bring real work from competitors safely. | Import concierge previews mappings, warnings, rollback, skipped data, and clean next steps for Asana, Trello, Jira, Linear, ClickUp, and generic CSV/JSON. |
-| 7. Trust center and proof | In progress | Buyers and self-hosters can verify security, privacy, portability, and AI behavior. | Trust Center links to evidence reports, security audits, export guarantees, AI policy, backup drills, and dependency/runtime checks. |
-| 8. Real packaging and distribution | Planned | Users can install Agora where they work. | PWA, desktop, Docker, hosted deploy, MCP, and CLI paths have clear release checks, version metadata, and upgrade guidance. |
+| 7. Trust center and proof | Complete | Buyers and self-hosters can verify security, privacy, portability, and AI behavior. | Trust Center links to evidence reports, security audits, export guarantees, AI policy, backup drills, and dependency/runtime checks. |
+| 8. Real packaging and distribution | In progress | Users can install Agora where they work. | PWA, desktop, Docker, hosted deploy, MCP, and CLI paths have clear release checks, version metadata, and upgrade guidance. |
 | 9. Focused demo dataset and story | Planned | The demo shows one memorable real workflow instead of a feature inventory. | Demo links, screenshots, sample data, and video script follow the same agency/client delivery scenario from intake to approval to report. |
 | 10. Sustainable contributor path | Planned | Open source contributors know where to help without becoming maintainers first. | Issue templates, starter issues, extension contracts, fixture examples, contribution lanes, and review criteria are easy to find. |
 
@@ -151,16 +151,20 @@ Next polish:
 
 Trust cannot live only in claims.
 
-Evidence to collect:
+Current product state:
 
-- Security audits
-- Dependency audit output
-- Backup and recovery drills
-- Export examples
-- AI/operator action logs
-- Permission matrix
-- Sync failure handling
-- Hosted readiness reports
+- Done: Trust Center documentation links the buyer/security review packet.
+- Done: `docs/trust-evidence-matrix.md` maps claims to evidence files, commands, and review cadence.
+- Done: `docs/ai-data-policy.md` documents AI provider defaults, data-use rules, user controls, audit evidence, and provider review.
+- Done: `docs/security-audit-2026-07-05.md` records security and dependency-audit receipts.
+- Done: `npm run trust` verifies privacy posture, security headers, diagnostics, recovery, upgrades, portability, migrations, hosted readiness, extension contracts, evidence matrix, AI policy, and audit receipts.
+- Done: backup drills, upgrade gates, migration concierge reports, portable export docs, and hosted readiness runbooks are linked as proof artifacts.
+
+Next polish:
+
+- Add fresh evidence receipts per release candidate instead of relying on a single dated audit.
+- Add third-party penetration-test or compliance evidence when Agora is ready for larger customers.
+- Add mobile keychain/keystore evidence after native mobile wrappers ship.
 
 ## Step 8: Packaging And Distribution
 
