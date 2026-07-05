@@ -48,12 +48,14 @@ function hostedEnvironmentReport(options = {}) {
     checkHostedDrivers(),
     checkSupabaseEnvironment(),
     checkHostedUrls(),
+    checkCorsPolicy(),
     checkAuthHardening(),
     checkStrictCsp(),
     checkObservability(),
     checkBackups(),
     checkPasswordReset(),
     checkEmailDelivery(),
+    checkAiProvider(),
     checkPublicFeatureRequests(options),
     checkGithubWebhook(options),
     checkOperationalLimits()
@@ -124,6 +126,21 @@ function checkHostedUrls() {
   });
 }
 
+function checkCorsPolicy() {
+  const origins = listEnv("AGORA_ALLOWED_ORIGINS").map(normalizedUrl).filter(Boolean);
+  const unsafeOrigins = origins.filter((origin) => !hostedHttpsOrigin(origin));
+  const localhostAllowed = boolEnv("AGORA_ALLOW_LOCALHOST_ORIGINS");
+  return gate({
+    id: "cors-policy",
+    label: "Production CORS policy",
+    done: origins.length > 0 && unsafeOrigins.length === 0 && !localhostAllowed,
+    detail: localhostAllowed
+      ? "Implicit localhost origins are enabled"
+      : unsafeOrigins.length ? `${unsafeOrigins.length} non-hosted origin${unsafeOrigins.length === 1 ? "" : "s"} configured` : "Only explicit hosted HTTPS origins are allowed",
+    fix: "Set AGORA_ALLOW_LOCALHOST_ORIGINS=false and keep AGORA_ALLOWED_ORIGINS limited to exact hosted HTTPS browser origins."
+  });
+}
+
 function checkAuthHardening() {
   const demo = boolEnv("AGORA_DEMO_AUTH");
   const passwordless = boolEnv("AGORA_PASSWORDLESS_AUTH");
@@ -162,12 +179,15 @@ function checkBackups() {
   const disabled = boolEnv("AGORA_BACKUP_DISABLED");
   const backupDir = env("AGORA_BACKUP_DIR");
   const retention = positiveNumber(env("AGORA_BACKUP_RETENTION_FILES"), 20);
+  const scheduler = boolEnv("AGORA_BACKUP_SCHEDULER_ENABLED");
   return gate({
     id: "server-backups",
     label: "Server workspace backups",
-    done: !disabled && Boolean(backupDir) && retention >= 3,
-    detail: disabled ? "Backups are disabled" : backupDir ? `${retention} retained backup file${retention === 1 ? "" : "s"}` : "Backup directory is not configured",
-    fix: "Set AGORA_BACKUP_DIR to a durable mounted path, keep AGORA_BACKUP_DISABLED=false, and retain at least 3 files."
+    done: !disabled && Boolean(backupDir) && retention >= 3 && scheduler,
+    detail: disabled
+      ? "Backups are disabled"
+      : backupDir ? `${retention} retained backup file${retention === 1 ? "" : "s"}; scheduler ${scheduler ? "enabled" : "disabled"}` : "Backup directory is not configured",
+    fix: "Set AGORA_BACKUP_DIR to a durable mounted path, keep AGORA_BACKUP_DISABLED=false, retain at least 3 files, and enable AGORA_BACKUP_SCHEDULER_ENABLED=true."
   });
 }
 
@@ -186,11 +206,15 @@ function checkPasswordReset() {
 
 function checkEmailDelivery() {
   const smtpHost = env("AGORA_SMTP_HOST") || env("SMTP_HOST");
+  const smtpUser = env("AGORA_SMTP_USER") || env("SMTP_USER");
+  const smtpPassword = env("AGORA_SMTP_PASSWORD") || env("SMTP_PASSWORD");
   const from = env("AGORA_EMAIL_FROM") || env("SMTP_FROM");
   const featureRecipient = env("AGORA_FEATURE_REQUEST_EMAIL") || env("AGORA_OWNER_EMAIL");
   const portalRecipient = env("AGORA_PORTAL_ACTION_EMAIL") || featureRecipient;
   const missing = [];
   if (!smtpHost) missing.push("AGORA_SMTP_HOST");
+  if (!secretish(smtpUser)) missing.push("AGORA_SMTP_USER");
+  if (!secretish(smtpPassword)) missing.push("AGORA_SMTP_PASSWORD");
   if (!from) missing.push("AGORA_EMAIL_FROM");
   if (!featureRecipient) missing.push("AGORA_FEATURE_REQUEST_EMAIL");
   if (!portalRecipient) missing.push("AGORA_PORTAL_ACTION_EMAIL or AGORA_FEATURE_REQUEST_EMAIL");
@@ -198,8 +222,32 @@ function checkEmailDelivery() {
     id: "team-email-delivery",
     label: "Team email delivery",
     done: missing.length === 0,
-    detail: missing.length ? `${missing.join(", ")} missing` : "SMTP sender and owner recipients are configured",
-    fix: "Set SMTP host, sender, and owner recipient variables before inviting a real team."
+    detail: missing.length ? `${missing.join(", ")} missing or placeholder` : "SMTP credentials, sender, and owner recipients are configured",
+    fix: "Set SMTP host, credentials, sender, and owner recipient variables before inviting a real team."
+  });
+}
+
+function checkAiProvider() {
+  const provider = env("AGORA_AI_PROVIDER") || "local";
+  const externalProvider = provider !== "local";
+  const baseUrl = normalizedUrl(env("AGORA_AI_BASE_URL"));
+  const key = env("AGORA_AI_API_KEY") || env("OPENAI_API_KEY");
+  const clientBaseUrls = boolEnv("AGORA_AI_ALLOW_CLIENT_BASE_URL");
+  const allowedBaseUrls = listEnv("AGORA_AI_ALLOWED_BASE_URLS").map(normalizedUrl).filter(Boolean);
+  const unsafeAllowed = allowedBaseUrls.filter((url) => !hostedHttpsOrigin(url));
+  const missing = [];
+  if (externalProvider && !secretish(key)) missing.push("AGORA_AI_API_KEY or OPENAI_API_KEY");
+  if (externalProvider && baseUrl && !hostedHttpsOrigin(baseUrl)) missing.push("hosted HTTPS AGORA_AI_BASE_URL");
+  if (clientBaseUrls && !allowedBaseUrls.length) missing.push("AGORA_AI_ALLOWED_BASE_URLS");
+  if (unsafeAllowed.length) missing.push("hosted HTTPS client AI allowlist URLs");
+  return gate({
+    id: "ai-provider-hardening",
+    label: "AI provider hardening",
+    done: missing.length === 0,
+    detail: missing.length
+      ? `${provider} provider needs ${missing.join(", ")}`
+      : clientBaseUrls ? `${provider} provider with ${allowedBaseUrls.length} allowlisted client base URL${allowedBaseUrls.length === 1 ? "" : "s"}` : `${provider} provider uses server-owned configuration`,
+    fix: "Keep AI keys server-side. Use hosted HTTPS base URLs, and only enable AGORA_AI_ALLOW_CLIENT_BASE_URL with AGORA_AI_ALLOWED_BASE_URLS."
   });
 }
 

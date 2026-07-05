@@ -9,6 +9,7 @@ const app = fs.readFileSync(path.join(root, "src", "app.js"), "utf8");
 const api = fs.readFileSync(path.join(root, "server", "api.js"), "utf8");
 const staticServer = fs.readFileSync(path.join(root, "server", "static.js"), "utf8");
 const desktopMain = fs.readFileSync(path.join(root, "desktop", "electron", "main.cjs"), "utf8");
+const hostedVerifier = fs.readFileSync(path.join(root, "scripts", "hosted-env-verify.js"), "utf8");
 const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "qa.yml"), "utf8");
 const rootPackage = fs.readFileSync(path.join(root, "package.json"), "utf8");
 const packageJson = JSON.parse(rootPackage);
@@ -80,6 +81,11 @@ assert(app.includes("connectRealtimeStream(connection)") && app.includes("Author
 assert(api.includes('assertRateLimit(request, "invitation-lookup", 12);'), "public invitation lookup must be rate limited");
 assert(api.includes("function authorizedClientAiBaseUrl") && api.includes("AGORA_AI_ALLOWED_BASE_URLS"), "client AI base URLs must be admin gated and allowlisted");
 assert(api.includes("function localCorsOriginsAllowed()"), "localhost CORS origins must be environment gated");
+assert(hostedVerifier.includes("function checkCorsPolicy()"), "hosted verifier must fail unsafe production CORS policy");
+assert(hostedVerifier.includes("AGORA_ALLOW_LOCALHOST_ORIGINS=false"), "hosted verifier must guide localhost CORS hardening");
+assert(hostedVerifier.includes("AGORA_BACKUP_SCHEDULER_ENABLED=true"), "hosted verifier must require scheduled server backups");
+assert(hostedVerifier.includes("function checkAiProvider()"), "hosted verifier must check AI provider hardening");
+assert(hostedVerifier.includes("AGORA_SMTP_USER") && hostedVerifier.includes("AGORA_SMTP_PASSWORD"), "hosted verifier must require SMTP credentials");
 
 assert(staticServer.includes("function isProductionCsp()"), "static server must expose production CSP mode");
 assert(staticServer.includes("AGORA_STRICT_CSP"), "static server must support strict CSP flag");
