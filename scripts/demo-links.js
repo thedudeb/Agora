@@ -87,7 +87,12 @@ function evaluationLinks(base) {
       use: "Loads the beta workspace and starts First 10 minutes mode."
     },
     {
-      label: "Agency PM evaluation",
+      label: "Acme client launch story",
+      url: routeUrl(base, "command-center", { demoAction: "sampleAgencyWorkspace" }),
+      use: "Walks the default PM story: intake, scope, approval, timeline risk, client update, and recovery proof."
+    },
+    {
+      label: "Agency PM deep dive",
       url: routeUrl(base, "command-center", { demoAction: "sampleAgencyWorkspace" }),
       use: "Creates a realistic agency sample and opens the PM command center."
     },

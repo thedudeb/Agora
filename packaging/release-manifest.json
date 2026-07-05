@@ -15,6 +15,7 @@
     "README.md",
     "docs/install.md",
     "docs/packaging.md",
+    "docs/release-candidate-handoff-template.md",
     "docs/release-checklist.md",
     "docs/trust-center.md",
     "packaging/release-manifest.json"

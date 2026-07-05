@@ -5,6 +5,22 @@
   "baseWorkspace": "Acme Studio seeded workspace",
   "demos": [
     {
+      "id": "acme-client-launch",
+      "name": "Acme Client Launch Story",
+      "audience": "Agency project managers evaluating Agora",
+      "entryRoute": "command-center",
+      "description": "One guided story: intake a client request, scope it into a project, review approvals, inspect timeline risk, draft a client update, and prove export/recovery.",
+      "highlights": ["Client request", "Scoped project", "Approval packet", "Timeline risk", "Client update", "Recovery proof"],
+      "tour": [
+        { "label": "1. Triage request", "route": "command-center", "demoAction": "sampleAgencyWorkspace" },
+        { "label": "2. Scope project", "route": "project-backlog" },
+        { "label": "3. Review approvals", "route": "portal" },
+        { "label": "4. Inspect timeline risk", "route": "gantt" },
+        { "label": "5. Draft client update", "route": "reports" },
+        { "label": "6. Prove recovery", "route": "data", "demoAction": "recoveryPlan" }
+      ]
+    },
+    {
       "id": "agency-command-center",
       "name": "Agency Command Center",
       "audience": "Agencies and consultants",

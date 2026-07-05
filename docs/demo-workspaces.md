@@ -28,8 +28,26 @@ The same command is available through the CLI:
 npm run agora -- demo links --base https://demo.your-domain.example --markdown
 ```
 
+## Canonical Demo Story
+
+Use `acme-client-launch` as the default buyer demo. It follows one memorable project-manager workflow instead of touring disconnected features:
+
+1. Triage a new client request in the command center.
+2. Scope the request into a project/backlog item.
+3. Review client approvals and visibility.
+4. Inspect timeline and delivery risk.
+5. Draft a client update from reports.
+6. Prove export/recovery from Data.
+
+Generate that story directly:
+
+```sh
+npm run demo:links -- --demo acme-client-launch --markdown
+```
+
 ## Demo Scenarios
 
+- `acme-client-launch`: canonical Acme Studio client launch story from intake to recovery proof.
 - `agency-command-center`: PM triage for agencies and consultants.
 - `scrum-master-room`: sprint planning, burndown, capacity, and release coordination.
 - `client-portal-review`: client-safe visibility, approvals, and portal review.
@@ -44,4 +62,4 @@ npm run agora -- demo links --base https://demo.your-domain.example --markdown
 4. Add the generated entry links to the README, launch page, social posts, and support replies.
 5. Refresh screenshots after major UI changes with `npm run screenshots`.
 
-The demo should feel like a guided product tour, not a blank account. Link directly into views that prove the wedge: command center, sprint room, client portal, trust center, and template marketplace.
+The default demo should feel like a guided Acme Studio project story, not a feature inventory. Use the other scenarios as follow-up deep dives for scrum, client portal, trust, and marketplace-specific buyers.

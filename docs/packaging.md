@@ -50,6 +50,8 @@ Every release candidate should include:
 - Known gaps from `packaging/release-manifest.json`.
 - Platform notes for source, Docker, hosted, PWA, desktop, CLI, MCP, and portable data.
 
+Use [`release-candidate-handoff-template.md`](./release-candidate-handoff-template.md) so each release records the same gates, platform notes, accepted risks, rollback plan, and sign-off.
+
 ## Packaging Rules
 
 - Every channel must declare required files and verification commands in `packaging/release-manifest.json`.

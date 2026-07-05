@@ -10747,8 +10747,12 @@ function renderPaymentsSettingsPanel(payments) {
           <p class="eyebrow">Payments</p>
           <h2>Provider foundation</h2>
         </div>
-        <span class="status-pill ${payments.provider === "none" ? "inbox-neutral" : "inbox-blue"}">${escapeHtml(paymentProviderLabel(payments.provider))}</span>
+        <div class="meta-row">
+          <span class="status-pill inbox-amber">Beta foundation</span>
+          <span class="status-pill ${payments.provider === "none" ? "inbox-neutral" : "inbox-blue"}">${escapeHtml(paymentProviderLabel(payments.provider))}</span>
+        </div>
       </div>
+      <p class="panel-note">Payment surfaces are beta plumbing for entitlement review and provider setup. Test/manual grants can unlock marketplace items, but Stripe and x402 do not move live money until real server adapters and webhook validation are configured.</p>
       <div class="settings-form">
         <label>
           <span>Plan</span>
@@ -10804,7 +10808,7 @@ function renderPaymentsSettingsPanel(payments) {
           <p class="eyebrow">Ledger</p>
           <h2>Payment audit</h2>
         </div>
-        <button class="button button-secondary compact-button" type="button" id="payment-test-event" ${payments.provider === "none" || !canManagePayments ? "disabled" : ""}>Record Test</button>
+        <button class="button button-secondary compact-button" type="button" id="payment-test-event" ${payments.provider === "none" || !canManagePayments ? "disabled" : ""}>Record Test Only</button>
       </div>
       <div class="payment-audit-list">
         ${payments.audit.length ? payments.audit.map(renderPaymentAuditEvent).join("") : emptyState("No payment events yet.")}
@@ -11102,8 +11106,12 @@ function renderIntegrationsHubPanel() {
           <p class="eyebrow">Integrations</p>
           <h2>Connected tools</h2>
         </div>
-        <span class="status-pill ${connected.length ? "inbox-green" : "inbox-neutral"}">${connected.length}/${integrationCatalog.length} connected</span>
+        <div class="meta-row">
+          <span class="status-pill inbox-amber">Adapter registry</span>
+          <span class="status-pill ${connected.length ? "inbox-green" : "inbox-neutral"}">${connected.length}/${integrationCatalog.length} connected</span>
+        </div>
       </div>
+      <p class="panel-note">Integrations are previewable adapter handoffs with health, scopes, subscribed events, audit logs, and GitHub sync jobs. Treat a connector as production-ready only after its auth, webhook, sync, conflict, and retry checks pass.</p>
       <div class="integration-summary-grid">
         ${metric("Connected", connected.length)}
         ${metric("Planned", planned.length)}

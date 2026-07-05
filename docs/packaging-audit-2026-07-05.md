@@ -46,6 +46,7 @@ Every release candidate should include:
 
 ## Recommended Next Work
 
-1. Strengthen `npm run package:check` so it verifies release status, handoff artifacts, known gaps, and per-channel verification commands.
-2. Make `docs/install.md` route users by installation intent instead of only listing commands.
-3. Add a release-candidate handoff template that maintainers can fill out without inventing the structure each time.
+1. Fill out `docs/release-candidate-handoff-template.md` for the next beta candidate.
+2. Add signed/notarized desktop release evidence for macOS and Windows.
+3. Add Docker registry publishing and digest pinning before broad public releases.
+4. Run real iOS and Android PWA install plus airplane-mode checks for each release candidate.

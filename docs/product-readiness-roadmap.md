@@ -20,7 +20,7 @@ The broader promise stays intact: open source project management without ads, tr
 | 6. Polished migration story | Complete | A team can bring real work from competitors safely. | Import concierge previews mappings, warnings, rollback, skipped data, and clean next steps for Asana, Trello, Jira, Linear, ClickUp, and generic CSV/JSON. |
 | 7. Trust center and proof | Complete | Buyers and self-hosters can verify security, privacy, portability, and AI behavior. | Trust Center links to evidence reports, security audits, export guarantees, AI policy, backup drills, and dependency/runtime checks. |
 | 8. Real packaging and distribution | In progress | Users can install Agora where they work. | PWA, desktop, Docker, hosted deploy, MCP, and CLI paths have clear release checks, version metadata, and upgrade guidance. |
-| 9. Focused demo dataset and story | Planned | The demo shows one memorable real workflow instead of a feature inventory. | Demo links, screenshots, sample data, and video script follow the same agency/client delivery scenario from intake to approval to report. |
+| 9. Focused demo dataset and story | In progress | The demo shows one memorable real workflow instead of a feature inventory. | Demo links, screenshots, sample data, and video script follow the same agency/client delivery scenario from intake to approval to report. |
 | 10. Sustainable contributor path | Planned | Open source contributors know where to help without becoming maintainers first. | Issue templates, starter issues, extension contracts, fixture examples, contribution lanes, and review criteria are easy to find. |
 
 ## Step 1: Primary Persona
@@ -191,6 +191,18 @@ Remaining release polish:
 The demo should show a single believable company.
 
 Recommended story: Acme Studio runs a client onboarding project, receives a new client request, turns it into scoped work, manages approvals, checks timeline risk, drafts a client update, exports a status report, and verifies the workspace can be backed up or moved.
+
+Current product state:
+
+- Done: `acme-client-launch` is the canonical demo story in `demos/workspaces.json`.
+- Done: `npm run demo:links -- --demo acme-client-launch --markdown` generates a direct handoff for the story.
+- Done: `docs/demo-workspaces.md` and `docs/demo-video-script.md` now lead with the Acme intake-to-recovery flow instead of a feature inventory.
+
+Next polish:
+
+- Refresh screenshots against the canonical story.
+- Add one launch-page/demo handoff that uses the generated story links.
+- Record a short demo using the canonical route sequence.
 
 ## Step 10: Contributor Path
 

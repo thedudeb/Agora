@@ -1,6 +1,6 @@
 # Agora Demo Video Script
 
-Use this script for a 75 to 120 second launch demo. Keep the pacing calm: the point is to show that Agora is already a real workspace, not to tour every feature.
+Use this script for a 75 to 120 second launch demo. Keep the pacing calm: the point is to show that Agora is already a real workspace, not to tour every feature. The default story is Acme Studio taking one client request from intake to recovery proof.
 
 ## Recording Setup
 
@@ -23,14 +23,13 @@ It is built for teams that need a practical command center for projects, clients
 | Time | Route | What To Show | Voiceover |
 | --- | --- | --- | --- |
 | 0:00-0:08 | `?route=landing` | Landing hero and proof row. | "This is Agora: open source project management without ads, trackers, or lock-in." |
-| 0:08-0:20 | `?route=dashboard` | Workspace setup, readiness, and command-center metrics. | "It starts as a browser-local workspace, so teams can try it without a SaaS account, then connect the API when they need shared persistence." |
-| 0:20-0:32 | `?route=daily` | Today planning, focus note, and task lanes. | "Daily planning keeps the next actions visible instead of turning work into a noisy feed." |
-| 0:32-0:44 | `?route=board` | Board columns with real seeded tasks and metadata. | "The familiar project views are here: boards, lists, calendar, task details, dependencies, comments, and status." |
-| 0:44-0:58 | `?route=portal` | Client portal or company-safe status. | "For agencies and consultants, company-scoped portals keep clients informed without exposing internal noise." |
-| 0:58-1:10 | `?route=marketplace` | Template and automation marketplace panels. | "Templates and automation packs are portable JSON, so teams can share operating playbooks without a closed store." |
-| 1:10-1:24 | `?route=data` | Portable export and backup language. | "The no-lock-in promise is practical: export a portable workspace with JSON, CSV, Markdown, templates, automations, audit, and operator context." |
-| 1:24-1:38 | `?route=permissions` | Role matrix and Operator guardrails. | "AI actions are permissioned, previewable, and auditable, with rationale and undo paths where possible." |
-| 1:38-1:50 | `?route=operator` | Operator panel, action previews, trust language. | "The Operator helps draft briefs and recovery actions, but the team stays in control." |
+| 0:08-0:22 | `?route=command-center&demoAction=sampleAgencyWorkspace` | New client request, blockers, promises, and next best actions. | "Here is the PM morning view: one client request, the promises at risk, and the next actions to keep delivery moving." |
+| 0:22-0:36 | `?route=project-backlog` | Scope request into active work. | "Agora keeps future work visible before it becomes a project, then lets the team promote scoped work deliberately." |
+| 0:36-0:52 | `?route=portal` and `?route=visibility` | Client portal, approval packet, and visibility warnings. | "For agencies and consultants, client-safe portals and visibility review keep approvals moving without exposing internal noise." |
+| 0:52-1:08 | `?route=gantt` | Timeline, dependency risk, and delivery pressure. | "Timeline and Gantt views show the delivery risk behind the board so a PM can act before a date slips." |
+| 1:08-1:24 | `?route=reports` | Copyable client update. | "When the client asks where things stand, reports turn project state into a useful update instead of another manual status scramble." |
+| 1:24-1:38 | `?route=data` | Portable export and backup language. | "The no-lock-in promise is practical: export a portable workspace with JSON, CSV, Markdown, templates, automations, audit, and operator context." |
+| 1:38-1:50 | `?route=permissions` | Role matrix and Operator guardrails. | "AI actions are permissioned, previewable, and auditable, with rationale and undo paths where possible." |
 | 1:50-2:00 | `?route=landing` or GitHub repo | Closing CTA. | "Run it locally, connect the API, export your data, and shape Agora in the open." |
 
 ## Short Cutdown
