@@ -1185,6 +1185,7 @@ const seedData = {
     wizardActive: false,
     wizardStep: 0,
     evaluationProgress: {},
+    evaluationScorecard: {},
     notificationsReviewed: false,
     templatesReviewed: false
   },
@@ -2904,6 +2905,7 @@ function normalizeState(nextState) {
       evaluationProgress: {
         ...((nextState.onboarding || {}).evaluationProgress || {})
       },
+      evaluationScorecard: normalizeEvaluationScorecard((nextState.onboarding || {}).evaluationScorecard),
       wizardStep: clamp(Number((nextState.onboarding || {}).wizardStep || 0), 0, 8)
     },
     tutorial: {
@@ -7780,6 +7782,201 @@ function guidedEvaluationItems() {
   }));
 }
 
+function normalizeEvaluationScorecard(input) {
+  if (!input || typeof input !== "object") return {};
+  const allowedStatuses = new Set(["pass", "review", "not-tested"]);
+  return Object.entries(input).reduce((scorecard, [id, entry]) => {
+    if (!entry || typeof entry !== "object") return scorecard;
+    scorecard[id] = {
+      status: allowedStatuses.has(entry.status) ? entry.status : "not-tested",
+      note: String(entry.note || "").slice(0, 280)
+    };
+    return scorecard;
+  }, {});
+}
+
+function evaluationScorecardEntry(itemId) {
+  const entry = state.onboarding?.evaluationScorecard?.[itemId] || {};
+  return {
+    status: ["pass", "review", "not-tested"].includes(entry.status) ? entry.status : "not-tested",
+    note: String(entry.note || "")
+  };
+}
+
+function evaluationScorecardRows() {
+  return guidedEvaluationItems().map((item) => ({
+    id: item.id,
+    label: item.label,
+    detail: item.detail,
+    route: item.route || "dashboard",
+    projectTab: item.projectTab || "",
+    projectId: item.projectId || "",
+    done: Boolean(item.done),
+    ...evaluationScorecardEntry(item.id)
+  }));
+}
+
+function evaluationScorecardCounts(rows = evaluationScorecardRows()) {
+  return rows.reduce((counts, row) => {
+    counts[row.status] = (counts[row.status] || 0) + 1;
+    return counts;
+  }, { pass: 0, review: 0, "not-tested": 0 });
+}
+
+function evaluationStatusLabel(status) {
+  if (status === "pass") return "Pass";
+  if (status === "review") return "Needs work";
+  return "Not tested";
+}
+
+function evaluationStatusTone(status) {
+  if (status === "pass") return "inbox-green";
+  if (status === "review") return "inbox-amber";
+  return "inbox-neutral";
+}
+
+function currentAppBaseUrl() {
+  if (typeof window === "undefined") return "";
+  return `${window.location.origin}${window.location.pathname}`;
+}
+
+function evaluationDemoLinks(baseUrl = currentAppBaseUrl()) {
+  const routeUrl = (route, params = {}) => {
+    if (!baseUrl) return "";
+    const url = new URL(baseUrl);
+    url.searchParams.set("route", route);
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) url.searchParams.set(key, value);
+    });
+    return url.toString();
+  };
+  const firstProject = activeProjects()[0];
+  return [
+    { label: "Beta launch handoff", url: routeUrl("beta"), inspect: "Invite-readiness, tester path, recovery, and email diagnostics." },
+    { label: "PM Command Center", url: routeUrl("command-center"), inspect: "Attention queue, promises, risks, decisions, and next actions." },
+    { label: "Power Kanban", url: routeUrl("board"), inspect: "Saved views, WIP limits, swimlanes, templates, flow health, and card detail." },
+    { label: "Timeline confidence", url: routeUrl("project", { projectId: firstProject?.id, projectTab: "timeline" }), inspect: "Dependencies, critical path, slips, milestones, and workload warnings." },
+    { label: "Client visibility", url: routeUrl("visibility"), inspect: "Shared packets, portal links, warnings, approvals, and client-safe data." },
+    { label: "Recovery and portability", url: routeUrl("data"), inspect: "Portable bundle, backups, restore path, and offline storage contract." }
+  ];
+}
+
+function evaluationPacketPayload() {
+  const rows = evaluationScorecardRows();
+  const counts = evaluationScorecardCounts(rows);
+  const recovery = portableRecoveryStatus();
+  return {
+    type: "agora.evaluation-packet",
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    workspace: {
+      id: state.workspace.id,
+      name: state.workspace.name,
+      slug: state.workspace.slug,
+      schemaVersion: CURRENT_WORKSPACE_SCHEMA_VERSION,
+      projects: activeProjects().length,
+      tasks: activeTasks().length,
+      companies: visibleCompanies().length
+    },
+    scorecard: {
+      counts,
+      rows
+    },
+    demoLinks: evaluationDemoLinks(),
+    trust: workspaceTrustSignals().map((signal) => ({
+      label: signal.label,
+      value: signal.value,
+      detail: signal.detail
+    })),
+    recovery: {
+      ready: recovery.score,
+      total: recovery.total,
+      files: recovery.files.map((file) => ({ path: file.path, kind: file.kind, size: file.content.length })),
+      latestBackupAt: recovery.latestBackup?.createdAt || ""
+    },
+    instructions: [
+      "Open the demo links and mark each workflow Pass, Needs work, or Not tested.",
+      "Use the notes field to capture missing PM workflow, trust, or scale concerns.",
+      "Download the portable bundle from Beta exit proof before leaving the evaluation call."
+    ]
+  };
+}
+
+function evaluationPacketMarkdown() {
+  const packet = evaluationPacketPayload();
+  const tableCell = (value) => String(value || "").replaceAll("|", "\\|").replaceAll("\n", " ");
+  return [
+    "# Agora Evaluation Packet",
+    "",
+    `Generated: ${formatTimestamp(packet.generatedAt)}`,
+    `Workspace: ${packet.workspace.name}`,
+    `Scope: ${packet.workspace.projects} projects / ${packet.workspace.tasks} tasks / ${packet.workspace.companies} companies`,
+    "",
+    "## Scorecard",
+    "",
+    `Pass: ${packet.scorecard.counts.pass} / Needs work: ${packet.scorecard.counts.review} / Not tested: ${packet.scorecard.counts["not-tested"]}`,
+    "",
+    "| Workflow | Status | Note |",
+    "| --- | --- | --- |",
+    ...packet.scorecard.rows.map((row) => `| ${tableCell(row.label)} | ${tableCell(evaluationStatusLabel(row.status))} | ${tableCell(row.note || row.detail)} |`),
+    "",
+    "## What To Inspect First",
+    "",
+    ...packet.demoLinks.map((link) => `- ${link.label}: ${link.inspect}${link.url ? ` (${link.url})` : ""}`),
+    "",
+    "## Trust Posture",
+    "",
+    ...packet.trust.map((signal) => `- ${signal.label}: ${signal.value} - ${signal.detail}`),
+    "",
+    "## Recovery Proof",
+    "",
+    `Recovery checks: ${packet.recovery.ready}/${packet.recovery.total}`,
+    `Latest backup: ${packet.recovery.latestBackupAt ? formatTimestamp(packet.recovery.latestBackupAt) : "No backup yet"}`,
+    `Portable files: ${packet.recovery.files.map((file) => file.path).join(", ")}`,
+    "",
+    "## Evaluation Instructions",
+    "",
+    ...packet.instructions.map((instruction) => `- ${instruction}`)
+  ].join("\n");
+}
+
+function setEvaluationScorecardStatus(itemId, status) {
+  const item = guidedEvaluationItems().find((candidate) => candidate.id === itemId);
+  if (!item) return;
+  state.onboarding = {
+    ...state.onboarding,
+    evaluationScorecard: normalizeEvaluationScorecard({
+      ...(state.onboarding?.evaluationScorecard || {}),
+      [itemId]: {
+        ...evaluationScorecardEntry(itemId),
+        status
+      }
+    }),
+    evaluationProgress: {
+      ...(state.onboarding?.evaluationProgress || {}),
+      [itemId]: status !== "not-tested" || Boolean(state.onboarding?.evaluationProgress?.[itemId])
+    }
+  };
+  saveState();
+  render();
+}
+
+function setEvaluationScorecardNote(itemId, note) {
+  const item = guidedEvaluationItems().find((candidate) => candidate.id === itemId);
+  if (!item) return;
+  state.onboarding = {
+    ...state.onboarding,
+    evaluationScorecard: normalizeEvaluationScorecard({
+      ...(state.onboarding?.evaluationScorecard || {}),
+      [itemId]: {
+        ...evaluationScorecardEntry(itemId),
+        note
+      }
+    })
+  };
+  saveState();
+}
+
 function renderGuidedEvaluationChecklist() {
   const items = guidedEvaluationItems();
   const doneCount = items.filter((item) => item.done).length;
@@ -8854,6 +9051,53 @@ function renderBetaExitProofPanel() {
   `;
 }
 
+function renderEvaluationScorecardPanel() {
+  const rows = evaluationScorecardRows();
+  const counts = evaluationScorecardCounts(rows);
+  return `
+    <section class="panel evaluation-scorecard-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Evaluation scorecard</p>
+          <h2>Can Agora run this project?</h2>
+        </div>
+        <div class="scorecard-summary" aria-label="Evaluation scorecard summary">
+          <span class="status-pill inbox-green">${counts.pass} pass</span>
+          <span class="status-pill inbox-amber">${counts.review} needs work</span>
+          <span class="status-pill inbox-neutral">${counts["not-tested"]} not tested</span>
+        </div>
+      </div>
+      <p class="panel-note">Use this during a customer, investor, or internal PM review. Mark each core workflow, leave the sharp note, then export the packet with proof links and recovery evidence.</p>
+      <div class="evaluation-scorecard-list">
+        ${rows.map((row) => `
+          <article class="evaluation-scorecard-row">
+            <div>
+              <span class="status-pill ${evaluationStatusTone(row.status)}">${escapeHtml(evaluationStatusLabel(row.status))}</span>
+              <strong>${escapeHtml(row.label)}</strong>
+              <small>${escapeHtml(row.detail)}</small>
+            </div>
+            <div class="scorecard-controls" role="group" aria-label="${escapeHtml(row.label)} score">
+              ${["pass", "review", "not-tested"].map((status) => `
+                <button class="button ${row.status === status ? "button-primary" : "button-secondary"} compact-button" type="button" data-evaluation-score="${escapeHtml(row.id)}" data-evaluation-status="${escapeHtml(status)}">${escapeHtml(evaluationStatusLabel(status))}</button>
+              `).join("")}
+            </div>
+            <label class="scorecard-note">
+              <span>Reviewer note</span>
+              <input type="text" data-evaluation-note="${escapeHtml(row.id)}" value="${escapeHtml(row.note)}" maxlength="280" placeholder="What would make this production-ready?">
+            </label>
+            <button class="button button-secondary compact-button" type="button" data-onboarding-action="${escapeHtml(row.id === "sample" ? "sample:agency" : `eval:${row.id}`)}">${row.done ? "Open again" : "Inspect"}</button>
+          </article>
+        `).join("")}
+      </div>
+      <div class="data-actions">
+        <button class="button button-primary" type="button" data-evaluation-action="download-markdown">Download Packet</button>
+        <button class="button button-secondary" type="button" data-evaluation-action="download-json">Download JSON</button>
+        <button class="button button-secondary" type="button" data-evaluation-action="copy-markdown">Copy Markdown</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderBetaLaunch() {
   const items = betaLaunchItems();
   const score = readinessScore(items);
@@ -8911,6 +9155,7 @@ function renderBetaLaunch() {
     </section>
 
     ${renderBetaWalkthroughPanel()}
+    ${renderEvaluationScorecardPanel()}
     ${renderBetaExitProofPanel()}
 
     <div class="settings-grid">
@@ -16088,6 +16333,39 @@ function handleBetaExportAction(action) {
   }
   if (action === "backup") {
     createWorkspaceBackup("Beta exit proof checkpoint");
+  }
+}
+
+function handleEvaluationAction(action) {
+  const base = `${slugFromName(state.workspace.name)}-evaluation-packet-${todayKey()}`;
+  if (action === "download-json") {
+    downloadJsonFile(`${base}.json`, JSON.stringify(evaluationPacketPayload(), null, 2));
+    addAuditEvent({
+      action: "evaluation_packet_export",
+      detail: `Downloaded evaluation packet JSON for ${state.workspace.name}`,
+      targetType: "workspace",
+      targetId: state.workspace.id,
+      metadata: { format: "json" }
+    });
+    saveState();
+    showToast("Evaluation packet JSON downloaded", "success");
+    return;
+  }
+  if (action === "download-markdown") {
+    downloadTextFile(`${base}.md`, evaluationPacketMarkdown(), "text/markdown");
+    addAuditEvent({
+      action: "evaluation_packet_export",
+      detail: `Downloaded evaluation packet Markdown for ${state.workspace.name}`,
+      targetType: "workspace",
+      targetId: state.workspace.id,
+      metadata: { format: "markdown" }
+    });
+    saveState();
+    showToast("Evaluation packet downloaded", "success");
+    return;
+  }
+  if (action === "copy-markdown") {
+    copyCommandText(evaluationPacketMarkdown(), "Evaluation packet copied").catch(() => showToast("Could not copy evaluation packet", "info"));
   }
 }
 
@@ -41297,6 +41575,18 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const evaluationActionButton = event.target.closest("[data-evaluation-action]");
+  if (evaluationActionButton) {
+    handleEvaluationAction(evaluationActionButton.dataset.evaluationAction);
+    return;
+  }
+
+  const evaluationScoreButton = event.target.closest("[data-evaluation-score]");
+  if (evaluationScoreButton) {
+    setEvaluationScorecardStatus(evaluationScoreButton.dataset.evaluationScore, evaluationScoreButton.dataset.evaluationStatus);
+    return;
+  }
+
   const onboardingStepButton = event.target.closest("[data-onboarding-step]");
   if (onboardingStepButton) {
     openOnboardingWizard(Number(onboardingStepButton.dataset.onboardingStep));
@@ -42897,6 +43187,12 @@ document.addEventListener("change", (event) => {
   const notificationCadenceSelect = event.target.closest("#notification-cadence");
   if (notificationCadenceSelect) {
     updateNotificationCadence(notificationCadenceSelect.value);
+    return;
+  }
+
+  const evaluationNoteInput = event.target.closest("[data-evaluation-note]");
+  if (evaluationNoteInput) {
+    setEvaluationScorecardNote(evaluationNoteInput.dataset.evaluationNote, evaluationNoteInput.value);
     return;
   }
 });

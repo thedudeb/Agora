@@ -641,12 +641,18 @@ const routeChecks = [
       "Start Beta Workspace",
       "Beta walkthrough",
       "First 10 minutes for a tester",
+      "Evaluation scorecard",
+      "Can Agora run this project?",
+      "Needs work",
       "Beta exit proof",
       "Leave with my data",
       "Hosted onboarding",
       "Email diagnostics",
       "Copy Feedback Link",
-      "Download Bundle"
+      "Download Bundle",
+      "Download Packet",
+      "Download JSON",
+      "Copy Markdown"
     ]
   },
   {
