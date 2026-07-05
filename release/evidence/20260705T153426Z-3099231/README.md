@@ -1,10 +1,10 @@
 # Agora Release Evidence
 
-- Generated: 2026-07-05T15:30:33.614Z
+- Generated: 2026-07-05T15:34:26.121Z
 - Branch: main
-- Commit: 0dcca5b
-- Dirty worktree: yes
-- Mode: local
+- Commit: 3099231
+- Dirty worktree: no
+- Mode: full
 - Status: PASS
 
 ## Commands
@@ -17,6 +17,10 @@
 | Beta feedback loop | PASS | [beta-check.txt](./beta-check.txt) |
 | Packaging manifest | PASS | [package-check.txt](./package-check.txt) |
 | Trust evidence | PASS | [trust.txt](./trust.txt) |
+| Acme demo browser golden path | PASS | [golden-demo.txt](./golden-demo.txt) |
+| Feedback browser golden path | PASS | [golden-feedback.txt](./golden-feedback.txt) |
+| Full release QA | PASS | [qa.txt](./qa.txt) |
+| Security gate | PASS | [security.txt](./security.txt) |
 
 ## Remaining Manual Evidence
 

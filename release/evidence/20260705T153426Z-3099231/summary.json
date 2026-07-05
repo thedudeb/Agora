@@ -1,12 +1,12 @@
 {
   "type": "agora.release-evidence",
-  "generatedAt": "2026-07-05T15:30:33.614Z",
+  "generatedAt": "2026-07-05T15:34:26.121Z",
   "branch": "main",
-  "commit": "0dcca5b",
-  "dirty": true,
-  "mode": "local",
+  "commit": "3099231",
+  "dirty": false,
+  "mode": "full",
   "ok": true,
-  "bundleDir": "release/evidence/20260705T153033Z-0dcca5b",
+  "bundleDir": "release/evidence/20260705T153426Z-3099231",
   "commands": [
     {
       "id": "release-check",
@@ -15,7 +15,7 @@
       "env": {},
       "ok": true,
       "exitCode": 0,
-      "durationMs": 239,
+      "durationMs": 270,
       "output": "release-check.txt"
     },
     {
@@ -25,7 +25,7 @@
       "env": {},
       "ok": true,
       "exitCode": 0,
-      "durationMs": 240,
+      "durationMs": 258,
       "output": "demo-check.txt"
     },
     {
@@ -35,7 +35,7 @@
       "env": {},
       "ok": true,
       "exitCode": 0,
-      "durationMs": 241,
+      "durationMs": 262,
       "output": "distribution-check.txt"
     },
     {
@@ -45,7 +45,7 @@
       "env": {},
       "ok": true,
       "exitCode": 0,
-      "durationMs": 245,
+      "durationMs": 286,
       "output": "beta-check.txt"
     },
     {
@@ -55,7 +55,7 @@
       "env": {},
       "ok": true,
       "exitCode": 0,
-      "durationMs": 259,
+      "durationMs": 274,
       "output": "package-check.txt"
     },
     {
@@ -65,8 +65,52 @@
       "env": {},
       "ok": true,
       "exitCode": 0,
-      "durationMs": 270,
+      "durationMs": 287,
       "output": "trust.txt"
+    },
+    {
+      "id": "golden-demo",
+      "label": "Acme demo browser golden path",
+      "command": "npm run test:golden",
+      "env": {
+        "AGORA_GOLDEN_SUITE": "demo"
+      },
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 12452,
+      "output": "golden-demo.txt"
+    },
+    {
+      "id": "golden-feedback",
+      "label": "Feedback browser golden path",
+      "command": "npm run test:golden",
+      "env": {
+        "AGORA_GOLDEN_SUITE": "feedback"
+      },
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 6364,
+      "output": "golden-feedback.txt"
+    },
+    {
+      "id": "qa",
+      "label": "Full release QA",
+      "command": "npm run qa",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 103250,
+      "output": "qa.txt"
+    },
+    {
+      "id": "security",
+      "label": "Security gate",
+      "command": "npm run security",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 2996,
+      "output": "security.txt"
     }
   ]
 }

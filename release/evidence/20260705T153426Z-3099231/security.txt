@@ -1,0 +1,24 @@
+$ npm run security
+
+> agora@0.1.0 security
+> npm run check && npm run test:admin-security && npm run audit
+
+
+> agora@0.1.0 check
+> node --check src/app.js && node --check server/api.js && node --check server/storage.js && node --check server/static.js && node --check server/env.js && node --check server/smoke-test.js && node --check server/mcp-integration-test.js && node --check server/migration-importer.js && node --check server/migration-importer-test.js && node --check server/supabase-verify.js && node --check server/portable-fixtures-test.js && node --check scripts/agora-setup.js && node --check scripts/demo-links.js && node --check scripts/hosted-demo-check.js && node --check scripts/distribution-proof-check.js && node --check scripts/beta-feedback-check.js && node --check scripts/migration-concierge.js && node --check scripts/migration-concierge-test.js && node --check scripts/ecosystem-check.js && node --check scripts/trust-report.js && node --check scripts/packaging-check.js && node --check scripts/release-candidate-check.js && node --check scripts/release-evidence.js && node --check scripts/recovery-stress-test.js && node --check scripts/disaster-recovery-drill.js && node --check scripts/capture-screenshots.js && node --check scripts/golden-path-qa.js && node --check scripts/admin-security-regression.js && node --check scripts/release-qa.js && node --check scripts/agora-cli.js && node --check scripts/agora-mcp-server.js && node --check scripts/agora-plugin-check.js && node --check scripts/hosted-env-verify.js && node --check scripts/hosted-deploy-rehearsal.js && node --check scripts/upgrade-safety-check.js && node --check desktop/electron/main.cjs && node --check desktop/electron/preload.cjs
+
+
+> agora@0.1.0 test:admin-security
+> node scripts/admin-security-regression.js
+
+Admin security regression checks passed
+
+> agora@0.1.0 audit
+> npm audit --audit-level=moderate && npm --prefix desktop audit --audit-level=moderate
+
+found 0 vulnerabilities
+found 0 vulnerabilities
+
+
+exitCode=0
+durationMs=2996

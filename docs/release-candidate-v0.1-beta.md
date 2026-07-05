@@ -22,35 +22,40 @@ npm run release:evidence
 
 | Gate | Required Evidence | Status |
 | --- | --- | --- |
-| Release discipline | `npm run release:check` | Pending for release commit |
-| Hosted demo | `npm run demo:check` | Pending for release commit |
+| Release discipline | `npm run release:check` | Passed in latest local evidence |
+| Hosted demo | `npm run demo:check` | Local gate passed; public demo URL pending |
 | Screenshots | `npm run screenshots` and inspect Acme screenshot set | Pending for release commit |
-| Distribution proof | `npm run distribution:check` and fill `docs/distribution-proof.md` evidence rows | Pending per release channel |
-| Beta feedback loop | `npm run beta:check` and submit one feature request through the beta path | Pending for release commit |
-| Packaging | `npm run package:check` | Pending for release commit |
-| Trust evidence | `npm run trust` | Pending for release commit |
-| QA | `npm run qa` | Pending for release commit |
-| Security | `npm run security` | Pending for release commit |
+| Distribution proof | `npm run distribution:check` and fill `docs/distribution-proof.md` evidence rows | Ledger gate passed; channel proof pending |
+| Beta feedback loop | `npm run beta:check` and submit one feature request through the beta path | Local gate passed; tester proof pending |
+| Packaging | `npm run package:check` | Passed in latest local evidence |
+| Trust evidence | `npm run trust` | Passed in latest local evidence |
+| QA | `npm run qa` | Passed in latest local evidence |
+| Security | `npm run security` | Passed in latest local evidence |
 | Production verify | `npm run verify:production -- --env .env.production --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict` | Pending real hosted env |
 | Recovery drill | `npm run drill:recovery -- --backup <server-backup.json>` | Pending real release backup |
 
+
 ## Latest Local Evidence Bundle
 
-- Generated: 2026-07-05T15:30:33.614Z
-- Commit: 0dcca5b
-- Dirty worktree: yes
-- Mode: local
+- Generated: 2026-07-05T15:34:26.121Z
+- Commit: 3099231
+- Dirty worktree: no
+- Mode: full
 - Status: PASS
-- Bundle: [release/evidence/20260705T153033Z-0dcca5b](../release/evidence/20260705T153033Z-0dcca5b/README.md)
+- Bundle: [release/evidence/20260705T153426Z-3099231](../release/evidence/20260705T153426Z-3099231/README.md)
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
-| Release candidate discipline | PASS | [release-check.txt](../release/evidence/20260705T153033Z-0dcca5b/release-check.txt) |
-| Hosted demo readiness | PASS | [demo-check.txt](../release/evidence/20260705T153033Z-0dcca5b/demo-check.txt) |
-| Distribution proof ledger | PASS | [distribution-check.txt](../release/evidence/20260705T153033Z-0dcca5b/distribution-check.txt) |
-| Beta feedback loop | PASS | [beta-check.txt](../release/evidence/20260705T153033Z-0dcca5b/beta-check.txt) |
-| Packaging manifest | PASS | [package-check.txt](../release/evidence/20260705T153033Z-0dcca5b/package-check.txt) |
-| Trust evidence | PASS | [trust.txt](../release/evidence/20260705T153033Z-0dcca5b/trust.txt) |
+| Release candidate discipline | PASS | [release-check.txt](../release/evidence/20260705T153426Z-3099231/release-check.txt) |
+| Hosted demo readiness | PASS | [demo-check.txt](../release/evidence/20260705T153426Z-3099231/demo-check.txt) |
+| Distribution proof ledger | PASS | [distribution-check.txt](../release/evidence/20260705T153426Z-3099231/distribution-check.txt) |
+| Beta feedback loop | PASS | [beta-check.txt](../release/evidence/20260705T153426Z-3099231/beta-check.txt) |
+| Packaging manifest | PASS | [package-check.txt](../release/evidence/20260705T153426Z-3099231/package-check.txt) |
+| Trust evidence | PASS | [trust.txt](../release/evidence/20260705T153426Z-3099231/trust.txt) |
+| Acme demo browser golden path | PASS | [golden-demo.txt](../release/evidence/20260705T153426Z-3099231/golden-demo.txt) |
+| Feedback browser golden path | PASS | [golden-feedback.txt](../release/evidence/20260705T153426Z-3099231/golden-feedback.txt) |
+| Full release QA | PASS | [qa.txt](../release/evidence/20260705T153426Z-3099231/qa.txt) |
+| Security gate | PASS | [security.txt](../release/evidence/20260705T153426Z-3099231/security.txt) |
 
 Manual evidence still required: hosted demo URL, hosted production verify, real device/offline checks, release backup, portable bundle, and beta tester follow-up.
 
