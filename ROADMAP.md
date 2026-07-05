@@ -4,7 +4,9 @@ Agora is open source project management without ads, trackers, or lock-in. This 
 
 ## Product North Star
 
-Agora should become a calm, inspectable project command center for teams that need projects, clients, daily planning, approvals, automations, docs, time tracking, reporting, and auditable AI without giving up ownership of their workspace.
+Agora should become a calm, inspectable project command center for agencies, consultants, and privacy-conscious teams that need projects, clients, daily planning, approvals, automations, docs, time tracking, reporting, and auditable AI without giving up ownership of their workspace.
+
+For the step-by-step product-readiness checklist, see [`docs/product-readiness-roadmap.md`](./docs/product-readiness-roadmap.md).
 
 ## Current Prototype
 
@@ -34,6 +36,7 @@ These are the highest-priority areas before a broader public launch.
 - Keep screenshot automation current as launch routes and responsive captures change.
 - Keep tightening landing-page proof around no ads, self-hosting, portable exports, client work, and auditable AI.
 - Keep README scanning sharp with refreshed screenshots, quick feature blocks, and a clear "who this is for" section.
+- Keep first-run and demo copy centered on the agency/consultant client-work wedge while preserving the broader open source promise.
 - Keep local setup boring: `cp .env.example .env`, `npm run dev`, `npm run dev:api`, `npm run check`, `npm run test:api`.
 - Keep the power-user CLI focused on verification, screenshots, fixtures, and self-hosting checks before adding workspace mutation commands.
 - Keep Supabase setup validation current as migrations, Backend Health, and the verifier evolve.

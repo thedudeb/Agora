@@ -1150,7 +1150,7 @@ const tutorialSteps = [
     route: "dashboard",
     target: "setup",
     title: "Start with your workspace setup",
-    body: "Use the setup panel to choose demo data or a clean workspace, name the workspace, add a company, create a project, invite teammates, and connect the API."
+    body: "Use the setup panel to choose demo data or a clean workspace, then shape Agora around your working style: agency/client delivery, scrum, solo operations, internal ops, or a blank custom workspace."
   },
   {
     id: "navigation",
@@ -7380,6 +7380,13 @@ function onboardingItems() {
       action: "role"
     },
     {
+      id: "style",
+      label: "Project style",
+      detail: onboardingProjectManagementPreference()?.label || "Choose Kanban, Scrum, timeline, client delivery, or list",
+      done: Boolean(state.onboarding?.pmPreference),
+      action: "pm-style"
+    },
+    {
       id: "data",
       label: "Data mode",
       detail: state.onboarding?.sampleMode === "clean"
@@ -7639,8 +7646,20 @@ function onboardingWizardSteps() {
       primaryLabel: "Choose Role"
     },
     {
-      id: "data",
+      id: "style",
       eyebrow: "Step 2",
+      title: "Choose your project-management style",
+      body: "Tell Agora whether this workspace should run around Kanban flow, Scrum sprints, timeline/Gantt planning, client delivery promises, or a simple list.",
+      done: items.style?.done,
+      detail: items.style?.detail || "Choose your preferred project style",
+      primaryAction: "pm-style",
+      primaryLabel: "Choose Style",
+      secondaryAction: "pm-pref:client",
+      secondaryLabel: "Use Client Delivery"
+    },
+    {
+      id: "data",
+      eyebrow: "Step 3",
       title: "Choose how this workspace starts",
       body: "Start with demo data, a clean workspace, an import, or a template. This controls the shape of the first project experience.",
       done: items.data?.done,
@@ -7652,7 +7671,7 @@ function onboardingWizardSteps() {
     },
     {
       id: "workspace",
-      eyebrow: "Step 3",
+      eyebrow: "Step 4",
       title: "Name the workspace and set defaults",
       body: "Set the workspace name, visibility, default role, theme, density, and backend target before inviting people in.",
       done: items.workspace?.done,
@@ -7662,7 +7681,7 @@ function onboardingWizardSteps() {
     },
     {
       id: "structure",
-      eyebrow: "Step 4",
+      eyebrow: "Step 5",
       title: "Create the first company and project",
       body: "Agora works best once it has a company scope and a real project. That unlocks reporting, templates, company views, and project dashboards.",
       done: Boolean(items.company?.done && items.project?.done),
@@ -7674,7 +7693,7 @@ function onboardingWizardSteps() {
     },
     {
       id: "team",
-      eyebrow: "Step 5",
+      eyebrow: "Step 6",
       title: "Invite the people who need access",
       body: "Add teammates or clients, review roles, and confirm company-scoped access before real work starts moving through Agora.",
       done: items.team?.done,
@@ -7684,7 +7703,7 @@ function onboardingWizardSteps() {
     },
     {
       id: "backend",
-      eyebrow: "Step 6",
+      eyebrow: "Step 7",
       title: "Connect storage and sync",
       body: "Use browser storage for solo exploration, or connect the API/Supabase path before a team depends on the workspace.",
       done: items.api?.done,
@@ -7694,7 +7713,7 @@ function onboardingWizardSteps() {
     },
     {
       id: "recovery",
-      eyebrow: "Step 7",
+      eyebrow: "Step 8",
       title: "Create a recovery point",
       body: "Before a team depends on the workspace, create a local backup or portable bundle so imports, API restores, and setup experiments have a clean recovery path.",
       done: items.recovery?.done,
@@ -7706,7 +7725,7 @@ function onboardingWizardSteps() {
     },
     {
       id: "notifications",
-      eyebrow: "Step 8",
+      eyebrow: "Step 9",
       title: "Review notification delivery",
       body: "Decide which alerts belong in the inbox, browser notifications, webhook payloads, or email handoff before launch.",
       done: items.notifications?.done,
@@ -7718,7 +7737,7 @@ function onboardingWizardSteps() {
     },
     {
       id: "templates",
-      eyebrow: "Step 9",
+      eyebrow: "Step 10",
       title: "Pick starter workflows",
       body: "Install or review templates for the kind of work this team runs: client delivery, software, finance, art, marketing, research, or internal ops.",
       done: items.templates?.done,
@@ -17126,6 +17145,21 @@ function handleOnboardingAction(action) {
   if (action.startsWith("pm-pref:")) {
     const preferenceId = action.slice("pm-pref:".length);
     applyProjectManagementPreference(preferenceId);
+    return;
+  }
+
+  if (action === "pm-style") {
+    state.onboarding = {
+      ...state.onboarding,
+      dismissed: false,
+      wizardActive: true,
+      wizardStep: 1
+    };
+    state.selectedRoute = "dashboard";
+    openSidebarGroupForRoute("dashboard");
+    saveState();
+    render();
+    showToast("Choose a project management style from the First run panel", "info");
     return;
   }
 

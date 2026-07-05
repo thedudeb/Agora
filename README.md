@@ -2,17 +2,19 @@
 
 [![QA + Security](https://github.com/thedudeb/Agora/actions/workflows/qa.yml/badge.svg)](https://github.com/thedudeb/Agora/actions/workflows/qa.yml)
 
-Open source project management without ads, trackers, or lock-in.
+Open source, local-first project management for client-facing teams without ads, trackers, or lock-in.
 
-Agora is a self-hostable project management workspace inspired by tools like Asana and Nifty. It is designed for teams that need projects, tasks, clients, daily planning, approvals, automations, time tracking, and visibility while keeping control of their data and workflow.
+Agora is a self-hostable project command center for agencies and consultants running client work with portals, approvals, reusable workflows, time tracking, auditable AI, and portable data. It is inspired by tools like Asana and Nifty, but designed for teams that need ownership of their workflow as much as they need visibility.
 
 ![Agora dashboard screenshot](./assets/screenshots/agora-dashboard.png)
 
 ## Who Agora Is For
 
-- Agencies and consultants that need client-safe portals, approvals, time, reports, and reusable delivery workflows.
+- Agencies and consultants that need client-safe portals, approvals, time, reports, and reusable delivery workflows without giving up data control.
 - Open source and privacy-conscious teams that want project management without ads, trackers, or export lock-in.
 - Operators who want AI assistance with permissions, previews, rationale, audit logs, and undo paths instead of mystery automation.
+
+See the [product readiness roadmap](./docs/product-readiness-roadmap.md) for the working checklist Agora is using to become a full product.
 
 ## Product Snapshot
 
