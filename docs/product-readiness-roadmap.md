@@ -170,15 +170,21 @@ Next polish:
 
 Distribution should match the power-user promise.
 
-Paths to keep healthy:
+Current product state:
 
-- Browser/PWA
-- Docker Compose
-- Desktop shell
-- CLI
-- MCP server
-- Hosted API
-- Supabase-backed deployment
+- Done: `packaging/release-manifest.json` declares release status, release gate, handoff artifacts, known gaps, and nine distribution channels.
+- Done: `npm run package:check` verifies source, Docker Compose, hosted web/API, offline PWA, macOS desktop, Windows desktop, CLI, MCP server, and portable data channels.
+- Done: `docs/packaging-audit-2026-07-05.md` records beta-ready, internal-ready, and remaining polish status per channel.
+- Done: `docs/install.md` routes users by install intent across local, Docker, hosted, PWA, desktop, CLI, MCP, and portable data paths.
+- Done: packaging docs define release gate output, recovery proof, known gaps, and per-platform notes required for a release handoff.
+
+Remaining release polish:
+
+- Add signed/notarized desktop release evidence for macOS and Windows.
+- Add registry image publishing and digest pinning for Docker releases.
+- Run real iOS/Android PWA install and airplane-mode checks per release candidate.
+- Add provider-specific hosted deployment recipes after the first real deployments.
+- Add a release-candidate handoff template that records version, commit, outputs, gaps, and platform notes.
 
 ## Step 9: Demo Dataset And Story
 
