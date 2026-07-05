@@ -35,6 +35,9 @@ const readme = read("README.md").toLowerCase();
 const security = read("SECURITY.md").toLowerCase();
 const api = read("server/api.js");
 const staticServer = read("server/static.js");
+const migrationConcierge = read("scripts/migration-concierge.js");
+const migrationDocs = read("docs/migration-tool.md").toLowerCase();
+const migrationConciergeIsReady = migrationConciergeReady();
 
 const checks = [
   check({
@@ -113,10 +116,11 @@ const checks = [
   check({
     id: "migration-concierge",
     category: "Portability",
-    title: "Migration concierge exists for competitor imports",
-    pass: Boolean(scripts["migrate:concierge"]) && exists("scripts/migration-concierge.js") && exists("docs/migration-tool.md"),
-    evidence: ["scripts/migration-concierge.js", "docs/migration-tool.md"],
-    fix: "Keep migration preflight available before importing third-party exports."
+    title: "Migration concierge verifies safe competitor imports",
+    pass: migrationConciergeIsReady,
+    detail: migrationConciergeIsReady ? "Concierge covers field coverage, cleanup, rollback, apply strategy, reviewer checklist, and regression tests." : "",
+    evidence: ["scripts/migration-concierge.js", "scripts/migration-concierge-test.js", "docs/migration-tool.md"],
+    fix: "Keep migration preflight, report sections, docs, and regression coverage available before importing third-party exports."
   }),
   check({
     id: "hosted-readiness",
@@ -185,6 +189,30 @@ function trackerFindings() {
       .filter((needle) => contents.includes(needle))
       .map((needle) => `${file}: ${needle}`);
   });
+}
+
+function migrationConciergeReady() {
+  const requiredScriptTokens = [
+    "migrationFieldCoverage",
+    "migrationCleanupChecklist",
+    "migrationRollbackPlan",
+    "migrationApplyStrategy",
+    "migrationReviewerChecklist"
+  ];
+  const requiredDocTokens = [
+    "field coverage",
+    "cleanup checklist",
+    "rollback plan",
+    "reviewer checklist",
+    "apply strategy"
+  ];
+  return Boolean(scripts["migrate:concierge"]) &&
+    Boolean(scripts["test:importers"]?.includes("migration-concierge-test")) &&
+    exists("scripts/migration-concierge.js") &&
+    exists("scripts/migration-concierge-test.js") &&
+    exists("docs/migration-tool.md") &&
+    requiredScriptTokens.every((needle) => migrationConcierge.includes(needle)) &&
+    requiredDocTokens.every((needle) => migrationDocs.includes(needle));
 }
 
 function printReport(payload) {

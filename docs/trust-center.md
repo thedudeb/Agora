@@ -20,7 +20,7 @@ npm run agora -- trust --json
 - Recovery: disaster recovery drills are documented and runnable from server backups.
 - Upgrade safety: production upgrades have a backup and migration preflight gate.
 - Portability: portable workspace bundles are documented and fixture-backed.
-- Migration: competitor imports have a concierge preflight before data touches a workspace.
+- Migration: competitor imports have a concierge preflight with field coverage, cleanup, rollback, apply strategy, reviewer checklist, and regression coverage before data touches a workspace.
 - Hosted readiness: hosted environment checks and launch runbooks exist.
 - Ecosystem safety: plugin, MCP, connector, template, and automation extension points are declared and validated.
 
@@ -31,8 +31,9 @@ For a project manager evaluating Agora, the strongest evidence is:
 1. Export a portable workspace bundle from Data.
 2. Run `npm run drill:recovery -- --fixture` or a real backup drill.
 3. Run `npm run verify:upgrade -- --backup <server-backup.json>` before an upgrade.
-4. Run `npm run verify:hosted` and refresh Backend Health before inviting a real team.
-5. Run `npm run trust` and attach the output to the launch checklist.
+4. For migrations, run `npm run migrate:concierge -- <export-file> --source <source> --workspace <workspace.json> --backup <backup-or-bundle.json>` and review the report before applying.
+5. Run `npm run verify:hosted` and refresh Backend Health before inviting a real team.
+6. Run `npm run trust` and attach the output to the launch checklist.
 
 The report intentionally avoids printing secret values. It checks that the right controls and docs exist, then points reviewers to the files that back each claim.
 
