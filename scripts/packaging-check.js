@@ -11,14 +11,34 @@ const desktopPackage = readJson("desktop/package.json");
 const webManifest = readJson("manifest.webmanifest");
 const dockerfile = read("Dockerfile");
 const compose = read("docker-compose.yml");
+const packagingDoc = read("docs/packaging.md").toLowerCase();
+
+const expectedChannelIds = [
+  "source",
+  "docker-compose",
+  "hosted",
+  "pwa-offline",
+  "desktop-macos",
+  "desktop-windows",
+  "cli",
+  "mcp-server",
+  "portable-data"
+];
 
 const checks = [
   check({
     id: "manifest-shape",
     title: "Release manifest declares packaging channels",
-    pass: manifest.type === "agora.release-manifest" && Array.isArray(manifest.channels) && manifest.channels.length >= 5,
+    pass: manifest.type === "agora.release-manifest" && Array.isArray(manifest.channels) && manifest.channels.length >= expectedChannelIds.length,
     detail: `${manifest.channels?.length || 0} channels declared`,
-    fix: "Add packaging/release-manifest.json with the source, Docker, hosted, PWA, desktop, and portable channels."
+    fix: "Add packaging/release-manifest.json with the source, Docker, hosted, PWA, desktop, CLI, MCP, and portable channels."
+  }),
+  check({
+    id: "release-handoff",
+    title: "Release manifest declares status, gate, handoff artifacts, and known gaps",
+    pass: releaseHandoffReady(),
+    detail: releaseHandoffReady() ? `${manifest.releaseGate.length} gate commands, ${manifest.handoffArtifacts.length} handoff artifacts, ${manifest.knownGaps.length} known gaps` : "Release handoff metadata is incomplete.",
+    fix: "Keep releaseStatus, releaseOwner, releaseGate, handoffArtifacts, and knownGaps complete in packaging/release-manifest.json."
   }),
   check({
     id: "channel-ids",
@@ -26,6 +46,20 @@ const checks = [
     pass: unique(channelIds()).length === channelIds().length,
     detail: channelIds().join(", "),
     fix: "Give every release channel a stable unique id."
+  }),
+  check({
+    id: "expected-channels",
+    title: "Release manifest includes all supported distribution channels",
+    pass: missingExpectedChannels().length === 0,
+    detail: missingExpectedChannels().length ? missingExpectedChannels().join(", ") : expectedChannelIds.join(", "),
+    fix: "Declare every supported channel: source, Docker, hosted, PWA, desktop, CLI, MCP, and portable data."
+  }),
+  check({
+    id: "channel-metadata",
+    title: "Every channel declares artifact, platforms, entrypoint, required files, and verification",
+    pass: incompleteChannels().length === 0,
+    detail: incompleteChannels().length ? incompleteChannels().join("; ") : "All channel metadata is complete.",
+    fix: "Give each channel artifactType, platforms, entrypoint, requiredFiles, and verification entries."
   }),
   check({
     id: "channel-required-files",
@@ -70,11 +104,18 @@ const checks = [
     fix: "Bundle the web app, assets, service worker, manifest, and offline page into desktop releases."
   }),
   check({
+    id: "cli-mcp-packaging",
+    title: "CLI and MCP channels are documented and testable",
+    pass: Boolean(rootPackage.scripts?.agora) && Boolean(rootPackage.scripts?.mcp) && Boolean(rootPackage.scripts?.["test:mcp"]) && exists("docs/mcp-server.md") && exists("docs/mcp-security-audit.md"),
+    evidence: ["scripts/agora-cli.js", "scripts/agora-mcp-server.js", "docs/mcp-server.md", "docs/mcp-security-audit.md"],
+    fix: "Keep CLI and local MCP server commands, docs, and regression tests available for power-user packaging."
+  }),
+  check({
     id: "packaging-doc",
-    title: "Packaging documentation exists",
-    pass: exists("docs/packaging.md"),
-    evidence: ["docs/packaging.md"],
-    fix: "Document the release matrix, checks, and per-channel handoff notes."
+    title: "Packaging documentation covers release channels and handoff",
+    pass: packagingDocsReady(),
+    evidence: ["docs/packaging.md", "docs/packaging-audit-2026-07-05.md"],
+    fix: "Document the release matrix, checks, per-channel handoff notes, current audit, and known gaps."
   })
 ];
 
@@ -134,6 +175,25 @@ function missingRequiredFiles() {
   });
 }
 
+function missingExpectedChannels() {
+  const ids = new Set(channelIds());
+  return expectedChannelIds.filter((id) => !ids.has(id));
+}
+
+function incompleteChannels() {
+  return (manifest.channels || []).flatMap((channel) => {
+    const missing = [];
+    if (!channel.id) missing.push("id");
+    if (!channel.label) missing.push("label");
+    if (!channel.artifactType) missing.push("artifactType");
+    if (!Array.isArray(channel.platforms) || channel.platforms.length === 0) missing.push("platforms");
+    if (!channel.entrypoint) missing.push("entrypoint");
+    if (!Array.isArray(channel.requiredFiles) || channel.requiredFiles.length === 0) missing.push("requiredFiles");
+    if (!Array.isArray(channel.verification) || channel.verification.length === 0) missing.push("verification");
+    return missing.length ? `${channel.id || "unknown"} missing ${missing.join(", ")}` : [];
+  });
+}
+
 function missingRootCommands() {
   const scripts = rootPackage.scripts || {};
   return (manifest.requiredRootCommands || []).filter((command) => !scripts[command]);
@@ -147,6 +207,33 @@ function missingDesktopCommands() {
 function desktopExtraResources() {
   const resources = desktopPackage.build?.extraResources || [];
   return resources.map((resource) => resource.from).filter(Boolean);
+}
+
+function releaseHandoffReady() {
+  const requiredGateCommands = ["npm run package:check", "npm run trust", "npm run qa", "npm run security"];
+  return Boolean(manifest.releaseStatus) &&
+    Boolean(manifest.releaseOwner) &&
+    Array.isArray(manifest.releaseGate) &&
+    requiredGateCommands.every((command) => manifest.releaseGate.includes(command)) &&
+    Array.isArray(manifest.handoffArtifacts) &&
+    manifest.handoffArtifacts.length >= 5 &&
+    manifest.handoffArtifacts.every((file) => exists(file)) &&
+    Array.isArray(manifest.knownGaps) &&
+    manifest.knownGaps.length >= 3;
+}
+
+function packagingDocsReady() {
+  const requiredTokens = [
+    "release channels",
+    "release gate",
+    "release handoff",
+    "agora cli",
+    "local mcp server",
+    "known gaps"
+  ];
+  return exists("docs/packaging.md") &&
+    exists("docs/packaging-audit-2026-07-05.md") &&
+    requiredTokens.every((needle) => packagingDoc.includes(needle));
 }
 
 function unique(values) {

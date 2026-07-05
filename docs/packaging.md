@@ -20,6 +20,8 @@ For the current channel audit, see [`packaging-audit-2026-07-05.md`](./packaging
 | Offline PWA | Browser-installable app shell | iOS, Android, Chromebook, desktop browser | `npm run test:golden` |
 | macOS desktop | DMG and ZIP | Offline-capable native desktop users | `npm --prefix desktop run pack:mac` |
 | Windows desktop | NSIS installer and portable executable | Offline-capable native desktop users | `npm --prefix desktop run pack:win` |
+| Agora CLI | Node.js command wrapper | Power users and self-hosters | `npm run agora -- verify --quick` |
+| Local MCP server | stdio MCP server | Local AI/MCP clients with user-scoped API access | `npm run test:mcp` |
 | Portable data | Workspace JSON/CSV/Markdown bundle | Migration, backup, exit, and restore | `npm run test:fixtures` |
 
 ## Release Gate

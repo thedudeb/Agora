@@ -28,8 +28,8 @@ Use `--allow-missing-backup` only for local rehearsals. Production releases shou
 | Offline PWA | Beta-ready | `manifest.webmanifest`, `sw.js`, `offline.html`, app icons, screenshot plan | Run manual install/airplane-mode checks on real iOS and Android devices for each release candidate. |
 | macOS desktop | Internal-ready | `desktop/package.json`, Electron shell, `docs/desktop-app.md` | Code signing, notarization, offline launch QA, and secure session checks on a packaged app. |
 | Windows desktop | Internal-ready | `desktop/package.json`, Electron shell, `docs/desktop-app.md` | Code signing, installer/uninstaller QA, portable mode QA, and secure session checks on a packaged app. |
-| CLI | Beta-ready | `scripts/agora-cli.js`, README commands, `docs/install.md` | Add shell completion only after command names settle. |
-| MCP server | Local v0-ready | `scripts/agora-mcp-server.js`, `docs/mcp-server.md`, `docs/mcp-security-audit.md` | Remote MCP should wait for OAuth, origin checks, rate limits, and deeper audit logging. |
+| Agora CLI | Beta-ready | `scripts/agora-cli.js`, README commands, `docs/install.md` | Add shell completion only after command names settle. |
+| Local MCP server | Local v0-ready | `scripts/agora-mcp-server.js`, `docs/mcp-server.md`, `docs/mcp-security-audit.md` | Remote MCP should wait for OAuth, origin checks, rate limits, and deeper audit logging. |
 | Portable data | Beta-ready | `docs/portable-workspace.md`, fixture bundle, `server/portable-fixtures-test.js` | Keep fixtures refreshed when schema or marketplace artifacts change. |
 
 ## Release Handoff

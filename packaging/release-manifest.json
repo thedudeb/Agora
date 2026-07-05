@@ -29,11 +29,18 @@
     "setup",
     "start",
     "start:api",
+    "agora",
+    "mcp",
     "trust",
+    "qa",
+    "security",
     "verify:hosted",
+    "verify:production",
     "verify:upgrade",
     "drill:recovery",
-    "package:check"
+    "package:check",
+    "test:mcp",
+    "test:fixtures"
   ],
   "requiredDesktopCommands": [
     "pack:mac",
@@ -94,6 +101,24 @@
       "entrypoint": "npm --prefix desktop run pack:win",
       "requiredFiles": ["desktop/package.json", "desktop/package-lock.json", "desktop/electron/main.cjs", "desktop/electron/preload.cjs", "docs/desktop-app.md"],
       "verification": ["npm run check", "npm --prefix desktop run pack:win"]
+    },
+    {
+      "id": "cli",
+      "label": "Agora CLI",
+      "artifactType": "Node.js command wrapper",
+      "platforms": ["macOS", "Windows", "Linux"],
+      "entrypoint": "npm run agora -- help",
+      "requiredFiles": ["scripts/agora-cli.js", "README.md", "docs/install.md"],
+      "verification": ["npm run agora -- verify --quick", "npm run agora -- package-check --json"]
+    },
+    {
+      "id": "mcp-server",
+      "label": "Local MCP server",
+      "artifactType": "stdio MCP server for local power-user clients",
+      "platforms": ["macOS", "Windows", "Linux"],
+      "entrypoint": "npm run mcp",
+      "requiredFiles": ["scripts/agora-mcp-server.js", "docs/mcp-server.md", "docs/mcp-security-audit.md"],
+      "verification": ["npm run test:mcp"]
     },
     {
       "id": "portable-data",
