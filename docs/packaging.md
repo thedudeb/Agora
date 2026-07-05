@@ -3,12 +3,13 @@
 Agora should be easy to evaluate, self-host, install offline, and move away from. Packaging is tracked in [`packaging/release-manifest.json`](../packaging/release-manifest.json), then verified with:
 
 ```sh
+npm run distribution:check
 npm run package:check
 npm run agora -- package-check
 npm run agora -- package-check --json
 ```
 
-For the current channel audit, see [`packaging-audit-2026-07-05.md`](./packaging-audit-2026-07-05.md). It records which paths are beta-ready, which are internal-ready, and what still blocks a polished public release.
+For the current channel audit, see [`packaging-audit-2026-07-05.md`](./packaging-audit-2026-07-05.md). It records which paths are beta-ready, which are internal-ready, and what still blocks a polished public release. For per-release install/offline proof, use [`distribution-proof.md`](./distribution-proof.md).
 
 ## Release Channels
 
@@ -29,6 +30,7 @@ For the current channel audit, see [`packaging-audit-2026-07-05.md`](./packaging
 Before publishing a release candidate:
 
 ```sh
+npm run distribution:check
 npm run package:check
 npm run trust
 npm run verify:production -- --env .env.production --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict

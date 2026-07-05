@@ -9,6 +9,7 @@ Agora's packaging story is good enough for a serious beta handoff, but not yet a
 Run before shipping a release candidate:
 
 ```sh
+npm run distribution:check
 npm run package:check
 npm run trust
 npm run verify:production -- --env .env.production --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict
@@ -43,6 +44,7 @@ Every release candidate should include:
 - Recovery proof from a current server backup or portable workspace bundle.
 - Known gaps copied from `packaging/release-manifest.json`.
 - Platform notes for PWA, Docker, hosted, desktop, CLI, MCP, and portable data.
+- Per-channel evidence from [`distribution-proof.md`](./distribution-proof.md).
 
 ## Recommended Next Work
 

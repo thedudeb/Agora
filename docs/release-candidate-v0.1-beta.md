@@ -19,6 +19,7 @@ Paste command output or link CI artifacts for the exact commit being released.
 | Release discipline | `npm run release:check` | Pending for release commit |
 | Hosted demo | `npm run demo:check` | Pending for release commit |
 | Screenshots | `npm run screenshots` and inspect Acme screenshot set | Pending for release commit |
+| Distribution proof | `npm run distribution:check` and fill `docs/distribution-proof.md` evidence rows | Pending per release channel |
 | Packaging | `npm run package:check` | Pending for release commit |
 | Trust evidence | `npm run trust` | Pending for release commit |
 | QA | `npm run qa` | Pending for release commit |
