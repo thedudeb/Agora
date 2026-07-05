@@ -20,6 +20,7 @@ Paste command output or link CI artifacts for the exact commit being released.
 | Hosted demo | `npm run demo:check` | Pending for release commit |
 | Screenshots | `npm run screenshots` and inspect Acme screenshot set | Pending for release commit |
 | Distribution proof | `npm run distribution:check` and fill `docs/distribution-proof.md` evidence rows | Pending per release channel |
+| Beta feedback loop | `npm run beta:check` and submit one feature request through the beta path | Pending for release commit |
 | Packaging | `npm run package:check` | Pending for release commit |
 | Trust evidence | `npm run trust` | Pending for release commit |
 | QA | `npm run qa` | Pending for release commit |
@@ -40,6 +41,14 @@ Required before publishing:
 - Refresh the screenshots named in [`screenshot-demo-plan.md`](./screenshot-demo-plan.md).
 - Record or re-record the short demo using [`demo-video-script.md`](./demo-video-script.md) and [`demo-video-production-checklist.md`](./demo-video-production-checklist.md).
 - Confirm the hosted demo contains no real customer data, secrets, private emails, or paid-provider credentials.
+
+## Beta Feedback Gate
+
+- Follow [`beta-feedback-loop.md`](./beta-feedback-loop.md).
+- Run `npm run beta:check`.
+- Run `AGORA_GOLDEN_SUITE=feedback npm run test:golden` before widening beta.
+- Submit one in-app feature request and confirm it appears on the Feature Requests taskboard.
+- If public feedback is enabled, submit one public form item and confirm owner email queues or delivers.
 
 ## Platform Evidence
 

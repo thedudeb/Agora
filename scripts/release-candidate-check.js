@@ -14,12 +14,14 @@ const requiredFiles = [
   "docs/acme-client-launch-demo.md",
   "docs/screenshot-demo-plan.md",
   "docs/distribution-proof.md",
+  "docs/beta-feedback-loop.md",
   "packaging/release-manifest.json"
 ];
 const requiredGateCommands = [
   "npm run release:check",
   "npm run demo:check",
   "npm run distribution:check",
+  "npm run beta:check",
   "npm run package:check",
   "npm run trust",
   "npm run qa",

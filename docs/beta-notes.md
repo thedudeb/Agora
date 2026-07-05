@@ -1,6 +1,6 @@
 # Beta Notes
 
-Agora is ready for guided beta use by technical founders, small agencies, and self-hosting-minded teams. It is not yet a hands-off SaaS with production onboarding, billing enforcement, or managed support.
+Agora is ready for guided beta use by technical founders, small agencies, and self-hosting-minded teams. It is not yet a hands-off SaaS with production onboarding, billing enforcement, or managed support. Use [`beta-feedback-loop.md`](./beta-feedback-loop.md) to run tester intake, triage, and taskboard follow-up.
 
 ## What Works Best
 
@@ -39,10 +39,11 @@ Agora is ready for guided beta use by technical founders, small agencies, and se
 1. Run `npm run verify:quick`.
 2. Run `npm run test:golden`.
 3. Follow [`beta-test-script.md`](./beta-test-script.md).
-4. Export a portable bundle.
-5. Run `npm run agora -- launch check <bundle.json>`.
-6. Review Readiness in the app.
-7. Record confusing copy, broken layout, failed commands, and any step that needed explanation.
+4. Follow [`beta-feedback-loop.md`](./beta-feedback-loop.md).
+5. Export a portable bundle.
+6. Run `npm run agora -- launch check <bundle.json>`.
+7. Review Readiness in the app.
+8. Record confusing copy, broken layout, failed commands, and any step that needed explanation.
 
 ## Feedback To Capture
 
@@ -53,6 +54,8 @@ Agora is ready for guided beta use by technical founders, small agencies, and se
 - Did local mode versus API mode make sense?
 - Did mobile navigation feel usable enough for quick checks?
 - Which route felt too dense or unclear?
+- Did the Feature Requests board make the feedback feel owned?
+- Did email/taskboard follow-up work when configured?
 
 ## Before Widening Beta
 

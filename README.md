@@ -111,6 +111,7 @@ npm run setup     # create .env and local persistent directories
 npm run demo:links # generate shareable demo tour links
 npm run demo:check # validate hosted demo handoff and Acme route links
 npm run distribution:check # validate per-channel release evidence matrix
+npm run beta:check # validate beta feedback loop docs and taskboard surfaces
 npm run migrate:concierge -- tests/fixtures/trello-board.json --source trello-json --workspace tests/fixtures/workspace.json
 npm run ecosystem # validate plugin/MCP extension registry
 npm run trust     # run the Trust Center evidence report
@@ -162,6 +163,8 @@ For MCP clients, set `AGORA_API_URL`, `AGORA_API_TOKEN`, and optionally `AGORA_M
 For one-command setup and Docker Compose packaging, see [`docs/install.md`](./docs/install.md). The shortest path is `npm run setup`, then `npm run dev` and `npm run dev:api`; Docker users can run `npm run setup -- --profile docker` and `docker compose up --build`.
 
 For hosted evaluation, run `npm run demo:check`, then generate scenario-specific demo links with `npm run demo:links -- --base <app-url> --markdown`. See [`docs/demo-workspaces.md`](./docs/demo-workspaces.md) and [`docs/hosted-demo-runbook.md`](./docs/hosted-demo-runbook.md) for the Acme buyer demo, safety settings, reset cadence, and follow-up scenario catalog.
+
+For guided beta feedback, run `npm run beta:check` and use [`docs/beta-feedback-loop.md`](./docs/beta-feedback-loop.md) with [`docs/beta-test-script.md`](./docs/beta-test-script.md).
 
 For migration work, the CLI can preview and apply Trello JSON, Asana CSV, Jira CSV, Linear CSV, ClickUp CSV, or generic CSV exports before you touch a real workspace. Start with `npm run migrate:concierge -- <export-file> --workspace <workspace.json> --backup <backup.json>` for field coverage, cleanup, rollback, reviewer checklist, and safe apply guidance, then use `npm run agora -- migrate preview/apply` when the warnings are understood. See [`docs/migration-tool.md`](./docs/migration-tool.md) for the adapter contract, safety model, mapping tables, and examples.
 

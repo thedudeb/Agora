@@ -1,6 +1,6 @@
 # Beta Test Script
 
-Use this script when handing Agora to a first external tester. The goal is to confirm that a person can launch a workspace, prove recovery, and understand what to do next without live narration.
+Use this script when handing Agora to a first external tester. The goal is to confirm that a person can launch a workspace, prove recovery, submit feedback, and understand what to do next without live narration. Run the follow-up operating loop in [`beta-feedback-loop.md`](./beta-feedback-loop.md).
 
 Plan for 30 to 45 minutes. Capture screenshots or notes for any confusing copy, broken layout, failed command, or step where the tester asks what to do next.
 
@@ -18,6 +18,7 @@ Plan for 30 to 45 minutes. Capture screenshots or notes for any confusing copy, 
 - The tester can install or review the recommended handoff automation pack.
 - The tester can create a backup, export a portable bundle, and run a CLI readiness check.
 - The tester can find Readiness and explain the remaining open items.
+- The tester can submit a feature request and find the Feature Requests board.
 - No route renders a view error, horizontal overlap, or unusable mobile control.
 
 ## Script
@@ -53,7 +54,10 @@ Plan for 30 to 45 minutes. Capture screenshots or notes for any confusing copy, 
 9. Prepare a teammate invite.
    Expected: local mode saves a draft invite; API mode sends or creates an API-backed invite.
 
-10. Switch to a mobile-width viewport and repeat the quick path: Dashboard -> Launch Flow -> Readiness -> Data.
+10. Submit one feature request from the top bar or public feedback route.
+    Expected: the request appears on the Feature Requests board and can be triaged.
+
+11. Switch to a mobile-width viewport and repeat the quick path: Dashboard -> Launch Flow -> Readiness -> Data.
     Expected: the route content appears without awkward overlap, and the filter toolbar scrolls horizontally.
 
 ## Failure Notes
@@ -71,6 +75,7 @@ For each failure, record:
 
 ```sh
 npm run qa
+npm run beta:check
 npm run verify:quick
 npm run test:golden
 npm run test:recovery

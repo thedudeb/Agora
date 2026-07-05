@@ -210,7 +210,7 @@ function desktopExtraResources() {
 }
 
 function releaseHandoffReady() {
-  const requiredGateCommands = ["npm run release:check", "npm run demo:check", "npm run distribution:check", "npm run package:check", "npm run trust", "npm run qa", "npm run security"];
+  const requiredGateCommands = ["npm run release:check", "npm run demo:check", "npm run distribution:check", "npm run beta:check", "npm run package:check", "npm run trust", "npm run qa", "npm run security"];
   return Boolean(manifest.releaseStatus) &&
     Boolean(manifest.releaseOwner) &&
     Array.isArray(manifest.releaseGate) &&
