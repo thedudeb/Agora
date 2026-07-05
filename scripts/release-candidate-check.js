@@ -12,9 +12,12 @@ const requiredFiles = [
   "docs/release-checklist.md",
   "docs/qa-gate.md",
   "docs/acme-client-launch-demo.md",
+  "docs/hosted-demo-deployment.md",
   "docs/screenshot-demo-plan.md",
   "docs/distribution-proof.md",
   "docs/beta-feedback-loop.md",
+  "docs/beta-invite-pack.md",
+  "docs/release-notes-v0.1-beta.md",
   "packaging/release-manifest.json"
 ];
 const requiredGateCommands = [

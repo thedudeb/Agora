@@ -1,6 +1,6 @@
 # Hosted Demo Runbook
 
-Use this for the public buyer demo. It is intentionally narrower than the production hosted launch runbook: the goal is a safe, resettable Acme Studio workspace that proves Agora quickly without collecting real customer data.
+Use this for the public buyer demo. It is intentionally narrower than the production hosted launch runbook: the goal is a safe, resettable Acme Studio workspace that proves Agora quickly without collecting real customer data. For the concrete deployment checklist, use [`hosted-demo-deployment.md`](./hosted-demo-deployment.md).
 
 ## Demo Contract
 
@@ -53,6 +53,7 @@ Before sharing links publicly:
 
 ```sh
 npm run demo:check
+npm run demo:hosted:check -- --base https://demo.your-domain.example
 AGORA_GOLDEN_SUITE=demo npm run test:golden
 ```
 

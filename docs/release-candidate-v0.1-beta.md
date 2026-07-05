@@ -63,10 +63,23 @@ Manual evidence still required: hosted demo URL, hosted production verify, real 
 
 The release demo must use [`acme-client-launch-demo.md`](./acme-client-launch-demo.md).
 
+## Hosted Demo Evidence
+
+- Demo URL: pending
+- Public feedback URL: pending
+- Generated Acme links: pending
+- `npm run demo:hosted:check -- --base <demo-url>`: pending
+- `npm run demo:hosted:check -- --base <demo-url> --golden`: pending
+- Reset timestamp: pending
+- Reset owner: pending
+- Demo data hygiene review: pending
+
 Required before publishing:
 
+- Follow [`hosted-demo-deployment.md`](./hosted-demo-deployment.md).
 - Follow [`hosted-demo-runbook.md`](./hosted-demo-runbook.md).
 - Generate hosted links with `npm run demo:links -- --base <demo-url> --demo acme-client-launch --markdown`.
+- Run `npm run demo:hosted:check -- --base <demo-url>`.
 - Run `npm run demo:check`.
 - Run `AGORA_GOLDEN_SUITE=demo npm run test:golden`.
 - Refresh the screenshots named in [`screenshot-demo-plan.md`](./screenshot-demo-plan.md).
@@ -76,6 +89,7 @@ Required before publishing:
 ## Beta Feedback Gate
 
 - Follow [`beta-feedback-loop.md`](./beta-feedback-loop.md).
+- Use [`beta-invite-pack.md`](./beta-invite-pack.md) for the first tester invite.
 - Run `npm run beta:check`.
 - Run `AGORA_GOLDEN_SUITE=feedback npm run test:golden` before widening beta.
 - Submit one in-app feature request and confirm it appears on the Feature Requests taskboard.
@@ -103,6 +117,10 @@ These are acceptable for v0.1 beta only if they remain clearly documented in rel
 - Native iOS and Android wrappers are not shipped; mobile install is the offline PWA.
 - Hosted production launches require operator-provided Supabase, SMTP/webhook, backup, and domain configuration.
 - Real production upgrades require a fresh server backup and strict verification.
+
+## Release Notes
+
+Draft release notes: [`release-notes-v0.1-beta.md`](./release-notes-v0.1-beta.md)
 
 ## Rollback Plan
 
