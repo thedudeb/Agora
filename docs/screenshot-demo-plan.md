@@ -40,13 +40,17 @@ The script fails if a route does not boot, renders "could not render", or writes
 
 ## Current Launch Set
 
-These checked-in screenshots are ready for README, landing-page proof, and launch planning:
+These checked-in screenshots are the automated Acme launch set for README, landing-page proof, launch planning, and PWA metadata:
 
 - `assets/screenshots/agora-landing.png`
-- `assets/screenshots/agora-dashboard.png`
-- `assets/screenshots/agora-board.png`
-- `assets/screenshots/agora-inbox.png`
-- `assets/screenshots/agora-marketplace.png`
+- `assets/screenshots/agora-acme-command-center.png`
+- `assets/screenshots/agora-acme-project-backlog.png`
+- `assets/screenshots/agora-acme-client-visibility.png`
+- `assets/screenshots/agora-acme-timeline-risk.png`
+- `assets/screenshots/agora-acme-client-update.png`
+- `assets/screenshots/agora-acme-recovery-proof.png`
+- `assets/screenshots/permissions-audit-desktop.png`
+- `assets/screenshots/operator-trust-desktop.png`
 - `assets/screenshots/agora-mobile-today.png`
 
 ## Canonical Acme Launch Set
@@ -248,7 +252,7 @@ Use for:
 
 Target length: 75 to 120 seconds.
 
-Use [`docs/demo-video-script.md`](./demo-video-script.md) for the full time-coded script, route list, voiceover, and editing notes.
+Use [`docs/demo-video-script.md`](./demo-video-script.md) for the full time-coded script, route list, voiceover, and editing notes. Use [`demo-video-production-checklist.md`](./demo-video-production-checklist.md) to capture, QA, and release the short video.
 
 1. Landing: "Agora is open source project management without ads or lock-in."
 2. Command Center: triage the Acme client request.

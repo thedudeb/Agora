@@ -6,7 +6,7 @@ Open source, local-first project management for client-facing teams without ads,
 
 Agora is a self-hostable project command center for agencies and consultants running client work with portals, approvals, reusable workflows, time tracking, auditable AI, and portable data. It is inspired by tools like Asana and Nifty, but designed for teams that need ownership of their workflow as much as they need visibility.
 
-![Agora dashboard screenshot](./assets/screenshots/agora-dashboard.png)
+![Agora Acme command center screenshot](./assets/screenshots/agora-acme-command-center.png)
 
 ## Who Agora Is For
 
@@ -18,9 +18,9 @@ See the [product readiness roadmap](./docs/product-readiness-roadmap.md) for the
 
 ## Product Snapshot
 
-| Workspace command center | Project board | Marketplace |
+| Acme command center | Project backlog | Client visibility |
 | --- | --- | --- |
-| ![Agora dashboard](./assets/screenshots/agora-dashboard.png) | ![Agora board](./assets/screenshots/agora-board.png) | ![Agora marketplace](./assets/screenshots/agora-marketplace.png) |
+| ![Agora command center](./assets/screenshots/agora-acme-command-center.png) | ![Agora project backlog](./assets/screenshots/agora-acme-project-backlog.png) | ![Agora client visibility](./assets/screenshots/agora-acme-client-visibility.png) |
 
 Agora currently covers the core loop: plan work, move tasks, triage inbox signals, capture project memory, preview Autopilot recovery proposals, share client-safe status, install templates and automations, export the workspace, and connect an optional API when browser-local storage is not enough.
 

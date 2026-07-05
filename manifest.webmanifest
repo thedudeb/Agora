@@ -48,11 +48,11 @@
       "label": "Review launch readiness from an Android home-screen install."
     },
     {
-      "src": "./assets/screenshots/agora-dashboard.png",
+      "src": "./assets/screenshots/agora-acme-command-center.png",
       "sizes": "1265x712",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "Coordinate project work from the Agora dashboard."
+      "label": "Triage an Acme client launch from the Agora command center."
     }
   ],
   "shortcuts": [

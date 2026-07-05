@@ -13,18 +13,16 @@ const CHROME_TIMEOUT_MS = Number(process.env.AGORA_SCREENSHOT_TIMEOUT_MS || 3000
 const ROUTE_WAIT_MS = Number(process.env.AGORA_SCREENSHOT_WAIT_MS || 5000);
 
 const captures = [
-  { route: "landing", file: "agora-landing.png", width: 1265, height: 712 },
-  { route: "dashboard", file: "agora-dashboard.png", width: 1265, height: 712 },
-  { route: "launch", file: "agora-launch-flow.png", width: 1265, height: 712 },
-  { route: "readiness", file: "agora-readiness.png", width: 1265, height: 712 },
-  { route: "board", file: "agora-board.png", width: 1265, height: 712 },
-  { route: "inbox", file: "agora-inbox.png", width: 1265, height: 712 },
-  { route: "marketplace", file: "agora-marketplace.png", width: 1265, height: 712 },
-  { route: "data", file: "agora-data.png", width: 1265, height: 712 },
-  { route: "settings", file: "agora-settings.png", width: 1265, height: 712 },
-  { route: "launch", file: "agora-mobile-launch.png", width: 500, height: 844 },
-  { route: "readiness", file: "agora-mobile-readiness.png", width: 500, height: 844 },
-  { route: "daily", file: "agora-mobile-today.png", width: 500, height: 844 }
+  { route: "landing", file: "agora-landing.png", width: 1265, height: 712, expectedText: ["Agora"] },
+  { route: "command-center", query: { demoAction: "sampleAgencyWorkspace" }, file: "agora-acme-command-center.png", width: 1265, height: 712, expectedText: ["PM command center", "Client promises"] },
+  { route: "project-backlog", file: "agora-acme-project-backlog.png", width: 1265, height: 712, expectedText: ["Backlog projects", "Project intake"] },
+  { route: "visibility", file: "agora-acme-client-visibility.png", width: 1265, height: 712, expectedText: ["Client visibility review", "Visibility warnings"] },
+  { route: "project", query: { project: "launch", tab: "timeline" }, file: "agora-acme-timeline-risk.png", width: 1265, height: 712, expectedText: ["Timeline", "Gantt"] },
+  { route: "reports", file: "agora-acme-client-update.png", width: 1265, height: 712, expectedText: ["Status report", "Delivery risk"] },
+  { route: "data", query: { demoAction: "recoveryPlan" }, file: "agora-acme-recovery-proof.png", width: 1265, height: 712, expectedText: ["Recovery confidence", "Portable workspace OS"] },
+  { route: "permissions", file: "permissions-audit-desktop.png", width: 1265, height: 712, expectedText: ["Role and Operator audit", "Operator guardrails"] },
+  { route: "operator", file: "operator-trust-desktop.png", width: 1265, height: 712, expectedText: ["Operator workspace", "Trust and context"] },
+  { route: "daily", file: "agora-mobile-today.png", width: 500, height: 844, expectedText: ["Today"] }
 ];
 
 main().catch((error) => {
@@ -44,7 +42,7 @@ async function main() {
 
   try {
     for (const capture of captures) {
-      const url = `${server.baseUrl}/?route=${encodeURIComponent(capture.route)}&screenshot=${Date.now()}`;
+      const url = buildCaptureUrl(server.baseUrl, capture);
       const dom = await runChrome(chromePath, [
         "--headless=new",
         "--disable-gpu",
@@ -105,9 +103,20 @@ function assertRouteRendered(capture, dom) {
   if (normalized.includes("could not render") || normalized.includes("view error")) {
     throw new Error(`Route ${capture.route} rendered an error state`);
   }
-  if (!normalized.includes(`>${routeTitle(capture.route).toLowerCase()}<`)) {
-    throw new Error(`Route ${capture.route} did not render the expected title`);
+  const missing = (capture.expectedText || [routeTitle(capture.route)]).filter((text) => !normalized.includes(String(text).toLowerCase()));
+  if (missing.length) {
+    throw new Error(`Route ${capture.route} did not render expected screenshot text: ${missing.join(", ")}`);
   }
+}
+
+function buildCaptureUrl(baseUrl, capture) {
+  const url = new URL(baseUrl);
+  url.searchParams.set("route", capture.route);
+  Object.entries(capture.query || {}).forEach(([key, value]) => {
+    url.searchParams.set(key, String(value));
+  });
+  url.searchParams.set("screenshot", String(Date.now()));
+  return url.toString();
 }
 
 function routeTitle(route) {

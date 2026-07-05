@@ -1,6 +1,6 @@
 # Agora Demo Video Script
 
-Use this script for a 75 to 120 second launch demo. Keep the pacing calm: the point is to show that Agora is already a real workspace, not to tour every feature. The default story is Acme Studio taking one client request from intake to recovery proof. Use [`acme-client-launch-demo.md`](./acme-client-launch-demo.md) as the canonical route handoff.
+Use this script for a 75 to 120 second launch demo. Keep the pacing calm: the point is to show that Agora is already a real workspace, not to tour every feature. The default story is Acme Studio taking one client request from intake to recovery proof. Use [`acme-client-launch-demo.md`](./acme-client-launch-demo.md) as the canonical route handoff and [`demo-video-production-checklist.md`](./demo-video-production-checklist.md) for capture QA.
 
 ## Recording Setup
 
