@@ -2402,20 +2402,113 @@ body[data-tutorial-target="view"] #app-view {
   align-items: start;
 }
 
+.release-cockpit-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.85fr);
+  gap: 14px;
+  margin-bottom: 14px;
+  align-items: start;
+}
+
+.release-cockpit-panel {
+  grid-row: span 2;
+}
+
 .release-dashboard-panel,
 .release-detail-panel,
 .release-scope-panel,
 .release-blocker-panel,
-.release-signal-panel {
+.release-signal-panel,
+.release-cockpit-panel,
+.release-evidence-viewer-panel,
+.release-blocker-focus-panel {
   align-content: start;
 }
 
 .release-card-list,
 .release-scope-list,
 .release-blocker-list,
-.release-gate-list {
+.release-gate-list,
+.release-cockpit-gates,
+.release-evidence-list,
+.release-blocker-focus-list {
   display: grid;
   gap: 10px;
+}
+
+.release-cockpit-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.release-cockpit-gate,
+.release-evidence-card,
+.release-blocker-focus-list article {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.release-cockpit-gate {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+}
+
+.release-cockpit-gate.is-pass {
+  border-color: color-mix(in srgb, var(--green) 42%, var(--line));
+}
+
+.release-cockpit-gate.is-risk {
+  border-color: color-mix(in srgb, var(--red) 42%, var(--line));
+}
+
+.release-cockpit-gate strong,
+.release-evidence-card strong,
+.release-blocker-focus-list strong {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.release-cockpit-gate p,
+.release-evidence-card p,
+.release-blocker-focus-list p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.release-cockpit-gate code,
+.release-blocker-focus-list code {
+  display: block;
+  width: 100%;
+  margin-top: 7px;
+  padding: 7px 8px;
+  overflow-x: auto;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.release-evidence-card small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.release-evidence-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .release-card {
@@ -12465,6 +12558,7 @@ body[data-density="compact"] .main-content {
   .launch-flow-grid,
   .launch-complete-panel,
   .readiness-audit-grid,
+  .release-cockpit-grid,
   .dashboard-support-grid {
     grid-template-columns: 1fr;
   }
@@ -12570,6 +12664,8 @@ body[data-density="compact"] .main-content {
   .switcher-acceptance-grid,
   .switcher-report-grid,
   .hosted-launch-grid,
+  .release-cockpit-grid,
+  .release-cockpit-metrics,
   .release-management-grid,
   .release-summary-grid,
   .audit-workbench,

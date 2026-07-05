@@ -595,6 +595,10 @@ const routeChecks = [
     required: [
       "Release Management",
       "Ship room",
+      "Release Readiness Dashboard",
+      "Production cockpit",
+      "Evidence Bundle Viewer",
+      "Release proof files",
       "Release dashboard",
       "Upcoming releases",
       "Selected release",

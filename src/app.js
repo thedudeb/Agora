@@ -409,6 +409,45 @@ const AGORA_RELEASE = Object.freeze({
 
 window.AGORA_RELEASE = AGORA_RELEASE;
 
+const RELEASE_EVIDENCE_INDEX_FALLBACK = Object.freeze({
+  type: "agora.release-evidence-index",
+  version: 1,
+  generatedAt: "2026-07-05T15:34:26.121Z",
+  bundles: [
+    {
+      id: "20260705T153426Z-3099231",
+      label: "Full local release evidence",
+      kind: "local-release",
+      path: "release/evidence/20260705T153426Z-3099231/README.md",
+      summaryPath: "release/evidence/20260705T153426Z-3099231/summary.json",
+      summary: {
+        type: "agora.release-evidence",
+        generatedAt: "2026-07-05T15:34:26.121Z",
+        branch: "main",
+        commit: "3099231",
+        dirty: false,
+        mode: "full",
+        ok: true,
+        bundleDir: "release/evidence/20260705T153426Z-3099231",
+        commands: [
+          { id: "release-check", label: "Release candidate discipline", command: "npm run release:check", ok: true, output: "release-check.txt" },
+          { id: "demo-check", label: "Hosted demo readiness", command: "npm run demo:check", ok: true, output: "demo-check.txt" },
+          { id: "distribution-check", label: "Distribution proof ledger", command: "npm run distribution:check", ok: true, output: "distribution-check.txt" },
+          { id: "beta-check", label: "Beta feedback loop", command: "npm run beta:check", ok: true, output: "beta-check.txt" },
+          { id: "package-check", label: "Packaging manifest", command: "npm run package:check", ok: true, output: "package-check.txt" },
+          { id: "trust", label: "Trust evidence", command: "npm run trust", ok: true, output: "trust.txt" },
+          { id: "golden-demo", label: "Acme demo browser golden path", command: "npm run test:golden", ok: true, output: "golden-demo.txt" },
+          { id: "golden-feedback", label: "Feedback browser golden path", command: "npm run test:golden", ok: true, output: "golden-feedback.txt" },
+          { id: "qa", label: "Full release QA", command: "npm run qa", ok: true, output: "qa.txt" },
+          { id: "security", label: "Security gate", command: "npm run security", ok: true, output: "security.txt" }
+        ]
+      }
+    }
+  ]
+});
+
+let releaseEvidenceIndex = RELEASE_EVIDENCE_INDEX_FALLBACK;
+
 const settingsTabs = [
   { id: "account", label: "Account" },
   { id: "workspace", label: "Workspace" },
@@ -21339,6 +21378,249 @@ function renderProductionReadinessAudit() {
   `;
 }
 
+async function loadReleaseEvidenceIndex() {
+  try {
+    const indexResponse = await fetch("release/evidence/index.json", { cache: "no-store" });
+    if (!indexResponse.ok) return;
+    const index = await indexResponse.json();
+    const bundles = await Promise.all((index.bundles || []).map(async (bundle) => {
+      if (bundle.summary || !bundle.summaryPath) return bundle;
+      try {
+        const summaryResponse = await fetch(bundle.summaryPath, { cache: "no-store" });
+        if (!summaryResponse.ok) return bundle;
+        return { ...bundle, summary: await summaryResponse.json() };
+      } catch {
+        return bundle;
+      }
+    }));
+    releaseEvidenceIndex = normalizeReleaseEvidenceIndex({ ...index, bundles });
+    if (state.selectedRoute === "release") render();
+  } catch {
+    releaseEvidenceIndex = RELEASE_EVIDENCE_INDEX_FALLBACK;
+  }
+}
+
+function normalizeReleaseEvidenceIndex(index = {}) {
+  const fallback = RELEASE_EVIDENCE_INDEX_FALLBACK;
+  const bundles = Array.isArray(index.bundles) ? index.bundles : fallback.bundles;
+  return {
+    type: index.type || fallback.type,
+    version: Number(index.version || fallback.version || 1),
+    generatedAt: index.generatedAt || fallback.generatedAt,
+    bundles: bundles
+      .filter((bundle) => bundle && (bundle.summary || bundle.summaryPath || bundle.path))
+      .map((bundle) => ({
+        id: cleanString(bundle.id || bundle.summary?.bundleDir || bundle.path || "evidence-bundle"),
+        label: cleanString(bundle.label || releaseEvidenceKindLabel(bundle.kind || bundle.summary?.type)),
+        kind: cleanString(bundle.kind || bundle.summary?.type || "release-evidence"),
+        path: cleanString(bundle.path || bundle.summary?.bundleDir || ""),
+        summaryPath: cleanString(bundle.summaryPath || ""),
+        summary: bundle.summary || {}
+      }))
+      .sort((a, b) => cleanString(b.summary?.generatedAt || "").localeCompare(cleanString(a.summary?.generatedAt || "")))
+  };
+}
+
+function releaseEvidenceKindLabel(kind = "") {
+  if (kind.includes("hosted-demo")) return "Hosted demo evidence";
+  if (kind.includes("distribution")) return "Distribution proof evidence";
+  if (kind.includes("release")) return "Local release evidence";
+  return "Release evidence";
+}
+
+function releaseEvidenceBundles() {
+  return normalizeReleaseEvidenceIndex(releaseEvidenceIndex).bundles;
+}
+
+function latestReleaseEvidenceBundle(predicate = () => true) {
+  return releaseEvidenceBundles().find(predicate) || null;
+}
+
+function releaseEvidenceCommand(commandId) {
+  const localBundle = latestReleaseEvidenceBundle((bundle) => {
+    const type = bundle.summary?.type || bundle.kind || "";
+    return type.includes("release-evidence") || type.includes("local-release");
+  });
+  return (localBundle?.summary?.commands || []).find((command) => command.id === commandId) || null;
+}
+
+function releaseCockpitGates() {
+  const hostedBundle = latestReleaseEvidenceBundle((bundle) => (bundle.summary?.type || bundle.kind || "").includes("hosted-demo"));
+  const distributionBundle = latestReleaseEvidenceBundle((bundle) => (bundle.summary?.type || bundle.kind || "").includes("distribution"));
+  const localBundle = latestReleaseEvidenceBundle((bundle) => (bundle.summary?.type || bundle.kind || "").includes("release-evidence") || (bundle.kind || "").includes("local-release"));
+  const commandGate = (id, label, detail, action) => {
+    const command = releaseEvidenceCommand(id);
+    return {
+      id,
+      label,
+      status: command?.ok ? "pass" : "risk",
+      detail: command?.ok ? `${command.command || id} passed in ${localBundle?.summary?.bundleDir || "latest evidence"}.` : detail,
+      action
+    };
+  };
+  return [
+    commandGate("release-check", "Release discipline", "Run npm run release:check and collect a clean local evidence bundle.", "npm run release:evidence"),
+    {
+      id: "hosted-demo",
+      label: "Hosted demo",
+      status: hostedBundle?.summary?.ok ? "pass" : releaseEvidenceCommand("demo-check")?.ok ? "pending" : "risk",
+      detail: hostedBundle?.summary?.ok ? `Hosted demo evidence captured for ${hostedBundle.summary.base || hostedBundle.summary.bundleDir}.` : "Local demo gate passed; public hosted demo evidence is still pending.",
+      action: "npm run demo:hosted:check -- --base <demo-url> --write-evidence"
+    },
+    {
+      id: "distribution-proof",
+      label: "Distribution proof",
+      status: distributionBundle?.summary?.channels?.length ? "pass" : releaseEvidenceCommand("distribution-check")?.ok ? "pending" : "risk",
+      detail: distributionBundle?.summary?.channels?.length ? `${distributionBundle.summary.channels.length} distribution channels have a generated proof bundle.` : "Ledger gate passed; generate and fill the per-channel proof bundle.",
+      action: "npm run distribution:evidence -- --release <release>"
+    },
+    commandGate("beta-check", "Beta feedback loop", "Run npm run beta:check and submit one real feature request through the beta path.", "npm run beta:check"),
+    commandGate("package-check", "Packaging manifest", "Run npm run package:check for source, Docker, hosted, PWA, desktop, CLI, MCP, and portable channels.", "npm run package:check"),
+    commandGate("trust", "Trust evidence", "Run npm run trust and review the trust center output.", "npm run trust"),
+    commandGate("qa", "QA", "Run npm run qa for quick verification and browser golden paths.", "npm run qa"),
+    commandGate("security", "Security", "Run npm run security and resolve audit or regression failures.", "npm run security"),
+    {
+      id: "production-verify",
+      label: "Production verify",
+      status: "pending",
+      detail: "Needs the real hosted environment, backup, and portable bundle before external beta.",
+      action: "npm run verify:production -- --env .env.production --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict"
+    },
+    {
+      id: "recovery-drill",
+      label: "Recovery drill",
+      status: loadWorkspaceBackups().length ? "pending" : "risk",
+      detail: loadWorkspaceBackups().length ? "Local backup evidence exists; run a release backup restore drill." : "Create or link a release backup before sign-off.",
+      action: "npm run drill:recovery -- --backup <server-backup.json>"
+    }
+  ];
+}
+
+function releaseCockpitStatus(gates = releaseCockpitGates()) {
+  const pass = gates.filter((gate) => gate.status === "pass").length;
+  const pending = gates.filter((gate) => gate.status === "pending").length;
+  const risk = gates.filter((gate) => gate.status === "risk").length;
+  const status = risk ? "At risk" : pending ? "Beta pending" : "Beta ready";
+  const tone = risk ? "red" : pending ? "amber" : "green";
+  return { pass, pending, risk, total: gates.length, status, tone };
+}
+
+function renderReleaseReadinessCockpit() {
+  const gates = releaseCockpitGates();
+  const status = releaseCockpitStatus(gates);
+  const bundles = releaseEvidenceBundles();
+  return `
+    <section class="panel release-cockpit-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Release Readiness Dashboard</p>
+          <h2>Production cockpit</h2>
+        </div>
+        <span class="status-pill inbox-${status.tone}">${status.status}</span>
+      </div>
+      <p class="panel-note">Evidence-backed status for hosted demo, distribution proof, beta feedback, security, QA, backup, rollback, and production verification.</p>
+      <div class="release-cockpit-metrics">
+        ${metric("Passing gates", `${status.pass}/${status.total}`)}
+        ${metric("Pending proof", status.pending)}
+        ${metric("Risks", status.risk)}
+        ${metric("Evidence bundles", bundles.length)}
+      </div>
+      <div class="release-cockpit-gates">
+        ${gates.map(renderReleaseCockpitGate).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderReleaseCockpitGate(gate) {
+  const label = gate.status === "pass" ? "Pass" : gate.status === "pending" ? "Pending" : "Risk";
+  const tone = gate.status === "pass" ? "green" : gate.status === "pending" ? "amber" : "red";
+  return `
+    <article class="release-cockpit-gate is-${gate.status}">
+      <span class="status-pill inbox-${tone}">${label}</span>
+      <div>
+        <strong>${escapeHtml(gate.label)}</strong>
+        <p>${escapeHtml(gate.detail)}</p>
+        <code>${escapeHtml(gate.action)}</code>
+      </div>
+    </article>
+  `;
+}
+
+function renderReleaseEvidenceViewer() {
+  const bundles = releaseEvidenceBundles();
+  const latest = bundles[0];
+  return `
+    <section class="panel release-evidence-viewer-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Evidence Bundle Viewer</p>
+          <h2>Release proof files</h2>
+        </div>
+        <span class="status-pill ${latest?.summary?.ok === false ? "inbox-red" : bundles.length ? "inbox-green" : "inbox-amber"}">${bundles.length ? `${bundles.length} indexed` : "No index"}</span>
+      </div>
+      <p class="panel-note">Agora reads the committed release evidence index and summary files so operators can see proof without digging through the repo.</p>
+      <div class="release-evidence-list">
+        ${bundles.length ? bundles.map(renderReleaseEvidenceBundleCard).join("") : emptyState("No release evidence bundles are indexed yet.")}
+      </div>
+    </section>
+  `;
+}
+
+function renderReleaseEvidenceBundleCard(bundle) {
+  const summary = bundle.summary || {};
+  const commands = Array.isArray(summary.commands) ? summary.commands : [];
+  const passed = commands.filter((command) => command.ok).length;
+  const failed = commands.filter((command) => command.ok === false).length;
+  const status = summary.ok === false || failed ? "risk" : summary.ok || passed || summary.channels?.length ? "pass" : "pending";
+  const tone = status === "pass" ? "green" : status === "pending" ? "amber" : "red";
+  const detail = commands.length
+    ? `${passed}/${commands.length} commands passed`
+    : summary.channels?.length
+      ? `${summary.channels.length} channels covered`
+      : summary.base
+        ? `Hosted base ${summary.base}`
+        : "Summary pending";
+  return `
+    <article class="release-evidence-card">
+      <div>
+        <span class="status-pill inbox-${tone}">${status === "pass" ? "Pass" : status === "pending" ? "Pending" : "Risk"}</span>
+        <strong>${escapeHtml(bundle.label || releaseEvidenceKindLabel(bundle.kind))}</strong>
+        <small>${escapeHtml(summary.generatedAt ? formatTimestamp(summary.generatedAt) : "No timestamp")} / commit ${escapeHtml(summary.commit || "unknown")}${summary.dirty ? " / dirty" : ""}</small>
+      </div>
+      <p>${escapeHtml(detail)}</p>
+      <div class="release-evidence-links">
+        ${bundle.path ? `<a class="button button-secondary compact-button" href="${escapeHtml(bundle.path)}" target="_blank" rel="noreferrer">Open README</a>` : ""}
+        ${bundle.summaryPath ? `<a class="button button-secondary compact-button" href="${escapeHtml(bundle.summaryPath)}" target="_blank" rel="noreferrer">Open JSON</a>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function renderReleaseBlockerFocus() {
+  const gates = releaseCockpitGates().filter((gate) => gate.status !== "pass");
+  return `
+    <section class="panel release-blocker-focus-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Launch blockers</p>
+          <h2>What still needs proof</h2>
+        </div>
+        <span class="status-pill ${gates.length ? "inbox-amber" : "inbox-green"}">${gates.length ? `${gates.length} open` : "Clear"}</span>
+      </div>
+      <div class="release-blocker-focus-list">
+        ${gates.length ? gates.slice(0, 6).map((gate) => `
+          <article>
+            <strong>${escapeHtml(gate.label)}</strong>
+            <p>${escapeHtml(gate.detail)}</p>
+            <code>${escapeHtml(gate.action)}</code>
+          </article>
+        `).join("") : emptyState("No release proof blockers are open.")}
+      </div>
+    </section>
+  `;
+}
+
 function releaseProjectCandidates() {
   const tasks = activeTasks();
   const reports = activeProjects()
@@ -21789,6 +22071,12 @@ function renderReleaseManagement() {
       ${metric("Best confidence", `${Math.max(0, ...releases.map((release) => release.confidence))}%`)}
       ${metric("Security controls", securityControlCenterItems().filter((control) => !control.done).length)}
       ${metric("Audit signals", recentSignals.length)}
+    </div>
+
+    <div class="release-cockpit-grid">
+      ${renderReleaseReadinessCockpit()}
+      ${renderReleaseEvidenceViewer()}
+      ${renderReleaseBlockerFocus()}
     </div>
 
     <div class="release-management-grid">
@@ -45125,6 +45413,7 @@ if (darkModeQuery?.addEventListener) {
 initSmoothScroll();
 registerServiceWorker();
 hydrateSecureApiSession();
+loadReleaseEvidenceIndex();
 startRealtimePolling();
 window.setInterval(() => {
   runNotificationReminderScheduler();
