@@ -121,7 +121,7 @@ Priority workflow packs:
 
 - Done: Agency retainer OS
 - Done: Client onboarding and delivery
-- Scrum sprint command center
+- Done: Scrum sprint command center
 - Founder launch room
 - Internal operations tracker
 

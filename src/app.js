@@ -2330,6 +2330,40 @@ const seedData = {
       }
     },
     {
+      id: "template-scrum-delivery-os",
+      name: "Scrum Delivery OS",
+      category: "Software OS",
+      description: "Run a sprint with planning, capacity, daily signal, burndown review, carryover control, retro decisions, and release readiness.",
+      owner: "sam",
+      creatorName: "Agora Workflow Lab",
+      durationDays: 14,
+      tasks: [
+        { key: "intake", title: "Triage sprint candidates", description: "Review backlog candidates, dependencies, risk, and readiness before sprint planning.", assignee: "mara", priority: "high", startOffset: 0, dueOffset: 1, tags: ["scrum", "backlog"], blockedBy: [], subtasks: ["Review priority", "Check dependencies", "Confirm ready items"] },
+        { key: "capacity", title: "Confirm sprint capacity", description: "Confirm PTO, focus time, support load, and owner capacity before commitment.", assignee: "sam", priority: "urgent", startOffset: 0, dueOffset: 1, tags: ["capacity"], blockedBy: [], subtasks: ["Check PTO", "Confirm focus time", "Publish capacity"] },
+        { key: "commitment", title: "Finalize sprint commitment", description: "Lock sprint goal, committed work, stretch work, and explicit non-goals.", assignee: "sam", priority: "urgent", startOffset: 1, dueOffset: 2, tags: ["planning", "commitment"], blockedBy: ["intake", "capacity"], subtasks: ["Write sprint goal", "Lock committed work", "Name stretch work"] },
+        { key: "standup", title: "Publish daily standup brief", description: "Capture yesterday, today, blockers, changed scope, and owner follow-ups.", assignee: "eli", priority: "normal", startOffset: 2, dueOffset: 10, tags: ["standup"], blockedBy: ["commitment"], subtasks: ["Collect updates", "Log blockers", "Send brief"] },
+        { key: "burndown", title: "Review burndown and carryover risk", description: "Inspect progress, scope changes, unstarted work, and carryover candidates before the sprint slips.", assignee: "mara", priority: "high", startOffset: 6, dueOffset: 9, tags: ["burndown", "risk"], blockedBy: ["standup"], subtasks: ["Check burndown", "Name carryover", "Adjust owners"] },
+        { key: "closeout", title: "Close sprint and archive report", description: "Confirm done work, carryover, dropped scope, release notes, and follow-up owners.", assignee: "sam", priority: "high", startOffset: 10, dueOffset: 13, tags: ["closeout"], blockedBy: ["burndown"], subtasks: ["Confirm done", "Archive report", "Assign follow-ups"] },
+        { key: "retro", title: "Log retro decisions", description: "Turn retro notes into decisions, owners, experiments, and next-sprint improvements.", assignee: "nina", priority: "normal", startOffset: 12, dueOffset: 14, tags: ["retro"], blockedBy: ["closeout"], subtasks: ["Capture decisions", "Assign experiments", "Schedule review"] }
+      ],
+      milestones: [
+        { title: "Sprint committed", description: "Goal, capacity, owners, and committed work are locked.", owner: "sam", dueOffset: 2, status: "planned", taskKeys: ["intake", "capacity", "commitment"] },
+        { title: "Mid-sprint risk review", description: "Burndown, blockers, and carryover risks have named owners.", owner: "mara", dueOffset: 9, status: "planned", taskKeys: ["standup", "burndown"] },
+        { title: "Sprint closed", description: "Report, carryover, retro decisions, and next-sprint follow-ups are archived.", owner: "sam", dueOffset: 14, status: "planned", taskKeys: ["closeout", "retro"] }
+      ],
+      docs: [
+        { title: "Sprint Planning Brief", type: "Template", body: "Sprint goal, capacity, committed work, stretch work, non-goals, dependencies, and risk assumptions." },
+        { title: "Daily Standup Brief", type: "Template", body: "Yesterday, today, blockers, changed scope, decisions needed, and owner follow-ups." },
+        { title: "Burndown Review", type: "Brief", body: "Progress, scope change, unstarted work, blocked work, carryover candidates, and mitigation decisions." },
+        { title: "Sprint Closeout Report", type: "Report", body: "Done, not done, carryover, dropped scope, release notes, retro decisions, and next-sprint actions." }
+      ],
+      intakeForm: {
+        title: "Sprint Candidate Intake",
+        assignee: "sam",
+        description: "Capture candidate work, urgency, dependency risk, estimate, and readiness for sprint planning."
+      }
+    },
+    {
       id: "template-finance-close",
       name: "Finance Close",
       category: "Finance",
