@@ -164,7 +164,7 @@ For plugin experiments, start with [`plugins/example-importer/plugin.json`](./pl
 
 For the platform story across plugins, MCP, connectors, templates, automations, and marketplace artifacts, see [`docs/ecosystem.md`](./docs/ecosystem.md) and validate the registry with `npm run ecosystem`.
 
-For trust evidence, run `npm run trust` or `npm run agora -- trust --json`. The report checks Agora's no-tracker runtime posture, security headers, redacted diagnostics, recovery drills, upgrade gates, portability, migration readiness, hosted readiness, and extension registry. See [`docs/trust-center.md`](./docs/trust-center.md).
+For trust evidence, run `npm run trust` or `npm run agora -- trust --json`. The report checks Agora's no-tracker runtime posture, security headers, redacted diagnostics, recovery drills, upgrade gates, portability, migration readiness, hosted readiness, extension registry, buyer evidence matrix, AI/data policy, and security-audit receipts. See [`docs/trust-center.md`](./docs/trust-center.md), [`docs/trust-evidence-matrix.md`](./docs/trust-evidence-matrix.md), and [`docs/ai-data-policy.md`](./docs/ai-data-policy.md).
 
 For release packaging, run `npm run package:check` or `npm run agora -- package-check --json`. The manifest covers source installs, Docker Compose, hosted web/API deployments, offline PWA installs, macOS desktop, Windows desktop, and portable workspace bundles. See [`docs/packaging.md`](./docs/packaging.md).
 
