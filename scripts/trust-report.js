@@ -38,6 +38,12 @@ const staticServer = read("server/static.js");
 const migrationConcierge = read("scripts/migration-concierge.js");
 const migrationDocs = read("docs/migration-tool.md").toLowerCase();
 const migrationConciergeIsReady = migrationConciergeReady();
+const trustEvidenceMatrix = read("docs/trust-evidence-matrix.md").toLowerCase();
+const aiDataPolicy = read("docs/ai-data-policy.md").toLowerCase();
+const securityAuditReceipt = read("docs/security-audit-2026-07-05.md").toLowerCase();
+const trustEvidenceMatrixIsReady = trustEvidenceMatrixReady();
+const aiDataPolicyIsReady = aiDataPolicyReady();
+const securityAuditReceiptIsReady = securityAuditReceiptReady();
 
 const checks = [
   check({
@@ -139,6 +145,33 @@ const checks = [
     fix: "Keep extension points declared, permissioned, and validated."
   }),
   check({
+    id: "trust-evidence-matrix",
+    category: "Customer evidence",
+    title: "Buyer trust evidence matrix maps claims to proof",
+    pass: trustEvidenceMatrixIsReady,
+    detail: trustEvidenceMatrixIsReady ? "Evidence matrix covers claims, evidence files, verification commands, cadence, AI, audits, recovery, migration, and extensions." : "",
+    evidence: ["docs/trust-evidence-matrix.md", "docs/trust-center.md"],
+    fix: "Restore the evidence matrix with claim, artifact, command, and cadence coverage for buyer/security review."
+  }),
+  check({
+    id: "ai-data-policy",
+    category: "AI governance",
+    title: "AI data policy documents provider defaults and controls",
+    pass: aiDataPolicyIsReady,
+    detail: aiDataPolicyIsReady ? "AI policy covers external-provider defaults, server-only keys, context minimization, previews, rationale, audit, undo, and provider review." : "",
+    evidence: ["docs/ai-data-policy.md", "SECURITY.md", "docs/api-agent-contract.md", "docs/project-autopilot.md"],
+    fix: "Keep AI provider defaults, data-use rules, user controls, audit evidence, and provider review requirements documented."
+  }),
+  check({
+    id: "security-audit-receipt",
+    category: "Security",
+    title: "Security and dependency audit receipt is recorded",
+    pass: securityAuditReceiptIsReady,
+    detail: securityAuditReceiptIsReady ? "Security audit receipt includes verification commands, npm audit commands, results, and remaining follow-up." : "",
+    evidence: ["docs/security-audit-2026-07-05.md", "package.json", "desktop/package-lock.json"],
+    fix: "Record the latest security audit, dependency audit commands, results, and unresolved follow-up before release."
+  }),
+  check({
     id: "trust-center-doc",
     category: "Customer evidence",
     title: "Trust Center documentation exists for evaluators",
@@ -213,6 +246,59 @@ function migrationConciergeReady() {
     exists("docs/migration-tool.md") &&
     requiredScriptTokens.every((needle) => migrationConcierge.includes(needle)) &&
     requiredDocTokens.every((needle) => migrationDocs.includes(needle));
+}
+
+function trustEvidenceMatrixReady() {
+  const requiredTokens = [
+    "trust claim",
+    "verification command",
+    "review cadence",
+    "npm run trust",
+    "dependency audits",
+    "ai operator actions",
+    "competitor migrations",
+    "extension surfaces"
+  ];
+  return exists("docs/trust-evidence-matrix.md") &&
+    exists("docs/trust-center.md") &&
+    requiredTokens.every((needle) => trustEvidenceMatrix.includes(needle));
+}
+
+function aiDataPolicyReady() {
+  const requiredPolicyTokens = [
+    "agora works without an external ai provider",
+    "external ai provider keys must stay on the api server",
+    "agora_ai_allow_client_base_url=false",
+    "smallest useful context",
+    "proposed change before it is applied",
+    "plain-language rationale",
+    "audit event or operator ledger",
+    "undo or recovery path",
+    "provider review checklist"
+  ];
+  const requiredSecurityTokens = [
+    "ai provider keys server-only",
+    "agora_ai_allow_client_base_url=false"
+  ];
+  return exists("docs/ai-data-policy.md") &&
+    exists("SECURITY.md") &&
+    exists("docs/api-agent-contract.md") &&
+    exists("docs/project-autopilot.md") &&
+    requiredPolicyTokens.every((needle) => aiDataPolicy.includes(needle)) &&
+    requiredSecurityTokens.every((needle) => security.includes(needle));
+}
+
+function securityAuditReceiptReady() {
+  const requiredTokens = [
+    "security audit - 2026-07-05",
+    "npm run test:admin-security",
+    "npm audit --audit-level=moderate",
+    "npm --prefix desktop audit --audit-level=moderate",
+    "no moderate-or-higher dependency vulnerabilities",
+    "remaining follow-up"
+  ];
+  return exists("docs/security-audit-2026-07-05.md") &&
+    requiredTokens.every((needle) => securityAuditReceipt.includes(needle));
 }
 
 function printReport(payload) {
