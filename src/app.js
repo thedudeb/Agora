@@ -21023,10 +21023,11 @@ function renderReadinessCliPanel() {
         <span class="status-pill inbox-blue">scriptable</span>
       </div>
       <div class="readiness-command-list">
+        <code>npm run verify:production -- --backup &lt;server-backup.json&gt; --bundle &lt;bundle.json&gt; --strict</code>
+        <code>npm run agora -- production verify --env .env.production --quick --skip-audit --allow-missing-backup</code>
         <code>npm run agora -- launch check &lt;bundle.json&gt;</code>
         <code>npm run agora -- launch check &lt;bundle.json&gt; --strict</code>
         <code>npm run agora -- bundle inspect &lt;bundle.json&gt; --json</code>
-        <code>npm run launch:check</code>
       </div>
     </section>
   `;

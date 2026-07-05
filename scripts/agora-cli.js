@@ -127,6 +127,10 @@ const commands = {
     summary: "Run hosted deploy rehearsal checks",
     run: async (args) => runStep("hosted deploy rehearsal", [process.execPath, [path.join(ROOT, "scripts", "hosted-deploy-rehearsal.js"), ...args]])
   },
+  production: {
+    summary: "Run the blessed production hosted verification path",
+    run: async (args) => runProductionCommand(args)
+  },
   upgrade: {
     summary: "Check production upgrade and migration safety",
     run: async (args) => {
@@ -258,6 +262,81 @@ function spawnCommand(command, args) {
   });
 }
 
+async function runProductionCommand(args = []) {
+  const [subcommand, ...rest] = args;
+  if (subcommand !== "verify") {
+    throw new Error("Usage: npm run agora -- production verify [--env .env] [--quick] [--skip-audit] [--backup backup.json] [--allow-missing-backup] [--bundle bundle.json] [--strict]");
+  }
+  const options = parseProductionVerifyOptions(rest);
+  const hostedArgs = ["--env", options.env];
+  if (options.requireGithub) hostedArgs.push("--require-github");
+  if (options.requirePublicFeatureRequests) hostedArgs.push("--require-public-feature-requests");
+
+  const rehearsalArgs = ["--env", options.env];
+  if (options.quick) rehearsalArgs.push("--quick");
+  if (options.skipAudit) rehearsalArgs.push("--skip-audit");
+  if (options.keepGoing) rehearsalArgs.push("--keep-going");
+  if (options.requireGithub) rehearsalArgs.push("--require-github");
+  if (options.requirePublicFeatureRequests) rehearsalArgs.push("--require-public-feature-requests");
+
+  const upgradeArgs = ["check", "--env", options.env];
+  if (options.backup) upgradeArgs.push("--backup", options.backup);
+  if (options.allowMissingBackup) upgradeArgs.push("--allow-missing-backup");
+  if (options.maxAgeHours) upgradeArgs.push("--max-age-hours", options.maxAgeHours);
+
+  await commands.hosted.run(hostedArgs);
+  await commands["rehearse-hosted"].run(rehearsalArgs);
+  await commands.upgrade.run(upgradeArgs);
+  if (options.bundle) {
+    const launchArgs = ["check", options.bundle];
+    if (options.strict) launchArgs.push("--strict");
+    await commands.launch.run(launchArgs);
+  } else {
+    console.log("");
+    console.log("Skipping portable launch bundle check. Pass --bundle <bundle.json> to include it.");
+  }
+}
+
+function parseProductionVerifyOptions(values) {
+  return values.reduce((result, value) => {
+    if (result.pending) {
+      result[result.pending] = value;
+      result.pending = "";
+    } else if (value === "--env") result.pending = "env";
+    else if (value.startsWith("--env=")) result.env = value.slice("--env=".length);
+    else if (value === "--backup") result.pending = "backup";
+    else if (value.startsWith("--backup=")) result.backup = value.slice("--backup=".length);
+    else if (value === "--bundle") result.pending = "bundle";
+    else if (value.startsWith("--bundle=")) result.bundle = value.slice("--bundle=".length);
+    else if (value === "--max-age-hours") result.pending = "maxAgeHours";
+    else if (value.startsWith("--max-age-hours=")) result.maxAgeHours = value.slice("--max-age-hours=".length);
+    else if (value === "--quick") result.quick = true;
+    else if (value === "--skip-audit") result.skipAudit = true;
+    else if (value === "--keep-going") result.keepGoing = true;
+    else if (value === "--allow-missing-backup") result.allowMissingBackup = true;
+    else if (value === "--strict") result.strict = true;
+    else if (value === "--require-github") result.requireGithub = true;
+    else if (value === "--require-public-feature-requests") result.requirePublicFeatureRequests = true;
+    else {
+      throw new Error(`Unknown production verify option: ${value}`);
+    }
+    return result;
+  }, {
+    env: ".env",
+    backup: "",
+    bundle: "",
+    maxAgeHours: "",
+    quick: false,
+    skipAudit: false,
+    keepGoing: false,
+    allowMissingBackup: false,
+    strict: false,
+    requireGithub: false,
+    requirePublicFeatureRequests: false,
+    pending: ""
+  });
+}
+
 function printHelp() {
   console.log(`Agora CLI
 
@@ -284,6 +363,7 @@ Commands:
   golden                        Run onboarding/golden-path browser QA
   hosted [--json]               Verify hosted production environment config
   rehearse-hosted [--quick]     Run hosted deploy rehearsal checks
+  production verify             Run hosted env + deploy rehearsal + upgrade safety
   upgrade check [--backup file]  Check production upgrade/migration safety
   bundle inspect <file> [--json] Inspect a portable workspace bundle
   launch check <bundle>         Check first-client launch readiness
@@ -317,6 +397,7 @@ Examples:
   npm run agora -- hosted
   npm run agora -- hosted --require-github
   npm run agora -- rehearse-hosted --env tests/fixtures/hosted-production.env --quick --skip-audit
+  npm run agora -- production verify --env tests/fixtures/hosted-production.env --quick --skip-audit --allow-missing-backup
   npm run agora -- upgrade check --backup tests/fixtures/server-backups/agora-workspace-backup-demo.json --max-age-hours 999999
   npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json
   npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json --json

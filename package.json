@@ -27,6 +27,7 @@
     "verify:quick": "node scripts/agora-cli.js verify --quick",
     "verify:supabase": "node scripts/agora-cli.js verify --supabase",
     "verify:hosted": "node scripts/hosted-env-verify.js",
+    "verify:production": "node scripts/agora-cli.js production verify",
     "verify:upgrade": "node scripts/upgrade-safety-check.js",
     "rehearse:hosted": "node scripts/hosted-deploy-rehearsal.js",
     "launch:check": "node scripts/agora-cli.js verify --quick && node scripts/agora-cli.js golden",

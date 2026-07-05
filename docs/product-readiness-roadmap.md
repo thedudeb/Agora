@@ -14,8 +14,8 @@ The broader promise stays intact: open source project management without ads, tr
 | --- | --- | --- | --- |
 | 1. Crystal-clear primary persona | Complete | A visitor, new user, and contributor can explain who Agora is best for in one sentence. | README, roadmap, demo copy, and first-run setup all name the agency/consultant client-work wedge without excluding open source teams. |
 | 2. Ruthless first-run experience | Complete | A new workspace reaches "I can run a real project here" in under 10 minutes. | First-run asks preferred project-management style, recommends a starter setup, creates/imports a project, and shows a visible completion path. |
-| 3. Production hosted path | In progress | A self-hoster can deploy and verify Agora without hand-holding. | Install, deployment, health checks, backups, upgrade checks, and env validation form one boring, repeatable path. |
-| 4. Real collaboration confidence | Planned | Teams trust multi-person work instead of treating Agora as a solo local app. | Presence, stale edit warnings, comments/chat, notifications, permissions, and audit logs have clear user-facing states and failure handling. |
+| 3. Production hosted path | Complete | A self-hoster can deploy and verify Agora without hand-holding. | Install, deployment, health checks, backups, upgrade checks, and env validation form one boring, repeatable path. |
+| 4. Real collaboration confidence | In progress | Teams trust multi-person work instead of treating Agora as a solo local app. | Presence, stale edit warnings, comments/chat, notifications, permissions, and audit logs have clear user-facing states and failure handling. |
 | 5. Opinionated workflows | Planned | Agora ships useful operating systems, not just flexible primitives. | Agency retainer, client onboarding, scrum delivery, and solo founder presets produce boards, timelines, reports, templates, automations, and dashboards. |
 | 6. Polished migration story | Planned | A team can bring real work from competitors safely. | Import concierge previews mappings, warnings, rollback, skipped data, and clean next steps for Asana, Trello, Jira, Linear, ClickUp, and generic CSV/JSON. |
 | 7. Trust center and proof | Planned | Buyers and self-hosters can verify security, privacy, portability, and AI behavior. | Trust Center links to evidence reports, security audits, export guarantees, AI policy, backup drills, and dependency/runtime checks. |
@@ -88,6 +88,12 @@ Key product surfaces:
 - CLI verification commands
 
 Acceptance test: a new self-hoster can deploy, create the first owner, verify backups, run health checks, upgrade safely, and export evidence without reading source code.
+
+Current product state:
+
+- Done: `npm run verify:production` gives self-hosters one hosted gate for env verification, deploy rehearsal, upgrade safety, and optional launch bundle readiness.
+- Done: README, install docs, deployment docs, and hosted launch runbook point to the single production verification path.
+- Done: the Readiness CLI panel shows the production verification command and quick rehearsal variant.
 
 ## Step 4: Collaboration Confidence
 

@@ -36,7 +36,7 @@ Recommended first production sequence:
 3. Configure Supabase storage/auth and run migrations `001`, `002`, and `003`.
 4. Configure SMTP or password-reset webhook delivery.
 5. Sign in, open Settings > Account, and use Hosted onboarding to complete owner, API sync, invite, email, feedback, and recovery checks.
-6. Before upgrades or migration changes, run `npm run verify:upgrade`; for new launches, run `npm run verify:hosted` and `npm run rehearse:hosted`, refresh Backend Health, and confirm production gates, email diagnostics, background jobs, structured records, backups, and Supabase mode are green.
+6. Before upgrades or migration changes, run `npm run verify:upgrade`; for new launches, run `npm run verify:production -- --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict`, refresh Backend Health, and confirm production gates, email diagnostics, background jobs, structured records, backups, and Supabase mode are green.
 7. Run `npm run security`, `npm run qa`, and confirm the GitHub Actions `QA + Security` workflow passes for the release commit.
 
 ## Required Production Environment
@@ -90,6 +90,27 @@ Backend Health reports production gates for the hosted path:
 The API also exposes release metadata on `/api/health`, `/api/capabilities`, Backend Health, and redacted Admin Diagnostics. Set `AGORA_RELEASE_COMMIT` and `AGORA_RELEASE_DATE` from your deploy host when available; Vercel and Render commit variables are detected automatically.
 
 Settings > Account also shows Hosted onboarding, which is the operator-facing path for first-owner signup, API sync, teammate/client invite, email delivery, public feedback, and recovery proof.
+
+## Production Verification
+
+Use one command for the hosted production gate:
+
+```sh
+npm run verify:production -- --env .env.production --backup /var/lib/agora/backups/agora-workspace-backup-latest.json --bundle ./agora-launch-bundle.json --strict
+```
+
+That command chains:
+
+- Hosted environment verification.
+- Hosted deploy rehearsal.
+- Upgrade and backup safety checks.
+- Portable launch bundle readiness when `--bundle` is provided.
+
+For an early environment rehearsal before a fresh server backup exists:
+
+```sh
+npm run verify:production -- --env .env.production --quick --skip-audit --allow-missing-backup
+```
 
 ## Supabase Persistence
 

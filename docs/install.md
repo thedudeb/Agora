@@ -44,9 +44,10 @@ npm run setup -- --profile hosted
 Then edit `.env` with real Supabase, SMTP/webhook, hosted origin, release, and backup values. Run Supabase migrations `001`, `002`, and `003`, create the private `agora-files` bucket, and validate:
 
 ```sh
-npm run verify:hosted
-npm run rehearse:hosted
+npm run verify:production -- --env .env.production --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict
 ```
+
+For an early dry rehearsal before a production backup exists, use `npm run verify:production -- --env .env.production --quick --skip-audit --allow-missing-backup`.
 
 ## CLI Wrapper
 

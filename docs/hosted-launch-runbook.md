@@ -5,13 +5,13 @@ Use this runbook when moving Agora from a local pilot to a hosted workspace with
 ## 1. Freeze The Candidate
 
 - Confirm the GitHub Actions `QA` workflow is green for the release commit.
-- Run `npm run verify:hosted`.
-- Run `npm run rehearse:hosted`.
+- Export a portable workspace bundle from Data.
+- Run `npm run verify:production -- --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict`.
 - Run `npm run qa`.
 - Run `npm run verify`.
-- Run `npm run launch:check`.
-- Export a portable workspace bundle from Data.
 - Keep the previous hosted deployment available until post-cutover checks pass.
+
+`npm run verify:production` is the single hosted gate. It runs hosted environment verification, hosted deploy rehearsal, upgrade safety, and launch bundle readiness when a bundle is provided. Use `--quick --skip-audit` only for preflight rehearsals, not for the final candidate gate.
 
 ## 2. Configure Hosted Environment
 
@@ -34,6 +34,7 @@ Use this runbook when moving Agora from a local pilot to a hosted workspace with
 - Set `AGORA_STORAGE_DRIVER=supabase` and `AGORA_AUTH_DRIVER=supabase`.
 - Restart the API, sign in, refresh Backend Health, and confirm production mode is ready.
 - Re-run `npm run verify:hosted` after each environment change; it should block demo auth, passwordless auth, manual reset-token exposure, localhost CORS, missing SMTP credentials, missing scheduled backups, and unsafe AI provider settings.
+- Re-run `npm run verify:production -- --quick --skip-audit --allow-missing-backup` after early environment changes when a fresh production backup is not available yet.
 - Confirm Email diagnostics shows SMTP, sender, invitations, feature request owner, and password reset delivery in the expected state.
 - Run `POST /api/backups/run` or click Run Server Backup from Backend Health, then confirm Backend Health shows the latest backup.
 - Run `npm run test:supabase` against a test workspace after migration or environment changes.

@@ -126,10 +126,12 @@ npm run test:golden # browser-check onboarding, marketplace, templates, and port
 npm run test:plugins # validate plugin manifest contracts
 npm run test:supabase # verify a real Supabase project end to end
 npm run verify:supabase # verify + real Supabase project checks
+npm run verify:production # hosted env + deploy rehearsal + upgrade safety
 npm run verify:upgrade # check migration files and latest server backup before upgrading production
 npm run screenshots # refresh launch screenshots with local Chrome/Chromium
 npm run agora -- verify # power-user CLI: check + fixtures + API smoke
 npm run agora -- qa # power-user CLI: release QA gate
+npm run agora -- production verify --env .env.production --backup server-backup.json --bundle launch-bundle.json
 npm run agora -- demo links --base https://demo.example.com --markdown
 npm run agora -- concierge tests/fixtures/trello-board.json --source trello-json --workspace tests/fixtures/workspace.json
 npm run agora -- ecosystem
@@ -198,11 +200,9 @@ Use this before pushing a release candidate:
 npm run security
 npm run trust
 npm run package:check
-npm run verify:hosted
-npm run rehearse:hosted
+npm run verify:production -- --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict
 npm run qa
 npm run verify
-npm run launch:check
 ```
 
 For a fast local confidence check while iterating:
@@ -219,6 +219,7 @@ npm run verify:supabase
 ```
 
 The Readiness page can export the same hosted launch evidence as JSON or Markdown after Backend Health has been refreshed.
+`npm run verify:production` is the blessed hosted production gate. It chains hosted environment verification, hosted deploy rehearsal, upgrade safety, and an optional portable launch bundle check when you pass `--bundle`.
 `npm run verify:hosted` performs the pre-deploy environment check for Supabase mode, hosted URLs, strict CSP, reset/email delivery, public intake limits, and webhook-secret readiness without printing secret values.
 `npm run rehearse:hosted` runs the hosted verifier, security checks, API smoke, backup/diagnostics proof, and browser golden path as a single deploy rehearsal report.
 
