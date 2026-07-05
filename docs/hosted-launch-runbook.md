@@ -16,6 +16,7 @@ Use this runbook when moving Agora from a local pilot to a hosted workspace with
 ## 2. Configure Hosted Environment
 
 - Set `AGORA_ALLOWED_ORIGINS` to the exact hosted app origin.
+- Set `AGORA_ALLOW_LOCALHOST_ORIGINS=false`; localhost CORS is for development only.
 - Set `AGORA_PUBLIC_APP_URL` to the hosted HTTPS app URL.
 - Set `AGORA_STRICT_CSP=true` or run the app/static server with `NODE_ENV=production`.
 - Set `AGORA_EMAIL_FROM`, `AGORA_FEATURE_REQUEST_EMAIL`, and SMTP credentials for invitations, feature request owner emails, and requester updates.
@@ -23,6 +24,7 @@ Use this runbook when moving Agora from a local pilot to a hosted workspace with
 - Set `AGORA_STRUCTURED_LOGS=true` if your host captures JSON stdout logs.
 - Set `AGORA_BACKUP_DIR` to a durable mounted path, choose `AGORA_BACKUP_RETENTION_FILES`, and enable `AGORA_BACKUP_SCHEDULER_ENABLED=true` when the API process should write scheduled backups itself.
 - Use SMTP or webhook password reset delivery, and keep `AGORA_PASSWORD_RESET_RETURN_TOKEN=false`.
+- Keep `AGORA_AI_ALLOW_CLIENT_BASE_URL=false` unless a trusted self-hosted admin workflow needs it; if enabled, configure `AGORA_AI_ALLOWED_BASE_URLS` with hosted HTTPS provider origins.
 - Keep public feedback limits configured with `AGORA_PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS`, `AGORA_PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS`, and `AGORA_PUBLIC_FEATURE_BODY_LIMIT_BYTES`.
 
 ## 3. Prove Persistence
@@ -31,7 +33,7 @@ Use this runbook when moving Agora from a local pilot to a hosted workspace with
 - Create the private Supabase Storage bucket.
 - Set `AGORA_STORAGE_DRIVER=supabase` and `AGORA_AUTH_DRIVER=supabase`.
 - Restart the API, sign in, refresh Backend Health, and confirm production mode is ready.
-- Re-run `npm run verify:hosted` after each environment change.
+- Re-run `npm run verify:hosted` after each environment change; it should block demo auth, passwordless auth, manual reset-token exposure, localhost CORS, missing SMTP credentials, missing scheduled backups, and unsafe AI provider settings.
 - Confirm Email diagnostics shows SMTP, sender, invitations, feature request owner, and password reset delivery in the expected state.
 - Run `POST /api/backups/run` or click Run Server Backup from Backend Health, then confirm Backend Health shows the latest backup.
 - Run `npm run test:supabase` against a test workspace after migration or environment changes.

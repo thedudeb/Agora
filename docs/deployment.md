@@ -45,6 +45,7 @@ Recommended first production sequence:
 AGORA_APP_PORT=5174
 AGORA_API_PORT=8787
 AGORA_ALLOWED_ORIGINS=https://your-agora-app.example.com
+AGORA_ALLOW_LOCALHOST_ORIGINS=false
 AGORA_PUBLIC_APP_URL=https://your-agora-app.example.com
 AGORA_EMAIL_FROM=Agora <no-reply@your-domain.example>
 AGORA_FEATURE_REQUEST_EMAIL=owner@your-domain.example
@@ -65,13 +66,17 @@ AGORA_BACKUP_SCHEDULER_ENABLED=true
 AGORA_BACKUP_INTERVAL_HOURS=24
 AGORA_PUBLIC_FEATURE_REQUESTS=false
 AGORA_GITHUB_WEBHOOK_SECRET=your-github-webhook-secret
+AGORA_AI_PROVIDER=local
+AGORA_AI_ALLOW_CLIENT_BASE_URL=false
+AGORA_AI_ALLOWED_BASE_URLS=
 ```
 
-Use HTTPS in front of both app and API in production. Keep `AGORA_ALLOWED_ORIGINS` limited to the browser origins that should call the API.
+Use HTTPS in front of both app and API in production. Keep `AGORA_ALLOWED_ORIGINS` limited to the browser origins that should call the API, and keep implicit localhost CORS disabled outside development.
 
 Backend Health reports production gates for the hosted path:
 
 - `Allowed origins`: `AGORA_ALLOWED_ORIGINS` is set to the exact browser origin.
+- `Production CORS policy`: implicit localhost origins are disabled and all configured browser origins are hosted HTTPS origins.
 - `Public app URL`: `AGORA_PUBLIC_APP_URL` is a hosted HTTPS URL for invite, reset, and feedback emails.
 - `Auth entrypoints`: demo and passwordless auth are disabled.
 - `Password reset delivery`: SMTP or webhook delivery is configured, with browser token return disabled.
@@ -79,7 +84,8 @@ Backend Health reports production gates for the hosted path:
 - `Public feature abuse limits`: public feedback body and rate limits are intentionally low.
 - `Rate-limit IP source`: direct socket IPs are used unless `AGORA_TRUST_PROXY=true` is intentionally enabled behind a trusted proxy.
 - `Strict CSP`: hosted app/static servers run with `AGORA_STRICT_CSP=true` or `NODE_ENV=production`.
-- `Workspace backups`: the API can write server-side backups to a durable mounted directory.
+- `Workspace backups`: the API can write scheduled server-side backups to a durable mounted directory.
+- `AI provider hardening`: provider keys stay server-side; client-provided AI base URLs are disabled or explicitly allowlisted.
 
 The API also exposes release metadata on `/api/health`, `/api/capabilities`, Backend Health, and redacted Admin Diagnostics. Set `AGORA_RELEASE_COMMIT` and `AGORA_RELEASE_DATE` from your deploy host when available; Vercel and Render commit variables are detected automatically.
 
