@@ -1676,6 +1676,55 @@ body[data-tutorial-target="view"] #app-view {
   align-self: end;
 }
 
+.first-ten-mode-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.first-ten-mode-list {
+  display: grid;
+  gap: 8px;
+}
+
+.first-ten-mode-list article {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-height: 78px;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.first-ten-mode-list article.is-done {
+  border-color: color-mix(in srgb, var(--green) 40%, var(--line));
+}
+
+.first-ten-mode-list span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 900;
+  background: var(--surface);
+  border-radius: 999px;
+}
+
+.first-ten-mode-list div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.first-ten-mode-list small {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 .evaluation-scorecard-panel {
   display: grid;
   gap: 12px;
@@ -13058,6 +13107,7 @@ body[data-density="compact"] .main-content {
   .operator-permission-list,
   .operator-preset-list,
   .onboarding-grid,
+  .first-ten-mode-list article,
   .evaluation-scorecard-row,
   .project-command-grid,
   .project-next-action-grid,

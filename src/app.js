@@ -1186,6 +1186,11 @@ const seedData = {
     wizardStep: 0,
     evaluationProgress: {},
     evaluationScorecard: {},
+    firstTenMode: {
+      active: false,
+      startedAt: "",
+      completedAt: ""
+    },
     notificationsReviewed: false,
     templatesReviewed: false
   },
@@ -2906,6 +2911,11 @@ function normalizeState(nextState) {
         ...((nextState.onboarding || {}).evaluationProgress || {})
       },
       evaluationScorecard: normalizeEvaluationScorecard((nextState.onboarding || {}).evaluationScorecard),
+      firstTenMode: {
+        active: Boolean((nextState.onboarding || {}).firstTenMode?.active),
+        startedAt: (nextState.onboarding || {}).firstTenMode?.startedAt || "",
+        completedAt: (nextState.onboarding || {}).firstTenMode?.completedAt || ""
+      },
       wizardStep: clamp(Number((nextState.onboarding || {}).wizardStep || 0), 0, 8)
     },
     tutorial: {
@@ -7853,10 +7863,13 @@ function evaluationDemoLinks(baseUrl = currentAppBaseUrl()) {
   const firstProject = activeProjects()[0];
   return [
     { label: "Beta launch handoff", url: routeUrl("beta"), inspect: "Invite-readiness, tester path, recovery, and email diagnostics." },
+    { label: "Start beta workspace", url: routeUrl("beta", { demoAction: "startBetaWorkspace" }), inspect: "Loads the full tester workspace and lands on the beta launch handoff." },
+    { label: "Load agency sample", url: routeUrl("command-center", { demoAction: "sampleAgencyWorkspace" }), inspect: "Creates a fresh agency delivery sample for a realistic PM review." },
     { label: "PM Command Center", url: routeUrl("command-center"), inspect: "Attention queue, promises, risks, decisions, and next actions." },
     { label: "Power Kanban", url: routeUrl("board"), inspect: "Saved views, WIP limits, swimlanes, templates, flow health, and card detail." },
     { label: "Timeline confidence", url: routeUrl("project", { projectId: firstProject?.id, projectTab: "timeline" }), inspect: "Dependencies, critical path, slips, milestones, and workload warnings." },
     { label: "Client visibility", url: routeUrl("visibility"), inspect: "Shared packets, portal links, warnings, approvals, and client-safe data." },
+    { label: "Autopilot safety demo", url: routeUrl("autopilot", { demoAction: "autopilotDemo" }), inspect: "Opens the safety-first automation review path with realistic data." },
     { label: "Recovery and portability", url: routeUrl("data"), inspect: "Portable bundle, backups, restore path, and offline storage contract." }
   ];
 }
@@ -7975,6 +7988,70 @@ function setEvaluationScorecardNote(itemId, note) {
     })
   };
   saveState();
+}
+
+function firstTenModeState() {
+  return {
+    active: Boolean(state.onboarding?.firstTenMode?.active),
+    startedAt: state.onboarding?.firstTenMode?.startedAt || "",
+    completedAt: state.onboarding?.firstTenMode?.completedAt || ""
+  };
+}
+
+function firstTenModeItems() {
+  const scorecard = state.onboarding?.evaluationScorecard || {};
+  const recovery = portableRecoveryStatus();
+  return [
+    {
+      id: "workspace",
+      minute: "0-2",
+      label: "Load the realistic workspace",
+      detail: "Start from the beta client delivery sample so the review has tasks, approvals, feedback, and recovery data.",
+      action: "workspace",
+      done: isBetaWorkspaceLoaded() || state.onboarding?.evaluationProgress?.sample
+    },
+    {
+      id: "command",
+      minute: "2-4",
+      label: "Scan the command center",
+      detail: "Confirm the attention queue, promises, risks, decisions, and next actions answer the PM's morning question.",
+      action: "command",
+      done: Boolean(state.onboarding?.evaluationProgress?.command || scorecard.command?.status === "pass")
+    },
+    {
+      id: "kanban",
+      minute: "4-6",
+      label: "Inspect execution depth",
+      detail: "Check the board and timeline for saved views, WIP limits, dependencies, critical path, and workload warnings.",
+      action: "kanban",
+      done: Boolean(state.onboarding?.evaluationProgress?.kanban && state.onboarding?.evaluationProgress?.timeline)
+    },
+    {
+      id: "trust",
+      minute: "6-8",
+      label: "Review trust and visibility",
+      detail: "Open client visibility and Autopilot safety so the evaluator sees guardrails before automation.",
+      action: "trust",
+      done: Boolean(state.onboarding?.evaluationProgress?.autopilot || state.onboarding?.evaluationProgress?.memory)
+    },
+    {
+      id: "packet",
+      minute: "8-10",
+      label: "Leave with proof",
+      detail: "Download or copy the evaluation packet, then create a recovery checkpoint before the call ends.",
+      action: "packet",
+      done: Boolean(state.auditEvents.some((event) => event.action === "evaluation_packet_export") && recovery.score >= Math.max(3, recovery.total - 1))
+    }
+  ];
+}
+
+function firstTenModeProgress() {
+  const items = firstTenModeItems();
+  return {
+    items,
+    done: items.filter((item) => item.done).length,
+    total: items.length
+  };
 }
 
 function renderGuidedEvaluationChecklist() {
@@ -9098,6 +9175,41 @@ function renderEvaluationScorecardPanel() {
   `;
 }
 
+function renderFirstTenModePanel() {
+  const mode = firstTenModeState();
+  const progress = firstTenModeProgress();
+  const tone = progress.done === progress.total ? "green" : mode.active ? "blue" : "amber";
+  return `
+    <section class="panel first-ten-mode-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">First 10 minutes mode</p>
+          <h2>${mode.active ? "Run the evaluator path live" : "Make the first demo impossible to miss"}</h2>
+        </div>
+        <span class="status-pill inbox-${tone}">${progress.done}/${progress.total}</span>
+      </div>
+      <p class="panel-note">${mode.active ? `Started ${escapeHtml(formatTimestamp(mode.startedAt))}. Keep the call moving through evidence, trust, and exit proof.` : "Use this when a new PM, customer, or contributor asks whether Agora can run a real project. It turns the beta page into a timed product evaluation."}</p>
+      <div class="first-ten-mode-list">
+        ${progress.items.map((item) => `
+          <article class="${item.done ? "is-done" : "is-open"}">
+            <span>${escapeHtml(item.minute)}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <small>${escapeHtml(item.detail)}</small>
+            </div>
+            <button class="button ${item.done ? "button-secondary" : "button-primary"} compact-button" type="button" data-first-ten-action="${escapeHtml(item.action)}">${item.done ? "Review" : "Start"}</button>
+          </article>
+        `).join("")}
+      </div>
+      <div class="data-actions">
+        <button class="button ${mode.active ? "button-secondary" : "button-primary"}" type="button" data-first-ten-action="start">${mode.active ? "Restart 10-minute path" : "Start 10-minute evaluation"}</button>
+        <button class="button button-secondary" type="button" data-first-ten-action="packet">Open Packet Step</button>
+        <button class="button button-secondary" type="button" data-evaluation-action="copy-markdown">Copy Evaluation Packet</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderBetaLaunch() {
   const items = betaLaunchItems();
   const score = readinessScore(items);
@@ -9155,6 +9267,7 @@ function renderBetaLaunch() {
     </section>
 
     ${renderBetaWalkthroughPanel()}
+    ${renderFirstTenModePanel()}
     ${renderEvaluationScorecardPanel()}
     ${renderBetaExitProofPanel()}
 
@@ -16369,6 +16482,71 @@ function handleEvaluationAction(action) {
   }
 }
 
+function startFirstTenMode() {
+  state.onboarding = {
+    ...state.onboarding,
+    dismissed: false,
+    firstTenMode: {
+      active: true,
+      startedAt: new Date().toISOString(),
+      completedAt: ""
+    }
+  };
+}
+
+function handleFirstTenAction(action) {
+  if (action === "start") {
+    state = createBetaWorkspaceState();
+    startFirstTenMode();
+    saveState();
+    render();
+    showToast("10-minute evaluation started", "success");
+    return;
+  }
+
+  if (!firstTenModeState().active) startFirstTenMode();
+
+  if (action === "workspace") {
+    state = createBetaWorkspaceState();
+    startFirstTenMode();
+    saveState();
+    render();
+    showToast("Beta workspace ready for review", "success");
+    return;
+  }
+
+  if (action === "command") {
+    openGuidedEvaluationStep("command");
+    return;
+  }
+
+  if (action === "kanban") {
+    openGuidedEvaluationStep(state.onboarding?.evaluationProgress?.kanban ? "timeline" : "kanban");
+    return;
+  }
+
+  if (action === "trust") {
+    openGuidedEvaluationStep(state.onboarding?.evaluationProgress?.autopilot ? "memory" : "autopilot");
+    return;
+  }
+
+  if (action === "packet") {
+    state.selectedRoute = "beta";
+    state.onboarding = {
+      ...state.onboarding,
+      dismissed: false,
+      evaluationProgress: {
+        ...(state.onboarding?.evaluationProgress || {}),
+        recovery: true
+      }
+    };
+    openSidebarGroupForRoute("beta");
+    saveState();
+    render();
+    showToast("Evaluation packet step is ready", "success");
+  }
+}
+
 function addDecisionFromSource(decision) {
   const existing = state.raidItems.some((item) => item.id === decision.id);
   if (existing) {
@@ -16924,6 +17102,40 @@ function runGoldenActionFromLocation() {
   if (params.get("goldenAction") === "memorySampleCapture") {
     addSampleProjectMemoryCapture();
   }
+}
+
+function runDemoActionFromLocation() {
+  const params = new URLSearchParams(window.location.search);
+  const action = params.get("demoAction");
+  if (!action) return false;
+
+  if (action === "startBetaWorkspace") {
+    state = createBetaWorkspaceState();
+    startFirstTenMode();
+    saveState();
+    routeFromLocation({ shouldRender: true });
+    showToast("Beta demo workspace loaded", "success");
+    return true;
+  }
+
+  if (action === "sampleAgencyWorkspace") {
+    createSampleWorkspace("agency");
+    routeFromLocation({ shouldRender: true });
+    showToast("Agency demo link opened", "success");
+    return true;
+  }
+
+  if (action === "autopilotDemo") {
+    startAutopilotDemoPath();
+    return true;
+  }
+
+  if (action === "recoveryPlan") {
+    openRecoveryPlanFlow();
+    return true;
+  }
+
+  return false;
 }
 
 function setProject(projectId) {
@@ -41587,6 +41799,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const firstTenActionButton = event.target.closest("[data-first-ten-action]");
+  if (firstTenActionButton) {
+    handleFirstTenAction(firstTenActionButton.dataset.firstTenAction);
+    return;
+  }
+
   const onboardingStepButton = event.target.closest("[data-onboarding-step]");
   if (onboardingStepButton) {
     openOnboardingWizard(Number(onboardingStepButton.dataset.onboardingStep));
@@ -43929,5 +44147,6 @@ if (!routePortalFromLocation() && !routeInviteFromLocation() && !routeFeedbackFr
   openSidebarGroupForRoute(state.selectedRoute);
 }
 render();
+runDemoActionFromLocation();
 runGoldenActionFromLocation();
 document.documentElement.dataset.agoraBoot = "ready";

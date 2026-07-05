@@ -641,6 +641,8 @@ const routeChecks = [
       "Start Beta Workspace",
       "Beta walkthrough",
       "First 10 minutes for a tester",
+      "First 10 minutes mode",
+      "Start 10-minute evaluation",
       "Evaluation scorecard",
       "Can Agora run this project?",
       "Needs work",
@@ -677,6 +679,21 @@ const routeChecks = [
       "Time CSV",
       "3 seeded beta requests",
       "Agency Client Delivery Beta is loaded with client work"
+    ]
+  },
+  {
+    name: "Direct beta demo link",
+    suite: "release",
+    route: "beta",
+    query: { demoAction: "startBetaWorkspace" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Agency Client Delivery Beta",
+      "First 10 minutes mode",
+      "Run the evaluator path live",
+      "Evaluation scorecard",
+      "Can Agora run this project?"
     ]
   },
   {

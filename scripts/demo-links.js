@@ -67,6 +67,7 @@ function buildDemoLinks(catalog, options = {}) {
       updatedAt: catalog.updatedAt,
       baseWorkspace: catalog.baseWorkspace
     },
+    evaluationLinks: evaluationLinks(options.base),
     demos: demos.map((demo) => ({
       ...demo,
       entryUrl: routeUrl(options.base, demo.entryRoute),
@@ -78,6 +79,31 @@ function buildDemoLinks(catalog, options = {}) {
   };
 }
 
+function evaluationLinks(base) {
+  return [
+    {
+      label: "Start beta workspace",
+      url: routeUrl(base, "beta", { demoAction: "startBetaWorkspace" }),
+      use: "Loads the beta workspace and starts First 10 minutes mode."
+    },
+    {
+      label: "Agency PM evaluation",
+      url: routeUrl(base, "command-center", { demoAction: "sampleAgencyWorkspace" }),
+      use: "Creates a realistic agency sample and opens the PM command center."
+    },
+    {
+      label: "Autopilot safety demo",
+      url: routeUrl(base, "autopilot", { demoAction: "autopilotDemo" }),
+      use: "Opens the safety-first automation review path."
+    },
+    {
+      label: "Recovery proof",
+      url: routeUrl(base, "data", { demoAction: "recoveryPlan" }),
+      use: "Opens portable export, backups, restore, and offline contract proof."
+    }
+  ];
+}
+
 function normalizeBaseUrl(base) {
   return String(base || "http://127.0.0.1:5174").replace(/\/+$/, "");
 }
@@ -87,6 +113,8 @@ function routeUrl(base, route, options = {}) {
   url.searchParams.set("route", route);
   if (options.settingsTab) url.searchParams.set("settingsTab", options.settingsTab);
   if (options.projectId) url.searchParams.set("projectId", options.projectId);
+  if (options.projectTab) url.searchParams.set("projectTab", options.projectTab);
+  if (options.demoAction) url.searchParams.set("demoAction", options.demoAction);
   return url.toString();
 }
 
@@ -96,6 +124,9 @@ function printReport(report) {
     console.log("");
     console.log(`Base: ${report.base}`);
     console.log(`Workspace: ${report.catalog.baseWorkspace}`);
+    console.log("");
+    console.log("## Evaluation Links");
+    report.evaluationLinks.forEach((link) => console.log(`- ${link.label}: ${link.url}`));
     report.demos.forEach((demo) => {
       console.log("");
       console.log(`## ${demo.name}`);
@@ -113,6 +144,9 @@ function printReport(report) {
   console.log("Agora demo links");
   console.log(`Base: ${report.base}`);
   console.log(`Workspace: ${report.catalog.baseWorkspace}`);
+  console.log("");
+  console.log("Evaluation links");
+  report.evaluationLinks.forEach((link) => console.log(`- ${link.label}: ${link.url}`));
   report.demos.forEach((demo) => {
     console.log("");
     console.log(`${demo.name} (${demo.audience})`);
