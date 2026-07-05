@@ -5,6 +5,7 @@
   "releaseStatus": "beta-ready packaging path, not a signed public app-store release",
   "releaseOwner": "Agora maintainer",
   "releaseGate": [
+    "npm run release:check",
     "npm run package:check",
     "npm run trust",
     "npm run verify:production -- --env .env.production --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict",
@@ -16,6 +17,7 @@
     "docs/install.md",
     "docs/hosted-provider-recipes.md",
     "docs/packaging.md",
+    "docs/release-candidate-v0.1-beta.md",
     "docs/release-candidate-handoff-template.md",
     "docs/release-checklist.md",
     "docs/trust-center.md",
@@ -36,6 +38,7 @@
     "trust",
     "qa",
     "security",
+    "release:check",
     "verify:hosted",
     "verify:production",
     "verify:upgrade",

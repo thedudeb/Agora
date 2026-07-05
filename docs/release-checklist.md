@@ -41,6 +41,7 @@ For the automated product gate, use [`qa-gate.md`](./qa-gate.md).
 Confirm the GitHub Actions `QA` workflow is green for the commit being released.
 
 ```sh
+npm run release:check
 npm run qa
 npm run verify
 npm run trust
@@ -60,7 +61,7 @@ npm run test:golden
 npm run test:api
 ```
 
-Fix any failure before releasing. `qa` runs quick verification plus browser golden-path QA. `trust` verifies the customer-facing trust evidence. `package:check` verifies the source, Docker, hosted, PWA, desktop, CLI, MCP, and portable-data release manifest. `verify:upgrade` checks migration-file presence and latest server-backup validity before production upgrades. `drill:recovery` proves the selected backup can restore into an isolated workspace file with matching identity and counts. `launch:check` remains the shorter launch-focused gate. `test:importers` checks generic CSV, Trello JSON, and migration concierge planning/apply behavior. `test:golden` browser-checks the app shell, PWA/offline fallback, first-run dashboard, template-to-project path, marketplace automation path, Data recovery/schema/offline readiness, Settings sync/security/feedback tabs, feature request triage, and mobile/public feedback paths. `test:api` covers auth, permissions, structured records, payments, marketplace publishing, scheduler behavior, audit logs, and API persistence.
+Fix any failure before releasing. `release:check` verifies the live candidate handoff, manifest gate, and release docs are connected. `qa` runs quick verification plus browser golden-path QA. `trust` verifies the customer-facing trust evidence. `package:check` verifies the source, Docker, hosted, PWA, desktop, CLI, MCP, and portable-data release manifest. `verify:upgrade` checks migration-file presence and latest server-backup validity before production upgrades. `drill:recovery` proves the selected backup can restore into an isolated workspace file with matching identity and counts. `launch:check` remains the shorter launch-focused gate. `test:importers` checks generic CSV, Trello JSON, and migration concierge planning/apply behavior. `test:golden` browser-checks the app shell, PWA/offline fallback, first-run dashboard, template-to-project path, marketplace automation path, Data recovery/schema/offline readiness, Settings sync/security/feedback tabs, feature request triage, and mobile/public feedback paths. `test:api` covers auth, permissions, structured records, payments, marketplace publishing, scheduler behavior, audit logs, and API persistence.
 
 ## 5. Security Gate
 

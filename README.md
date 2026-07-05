@@ -110,6 +110,7 @@ npm run demo:links # generate shareable demo tour links
 npm run migrate:concierge -- tests/fixtures/trello-board.json --source trello-json --workspace tests/fixtures/workspace.json
 npm run ecosystem # validate plugin/MCP extension registry
 npm run trust     # run the Trust Center evidence report
+npm run release:check # validate the live release-candidate handoff
 npm run package:check # validate release packaging manifest
 npm run mcp       # start the local stdio MCP server for power-user clients
 npm run plugins   # validate local plugin manifests
@@ -166,7 +167,7 @@ For the platform story across plugins, MCP, connectors, templates, automations, 
 
 For trust evidence, run `npm run trust` or `npm run agora -- trust --json`. The report checks Agora's no-tracker runtime posture, security headers, redacted diagnostics, recovery drills, upgrade gates, portability, migration readiness, hosted readiness, extension registry, buyer evidence matrix, AI/data policy, and security-audit receipts. See [`docs/trust-center.md`](./docs/trust-center.md), [`docs/trust-evidence-matrix.md`](./docs/trust-evidence-matrix.md), and [`docs/ai-data-policy.md`](./docs/ai-data-policy.md).
 
-For release packaging, run `npm run package:check` or `npm run agora -- package-check --json`. The manifest covers source installs, Docker Compose, hosted web/API deployments, offline PWA installs, macOS desktop, Windows desktop, and portable workspace bundles, with current channel status in [`docs/packaging-audit-2026-07-05.md`](./docs/packaging-audit-2026-07-05.md). See [`docs/packaging.md`](./docs/packaging.md).
+For release packaging, run `npm run release:check` first, then `npm run package:check` or `npm run agora -- package-check --json`. The manifest covers source installs, Docker Compose, hosted web/API deployments, offline PWA installs, macOS desktop, Windows desktop, and portable workspace bundles, with current channel status in [`docs/packaging-audit-2026-07-05.md`](./docs/packaging-audit-2026-07-05.md). See [`docs/packaging.md`](./docs/packaging.md) and the live [`v0.1 beta release candidate`](./docs/release-candidate-v0.1-beta.md).
 
 For production upgrades, run `npm run verify:upgrade` before applying migrations or rolling a new API build, then run `npm run drill:recovery -- --backup <server-backup.json>` to prove restore mechanics in isolation. See [`docs/upgrade-checklist.md`](./docs/upgrade-checklist.md) and [`docs/disaster-recovery-drill.md`](./docs/disaster-recovery-drill.md) for the operator sequence and rollback trigger.
 
