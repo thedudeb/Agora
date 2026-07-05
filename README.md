@@ -1,12 +1,17 @@
 # Agora
 
 [![QA + Security](https://github.com/thedudeb/Agora/actions/workflows/qa.yml/badge.svg)](https://github.com/thedudeb/Agora/actions/workflows/qa.yml)
+![Release posture](https://img.shields.io/badge/release%20posture-beta%20proof%20in%20progress-f3c969)
+![Offline posture](https://img.shields.io/badge/offline-PWA%20%2B%20desktop%20shell-5fbf8f)
+![Ownership](https://img.shields.io/badge/data-portable%20exports-5b8def)
 
 Open source, local-first project management for client-facing teams without ads, trackers, or lock-in.
 
 Agora is a self-hostable project command center for agencies and consultants running client work with portals, approvals, reusable workflows, time tracking, auditable AI, and portable data. It is inspired by tools like Asana and Nifty, but designed for teams that need ownership of their workflow as much as they need visibility.
 
 ![Agora Acme command center screenshot](./assets/screenshots/agora-acme-command-center.png)
+
+Try the bundled Acme demo from the browser app with `?route=command-center&demoAction=sampleAgencyWorkspace`, then open Admin > Release to review the evidence-backed release cockpit.
 
 ## Who Agora Is For
 

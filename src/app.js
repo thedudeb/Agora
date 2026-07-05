@@ -19880,6 +19880,8 @@ function renderMobileAppPanel() {
 
 function renderLandingPage() {
   const starterCards = Object.entries(roleStarterWorkspaceConfigs()).slice(0, 7);
+  const releaseStatus = releaseCockpitStatus();
+  const landingReleaseLabel = releaseStatus.risk ? "Beta proof in progress" : releaseStatus.pending ? "Beta-ready core" : "Beta ready";
   const ownershipRows = [
     ["Portability", "Full bundle", "JSON, CSV, Markdown, templates, automations, audit history, and operator context travel together."],
     ["Offline", "5 app targets", "PWA, Mac, Windows, iOS, and Android share a local-first storage and retry queue contract."],
@@ -19908,12 +19910,18 @@ function renderLandingPage() {
         </nav>
 
         <div class="landing-hero-copy">
+          <div class="landing-release-badge" aria-label="Release readiness status">
+            <span>${escapeHtml(landingReleaseLabel)}</span>
+            <strong>${releaseStatus.pass}/${releaseStatus.total} release gates proven</strong>
+            <small>${releaseStatus.pending} pending / ${releaseStatus.risk} risk</small>
+          </div>
           <p class="eyebrow">Open source project management</p>
           <h1>Agora</h1>
           <p class="landing-hero-statement">Own the work. Keep it portable. Run it offline. Audit the AI.</p>
           <p class="landing-lede">Open source project management without ads, trackers, or lock-in. Run projects, clients, daily work, approvals, docs, automations, integrations, and recovery from a self-hostable workspace your team can actually own.</p>
           <div class="landing-actions">
             <button class="button button-primary" type="button" data-command-id="launch:workspace">Launch Workspace</button>
+            <a class="button button-secondary" href="?route=command-center&amp;demoAction=sampleAgencyWorkspace">Try Acme Demo</a>
             <button class="button button-secondary" type="button" data-onboarding-action="starter:agency">Load Starter Workspace</button>
           </div>
           <div class="landing-proof-row" aria-label="Product promises">
@@ -19922,6 +19930,7 @@ function renderLandingPage() {
             <span>Portable exports</span>
             <span>Offline apps</span>
             <span>Auditable AI</span>
+            <span>Release cockpit</span>
           </div>
         </div>
       </section>

@@ -60,6 +60,9 @@ const routeChecks = [
     width: 1265,
     height: 900,
     required: [
+      "Beta proof in progress",
+      "release gates proven",
+      "Try Acme Demo",
       "Own the work. Keep it portable. Run it offline. Audit the AI.",
       "Open ownership",
       "Built to beat closed work platforms",

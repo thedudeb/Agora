@@ -935,6 +935,46 @@ textarea:focus {
   padding: 96px 0 24px;
 }
 
+.landing-release-badge {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  margin-bottom: 18px;
+  padding: 8px 10px;
+  color: #f7f5ef;
+  background: rgba(247, 245, 239, 0.1);
+  border: 1px solid rgba(247, 245, 239, 0.24);
+  border-radius: 8px;
+}
+
+.landing-release-badge span,
+.landing-release-badge strong,
+.landing-release-badge small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.landing-release-badge span {
+  padding: 4px 8px;
+  color: #101917;
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  background: #f3c969;
+  border-radius: 999px;
+}
+
+.landing-release-badge strong {
+  font-size: 0.92rem;
+}
+
+.landing-release-badge small {
+  color: rgba(247, 245, 239, 0.72);
+  font-weight: 800;
+}
+
 .landing-hero-copy h1 {
   margin: 0;
   color: #ffffff;
