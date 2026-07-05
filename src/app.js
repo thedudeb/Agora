@@ -166,12 +166,59 @@ const apiSessionStore = {
     }
   },
   save(session) {
-    storageSet(API_SESSION_KEY, JSON.stringify(session));
+    const payload = JSON.stringify(session);
+    const secureSession = desktopSecureSessionStore();
+    if (!secureSession) {
+      storageSet(API_SESSION_KEY, payload);
+      return;
+    }
+    secureSession.save(payload)
+      .then((result) => {
+        if (result?.ok) storageRemove(API_SESSION_KEY);
+        else storageSet(API_SESSION_KEY, payload);
+      })
+      .catch(() => storageSet(API_SESSION_KEY, payload));
   },
   clear() {
     storageRemove(API_SESSION_KEY);
+    desktopSecureSessionStore()?.clear?.().catch(() => {});
   }
 };
+
+function desktopSecureSessionStore() {
+  const store = window.AGORA_DESKTOP?.secureSession;
+  return store
+    && typeof store.load === "function"
+    && typeof store.save === "function"
+    && typeof store.clear === "function"
+    ? store
+    : null;
+}
+
+async function hydrateSecureApiSession() {
+  const secureSession = desktopSecureSessionStore();
+  if (!secureSession) return;
+  const localSession = apiSessionStore.load();
+  try {
+    const stored = await secureSession.load();
+    if (stored?.ok && stored.value) {
+      const session = JSON.parse(stored.value);
+      apiSession = session;
+      backendHealth = session?.backendHealth || backendHealth;
+      githubIntegrationStatus = session?.githubIntegrationStatus || githubIntegrationStatus;
+      storageRemove(API_SESSION_KEY);
+      startRealtimePolling();
+      if (state.selectedRoute === "settings") render();
+      return;
+    }
+    if (localSession?.token) {
+      await secureSession.save(JSON.stringify(localSession));
+      storageRemove(API_SESSION_KEY);
+    }
+  } catch {
+    // Secure storage is best-effort; browser storage remains the fallback.
+  }
+}
 
 const apiSyncQueueStore = {
   load() {
@@ -44561,6 +44608,7 @@ if (darkModeQuery?.addEventListener) {
 
 initSmoothScroll();
 registerServiceWorker();
+hydrateSecureApiSession();
 startRealtimePolling();
 window.setInterval(() => {
   runNotificationReminderScheduler();

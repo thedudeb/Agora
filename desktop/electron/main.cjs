@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, safeStorage, shell } = require("electron");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
@@ -7,6 +7,7 @@ const { URL } = require("node:url");
 const isMac = process.platform === "darwin";
 let staticServer = null;
 let staticOrigin = "";
+const secureSessionFile = "agora-api-session.bin";
 
 function appRoot() {
   if (process.env.AGORA_DESKTOP_ROOT) return path.resolve(process.env.AGORA_DESKTOP_ROOT);
@@ -114,6 +115,73 @@ function startStaticServer() {
   });
 }
 
+function secureSessionPath() {
+  return path.join(app.getPath("userData"), secureSessionFile);
+}
+
+function secureSessionAvailable() {
+  return Boolean(safeStorage?.isEncryptionAvailable?.());
+}
+
+function assertTrustedIpcEvent(event) {
+  const frameUrl = event.senderFrame?.url || "";
+  try {
+    if (new URL(frameUrl).origin === staticOrigin) return;
+  } catch {
+    // Fall through to the denial below.
+  }
+  throw new Error("Agora secure storage is only available to the desktop app origin");
+}
+
+function readSecureSession() {
+  if (!secureSessionAvailable()) return { ok: false, available: false, value: "" };
+  const filePath = secureSessionPath();
+  if (!fs.existsSync(filePath)) return { ok: true, available: true, value: "" };
+  const encrypted = fs.readFileSync(filePath);
+  return {
+    ok: true,
+    available: true,
+    value: safeStorage.decryptString(encrypted)
+  };
+}
+
+function writeSecureSession(value) {
+  if (!secureSessionAvailable()) return { ok: false, available: false };
+  const text = String(value || "");
+  if (Buffer.byteLength(text, "utf8") > 64 * 1024) {
+    throw new Error("Agora session payload is too large for secure storage");
+  }
+  const encrypted = safeStorage.encryptString(text);
+  fs.mkdirSync(path.dirname(secureSessionPath()), { recursive: true });
+  fs.writeFileSync(secureSessionPath(), encrypted, { mode: 0o600 });
+  return { ok: true, available: true };
+}
+
+function clearSecureSession() {
+  const filePath = secureSessionPath();
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  return { ok: true, available: secureSessionAvailable() };
+}
+
+function registerSecureSessionIpc() {
+  ipcMain.handle("agora-secure-session:available", (event) => {
+    assertTrustedIpcEvent(event);
+    return { ok: true, available: secureSessionAvailable() };
+  });
+  ipcMain.handle("agora-secure-session:load", (event) => {
+    assertTrustedIpcEvent(event);
+    return readSecureSession();
+  });
+  ipcMain.handle("agora-secure-session:save", (event, value) => {
+    assertTrustedIpcEvent(event);
+    return writeSecureSession(value);
+  });
+  ipcMain.handle("agora-secure-session:clear", (event) => {
+    assertTrustedIpcEvent(event);
+    return clearSecureSession();
+  });
+}
+
 function appMenu(window) {
   return Menu.buildFromTemplate([
     ...(isMac ? [{
@@ -216,7 +284,10 @@ async function createWindow() {
   await window.loadURL(origin);
 }
 
-app.whenReady().then(createWindow).catch((error) => {
+app.whenReady().then(() => {
+  registerSecureSessionIpc();
+  return createWindow();
+}).catch((error) => {
   console.error(error);
   app.quit();
 });

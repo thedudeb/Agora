@@ -94,6 +94,11 @@ assert(api.includes('id: "strict-csp"'), "backend health must expose strict CSP 
 assert(api.includes('Set AGORA_STRICT_CSP=true or NODE_ENV=production'), "strict CSP gate must include a concrete hosted fix");
 assert(desktopMain.includes("function isProductionCsp()"), "desktop shell must expose production CSP mode");
 assert(desktopMain.includes('envFlag("AGORA_STRICT_CSP", app.isPackaged)'), "packaged desktop builds must default to strict CSP");
+assert(desktopMain.includes("safeStorage") && desktopMain.includes("agora-secure-session:save"), "desktop shell must expose OS-backed secure session storage");
+assert(desktopMain.includes("assertTrustedIpcEvent"), "desktop secure session IPC must verify the app origin");
+assert(app.includes("function hydrateSecureApiSession()"), "browser app must hydrate desktop secure API sessions");
+assert(app.includes("storageRemove(API_SESSION_KEY)") && app.includes("desktopSecureSessionStore"), "desktop API sessions must migrate out of plain localStorage");
+assert(fs.readFileSync(path.join(root, "desktop", "electron", "preload.cjs"), "utf8").includes("secureSession"), "desktop preload must expose the secure session bridge");
 
 assert(rootPackage.includes('"audit": "npm audit --audit-level=moderate && npm --prefix desktop audit --audit-level=moderate"'), "root package must expose dependency audit script");
 assert(app.includes(`version: "${packageJson.version}"`), "browser release metadata must match package.json version");
