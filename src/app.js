@@ -2237,24 +2237,31 @@ const seedData = {
   projectTemplates: [
     {
       id: "template-client-onboarding",
-      name: "Client Onboarding",
+      name: "Client Onboarding OS",
       category: "Agency",
-      description: "A ready-to-run client kickoff workspace with discovery, delivery, review, docs, intake, and milestones.",
+      description: "A ready-to-run client onboarding operating system with kickoff, discovery, delivery plan, portal setup, first approval, weekly status, and handoff.",
       owner: "sam",
       durationDays: 30,
       tasks: [
-        { key: "kickoff", title: "Run client kickoff", description: "Confirm goals, stakeholders, constraints, and success measures.", assignee: "sam", priority: "high", startOffset: 0, dueOffset: 3, tags: ["client", "kickoff"], blockedBy: [], subtasks: ["Confirm stakeholders", "Share agenda", "Capture success metrics"] },
-        { key: "discovery", title: "Complete discovery brief", description: "Document client needs, constraints, risks, and open questions.", assignee: "mara", priority: "high", startOffset: 3, dueOffset: 8, tags: ["discovery"], blockedBy: ["kickoff"], subtasks: ["Interview owner", "Map risks", "Share brief"] },
-        { key: "delivery", title: "Build delivery plan", description: "Turn the approved brief into milestones, owners, and delivery checkpoints.", assignee: "eli", priority: "normal", startOffset: 8, dueOffset: 16, tags: ["planning"], blockedBy: ["discovery"], subtasks: ["Create milestone map", "Assign owners"] },
-        { key: "handoff", title: "Prepare stakeholder handoff", description: "Package decisions, files, timeline, and next steps for client stakeholders.", assignee: "nina", priority: "normal", startOffset: 16, dueOffset: 24, tags: ["handoff"], blockedBy: ["delivery"], subtasks: ["Collect files", "Write summary", "Schedule review"] }
+        { key: "kickoff", title: "Run client kickoff", description: "Confirm goals, stakeholders, constraints, communication cadence, and success measures.", assignee: "sam", priority: "high", startOffset: 0, dueOffset: 3, tags: ["client", "kickoff"], blockedBy: [], subtasks: ["Confirm stakeholders", "Share agenda", "Capture success metrics"] },
+        { key: "discovery", title: "Complete discovery brief", description: "Document client needs, constraints, risks, open questions, and approval expectations.", assignee: "mara", priority: "high", startOffset: 3, dueOffset: 8, tags: ["discovery"], blockedBy: ["kickoff"], subtasks: ["Interview owner", "Map risks", "Share brief"] },
+        { key: "delivery", title: "Build delivery plan", description: "Turn the approved brief into milestones, owners, dependencies, and delivery checkpoints.", assignee: "eli", priority: "normal", startOffset: 8, dueOffset: 15, tags: ["planning"], blockedBy: ["discovery"], subtasks: ["Create milestone map", "Assign owners", "Confirm dependencies"] },
+        { key: "portal", title: "Configure client portal packet", description: "Prepare client-visible tasks, docs, approvals, files, and visibility warnings before the first share.", assignee: "nina", priority: "high", startOffset: 12, dueOffset: 18, tags: ["portal", "visibility"], blockedBy: ["delivery"], subtasks: ["Mark visible work", "Check warnings", "Draft portal note"] },
+        { key: "approval", title: "Send first approval request", description: "Package the first decision or deliverable for client approval with owner, due date, reviewer, and context.", assignee: "sam", priority: "high", startOffset: 18, dueOffset: 23, tags: ["approval"], blockedBy: ["portal"], subtasks: ["Attach decision context", "Name reviewer", "Send approval"] },
+        { key: "status", title: "Send first weekly status", description: "Share progress, risks, decisions, next actions, and portal link status in a client-safe update.", assignee: "mara", priority: "normal", startOffset: 23, dueOffset: 27, tags: ["status", "client-update"], blockedBy: ["approval"], subtasks: ["Summarize progress", "List open risks", "Confirm next actions"] },
+        { key: "handoff", title: "Prepare stakeholder handoff", description: "Package decisions, files, timeline, approval outcomes, and next steps for client stakeholders.", assignee: "nina", priority: "normal", startOffset: 26, dueOffset: 30, tags: ["handoff"], blockedBy: ["status"], subtasks: ["Collect files", "Write summary", "Schedule review"] }
       ],
       milestones: [
-        { title: "Discovery approved", description: "Client goals, risks, and plan are aligned.", owner: "sam", dueOffset: 10, status: "planned", taskKeys: ["kickoff", "discovery"] },
-        { title: "Delivery plan ready", description: "The working plan is staffed, sequenced, and ready to run.", owner: "eli", dueOffset: 20, status: "planned", taskKeys: ["delivery", "handoff"] }
+        { title: "Discovery approved", description: "Client goals, risks, approval expectations, and plan are aligned.", owner: "sam", dueOffset: 10, status: "planned", taskKeys: ["kickoff", "discovery"] },
+        { title: "Portal ready", description: "Client-visible work, docs, and first approval packet are safe to share.", owner: "nina", dueOffset: 20, status: "planned", taskKeys: ["delivery", "portal", "approval"] },
+        { title: "First status sent", description: "The client has a useful weekly update and the next handoff is scheduled.", owner: "mara", dueOffset: 28, status: "planned", taskKeys: ["status", "handoff"] }
       ],
       docs: [
-        { title: "Client Kickoff Brief", type: "Template", body: "Goals, stakeholders, risks, decisions, and launch checklist for a new client workspace." },
-        { title: "Delivery Plan", type: "Brief", body: "Milestones, dependencies, timeline, owners, and open decisions." }
+        { title: "Client Kickoff Brief", type: "Template", body: "Goals, stakeholders, communication cadence, risks, decisions, success measures, and launch checklist for a new client workspace." },
+        { title: "Discovery Brief", type: "Brief", body: "Client needs, constraints, open questions, risks, approval expectations, and evidence gathered during discovery." },
+        { title: "Delivery Plan", type: "Brief", body: "Milestones, dependencies, timeline, owners, acceptance criteria, and open decisions." },
+        { title: "Portal Share Packet", type: "Template", body: "Client-visible work, approval links, files, status summary, risks, next actions, and visibility warnings to resolve." },
+        { title: "Weekly Status Template", type: "Template", body: "Progress, decisions, risks, blockers, approvals, next actions, and asks for the client." }
       ],
       intakeForm: {
         title: "Client Change Request",
