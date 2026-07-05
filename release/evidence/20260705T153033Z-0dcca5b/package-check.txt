@@ -1,0 +1,51 @@
+$ npm run package:check
+
+> agora@0.1.0 package:check
+> node scripts/packaging-check.js
+
+Packaging Readiness Report
+Status: PASS
+Generated: 2026-07-05T15:30:34.834Z
+Summary: 13/13 passed
+
+Release channels:
+- Source install (source): Git checkout or source archive
+- Docker Compose (docker-compose): Container image plus compose stack
+- Hosted web/API deployment (hosted): Static web app plus long-running API service
+- Offline PWA (pwa-offline): Installable browser app
+- macOS desktop shell (desktop-macos): DMG and ZIP
+- Windows desktop shell (desktop-windows): NSIS installer and portable executable
+- Agora CLI (cli): Node.js command wrapper
+- Local MCP server (mcp-server): stdio MCP server for local power-user clients
+- Portable workspace bundle (portable-data): JSON/CSV/Markdown workspace export
+
+[PASS] Release manifest declares packaging channels
+  Detail: 9 channels declared
+[PASS] Release manifest declares status, gate, handoff artifacts, and known gaps
+  Detail: 9 gate commands, 11 handoff artifacts, 4 known gaps
+[PASS] Packaging channel IDs are unique
+  Detail: source, docker-compose, hosted, pwa-offline, desktop-macos, desktop-windows, cli, mcp-server, portable-data
+[PASS] Release manifest includes all supported distribution channels
+  Detail: source, docker-compose, hosted, pwa-offline, desktop-macos, desktop-windows, cli, mcp-server, portable-data
+[PASS] Every channel declares artifact, platforms, entrypoint, required files, and verification
+  Detail: All channel metadata is complete.
+[PASS] Every channel's required files exist
+  Detail: All required files are present.
+[PASS] Root package exposes required release commands
+  Detail: setup, start, start:api, agora, demo:check, distribution:check, beta:check, mcp, trust, qa, security, release:check, release:evidence, verify:hosted, verify:production, verify:upgrade, drill:recovery, package:check, test:mcp, test:fixtures
+[PASS] Desktop package exposes macOS and Windows packaging commands
+  Detail: pack:mac, pack:win, dist
+[PASS] Docker packaging includes separate app and API services with persistent data
+  Evidence: Dockerfile, docker-compose.yml
+[PASS] PWA packaging includes install metadata, icons, screenshots, and offline shell
+  Evidence: manifest.webmanifest, offline.html, sw.js
+[PASS] Desktop package bundles the local app shell resources
+  Evidence: desktop/package.json
+[PASS] CLI and MCP channels are documented and testable
+  Evidence: scripts/agora-cli.js, scripts/agora-mcp-server.js, docs/mcp-server.md, docs/mcp-security-audit.md
+[PASS] Packaging documentation covers release channels and handoff
+  Evidence: docs/packaging.md, docs/packaging-audit-2026-07-05.md
+
+
+exitCode=0
+durationMs=259

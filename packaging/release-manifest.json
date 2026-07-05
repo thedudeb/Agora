@@ -47,6 +47,7 @@
     "qa",
     "security",
     "release:check",
+    "release:evidence",
     "verify:hosted",
     "verify:production",
     "verify:upgrade",

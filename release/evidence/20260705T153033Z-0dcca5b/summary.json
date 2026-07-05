@@ -1,0 +1,72 @@
+{
+  "type": "agora.release-evidence",
+  "generatedAt": "2026-07-05T15:30:33.614Z",
+  "branch": "main",
+  "commit": "0dcca5b",
+  "dirty": true,
+  "mode": "local",
+  "ok": true,
+  "bundleDir": "release/evidence/20260705T153033Z-0dcca5b",
+  "commands": [
+    {
+      "id": "release-check",
+      "label": "Release candidate discipline",
+      "command": "npm run release:check",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 239,
+      "output": "release-check.txt"
+    },
+    {
+      "id": "demo-check",
+      "label": "Hosted demo readiness",
+      "command": "npm run demo:check",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 240,
+      "output": "demo-check.txt"
+    },
+    {
+      "id": "distribution-check",
+      "label": "Distribution proof ledger",
+      "command": "npm run distribution:check",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 241,
+      "output": "distribution-check.txt"
+    },
+    {
+      "id": "beta-check",
+      "label": "Beta feedback loop",
+      "command": "npm run beta:check",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 245,
+      "output": "beta-check.txt"
+    },
+    {
+      "id": "package-check",
+      "label": "Packaging manifest",
+      "command": "npm run package:check",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 259,
+      "output": "package-check.txt"
+    },
+    {
+      "id": "trust",
+      "label": "Trust evidence",
+      "command": "npm run trust",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 270,
+      "output": "trust.txt"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+$ npm run release:check
+
+> agora@0.1.0 release:check
+> node scripts/release-candidate-check.js
+
+Release Candidate Discipline Check
+Status: PASS
+Summary: 6/6 passed
+
+[PASS] Root package exposes the release candidate check
+[PASS] Release candidate handoff files exist
+  Detail: docs/release-candidate-v0.1-beta.md, docs/release-candidate-handoff-template.md, docs/release-checklist.md, docs/qa-gate.md, docs/acme-client-launch-demo.md, docs/screenshot-demo-plan.md, docs/distribution-proof.md, docs/beta-feedback-loop.md, packaging/release-manifest.json
+[PASS] Release manifest declares the full release gate
+  Detail: npm run release:check | npm run demo:check | npm run distribution:check | npm run beta:check | npm run package:check | npm run trust | npm run verify:production -- --env .env.production --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict | npm run qa | npm run security
+[PASS] Release manifest points at the live candidate and handoff template
+  Detail: README.md, docs/install.md, docs/hosted-provider-recipes.md, docs/packaging.md, docs/distribution-proof.md, docs/beta-feedback-loop.md, docs/release-candidate-v0.1-beta.md, docs/release-candidate-handoff-template.md, docs/release-checklist.md, docs/trust-center.md, packaging/release-manifest.json
+[PASS] Live candidate doc has decision, evidence, demo, platform, and rollback sections
+[PASS] Release checklist points operators at release:check
+
+
+exitCode=0
+durationMs=239

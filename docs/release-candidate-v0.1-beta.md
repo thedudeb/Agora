@@ -14,6 +14,12 @@ Use this as the live release record for the first external beta candidate. Updat
 
 Paste command output or link CI artifacts for the exact commit being released.
 
+Generate the local evidence bundle with:
+
+```sh
+npm run release:evidence
+```
+
 | Gate | Required Evidence | Status |
 | --- | --- | --- |
 | Release discipline | `npm run release:check` | Pending for release commit |
@@ -27,6 +33,26 @@ Paste command output or link CI artifacts for the exact commit being released.
 | Security | `npm run security` | Pending for release commit |
 | Production verify | `npm run verify:production -- --env .env.production --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict` | Pending real hosted env |
 | Recovery drill | `npm run drill:recovery -- --backup <server-backup.json>` | Pending real release backup |
+
+## Latest Local Evidence Bundle
+
+- Generated: 2026-07-05T15:30:33.614Z
+- Commit: 0dcca5b
+- Dirty worktree: yes
+- Mode: local
+- Status: PASS
+- Bundle: [release/evidence/20260705T153033Z-0dcca5b](../release/evidence/20260705T153033Z-0dcca5b/README.md)
+
+| Gate | Status | Evidence |
+| --- | --- | --- |
+| Release candidate discipline | PASS | [release-check.txt](../release/evidence/20260705T153033Z-0dcca5b/release-check.txt) |
+| Hosted demo readiness | PASS | [demo-check.txt](../release/evidence/20260705T153033Z-0dcca5b/demo-check.txt) |
+| Distribution proof ledger | PASS | [distribution-check.txt](../release/evidence/20260705T153033Z-0dcca5b/distribution-check.txt) |
+| Beta feedback loop | PASS | [beta-check.txt](../release/evidence/20260705T153033Z-0dcca5b/beta-check.txt) |
+| Packaging manifest | PASS | [package-check.txt](../release/evidence/20260705T153033Z-0dcca5b/package-check.txt) |
+| Trust evidence | PASS | [trust.txt](../release/evidence/20260705T153033Z-0dcca5b/trust.txt) |
+
+Manual evidence still required: hosted demo URL, hosted production verify, real device/offline checks, release backup, portable bundle, and beta tester follow-up.
 
 ## Acme Demo Gate
 
