@@ -21516,7 +21516,10 @@ function renderReleaseReadinessCockpit() {
           <p class="eyebrow">Release Readiness Dashboard</p>
           <h2>Production cockpit</h2>
         </div>
-        <span class="status-pill inbox-${status.tone}">${status.status}</span>
+        <div class="portal-actions">
+          <span class="status-pill inbox-${status.tone}">${status.status}</span>
+          <button class="button button-secondary compact-button" type="button" id="release-packet-export-inline">Export Packet</button>
+        </div>
       </div>
       <p class="panel-note">Evidence-backed status for hosted demo, distribution proof, beta feedback, security, QA, backup, rollback, and production verification.</p>
       <div class="release-cockpit-metrics">
@@ -21619,6 +21622,170 @@ function renderReleaseBlockerFocus() {
       </div>
     </section>
   `;
+}
+
+function releasePacketJson(release = selectedReleaseRecord(releaseProjectCandidates())) {
+  const gates = releaseCockpitGates();
+  const status = releaseCockpitStatus(gates);
+  const bundles = releaseEvidenceBundles();
+  return {
+    type: "agora.release-readiness-packet",
+    generatedAt: new Date().toISOString(),
+    product: {
+      name: AGORA_RELEASE.name,
+      version: AGORA_RELEASE.version,
+      channel: AGORA_RELEASE.channel,
+      commit: AGORA_RELEASE.shortCommit || AGORA_RELEASE.commit || "browser-build"
+    },
+    workspace: {
+      id: state.workspace.id,
+      name: state.workspace.name
+    },
+    release: release ? {
+      id: release.id,
+      name: release.project.name,
+      owner: memberName(release.owner) || "Unowned",
+      targetDate: release.targetDate || "",
+      confidence: release.confidence,
+      blockers: release.blockers,
+      scopeCount: release.scope.length
+    } : null,
+    readiness: {
+      status: status.status,
+      passing: status.pass,
+      pending: status.pending,
+      risks: status.risk,
+      total: status.total,
+      gates
+    },
+    evidence: bundles.map((bundle) => ({
+      id: bundle.id,
+      label: bundle.label,
+      kind: bundle.kind,
+      path: bundle.path,
+      summaryPath: bundle.summaryPath,
+      generatedAt: bundle.summary?.generatedAt || "",
+      commit: bundle.summary?.commit || "",
+      ok: bundle.summary?.ok ?? null
+    })),
+    platformStatus: releasePlatformEvidenceStatus(),
+    knownGaps: releaseKnownGaps(),
+    rollbackPlan: releaseRollbackPlan(release)
+  };
+}
+
+function releaseReadinessPacketMarkdown(release = selectedReleaseRecord(releaseProjectCandidates())) {
+  const packet = releasePacketJson(release);
+  const gateLines = packet.readiness.gates.map((gate) => `- ${gate.label}: ${gate.status} / ${gate.detail} / ${gate.action}`);
+  const evidenceLines = packet.evidence.length
+    ? packet.evidence.map((bundle) => `- ${bundle.label}: ${bundle.ok === false ? "risk" : bundle.ok === true ? "pass" : "indexed"} / ${bundle.path || bundle.summaryPath || "no path"} / commit ${bundle.commit || "unknown"}`)
+    : ["- No release evidence bundle is indexed."];
+  return [
+    "# Agora Release Readiness Packet",
+    "",
+    `Generated: ${packet.generatedAt}`,
+    `Product: ${packet.product.name} v${packet.product.version} (${packet.product.channel})`,
+    `Commit: ${packet.product.commit}`,
+    `Workspace: ${packet.workspace.name}`,
+    "",
+    "## Status",
+    "",
+    `Overall: ${packet.readiness.status}`,
+    `Passing gates: ${packet.readiness.passing}/${packet.readiness.total}`,
+    `Pending proof: ${packet.readiness.pending}`,
+    `Risks: ${packet.readiness.risks}`,
+    "",
+    "## Selected Release",
+    "",
+    packet.release
+      ? [
+        `Name: ${packet.release.name}`,
+        `Owner: ${packet.release.owner}`,
+        `Target date: ${packet.release.targetDate || "Unscheduled"}`,
+        `Confidence: ${packet.release.confidence}%`,
+        `Scope count: ${packet.release.scopeCount}`,
+        `Blockers: ${packet.release.blockers.length}`
+      ].join("\n")
+      : "No release project is selected.",
+    "",
+    "## Gates",
+    "",
+    ...gateLines,
+    "",
+    "## Evidence Bundles",
+    "",
+    ...evidenceLines,
+    "",
+    "## Platform Status",
+    "",
+    ...packet.platformStatus.map((item) => `- ${item.channel}: ${item.status} / ${item.proof}`),
+    "",
+    "## Known Gaps",
+    "",
+    ...packet.knownGaps.map((item) => `- ${item}`),
+    "",
+    "## Rollback Plan",
+    "",
+    ...packet.rollbackPlan.map((item) => `- ${item}`),
+    ""
+  ].join("\n");
+}
+
+function releasePlatformEvidenceStatus() {
+  return [
+    { channel: "Source install", status: releaseEvidenceCommand("release-check")?.ok ? "local pass" : "pending", proof: "Clean checkout, setup, app boot, portable export." },
+    { channel: "Docker Compose", status: "pending device proof", proof: "Compose config, boot app/API, persistent volume, backup path." },
+    { channel: "Hosted web/API", status: latestReleaseEvidenceBundle((bundle) => (bundle.summary?.type || bundle.kind || "").includes("hosted-demo")) ? "demo proof indexed" : "pending hosted proof", proof: "Hosted smoke, health, email diagnostics, backup path." },
+    { channel: "Offline PWA", status: releaseEvidenceCommand("golden-demo")?.ok ? "browser path pass" : "pending", proof: "Install, airplane-mode launch, local edit, portable export." },
+    { channel: "macOS desktop", status: "pending device proof", proof: "Pack, offline launch, export bundle, signing status." },
+    { channel: "Windows desktop", status: "pending device proof", proof: "Pack, install or portable launch, offline edit/export, signing status." },
+    { channel: "Agora CLI", status: releaseEvidenceCommand("package-check")?.ok ? "manifest pass" : "pending", proof: "Quick verify, package-check JSON, bundle inspect." },
+    { channel: "Local MCP server", status: releaseEvidenceCommand("package-check")?.ok ? "manifest pass" : "pending", proof: "MCP test, read-only default, write opt-in notes." },
+    { channel: "Portable data", status: loadWorkspaceBackups().length ? "local backup present" : "pending release proof", proof: "Fixture validation, import preview, restore drill." }
+  ];
+}
+
+function releaseKnownGaps() {
+  return [
+    "Desktop builds are not signed/notarized for broad public distribution.",
+    "Native iOS and Android wrappers are not shipped yet; mobile install is the offline PWA.",
+    "Hosted production launches require operator-provided Supabase, SMTP/webhook, backup, and domain configuration.",
+    "Real production upgrades require a fresh server backup and strict verification."
+  ];
+}
+
+function releaseRollbackPlan(release) {
+  const backups = loadWorkspaceBackups();
+  return [
+    release ? `Selected release: ${release.project.name}` : "Select a release project before final sign-off.",
+    backups.length ? `${backups.length} local backup${backups.length === 1 ? "" : "s"} available; link the release backup before publishing.` : "Create or link a release backup before publishing.",
+    "Record previous known-good commit and hosted rollback target in the release candidate.",
+    "Run the recovery drill against the selected server backup before external beta.",
+    "Rollback triggers: failed auth, corrupted workspace state, failed restore drill, broken import/export, failed hosted health, or security regression."
+  ];
+}
+
+function downloadReleaseReadinessPacket() {
+  const release = selectedReleaseRecord(releaseProjectCandidates());
+  const base = `${slugFromName(state.workspace.name)}-release-readiness-packet-${todayKey()}`;
+  downloadTextFile(`${base}.md`, releaseReadinessPacketMarkdown(release), "text/markdown");
+  downloadJsonFile(`${base}.json`, JSON.stringify(releasePacketJson(release), null, 2));
+  addAuditEvent({
+    action: "release_readiness_packet_export",
+    detail: `Exported release readiness packet for ${release?.project?.name || state.workspace.name}`,
+    targetType: "release",
+    targetId: release?.id || "workspace",
+    metadata: {
+      releaseId: release?.id || "",
+      gateCount: releaseCockpitGates().length,
+      evidenceBundleCount: releaseEvidenceBundles().length
+    },
+    impact: "medium",
+    restoreHint: "Regenerate the release readiness packet from Release Management."
+  });
+  saveState();
+  renderReleaseManagement();
+  showToast("Release readiness packet exported", "success");
 }
 
 function releaseProjectCandidates() {
@@ -22057,6 +22224,7 @@ function renderReleaseManagement() {
       title: "Ship room",
       description: "A release command center for scope, owner, date, confidence, blockers, linked projects, and operational readiness.",
       actions: [
+        { label: "Export Packet", id: "release-packet-export", primary: true },
         { label: "Export Evidence", id: "release-evidence-export", primary: true },
         { label: "Open Readiness", route: "readiness" },
         { label: "Open Audit", route: "audit" },
@@ -44122,6 +44290,12 @@ document.addEventListener("click", (event) => {
   if (releaseEvidenceExportButton) {
     const release = selectedReleaseRecord(releaseProjectCandidates());
     if (release) downloadReleaseEvidencePack(release.id);
+    return;
+  }
+
+  const releasePacketExportButton = event.target.closest("#release-packet-export, #release-packet-export-inline");
+  if (releasePacketExportButton) {
+    downloadReleaseReadinessPacket();
     return;
   }
 

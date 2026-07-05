@@ -599,6 +599,7 @@ const routeChecks = [
       "Production cockpit",
       "Evidence Bundle Viewer",
       "Release proof files",
+      "Export Packet",
       "Release dashboard",
       "Upcoming releases",
       "Selected release",
