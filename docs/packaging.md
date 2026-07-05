@@ -4,12 +4,15 @@ Agora should be easy to evaluate, self-host, install offline, and move away from
 
 ```sh
 npm run distribution:check
+npm run distribution:evidence -- --release v0.1-beta
 npm run package:check
 npm run agora -- package-check
 npm run agora -- package-check --json
 ```
 
 For the current channel audit, see [`packaging-audit-2026-07-05.md`](./packaging-audit-2026-07-05.md). It records which paths are beta-ready, which are internal-ready, and what still blocks a polished public release. For per-release install/offline proof, use [`distribution-proof.md`](./distribution-proof.md).
+
+`distribution:evidence` generates a per-channel proof bundle from the manifest, including commands, device checks, accepted beta risks, and a release-candidate paste-in file.
 
 ## Release Channels
 
@@ -45,6 +48,7 @@ Use `--allow-missing-backup` only for local dry rehearsals. For desktop releases
 Every release candidate should include:
 
 - Product version and Git commit.
+- `npm run distribution:evidence -- --release <release>` output.
 - `npm run package:check` output.
 - `npm run trust` output.
 - Hosted verification output for the target environment.

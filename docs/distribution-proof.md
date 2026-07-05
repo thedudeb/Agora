@@ -6,10 +6,21 @@ Run:
 
 ```sh
 npm run distribution:check
+npm run distribution:evidence -- --release v0.1-beta
 npm run package:check
 npm run verify:production -- --env .env.production --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict
 npm run drill:recovery -- --backup <server-backup.json>
 ```
+
+## Evidence Fill Helper
+
+Run `npm run distribution:evidence` before platform sign-off. It reads [`packaging/release-manifest.json`](../packaging/release-manifest.json) and writes:
+
+- `release/evidence/distribution-proof-<timestamp>-<commit>/summary.json`;
+- `release/evidence/distribution-proof-<timestamp>-<commit>/README.md`;
+- `release/evidence/distribution-proof-<timestamp>-<commit>/release-candidate-paste.md`.
+
+Use the generated channel checklist while testing each distribution path, then paste the completed evidence into the matrix below and the Platform Evidence table in [`release-candidate-v0.1-beta.md`](./release-candidate-v0.1-beta.md). Use `--channel <id>` to focus on one channel and `--out <dir>` for rehearsal output that should not become the release record.
 
 ## Release Evidence Matrix
 

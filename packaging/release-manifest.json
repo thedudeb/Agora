@@ -45,6 +45,7 @@
     "demo:check",
     "demo:hosted:check",
     "distribution:check",
+    "distribution:evidence",
     "beta:check",
     "mcp",
     "trust",

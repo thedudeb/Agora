@@ -25,7 +25,7 @@ npm run release:evidence
 | Release discipline | `npm run release:check` | Passed in latest local evidence |
 | Hosted demo | `npm run demo:check` and `npm run demo:hosted:check -- --base <demo-url> --write-evidence` | Local gate passed; public demo URL pending |
 | Screenshots | `npm run screenshots` and inspect Acme screenshot set | Pending for release commit |
-| Distribution proof | `npm run distribution:check` and fill `docs/distribution-proof.md` evidence rows | Ledger gate passed; channel proof pending |
+| Distribution proof | `npm run distribution:check`, `npm run distribution:evidence -- --release <release>`, and fill `docs/distribution-proof.md` evidence rows | Ledger gate passed; channel proof pending |
 | Beta feedback loop | `npm run beta:check` and submit one feature request through the beta path | Local gate passed; tester proof pending |
 | Packaging | `npm run package:check` | Passed in latest local evidence |
 | Trust evidence | `npm run trust` | Passed in latest local evidence |
@@ -58,6 +58,14 @@ npm run release:evidence
 | Security gate | PASS | [security.txt](../release/evidence/20260705T153426Z-3099231/security.txt) |
 
 Manual evidence still required: hosted demo URL, hosted production verify, real device/offline checks, release backup, portable bundle, and beta tester follow-up.
+
+## Latest Distribution Evidence Bundle
+
+- Generated: pending
+- Commit: pending
+- Bundle: pending
+- Channels covered: source, docker-compose, hosted, pwa-offline, desktop-macos, desktop-windows, cli, mcp-server, portable-data
+- Paste-in: pending
 
 ## Acme Demo Gate
 

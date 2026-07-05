@@ -17,6 +17,7 @@ const requiredSections = [
 ];
 const requiredCommands = [
   "npm run distribution:check",
+  "npm run distribution:evidence",
   "npm run package:check",
   "npm run verify:production",
   "npm run drill:recovery"
@@ -27,6 +28,11 @@ const checks = [
     title: "Distribution proof command is exposed",
     pass: pkg.scripts?.["distribution:check"] === "node scripts/distribution-proof-check.js",
     fix: "Add npm script distribution:check."
+  }),
+  check({
+    title: "Distribution evidence helper is exposed",
+    pass: pkg.scripts?.["distribution:evidence"] === "node scripts/distribution-evidence.js",
+    fix: "Add npm script distribution:evidence."
   }),
   check({
     title: "Distribution proof doc has required release sections",
