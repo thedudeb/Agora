@@ -16059,6 +16059,121 @@ function renderLiveCollaborationPanel() {
   `;
 }
 
+function collaborationConfidenceItems() {
+  const queue = apiSyncQueueSummary();
+  const notificationAudit = notificationDeliveryAudit();
+  const notificationBlockers = Array.isArray(notificationAudit.blockers) ? notificationAudit.blockers.length : 0;
+  const activePresence = liveWorkspacePresence().filter(({ presence }) => isPresenceActive(presence));
+  const editing = liveEditingSignals();
+  const permissionFlags = permissionRiskFlags();
+  const permissionWarnings = permissionFlags.filter((flag) => flag.tone !== "green").length;
+  const auditCount = allAuditEvents().length;
+  return [
+    {
+      label: "Live transport",
+      value: apiSession ? realtimeStatusLabel() : "Local",
+      done: Boolean(apiSession && !realtimeLastError),
+      tone: apiSession && !realtimeLastError ? "green" : apiSession ? "amber" : "neutral",
+      detail: apiSession
+        ? realtimeLastError ? `Realtime needs review: ${realtimeLastError}` : "Presence and workspace refresh are connected."
+        : "Connect the API before relying on multi-user presence.",
+      route: "settings",
+      settingsTab: "sync"
+    },
+    {
+      label: "Soft edit locks",
+      value: editing.length,
+      done: !staleTaskOverrideId,
+      tone: staleTaskOverrideId ? "amber" : editing.length ? "blue" : "green",
+      detail: staleTaskOverrideId
+        ? "A task changed while it was open; confirm before saving over it."
+        : editing.length ? `${editing.length} live task view${editing.length === 1 ? "" : "s"} visible to collaborators.` : "No stale edit warning is active.",
+      route: "collaboration"
+    },
+    {
+      label: "Sync conflicts",
+      value: queue.conflicts,
+      done: queue.conflicts === 0,
+      tone: queue.conflicts ? "red" : queue.total ? "amber" : "green",
+      detail: queue.conflicts
+        ? "Review local/server collisions before retrying queued writes."
+        : queue.total ? `${queue.total} queued write${queue.total === 1 ? "" : "s"} waiting safely on this device.` : "No failed local syncs are waiting.",
+      route: "settings",
+      settingsTab: "sync"
+    },
+    {
+      label: "Notifications",
+      value: notificationBlockers,
+      done: notificationBlockers === 0,
+      tone: notificationBlockers ? "amber" : "green",
+      detail: notificationBlockers
+        ? "Production email or webhook delivery needs configuration."
+        : "In-app and production delivery routes are mapped.",
+      route: "settings",
+      settingsTab: "integrations"
+    },
+    {
+      label: "Permissions",
+      value: permissionWarnings,
+      done: permissionWarnings === 0,
+      tone: permissionWarnings ? "amber" : "green",
+      detail: permissionWarnings
+        ? "Review admin, import, AI, or portal permission risk before inviting a team."
+        : "Permission risk flags are clear for collaboration.",
+      route: "permissions"
+    },
+    {
+      label: "Audit trail",
+      value: auditCount,
+      done: auditCount > 0,
+      tone: auditCount ? "green" : "amber",
+      detail: auditCount ? "Workspace actions have an audit trail for handoff and review." : "No audit evidence has been captured yet.",
+      route: "audit"
+    },
+    {
+      label: "Active collaborators",
+      value: activePresence.length,
+      done: Boolean(apiSession),
+      tone: apiSession ? activePresence.length ? "green" : "blue" : "neutral",
+      detail: activePresence.length
+        ? `${activePresence.length} active collaborator${activePresence.length === 1 ? "" : "s"} visible now.`
+        : apiSession ? "Presence is ready; no other user is active right now." : "Local mode cannot prove cross-device presence.",
+      route: "collaboration"
+    }
+  ];
+}
+
+function renderCollaborationConfidencePanel() {
+  const items = collaborationConfidenceItems();
+  const openItems = items.filter((item) => !item.done);
+  return `
+    <section class="panel collaboration-confidence-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Collaboration confidence</p>
+          <h2>Can a team work here safely?</h2>
+        </div>
+        <span class="status-pill ${openItems.length ? "inbox-amber" : "inbox-green"}">${items.length - openItems.length}/${items.length}</span>
+      </div>
+      <div class="workspace-health-grid">
+        ${items.map((item) => `
+          <article>
+            <span class="status-pill inbox-${item.tone}">${escapeHtml(item.label)}</span>
+            <strong>${escapeHtml(item.value)}</strong>
+            <small>${escapeHtml(item.detail)}</small>
+          </article>
+        `).join("")}
+      </div>
+      <div class="workspace-health-actions">
+        <button class="button button-secondary compact-button" type="button" data-open-settings-tab="sync">Review Sync</button>
+        <button class="button button-secondary compact-button" type="button" data-open-settings-tab="integrations">Review Notifications</button>
+        <button class="button button-secondary compact-button" type="button" data-route="permissions">Review Permissions</button>
+        <button class="button button-secondary compact-button" type="button" data-route="audit">Open Audit</button>
+      </div>
+    </section>
+  `;
+}
+
 function automationSuggestions() {
   const pendingApprovals = getPendingApprovals();
   const blockedTasks = activeTasks().filter((task) => task.status !== "done" && isTaskBlocked(task));
@@ -19841,6 +19956,7 @@ function renderCollaborationHub() {
     </div>
 
       ${renderLiveCollaborationPanel()}
+      ${renderCollaborationConfidencePanel()}
 
       <div class="collab-hub-grid">
       <section class="panel project-discussion-panel">
