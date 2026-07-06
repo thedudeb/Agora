@@ -11,7 +11,7 @@ Agora is a self-hostable project command center for agencies and consultants run
 
 ![Agora Acme command center screenshot](./assets/screenshots/agora-acme-command-center.png)
 
-Try the bundled Acme demo from the browser app with `?route=command-center&demoAction=sampleAgencyWorkspace`, then open Admin > Release to review the evidence-backed release cockpit.
+Try the bundled Acme demo from the browser app with `?route=evaluate&demoAction=startBetaWorkspace`, then follow the five-minute path through Command Center, Client Visibility, Autopilot, and Data export.
 
 ## Who Agora Is For
 
@@ -84,7 +84,7 @@ Then open `http://127.0.0.1:8787/api/health`.
 
 With both processes running, open Settings in the app and create the first owner account, then sign in with email and password. API-connected users can sync the workspace from the Data page. If the API is hosted somewhere other than `http://127.0.0.1:8787`, update the API URL in Settings.
 
-Once the app is running, start with the Acme demo, Dashboard setup, Command Center, Board, Client Visibility, Project Autopilot, Data export, and Admin > Release. Those surfaces form the beta story from client intake to recovery proof.
+Once the app is running, start with the Acme demo, Command Center, Client Visibility, Project Autopilot, and Data export. Those surfaces form the beta story from client intake to recovery proof; deeper board, sprint, release, and marketplace surfaces are there for follow-up evaluation.
 
 Release metadata is visible in `/api/health`, `/api/capabilities`, Backend Health, Admin Diagnostics, and Settings > Developer. Hosts can set `AGORA_RELEASE_COMMIT`, `AGORA_RELEASE_DATE`, and `AGORA_RELEASE_CHANNEL`; common Vercel and Render commit variables are detected automatically.
 

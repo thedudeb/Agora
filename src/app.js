@@ -8354,65 +8354,41 @@ function renderOnboardingPanel() {
 }
 
 function guidedEvaluationItems() {
-  const firstProject = activeProjects()[0];
   return [
     {
       id: "sample",
-      label: "Load a realistic workspace",
+      label: "Load the client delivery workspace",
       detail: state.onboarding?.sampleMode?.startsWith("sample-") || state.onboarding?.sampleMode === "starter" || state.onboarding?.sampleMode === "beta"
         ? `${state.workspace.name} is loaded`
-        : "Start with Agency, Software, or Ops sample data.",
+        : "Start with the agency beta workspace so the review has client work, approvals, risks, and recovery proof.",
       action: "sample:agency",
       done: Boolean(state.onboarding?.evaluationProgress?.sample || state.onboarding?.sampleMode?.startsWith("sample-") || state.onboarding?.sampleMode === "starter" || state.onboarding?.sampleMode === "beta")
     },
     {
       id: "command",
-      label: "Judge the PM command center",
-      detail: "Review attention queue, client promises, risks, decisions, load, and next actions.",
+      label: "Find the next PM move",
+      detail: "Review attention queue, client promises, risk signals, and the client delivery proof panel.",
       action: "eval:command",
       route: "command-center"
     },
     {
-      id: "kanban",
-      label: "Inspect power Kanban",
-      detail: "Check saved views, WIP limits, swimlanes, templates, flow health, and card detail.",
-      action: "eval:kanban",
-      route: "board"
-    },
-    {
-      id: "timeline",
-      label: "Review timeline confidence",
-      detail: "Open the Gantt view for dependencies, critical path, slips, milestones, and workload warnings.",
-      action: "eval:timeline",
-      route: "project",
-      projectTab: "timeline",
-      projectId: firstProject?.id || "all"
-    },
-    {
-      id: "sprint",
-      label: "Check sprint operating rhythm",
-      detail: "Look at sprint timeline, burndown, forecast, carryover, standup, retro, and closeout.",
-      action: "eval:sprint",
-      route: "sprint"
-    },
-    {
-      id: "memory",
-      label: "Test Project Memory",
-      detail: "Confirm captured reality can become structured tasks, risks, decisions, and Autopilot signals.",
-      action: "eval:memory",
-      route: "memory"
+      id: "visibility",
+      label: "Preview the client handoff",
+      detail: "Confirm what the client can see, what stays internal, and what needs cleanup before sharing.",
+      action: "eval:visibility",
+      route: "visibility"
     },
     {
       id: "autopilot",
-      label: "Audit Autopilot safety",
-      detail: "Inspect Safety Center, impact simulator, approval controls, learning log, and undo.",
+      label: "Audit recovery automation",
+      detail: "Inspect Safety Center, impact simulator, approval controls, rationale, and undo.",
       action: "eval:autopilot",
       route: "autopilot"
     },
     {
       id: "recovery",
-      label: "Prove exit and recovery",
-      detail: "Create a backup and inspect portable export, schema, migration, and offline readiness.",
+      label: "Leave with ownership proof",
+      detail: "Create a backup and inspect portable export, migration preview, schema, and offline readiness.",
       action: "eval:recovery",
       route: "data"
     }
@@ -8560,17 +8536,12 @@ function evaluationDemoLinks(baseUrl = currentAppBaseUrl()) {
     });
     return url.toString();
   };
-  const firstProject = activeProjects()[0];
   return [
-    { label: "Beta launch handoff", url: routeUrl("beta"), inspect: "Invite-readiness, tester path, recovery, and email diagnostics." },
-    { label: "Start beta workspace", url: routeUrl("beta", { demoAction: "startBetaWorkspace" }), inspect: "Loads the full tester workspace and lands on the beta launch handoff." },
-    { label: "Load agency sample", url: routeUrl("command-center", { demoAction: "sampleAgencyWorkspace" }), inspect: "Creates a fresh agency delivery sample for a realistic PM review." },
-    { label: "PM Command Center", url: routeUrl("command-center"), inspect: "Attention queue, promises, risks, decisions, and next actions." },
-    { label: "Power Kanban", url: routeUrl("board"), inspect: "Saved views, WIP limits, swimlanes, templates, flow health, and card detail." },
-    { label: "Timeline confidence", url: routeUrl("project", { projectId: firstProject?.id, projectTab: "timeline" }), inspect: "Dependencies, critical path, slips, milestones, and workload warnings." },
-    { label: "Client visibility", url: routeUrl("visibility"), inspect: "Shared packets, portal links, warnings, approvals, and client-safe data." },
-    { label: "Autopilot safety demo", url: routeUrl("autopilot", { demoAction: "autopilotDemo" }), inspect: "Opens the safety-first automation review path with realistic data." },
-    { label: "Recovery and portability", url: routeUrl("data"), inspect: "Portable bundle, backups, restore path, and offline storage contract." }
+    { label: "Start 5-minute demo", url: routeUrl("command-center", { demoAction: "startBetaWorkspace" }), inspect: "Loads a realistic client-delivery workspace and starts at the PM command center." },
+    { label: "PM Command Center", url: routeUrl("command-center"), inspect: "Next PM move, client promises, risks, approvals, and proof that real work can run here." },
+    { label: "Client handoff", url: routeUrl("visibility"), inspect: "What the client can see, what stays internal, portal readiness, and approval/request state." },
+    { label: "Autopilot safety", url: routeUrl("autopilot", { demoAction: "autopilotDemo" }), inspect: "Recovery proposal, impact simulation, rationale, approval gates, and undo." },
+    { label: "Exit proof", url: routeUrl("data"), inspect: "Portable bundle, backups, migration preview, schema, and offline storage contract." }
   ];
 }
 
@@ -8648,9 +8619,10 @@ function evaluationPacketPayload() {
       note: "This evaluation uses local workspace/demo data. Portable evaluation packets do not export raw provider secrets or API tokens."
     },
     instructions: [
-      "Open the demo links and mark each workflow Pass, Needs work, or Not tested.",
+      "Run the five-minute path: Command Center, Client Handoff, Autopilot Safety, then Exit Proof.",
+      "Mark each proof point Pass, Needs work, or Not tested.",
       "Use the notes field to capture missing PM workflow, trust, or scale concerns.",
-      "Download the portable bundle from Beta exit proof before leaving the evaluation call."
+      "Download the portable bundle before leaving the evaluation call."
     ]
   };
 }
@@ -8764,39 +8736,39 @@ function firstTenModeItems() {
   return [
     {
       id: "workspace",
-      minute: "0-2",
-      label: "Load the realistic workspace",
-      detail: "Start from the beta client delivery sample so the review has tasks, approvals, feedback, and recovery data.",
+      minute: "0-1",
+      label: "Load client work",
+      detail: "Start from the beta client-delivery workspace so the review has tasks, approvals, feedback, risks, and recovery data.",
       action: "workspace",
       done: isBetaWorkspaceLoaded() || state.onboarding?.evaluationProgress?.sample
     },
     {
       id: "command",
-      minute: "2-4",
-      label: "Scan the command center",
-      detail: "Confirm the attention queue, promises, risks, decisions, and next actions answer the PM's morning question.",
+      minute: "1-2",
+      label: "Find the PM move",
+      detail: "Confirm the command center answers what needs attention now and why it matters to the client.",
       action: "command",
       done: Boolean(state.onboarding?.evaluationProgress?.command || scorecard.command?.status === "pass")
     },
     {
-      id: "kanban",
-      minute: "4-6",
-      label: "Inspect execution depth",
-      detail: "Check the board and timeline for saved views, WIP limits, dependencies, critical path, and workload warnings.",
-      action: "kanban",
-      done: Boolean(state.onboarding?.evaluationProgress?.kanban && state.onboarding?.evaluationProgress?.timeline)
+      id: "visibility",
+      minute: "2-3",
+      label: "Preview client handoff",
+      detail: "Inspect what the client sees, what stays internal, and which warnings block a clean send.",
+      action: "visibility",
+      done: Boolean(state.onboarding?.evaluationProgress?.visibility || scorecard.visibility?.status === "pass")
     },
     {
-      id: "trust",
-      minute: "6-8",
-      label: "Review trust and visibility",
-      detail: "Open client visibility and Autopilot safety so the evaluator sees guardrails before automation.",
-      action: "trust",
-      done: Boolean(state.onboarding?.evaluationProgress?.autopilot || state.onboarding?.evaluationProgress?.memory)
+      id: "autopilot",
+      minute: "3-4",
+      label: "Audit recovery safety",
+      detail: "Open Autopilot to verify rationale, impact simulation, approval gates, and undo before automation is trusted.",
+      action: "autopilot",
+      done: Boolean(state.onboarding?.evaluationProgress?.autopilot || scorecard.autopilot?.status === "pass")
     },
     {
       id: "packet",
-      minute: "8-10",
+      minute: "4-5",
       label: "Leave with proof",
       detail: "Download or copy the evaluation packet, then create a recovery checkpoint before the call ends.",
       action: "packet",
@@ -8822,7 +8794,7 @@ function renderGuidedEvaluationChecklist() {
       <div class="guided-evaluation-header">
         <div>
           <p class="eyebrow">Guided evaluation</p>
-          <h3>See if Agora can run a real project</h3>
+          <h3>Five proof points for real client delivery</h3>
         </div>
         <span class="status-pill ${doneCount === items.length ? "inbox-green" : "inbox-blue"}">${doneCount}/${items.length}</span>
       </div>
@@ -9869,7 +9841,7 @@ function renderBetaWalkthroughPanel() {
       <div class="panel-header">
         <div>
           <p class="eyebrow">Beta walkthrough</p>
-          <h2>First 10 minutes for a tester</h2>
+          <h2>First 5 minutes for a tester</h2>
         </div>
         <span class="status-pill inbox-${tone}">${done}/${items.length}</span>
       </div>
@@ -9991,12 +9963,12 @@ function renderFirstTenModePanel() {
     <section class="panel first-ten-mode-panel">
       <div class="panel-header">
         <div>
-          <p class="eyebrow">First 10 minutes mode</p>
-          <h2>${mode.active ? "Run the evaluator path live" : "Make the first demo impossible to miss"}</h2>
+          <p class="eyebrow">First 5 minutes mode</p>
+          <h2>${mode.active ? "Run the five-minute path live" : "Make the first demo impossible to miss"}</h2>
         </div>
         <span class="status-pill inbox-${tone}">${progress.done}/${progress.total}</span>
       </div>
-      <p class="panel-note">${mode.active ? `Started ${escapeHtml(formatTimestamp(mode.startedAt))}. Keep the call moving through evidence, trust, and exit proof.` : "Use this when a new PM, customer, or contributor asks whether Agora can run a real project. It turns the beta page into a timed product evaluation."}</p>
+      <p class="panel-note">${mode.active ? `Started ${escapeHtml(formatTimestamp(mode.startedAt))}. Keep the call moving through client delivery evidence, automation safety, and exit proof.` : "Use this when a new PM, customer, or contributor asks whether Agora can run a real project. It turns the beta page into a focused five-minute product proof."}</p>
       <div class="first-ten-mode-list">
         ${progress.items.map((item) => `
           <article class="${item.done ? "is-done" : "is-open"}">
@@ -10010,7 +9982,7 @@ function renderFirstTenModePanel() {
         `).join("")}
       </div>
       <div class="data-actions">
-        <button class="button ${mode.active ? "button-secondary" : "button-primary"}" type="button" data-first-ten-action="start">${mode.active ? "Restart 10-minute path" : "Start 10-minute evaluation"}</button>
+        <button class="button ${mode.active ? "button-secondary" : "button-primary"}" type="button" data-first-ten-action="start">${mode.active ? "Restart 5-minute path" : "Start 5-minute evaluation"}</button>
         <button class="button button-secondary" type="button" data-first-ten-action="packet">Open Packet Step</button>
         <button class="button button-secondary" type="button" data-evaluation-action="copy-markdown">Copy Evaluation Packet</button>
       </div>
@@ -10027,8 +9999,8 @@ function renderEvaluatorLanding() {
   els.appView.innerHTML = `
     ${renderRouteHeader({
       eyebrow: "Evaluator mode",
-      title: "Evaluate Agora in 10 minutes",
-      description: "A focused path for project managers, customers, contributors, and investors to load realistic work, judge the core workflows, and leave with an evidence packet.",
+      title: "Evaluate Agora in 5 minutes",
+      description: "A focused path for project managers, customers, contributors, and investors to load realistic client work, judge the core promise, and leave with an evidence packet.",
       className: "evaluator-route-header",
       actions: [
         { label: "Start Evaluation", id: "evaluate-start", primary: true },
@@ -10068,7 +10040,7 @@ function renderEvaluatorLanding() {
         <article>
           <span>Next fix</span>
           <strong>${escapeHtml(summary.nextFixes[0]?.label || "Keep validating")}</strong>
-          <small>${escapeHtml(summary.nextFixes[0]?.recommendation || "Run the first 10 minutes with another PM and compare notes.")}</small>
+          <small>${escapeHtml(summary.nextFixes[0]?.recommendation || "Run the first 5 minutes with another PM and compare notes.")}</small>
         </article>
       </div>
       <div class="data-actions">
@@ -17649,9 +17621,11 @@ function handleFirstTenAction(action) {
       detail: "Agora loaded a fresh beta workspace in this browser. Existing saved workspaces stay separate, and no production data or API secrets are exported.",
       source: "first-ten-start"
     });
+    state.selectedRoute = "command-center";
+    openSidebarGroupForRoute("command-center");
     saveState();
     render();
-    showToast("10-minute evaluation started", "success");
+    showToast("5-minute evaluation started", "success");
     return;
   }
 
@@ -17665,6 +17639,8 @@ function handleFirstTenAction(action) {
       detail: "Agora loaded a fresh beta workspace in this browser. Existing saved workspaces stay separate, and no production data or API secrets are exported.",
       source: "first-ten-workspace"
     });
+    state.selectedRoute = "command-center";
+    openSidebarGroupForRoute("command-center");
     saveState();
     render();
     showToast("Beta workspace ready for review", "success");
@@ -17676,13 +17652,13 @@ function handleFirstTenAction(action) {
     return;
   }
 
-  if (action === "kanban") {
-    openGuidedEvaluationStep(state.onboarding?.evaluationProgress?.kanban ? "timeline" : "kanban");
+  if (action === "visibility") {
+    openGuidedEvaluationStep("visibility");
     return;
   }
 
-  if (action === "trust") {
-    openGuidedEvaluationStep(state.onboarding?.evaluationProgress?.autopilot ? "memory" : "autopilot");
+  if (action === "autopilot") {
+    openGuidedEvaluationStep("autopilot");
     return;
   }
 
@@ -22860,7 +22836,7 @@ function renderPmCommandCenter() {
       step: "1 of 6",
       title: "Start here: pick the PM action that protects the client launch.",
       detail: center.attentionItems[0] ? `${center.attentionItems[0].title} is the first item to clear before you scope or share updates.` : "Nothing is urgent right now; use the next best actions to keep delivery moving.",
-      proof: "A tester should be able to name the next PM action within 10 minutes.",
+      proof: "A tester should be able to name the next PM action within five minutes.",
       nextLabel: "Scope the project",
       nextRoute: "project-backlog"
     })}
