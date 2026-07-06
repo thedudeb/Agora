@@ -24,6 +24,7 @@ const checks = [
       "## Tester Profile",
       "## Intake Paths",
       "## Triage Cadence",
+      "## Core Workflow Scorecard",
       "## Email And Taskboard Proof",
       "## Data Safety"
     ].every((section) => loopDoc.includes(section)),
@@ -33,6 +34,20 @@ const checks = [
     title: "Beta docs link the feedback loop",
     pass: notes.includes("beta-feedback-loop.md") && script.includes("beta-feedback-loop.md"),
     fix: "Link docs/beta-feedback-loop.md from beta notes and beta test script."
+  }),
+  check({
+    title: "Beta test script scores the core Acme workflow before wishlist collection",
+    pass: [
+      "## Core Workflow Scorecard",
+      "First win",
+      "Client request to work",
+      "Client safety",
+      "Recovery trust",
+      "Portability",
+      "Feedback loop",
+      "before collecting wishlist ideas"
+    ].every((token) => script.includes(token)),
+    fix: "Keep docs/beta-test-script.md focused on the Acme scorecard before power-user follow-up."
   }),
   check({
     title: "App exposes feedback form and request board routes",
