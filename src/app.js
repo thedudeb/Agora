@@ -1111,7 +1111,7 @@ const routes = {
   landing: "Agora",
   dashboard: "Dashboard",
   "command-center": "Command Center",
-  launch: "Launch Flow",
+  launch: "Project Launch",
   portal: "Portal",
   daily: "Today",
   inbox: "Inbox",
@@ -1251,6 +1251,16 @@ const seedData = {
     demoReceipt: {},
     notificationsReviewed: false,
     templatesReviewed: false
+  },
+  projectLaunchWizard: {
+    style: "client",
+    source: "fresh",
+    projectName: "",
+    companyName: "",
+    startDate: "",
+    ownerId: "",
+    clientVisible: true,
+    lastCreatedProjectId: ""
   },
   tutorial: {
     active: false,
@@ -3121,6 +3131,7 @@ function normalizeState(nextState) {
       demoReceipt: normalizeDemoReceipt((nextState.onboarding || {}).demoReceipt),
       wizardStep: clamp(Number((nextState.onboarding || {}).wizardStep || 0), 0, 8)
     },
+    projectLaunchWizard: normalizeProjectLaunchWizard(nextState.projectLaunchWizard, nextState.users),
     tutorial: {
       ...seedData.tutorial,
       ...(nextState.tutorial || {}),
@@ -9004,8 +9015,8 @@ function renderFirstValuePath() {
     {
       label: "First project",
       value: activeProjects().length ? `${activeProjects().length} active` : "Not created",
-      detail: "Create one real project so reports, board, timeline, and Today have useful work.",
-      action: "project",
+      detail: "Create one real project with useful work, docs, milestones, intake, and launch checks.",
+      action: "project-launch",
       primary: !activeProjects().length
     },
     {
@@ -14046,10 +14057,10 @@ function commandPaletteBaseItems() {
     },
     {
       id: "launch:workspace",
-      title: "Launch first workspace",
-      detail: "Run the guided client template, automation, recovery, and invite flow",
+      title: "Launch first project",
+      detail: "Generate a usable project from team style, source, tasks, milestones, docs, RAID, and recovery",
       group: "Golden path",
-      keywords: "launch first client workspace guided flow onboarding"
+      keywords: "launch first project workspace guided flow onboarding kanban scrum timeline client"
     },
     {
       id: "autopilot:demo",
@@ -18199,6 +18210,11 @@ function handleOnboardingAction(action) {
     return;
   }
 
+  if (action === "project-launch") {
+    openLaunchWorkspaceFlow();
+    return;
+  }
+
   if (action === "project") {
     if (!canWrite("projects:write")) {
       showToast("Your role cannot create projects", "info");
@@ -20927,6 +20943,509 @@ function startAutopilotDemoPath() {
   showToast("Autopilot demo path opened", "success");
 }
 
+function projectLaunchStyleOptions() {
+  return onboardingProjectManagementPreferences().map((preference) => ({
+    id: preference.id,
+    label: preference.label,
+    value: preference.value,
+    detail: preference.detail,
+    route: preference.route,
+    projectTab: preference.projectTab || "",
+    starterProfile: preference.starterProfile,
+    boardTemplate: preference.boardTemplate
+  }));
+}
+
+function projectLaunchSourceOptions() {
+  return [
+    {
+      id: "fresh",
+      label: "Fresh start",
+      value: "Build the first project in Agora",
+      detail: "Seed scope, owners, milestones, docs, and first-week operating tasks."
+    },
+    {
+      id: "import",
+      label: "Importing work",
+      value: "Bring in tasks from another tool",
+      detail: "Add migration preview, cleanup, mapping, and rollback work to the launch plan."
+    },
+    {
+      id: "client",
+      label: "Existing client",
+      value: "Start from a client engagement",
+      detail: "Prioritize handoff, visibility rules, approvals, and the first client update."
+    },
+    {
+      id: "template",
+      label: "Repeatable template",
+      value: "Turn this into a reusable workflow",
+      detail: "Add template review, checklist standardization, and future reuse tasks."
+    }
+  ];
+}
+
+function normalizeProjectLaunchWizard(input = {}, users = state?.users) {
+  const source = input && typeof input === "object" ? input : {};
+  const styleIds = new Set(projectLaunchStyleOptions().map((option) => option.id));
+  const sourceIds = new Set(projectLaunchSourceOptions().map((option) => option.id));
+  const validOwnerIds = new Set([
+    ...members.map((member) => member.id),
+    ...(Array.isArray(users) ? users : []).map((user) => user?.id).filter(Boolean)
+  ]);
+  return {
+    style: styleIds.has(source.style) ? source.style : seedData.projectLaunchWizard?.style || "client",
+    source: sourceIds.has(source.source) ? source.source : seedData.projectLaunchWizard?.source || "fresh",
+    projectName: String(source.projectName || "").trim().slice(0, 120),
+    companyName: String(source.companyName || "").trim().slice(0, 120),
+    startDate: source.startDate || "",
+    ownerId: validOwnerIds.has(source.ownerId) ? source.ownerId : "",
+    clientVisible: source.clientVisible !== false,
+    lastCreatedProjectId: String(source.lastCreatedProjectId || "")
+  };
+}
+
+function projectLaunchWizardState() {
+  return normalizeProjectLaunchWizard(state.projectLaunchWizard);
+}
+
+function projectLaunchStyle(styleId = projectLaunchWizardState().style) {
+  return projectLaunchStyleOptions().find((option) => option.id === styleId) || projectLaunchStyleOptions()[0];
+}
+
+function projectLaunchSource(sourceId = projectLaunchWizardState().source) {
+  return projectLaunchSourceOptions().find((option) => option.id === sourceId) || projectLaunchSourceOptions()[0];
+}
+
+function projectLaunchPlan(styleId, sourceId) {
+  const base = {
+    kanban: {
+      durationDays: 21,
+      tasks: [
+        ["intake", "Capture all incoming work", "Define the initial card intake rules, owners, tags, and what belongs on the board.", "todo", "high", 1, ["intake", "kanban"], []],
+        ["columns", "Confirm board workflow columns", "Review backlog, todo, doing, review, blocked, and done rules before the team starts moving cards.", "doing", "high", 2, ["board", "workflow"], ["intake"]],
+        ["wip", "Set WIP and blocker rules", "Name work-in-progress limits, blocked-card policy, and escalation expectations.", "todo", "normal", 4, ["wip", "blockers"], ["columns"]],
+        ["triage", "Run first board triage", "Prioritize the highest value cards, assign owners, and move the first committed work into Doing.", "todo", "high", 6, ["triage"], ["wip"]],
+        ["review", "Schedule weekly flow review", "Create a recurring review habit for throughput, blocked work, aging cards, and next commitments.", "todo", "normal", 10, ["review"], ["triage"]]
+      ],
+      milestones: [["Board workflow ready", 3, ["intake", "columns"]], ["First flow review complete", 10, ["triage", "review"]]],
+      docs: [["Kanban Operating Rules", "Board columns, entry rules, WIP limits, blocked-card policy, and review cadence."]],
+      raid: ["Risk", "Board becomes a dumping ground without clear entry and triage rules."]
+    },
+    scrum: {
+      durationDays: 14,
+      tasks: [
+        ["backlog", "Prepare sprint backlog", "Collect candidate work, acceptance criteria, estimates, dependencies, and release risk.", "todo", "high", 1, ["backlog", "sprint"], []],
+        ["capacity", "Confirm sprint capacity", "Review holidays, focus time, owner capacity, and carryover before commitment.", "doing", "urgent", 1, ["capacity"], ["backlog"]],
+        ["planning", "Run sprint planning", "Commit the sprint, name the sprint goal, and capture what will not be included.", "todo", "urgent", 2, ["planning"], ["capacity"]],
+        ["standup", "Publish standup rhythm", "Define the daily standup prompt, blocker escalation path, and owner follow-up rule.", "todo", "normal", 3, ["standup"], ["planning"]],
+        ["closeout", "Schedule review and retro", "Book sprint review, retro, carryover review, and follow-up owner assignment.", "todo", "normal", 12, ["retro"], ["standup"]]
+      ],
+      milestones: [["Sprint committed", 2, ["capacity", "planning"]], ["Sprint review ready", 12, ["closeout"]]],
+      docs: [["Sprint Operating Agreement", "Sprint goal, capacity assumptions, done definition, ceremonies, and escalation path."]],
+      raid: ["Assumption", "The team agrees to use sprint commitment as the source of truth for near-term work."]
+    },
+    timeline: {
+      durationDays: 35,
+      tasks: [
+        ["scope", "Lock timeline scope", "Name deliverables, dependencies, constraints, and what is explicitly out of scope.", "doing", "urgent", 2, ["scope", "timeline"], []],
+        ["milestones", "Map milestones and dependencies", "Create milestone dates, dependency order, critical path, and date-risk owner.", "todo", "high", 5, ["gantt", "dependencies"], ["scope"]],
+        ["owners", "Assign owners and backups", "Confirm primary owners, backup owners, review windows, and decision makers.", "todo", "high", 7, ["owners"], ["milestones"]],
+        ["risk", "Review date risk", "Inspect overdue risk, unclear dependencies, capacity conflicts, and client-visible timing promises.", "todo", "high", 10, ["risk"], ["owners"]],
+        ["status", "Publish timeline status packet", "Create the first schedule update with dates, risks, decisions, and next changes.", "todo", "normal", 14, ["status"], ["risk"]]
+      ],
+      milestones: [["Timeline baseline approved", 7, ["scope", "milestones", "owners"]], ["First date-risk review", 14, ["risk", "status"]]],
+      docs: [["Timeline Baseline", "Scope, milestone dates, dependencies, critical path, owners, risks, and change-control rules."]],
+      raid: ["Risk", "Date promises may shift if dependency owners are not confirmed before kickoff."]
+    },
+    client: {
+      durationDays: 28,
+      tasks: [
+        ["handoff", "Collect client handoff notes", "Capture goals, stakeholders, success criteria, open promises, and contract constraints.", "doing", "urgent", 1, ["client", "handoff"], []],
+        ["kickoff", "Prepare kickoff agenda", "Write agenda, decision points, stakeholder map, questions, and meeting owner.", "todo", "high", 3, ["kickoff"], ["handoff"]],
+        ["visibility", "Set client visibility rules", "Decide what clients can see, what stays internal, and who approves shared packets.", "todo", "high", 5, ["visibility", "portal"], ["kickoff"]],
+        ["approval", "Create first approval request", "Package the first client decision with context, due date, reviewer, and next action.", "todo", "high", 7, ["approval"], ["visibility"]],
+        ["update", "Draft first weekly client update", "Summarize progress, risks, approvals, decisions, and next commitments in client-safe language.", "todo", "normal", 10, ["status"], ["approval"]]
+      ],
+      milestones: [["Kickoff ready", 3, ["handoff", "kickoff"]], ["Client packet ready", 7, ["visibility", "approval"]], ["First update sent", 10, ["update"]]],
+      docs: [["Client Launch Brief", "Goals, stakeholders, promises, visibility rules, approval path, and first-week risks."]],
+      raid: ["Decision", "Confirm which project updates are client-visible before the first portal share."]
+    },
+    simple: {
+      durationDays: 14,
+      tasks: [
+        ["goals", "Write the project goal", "Capture the outcome, owner, deadline, and first useful deliverable.", "doing", "high", 1, ["goal"], []],
+        ["tasks", "List the first ten tasks", "Turn the project into small owned next actions with due dates and priorities.", "todo", "high", 2, ["tasks"], ["goals"]],
+        ["owners", "Confirm owners", "Assign each open task and identify anything that needs a decision or external input.", "todo", "normal", 3, ["owners"], ["tasks"]],
+        ["checkin", "Schedule first check-in", "Create a lightweight review habit for progress, blockers, and the next week.", "todo", "normal", 7, ["check-in"], ["owners"]]
+      ],
+      milestones: [["First plan ready", 3, ["goals", "tasks", "owners"]], ["First check-in complete", 7, ["checkin"]]],
+      docs: [["Simple Project Brief", "Outcome, owners, first ten tasks, open decisions, and next check-in date."]],
+      raid: ["Issue", "The first project needs one accountable owner before the team can rely on it."]
+    }
+  }[styleId] || {};
+
+  const sourceExtras = {
+    import: {
+      tasks: [
+        ["import-preview", "Preview source import", "Run the import preview, map statuses, inspect warnings, and create a backup before applying.", "todo", "urgent", 1, ["migration", "import"], []],
+        ["import-cleanup", "Clean imported work", "Resolve duplicate cards, missing owners, unmapped statuses, and stale due dates after import.", "todo", "high", 4, ["migration"], ["import-preview"]]
+      ],
+      docs: [["Migration Notes", "Source tool, field mapping, skipped records, warnings, rollback point, and owner follow-up."]],
+      raid: ["Risk", "Imported work may contain stale owners, duplicate tasks, or unmapped statuses until cleanup is complete."]
+    },
+    client: {
+      tasks: [
+        ["stakeholders", "Confirm client stakeholders", "Name client approvers, escalation contacts, meeting cadence, and decision owners.", "todo", "high", 2, ["client"], []],
+        ["portal", "Stage client portal packet", "Prepare client-visible docs, approvals, task visibility, and portal link safety before sharing.", "todo", "high", 6, ["portal"], ["stakeholders"]]
+      ],
+      docs: [["Client Stakeholder Map", "Approvers, watchers, escalation path, communication cadence, and portal expectations."]],
+      raid: ["Decision", "Client approvers and visibility rules need signoff before the portal link is shared."]
+    },
+    template: {
+      tasks: [
+        ["template-review", "Review reusable workflow", "Mark which tasks, docs, milestones, and intake questions should become the reusable template.", "todo", "normal", 5, ["template"], []],
+        ["template-save", "Save project as template", "Create the reusable project template after the first run has real owner and timing evidence.", "todo", "normal", 12, ["template"], ["template-review"]]
+      ],
+      docs: [["Template Reuse Notes", "Reusable steps, configurable fields, owner assumptions, and what must change per project."]],
+      raid: ["Assumption", "The first run will produce enough evidence to turn this workflow into a reusable template."]
+    },
+    fresh: {
+      tasks: [
+        ["backup", "Create first recovery checkpoint", "Create a backup before inviting the team or importing work into the new project.", "todo", "normal", 2, ["recovery"], []]
+      ],
+      docs: [["Launch Checklist", "First project setup, invite timing, backup plan, status cadence, and launch owner checklist."]],
+      raid: ["Assumption", "The team is comfortable starting with an Agora-native plan before connecting external sources."]
+    }
+  }[sourceId] || {};
+
+  return {
+    durationDays: Math.max(base.durationDays || 21, 14),
+    tasks: [...(sourceExtras.tasks || []), ...(base.tasks || [])],
+    milestones: base.milestones || [],
+    docs: [...(base.docs || []), ...(sourceExtras.docs || [])],
+    raid: [base.raid, sourceExtras.raid].filter(Boolean)
+  };
+}
+
+function readProjectLaunchForm() {
+  const current = projectLaunchWizardState();
+  return normalizeProjectLaunchWizard({
+    ...current,
+    projectName: document.querySelector("#project-launch-name")?.value || current.projectName,
+    companyName: document.querySelector("#project-launch-company")?.value || current.companyName,
+    startDate: document.querySelector("#project-launch-start")?.value || current.startDate,
+    ownerId: document.querySelector("#project-launch-owner")?.value || current.ownerId,
+    clientVisible: document.querySelector("#project-launch-client-visible")?.checked ?? current.clientVisible
+  });
+}
+
+function setProjectLaunchChoice(kind, value) {
+  state.projectLaunchWizard = normalizeProjectLaunchWizard({
+    ...readProjectLaunchForm(),
+    [kind]: value
+  });
+  saveState();
+  render();
+}
+
+function applyProjectLaunchWizard() {
+  if (!canWrite("projects:write")) {
+    showToast("Your role cannot create projects", "info");
+    return;
+  }
+
+  const wizard = readProjectLaunchForm();
+  const style = projectLaunchStyle(wizard.style);
+  const source = projectLaunchSource(wizard.source);
+  const projectName = wizard.projectName || `${style.label} launch`;
+  const companyNameValue = wizard.companyName || (source.id === "client" || style.id === "client" ? "First Client" : "Internal Team");
+  const startDate = wizard.startDate || todayKey();
+  const ownerId = wizard.ownerId || activeMemberId();
+  const now = new Date().toISOString();
+  const plan = projectLaunchPlan(style.id, source.id);
+  const day = (offset) => shiftDate(startDate, offset);
+  const at = (offset, hour = 9) => `${day(offset)}T${String(hour).padStart(2, "0")}:00:00.000Z`;
+
+  const existingCompany = state.companies.find((company) => company.name.toLowerCase() === companyNameValue.toLowerCase());
+  const company = existingCompany || normalizeCompanyRecord({
+    id: uid("company"),
+    name: companyNameValue,
+    type: source.id === "client" || style.id === "client" ? "Client" : "Internal",
+    status: "Active",
+    owner: ownerId,
+    description: `Created by the Project Launch Wizard for ${projectName}.`
+  });
+  if (!existingCompany) state.companies = [company, ...state.companies];
+
+  const project = normalizeProjectRecord({
+    id: uid("project"),
+    name: projectName,
+    companyId: company.id,
+    description: `${source.label}: ${style.value}. ${style.detail}`,
+    owner: ownerId,
+    startDate,
+    dueDate: day(plan.durationDays),
+    status: "active",
+    customFields: {
+      launchWizard: true,
+      launchStyle: style.id,
+      launchSource: source.id,
+      clientVisible: wizard.clientVisible ? "shared" : "internal"
+    },
+    createdAt: now,
+    updatedAt: now
+  });
+
+  const taskIdsByKey = {};
+  const tasks = plan.tasks.map(([key, title, description, status, priority, dueOffset, tags, blockedBy], index) => {
+    const taskId = uid("task");
+    taskIdsByKey[key] = taskId;
+    return normalizeTaskRecord({
+      id: taskId,
+      projectId: project.id,
+      title,
+      description,
+      assignee: ownerId,
+      status,
+      priority,
+      startDate: day(Math.max(0, dueOffset - 2)),
+      dueDate: day(dueOffset),
+      boardOrder: index,
+      sortOrder: index,
+      blockedBy: (blockedBy || []).map((dependencyKey) => taskIdsByKey[dependencyKey]).filter(Boolean),
+      tags: Array.from(new Set(["launch", style.id, source.id, ...(tags || [])])),
+      subtasks: ["Owner confirmed", "Next action clear", "Evidence attached"].map((title) => ({ id: uid("subtask"), title, done: false })),
+      visibility: wizard.clientVisible && (style.id === "client" || tags?.includes("portal") || tags?.includes("status") || tags?.includes("approval")) ? "shared" : "internal",
+      customFields: {
+        launchWizard: true,
+        launchStyle: style.id,
+        launchSource: source.id,
+        effort: priority === "urgent" || priority === "high" ? "Large" : "Medium",
+        risk: priority === "urgent" ? "High" : priority === "high" ? "Medium" : "Low"
+      },
+      createdAt: at(0, 9 + (index % 7)),
+      updatedAt: now
+    });
+  });
+
+  const milestones = plan.milestones.map(([title, dueOffset, taskKeys], index) => ({
+    id: uid("milestone"),
+    projectId: project.id,
+    title,
+    description: `Generated by the ${style.label} launch plan.`,
+    dueDate: day(dueOffset),
+    status: "planned",
+    owner: ownerId,
+    taskIds: (taskKeys || []).map((key) => taskIdsByKey[key]).filter(Boolean),
+    createdAt: now,
+    updatedAt: now
+  }));
+
+  const documents = plan.docs.map(([title, body]) => ({
+    id: uid("doc"),
+    projectId: project.id,
+    title,
+    type: title.toLowerCase().includes("checklist") ? "Checklist" : "Brief",
+    owner: ownerId,
+    body,
+    visibility: wizard.clientVisible && style.id === "client" ? "shared" : "internal",
+    updatedAt: now
+  }));
+
+  const raidItems = plan.raid.map(([typeLabel, title], index) => normalizeRaidItems([{
+    id: uid("raid"),
+    type: String(typeLabel || "Risk").toLowerCase(),
+    projectId: project.id,
+    companyId: company.id,
+    title,
+    detail: `Generated by the Project Launch Wizard for ${style.label}.`,
+    owner: ownerId,
+    severity: index === 0 ? "medium" : "low",
+    status: typeLabel === "Decision" ? "open" : "watching",
+    mitigation: "Review during the first launch check-in and assign an owner if it is still active.",
+    visibility: "internal",
+    sourceType: "manual",
+    dueDate: day(7),
+    createdAt: now,
+    updatedAt: now
+  }])[0]).filter(Boolean);
+
+  const intakeForm = {
+    id: uid("form"),
+    title: `${project.name} intake`,
+    projectId: project.id,
+    assignee: ownerId,
+    description: `Capture incoming work for ${project.name}.`,
+    fields: [
+      { id: "requester", label: "Requester", type: "text", required: true },
+      { id: "source", label: "Source", type: "select", options: ["Agora", "Client", "Import", "Meeting"], required: true },
+      { id: "urgency", label: "Urgency", type: "select", options: ["Low", "Normal", "High"], required: true },
+      { id: "details", label: "Details", type: "textarea", required: true }
+    ]
+  };
+
+  state.projects = [project, ...state.projects];
+  state.tasks = [...tasks, ...state.tasks];
+  state.milestones = [...milestones, ...state.milestones];
+  state.documents = [...documents, ...state.documents];
+  state.raidItems = normalizeRaidItems([...raidItems, ...(state.raidItems || [])]);
+  state.intakeForms = [intakeForm, ...state.intakeForms];
+  state.projectBacklog = normalizeProjectBacklog([
+    {
+      id: uid("project-backlog"),
+      title: `${project.name} launch improvements`,
+      description: "Capture follow-up improvements discovered during the first launch run.",
+      projectId: project.id,
+      companyId: company.id,
+      owner: ownerId,
+      status: "candidate",
+      impact: 4,
+      confidence: 3,
+      urgency: 3,
+      source: "Project Launch Wizard"
+    },
+    ...(state.projectBacklog || [])
+  ]);
+
+  const preference = onboardingProjectManagementPreferences().find((item) => item.id === style.id);
+  if (preference) applyProjectManagementPreferenceDefaults(preference);
+
+  state.filters = { ...state.filters, company: company.id, assignee: "all", status: "all", priority: "all", query: "" };
+  state.selectedCompany = company.id;
+  state.selectedProject = project.id;
+  state.selectedRoute = style.route || "project";
+  state.selectedProjectTab = style.projectTab || (style.route === "project" ? "overview" : "overview");
+  state.projectLaunchWizard = normalizeProjectLaunchWizard({
+    ...wizard,
+    projectName,
+    companyName: company.name,
+    startDate,
+    ownerId,
+    lastCreatedProjectId: project.id
+  });
+  state.onboarding = {
+    ...state.onboarding,
+    dismissed: false,
+    sampleMode: state.onboarding?.sampleMode === "clean" ? "custom" : state.onboarding?.sampleMode || "custom",
+    pmPreference: style.id,
+    templatesReviewed: true
+  };
+  openSidebarGroupForRoute(state.selectedRoute);
+  addActivity({
+    projectId: project.id,
+    type: "project_launch_wizard",
+    message: `created ${project.name} with ${tasks.length} launch tasks`
+  });
+  addAuditEvent({
+    action: "project_launch_wizard_apply",
+    detail: `Created ${project.name} from ${style.label} / ${source.label}`,
+    targetType: "project",
+    targetId: project.id,
+    impact: "medium",
+    restoreHint: "Archive the generated project or restore from a backup if this launch plan was accidental.",
+    metadata: {
+      style: style.id,
+      source: source.id,
+      tasks: tasks.length,
+      milestones: milestones.length,
+      documents: documents.length,
+      companyId: company.id
+    }
+  });
+  saveState();
+  render();
+  if (!existingCompany) syncRecordToApi("companies", company, "Company created in API", false);
+  syncProjectToApi(project, "Project launch synced to API", true);
+  tasks.forEach((task) => syncTaskToApi(task, "Launch task synced to API", true));
+  showToast(`${project.name} launch plan created`, "success");
+}
+
+function renderProjectLaunchWizardPanel() {
+  const wizard = projectLaunchWizardState();
+  const style = projectLaunchStyle(wizard.style);
+  const source = projectLaunchSource(wizard.source);
+  const plan = projectLaunchPlan(style.id, source.id);
+  const defaultProjectName = wizard.projectName || `${style.label} launch`;
+  const defaultCompanyName = wizard.companyName || (source.id === "client" || style.id === "client" ? "First Client" : "Internal Team");
+  const ownerId = wizard.ownerId || activeMemberId();
+  return `
+    <section class="panel project-launch-builder">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Guided project launch</p>
+          <h2>Tell Agora how you run work.</h2>
+        </div>
+        <span class="status-pill inbox-blue">${escapeHtml(style.label)} / ${escapeHtml(source.label)}</span>
+      </div>
+      <div class="project-launch-form">
+        <label class="wide-field">
+          <span>Project name</span>
+          <input id="project-launch-name" value="${escapeHtml(defaultProjectName)}" placeholder="Client onboarding launch">
+        </label>
+        <label>
+          <span>Company or team</span>
+          <input id="project-launch-company" value="${escapeHtml(defaultCompanyName)}" placeholder="First Client">
+        </label>
+        <label>
+          <span>Start date</span>
+          <input id="project-launch-start" type="date" value="${escapeHtml(wizard.startDate || todayKey())}">
+        </label>
+        <label>
+          <span>Owner</span>
+          <select id="project-launch-owner">
+            ${workspaceMembers().map((member) => `<option value="${member.id}" ${member.id === ownerId ? "selected" : ""}>${escapeHtml(member.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label class="project-launch-toggle">
+          <input id="project-launch-client-visible" type="checkbox" ${wizard.clientVisible ? "checked" : ""}>
+          <span>Prepare client-safe shared tasks and docs where useful</span>
+        </label>
+      </div>
+      <div class="project-launch-choice-grid" aria-label="Project management style">
+        ${projectLaunchStyleOptions().map((option) => `
+          <button class="project-launch-choice ${option.id === style.id ? "is-selected" : ""}" type="button" data-project-launch-style="${escapeHtml(option.id)}">
+            <span>${escapeHtml(option.label)}</span>
+            <strong>${escapeHtml(option.value)}</strong>
+            <small>${escapeHtml(option.detail)}</small>
+          </button>
+        `).join("")}
+      </div>
+      <div class="project-launch-source-grid" aria-label="Launch source">
+        ${projectLaunchSourceOptions().map((option) => `
+          <button class="project-launch-choice ${option.id === source.id ? "is-selected" : ""}" type="button" data-project-launch-source="${escapeHtml(option.id)}">
+            <span>${escapeHtml(option.label)}</span>
+            <strong>${escapeHtml(option.value)}</strong>
+            <small>${escapeHtml(option.detail)}</small>
+          </button>
+        `).join("")}
+      </div>
+      <div class="project-launch-preview">
+        <article>
+          <span>Creates</span>
+          <strong>${plan.tasks.length} tasks / ${plan.milestones.length} milestones / ${plan.docs.length} docs</strong>
+          <small>Also adds intake, RAID, backlog follow-up, dashboard defaults, and board preferences.</small>
+        </article>
+        <article>
+          <span>Opens</span>
+          <strong>${escapeHtml(routes[style.route] || "Project")}${style.projectTab ? ` / ${escapeHtml(style.projectTab)}` : ""}</strong>
+          <small>${escapeHtml(style.detail)}</small>
+        </article>
+        <article>
+          <span>First tasks</span>
+          <strong>${escapeHtml(plan.tasks.slice(0, 2).map((task) => task[1]).join(" / "))}</strong>
+          <small>${escapeHtml(source.detail)}</small>
+        </article>
+      </div>
+      <div class="launch-action-row">
+        <button class="button button-primary" type="button" id="project-launch-create">Create Launch Plan</button>
+        <button class="button button-secondary" type="button" data-route="data">Open Migration Studio</button>
+        <button class="button button-secondary" type="button" data-route="templates">Browse Templates</button>
+      </div>
+    </section>
+  `;
+}
+
 function launchWorkspaceItems() {
   const template = recommendedFirstTemplate();
   const pack = recommendedAutomationPack();
@@ -20934,12 +21453,13 @@ function launchWorkspaceItems() {
   const hasTeamAccess = state.memberships.filter((membership) => membership.status !== "revoked").length > 1
     || state.invitations.some((invitation) => invitation.status === "pending");
   const hasClientProject = activeProjects().length > 0 && state.companies.some((company) => company.status !== "Archived");
+  const launchCreated = state.projectLaunchWizard?.lastCreatedProjectId && byId(state.projects, state.projectLaunchWizard.lastCreatedProjectId);
   return [
     {
-      label: "Client workspace",
-      detail: hasClientProject ? `${activeProjects().length} active project${activeProjects().length === 1 ? "" : "s"} ready` : "Create the client and first project.",
-      done: hasClientProject,
-      action: "Create Structure"
+      label: "Guided launch plan",
+      detail: launchCreated ? `${launchCreated.name} was created by the launch wizard.` : hasClientProject ? `${activeProjects().length} active project${activeProjects().length === 1 ? "" : "s"} ready` : "Create the first real project with tasks, docs, milestones, intake, and RAID.",
+      done: Boolean(launchCreated || hasClientProject),
+      action: "Create Launch Plan"
     },
     {
       label: "Starter template",
@@ -21001,31 +21521,7 @@ function renderLaunchProgressPanel() {
 }
 
 function renderLaunchClientSetupPanel() {
-  const firstClient = state.companies.find((company) => company.type === "Client" && company.status !== "Archived") || visibleCompanies()[0] || {};
-  const firstProject = activeProjects()[0] || {};
-  return `
-    <section class="panel launch-flow-panel">
-      <div class="panel-header">
-        <div>
-          <p class="eyebrow">Step 1</p>
-          <h2>Create the client workspace</h2>
-        </div>
-        <span class="status-pill ${activeProjects().length ? "inbox-green" : "inbox-amber"}">${activeProjects().length ? "Project ready" : "Needs project"}</span>
-      </div>
-      <div class="launch-inline-form">
-        <label>
-          <span>Client</span>
-          <input id="onboarding-company-name" value="${escapeHtml(firstClient.name || "First Client")}" placeholder="First Client">
-        </label>
-        <label>
-          <span>Project</span>
-          <input id="onboarding-project-name" value="${escapeHtml(firstProject.name || "Client onboarding launch")}" placeholder="Client onboarding launch">
-        </label>
-        <button class="button button-primary" type="button" data-onboarding-inline="structure">Create Structure</button>
-        <button class="button button-secondary" type="button" data-command-id="template:recommended">Review Template</button>
-      </div>
-    </section>
-  `;
+  return renderProjectLaunchWizardPanel();
 }
 
 function renderLaunchAutomationSetupPanel() {
@@ -21133,9 +21629,9 @@ function renderLaunchWorkspaceFlow() {
   const doneCount = items.filter((item) => item.done).length;
   els.appView.innerHTML = `
     ${renderRouteHeader({
-      eyebrow: "Launch flow",
-      title: "Launch the first client workspace",
-      description: "Create the client project, install the handoff workflow, prove recovery, and prepare the first teammate invite from one focused path.",
+      eyebrow: "Project launch",
+      title: "Launch the first real project",
+      description: "Choose how this team manages work, generate the first usable project, then prove recovery and prepare the team handoff.",
       actions: [
         { label: "Open Dashboard", route: "dashboard" },
         { label: "Open Command Palette", id: "open-command-palette", primary: true }
@@ -44548,6 +45044,24 @@ document.addEventListener("click", (event) => {
   const onboardingInlineButton = event.target.closest("[data-onboarding-inline]");
   if (onboardingInlineButton) {
     handleOnboardingInlineAction(onboardingInlineButton.dataset.onboardingInline);
+    return;
+  }
+
+  const projectLaunchStyleButton = event.target.closest("[data-project-launch-style]");
+  if (projectLaunchStyleButton) {
+    setProjectLaunchChoice("style", projectLaunchStyleButton.dataset.projectLaunchStyle);
+    return;
+  }
+
+  const projectLaunchSourceButton = event.target.closest("[data-project-launch-source]");
+  if (projectLaunchSourceButton) {
+    setProjectLaunchChoice("source", projectLaunchSourceButton.dataset.projectLaunchSource);
+    return;
+  }
+
+  const projectLaunchCreateButton = event.target.closest("#project-launch-create");
+  if (projectLaunchCreateButton) {
+    applyProjectLaunchWizard();
     return;
   }
 
