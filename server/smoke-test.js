@@ -1361,6 +1361,7 @@ async function run() {
 
     await testLockedAuthDefaults();
     await testAccountAuth();
+    await testAuthenticatedRateLimit();
     await testSupabaseAuthBridge();
     await testSupabaseStorageAdapter();
 
@@ -2029,6 +2030,64 @@ async function testLockedAuthDefaults() {
   }
 }
 
+async function testAuthenticatedRateLimit() {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-rate-limit-"));
+  const server = createServer({
+    storage: createStorage({ dataDir, driver: "json" }),
+    rateLimits: {
+      authenticatedWrite: { attempts: 20, windowMs: 60 * 1000 },
+      expensive: { attempts: 1, windowMs: 60 * 1000 }
+    }
+  });
+
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const signup = await request(`${baseUrl}/api/auth/signup`, {
+      method: "POST",
+      body: {
+        name: "Rate Owner",
+        email: "rate-owner@example.test",
+        password: "super-secret",
+        workspaceName: "Rate Workspace",
+        workspaceSlug: "rate-workspace"
+      }
+    });
+
+    const checkoutBody = {
+      provider: "test",
+      item: {
+        itemId: "rate-limit-pack",
+        name: "Rate Limit Pack",
+        amountCents: 1000,
+        currency: "USD"
+      }
+    };
+    const firstIntent = await request(`${baseUrl}/api/payments/checkout-intent`, {
+      method: "POST",
+      token: signup.token,
+      body: checkoutBody
+    });
+    assert(firstIntent.intent.id, "first expensive authenticated request should succeed");
+
+    const rateLimitedIntent = await requestError(`${baseUrl}/api/payments/checkout-intent`, {
+      method: "POST",
+      token: signup.token,
+      body: checkoutBody
+    });
+    assert(rateLimitedIntent.status === 429, "expensive authenticated API requests should be rate limited");
+    assert(Number(rateLimitedIntent.headers["retry-after"]) > 0, "rate-limited responses should include Retry-After");
+
+    const observability = await request(`${baseUrl}/api/observability`, { token: signup.token });
+    assert(observability.rateLimits?.categories?.expensive?.attempts === 1, "observability should expose expensive rate-limit policy");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+}
+
 async function testSupabaseAuthBridge() {
   const originalFetch = global.fetch;
   const originalEnv = {
@@ -2414,7 +2473,7 @@ async function requestError(url, options = {}) {
   if (response.ok) {
     throw new Error(`Expected request to fail: ${url}`);
   }
-  return { status: response.status, body };
+  return { status: response.status, body, headers: Object.fromEntries(response.headers.entries()) };
 }
 
 async function requestRaw(url, options = {}) {

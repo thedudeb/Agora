@@ -192,6 +192,22 @@ Agora supports reset-token creation and confirmation through the API. Production
 
 Invitations and feature requests use the same SMTP settings. Set `AGORA_FEATURE_REQUEST_EMAIL` to receive an email whenever the in-app or public feature request form saves a task. The shareable public form lives at `#feedback` on your deployed app URL, but the public feature-request API is disabled by default. Set `AGORA_PUBLIC_FEATURE_REQUESTS=true` only when you are ready to accept public submissions, and tune public abuse limits with `AGORA_PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS`, `AGORA_PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS`, and `AGORA_PUBLIC_FEATURE_BODY_LIMIT_BYTES`.
 
+The API also applies in-memory rate limits to public discovery/config reads, authenticated write bursts, expensive operations such as backups/imports/uploads/AI/scheduler/payment actions, and concurrent realtime streams. `429` responses include `Retry-After`. Tune these with:
+
+```sh
+AGORA_PUBLIC_READ_RATE_LIMIT_ATTEMPTS=120
+AGORA_PUBLIC_READ_RATE_LIMIT_WINDOW_MS=60000
+AGORA_AUTHENTICATED_WRITE_RATE_LIMIT_ATTEMPTS=240
+AGORA_AUTHENTICATED_WRITE_RATE_LIMIT_WINDOW_MS=60000
+AGORA_EXPENSIVE_API_RATE_LIMIT_ATTEMPTS=30
+AGORA_EXPENSIVE_API_RATE_LIMIT_WINDOW_MS=600000
+AGORA_REALTIME_CONNECTION_LIMIT_PER_SESSION=6
+AGORA_REALTIME_CONNECTION_LIMIT_PER_IP=30
+AGORA_RATE_LIMIT_MAX_KEYS=5000
+```
+
+For multi-instance hosted deployments, keep these app-level limits but add an edge, Redis, Upstash, or provider-level limiter so counters are shared across workers.
+
 Invitation, feature request, and requester update emails are queued through persisted background job state. JSON deployments store this in `background-jobs.json`; Supabase deployments store it in `agora_background_jobs` after migration `003_background_jobs.sql`. API sessions store only hashed token identifiers in `agora_auth_sessions` after migration `004_auth_sessions.sql`, which keeps session rotation and revocation durable across restarts. Tune queue pressure and retry timing with:
 
 ```sh

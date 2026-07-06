@@ -29,6 +29,15 @@ const INVITATION_TTL_MS = positiveNumber(process.env.AGORA_INVITATION_TTL_DAYS, 
 const PORTAL_LINK_TTL_MS = positiveNumber(process.env.AGORA_PORTAL_LINK_TTL_DAYS, 14) * 24 * 60 * 60 * 1000;
 const PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS = positiveNumber(process.env.AGORA_PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS, 30);
 const PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS = positiveNumber(process.env.AGORA_PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS, 10 * 60 * 1000);
+const PUBLIC_READ_RATE_LIMIT_ATTEMPTS = positiveNumber(process.env.AGORA_PUBLIC_READ_RATE_LIMIT_ATTEMPTS, 120);
+const PUBLIC_READ_RATE_LIMIT_WINDOW_MS = positiveNumber(process.env.AGORA_PUBLIC_READ_RATE_LIMIT_WINDOW_MS, 60 * 1000);
+const AUTHENTICATED_WRITE_RATE_LIMIT_ATTEMPTS = positiveNumber(process.env.AGORA_AUTHENTICATED_WRITE_RATE_LIMIT_ATTEMPTS, 240);
+const AUTHENTICATED_WRITE_RATE_LIMIT_WINDOW_MS = positiveNumber(process.env.AGORA_AUTHENTICATED_WRITE_RATE_LIMIT_WINDOW_MS, 60 * 1000);
+const EXPENSIVE_API_RATE_LIMIT_ATTEMPTS = positiveNumber(process.env.AGORA_EXPENSIVE_API_RATE_LIMIT_ATTEMPTS, 30);
+const EXPENSIVE_API_RATE_LIMIT_WINDOW_MS = positiveNumber(process.env.AGORA_EXPENSIVE_API_RATE_LIMIT_WINDOW_MS, 10 * 60 * 1000);
+const REALTIME_CONNECTION_LIMIT_PER_SESSION = positiveNumber(process.env.AGORA_REALTIME_CONNECTION_LIMIT_PER_SESSION, 6);
+const REALTIME_CONNECTION_LIMIT_PER_IP = positiveNumber(process.env.AGORA_REALTIME_CONNECTION_LIMIT_PER_IP, 30);
+const RATE_LIMIT_MAX_KEYS = positiveNumber(process.env.AGORA_RATE_LIMIT_MAX_KEYS, 5000);
 const API_VERSION = packageJson.version || "0.1.0";
 const BACKUP_SCHEMA_VERSION = 1;
 
@@ -103,6 +112,7 @@ const requestMetrics = {
   recentErrors: []
 };
 const realtimeClients = new Set();
+let activeRateLimitPolicy = normalizeRateLimitPolicy();
 const BACKGROUND_JOB_MAX_QUEUE = positiveNumber(process.env.AGORA_BACKGROUND_JOB_MAX_QUEUE, 100);
 const BACKGROUND_JOB_BASE_RETRY_MS = positiveNumber(process.env.AGORA_BACKGROUND_JOB_BASE_RETRY_MS, 5000);
 const BACKGROUND_JOB_MAX_RETRY_MS = positiveNumber(process.env.AGORA_BACKGROUND_JOB_MAX_RETRY_MS, 60000);
@@ -156,9 +166,58 @@ function clientIp(request) {
   return request.socket?.remoteAddress || "unknown";
 }
 
-function assertRateLimit(request, scope, limit = AUTH_RATE_LIMIT_ATTEMPTS, windowMs = AUTH_RATE_LIMIT_WINDOW_MS) {
+function normalizeRateLimitPolicy(overrides = {}) {
+  return {
+    auth: {
+      attempts: positiveNumber(overrides.auth?.attempts, AUTH_RATE_LIMIT_ATTEMPTS),
+      windowMs: positiveNumber(overrides.auth?.windowMs, AUTH_RATE_LIMIT_WINDOW_MS)
+    },
+    publicRead: {
+      attempts: positiveNumber(overrides.publicRead?.attempts, PUBLIC_READ_RATE_LIMIT_ATTEMPTS),
+      windowMs: positiveNumber(overrides.publicRead?.windowMs, PUBLIC_READ_RATE_LIMIT_WINDOW_MS)
+    },
+    publicFeature: {
+      attempts: positiveNumber(overrides.publicFeature?.attempts, PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS),
+      emailAttempts: positiveNumber(overrides.publicFeature?.emailAttempts, PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS),
+      windowMs: positiveNumber(overrides.publicFeature?.windowMs, PUBLIC_FEATURE_RATE_LIMIT_WINDOW_MS)
+    },
+    publicPortal: {
+      attempts: positiveNumber(overrides.publicPortal?.attempts, PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS),
+      windowMs: positiveNumber(overrides.publicPortal?.windowMs, PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS)
+    },
+    authenticatedWrite: {
+      attempts: positiveNumber(overrides.authenticatedWrite?.attempts, AUTHENTICATED_WRITE_RATE_LIMIT_ATTEMPTS),
+      windowMs: positiveNumber(overrides.authenticatedWrite?.windowMs, AUTHENTICATED_WRITE_RATE_LIMIT_WINDOW_MS)
+    },
+    expensive: {
+      attempts: positiveNumber(overrides.expensive?.attempts, EXPENSIVE_API_RATE_LIMIT_ATTEMPTS),
+      windowMs: positiveNumber(overrides.expensive?.windowMs, EXPENSIVE_API_RATE_LIMIT_WINDOW_MS)
+    },
+    realtime: {
+      perSession: positiveNumber(overrides.realtime?.perSession, REALTIME_CONNECTION_LIMIT_PER_SESSION),
+      perIp: positiveNumber(overrides.realtime?.perIp, REALTIME_CONNECTION_LIMIT_PER_IP)
+    },
+    maxKeys: positiveNumber(overrides.maxKeys, RATE_LIMIT_MAX_KEYS)
+  };
+}
+
+function pruneRateLimits(now = Date.now()) {
+  for (const [key, bucket] of rateLimits.entries()) {
+    if (!bucket || bucket.resetAt <= now) rateLimits.delete(key);
+  }
+  if (rateLimits.size <= activeRateLimitPolicy.maxKeys) return;
+  const overflow = rateLimits.size - activeRateLimitPolicy.maxKeys;
+  Array.from(rateLimits.entries())
+    .sort((a, b) => (a[1]?.resetAt || 0) - (b[1]?.resetAt || 0))
+    .slice(0, overflow)
+    .forEach(([key]) => rateLimits.delete(key));
+}
+
+function assertRateLimit(request, scope, limit = AUTH_RATE_LIMIT_ATTEMPTS, windowMs = AUTH_RATE_LIMIT_WINDOW_MS, options = {}) {
+  if (!limit || limit < 1) return;
   const now = Date.now();
-  const key = `${clientIp(request)}:${scope}`;
+  pruneRateLimits(now);
+  const key = options.includeIp === false ? cleanString(scope) : `${clientIp(request)}:${cleanString(scope)}`;
   const current = rateLimits.get(key);
   if (!current || current.resetAt <= now) {
     rateLimits.set(key, { count: 1, resetAt: now + windowMs });
@@ -167,8 +226,78 @@ function assertRateLimit(request, scope, limit = AUTH_RATE_LIMIT_ATTEMPTS, windo
 
   current.count += 1;
   if (current.count > limit) {
-    publicError(429, "Too many attempts. Please wait before trying again.");
+    const retryAfterSeconds = Math.max(1, Math.ceil((current.resetAt - now) / 1000));
+    publicError(429, "Too many attempts. Please wait before trying again.", {
+      retryAfterSeconds,
+      rateLimit: {
+        scope: cleanString(scope),
+        limit,
+        resetAt: new Date(current.resetAt).toISOString()
+      }
+    });
   }
+}
+
+function isAuthenticatedMutation(method) {
+  return ["POST", "PUT", "DELETE"].includes(method);
+}
+
+function isExpensiveApiRequest(method, pathname) {
+  if (!isAuthenticatedMutation(method)) return false;
+  return [
+    "/api/ai/operator",
+    "/api/automations/run",
+    "/api/backups/run",
+    "/api/files/upload",
+    "/api/integrations/github/test-event",
+    "/api/integrations/sync",
+    "/api/marketplace/catalog",
+    "/api/payments/checkout-intent",
+    "/api/payments/events",
+    "/api/scheduler/notifications/run",
+    "/api/workspace",
+    "/api/workspace/import"
+  ].includes(pathname);
+}
+
+function assertAuthenticatedRequestRateLimits(request, session, url, policy = activeRateLimitPolicy) {
+  const userId = cleanString(session.user?.id || "unknown");
+  if (isAuthenticatedMutation(request.method)) {
+    assertRateLimit(request, `auth-write:${userId}`, policy.authenticatedWrite.attempts, policy.authenticatedWrite.windowMs, { includeIp: false });
+  }
+  if (isExpensiveApiRequest(request.method, url.pathname)) {
+    assertRateLimit(request, `auth-expensive:${userId}`, policy.expensive.attempts, policy.expensive.windowMs, { includeIp: false });
+  }
+}
+
+function assertRealtimeConnectionLimit(request, session, policy = activeRateLimitPolicy) {
+  const ip = clientIp(request);
+  const memberId = cleanString(session.user?.id || "");
+  const sessionConnections = Array.from(realtimeClients).filter((client) => client.memberId === memberId).length;
+  const ipConnections = Array.from(realtimeClients).filter((client) => client.ip === ip).length;
+  if (sessionConnections >= policy.realtime.perSession || ipConnections >= policy.realtime.perIp) {
+    publicError(429, "Too many realtime connections. Close another tab before reconnecting.", { retryAfterSeconds: 30 });
+  }
+}
+
+function rateLimitSnapshot(policy = activeRateLimitPolicy) {
+  pruneRateLimits();
+  return {
+    mode: "in-memory",
+    distributed: false,
+    retryAfterHeader: true,
+    trackedKeys: rateLimits.size,
+    maxKeys: policy.maxKeys,
+    categories: {
+      auth: { attempts: policy.auth.attempts, windowSeconds: Math.round(policy.auth.windowMs / 1000) },
+      publicRead: { attempts: policy.publicRead.attempts, windowSeconds: Math.round(policy.publicRead.windowMs / 1000) },
+      publicFeature: { attempts: policy.publicFeature.attempts, emailAttempts: policy.publicFeature.emailAttempts, windowSeconds: Math.round(policy.publicFeature.windowMs / 1000) },
+      publicPortal: { attempts: policy.publicPortal.attempts, windowSeconds: Math.round(policy.publicPortal.windowMs / 1000) },
+      authenticatedWrite: { attempts: policy.authenticatedWrite.attempts, windowSeconds: Math.round(policy.authenticatedWrite.windowMs / 1000) },
+      expensive: { attempts: policy.expensive.attempts, windowSeconds: Math.round(policy.expensive.windowMs / 1000) },
+      realtime: { perSession: policy.realtime.perSession, perIp: policy.realtime.perIp }
+    }
+  };
 }
 
 function enqueueBackgroundJob(type, handler, metadata = {}, payload = {}) {
@@ -583,9 +712,7 @@ function buildObservabilitySnapshot(session, requestId = "") {
     realtime: {
       clients: realtimeClients.size
     },
-    rateLimits: {
-      trackedKeys: rateLimits.size
-    }
+    rateLimits: rateLimitSnapshot()
   };
 }
 
@@ -980,6 +1107,8 @@ function createServer(options = {}) {
   const storage = options.storage || createStorage();
   initializeBackgroundJobs(storage);
   initializeAuthSessions(storage);
+  const rateLimitPolicy = normalizeRateLimitPolicy(options.rateLimits);
+  activeRateLimitPolicy = rateLimitPolicy;
   const allowDemoAuth = options.allowDemoAuth ?? envFlag("AGORA_DEMO_AUTH", false);
   const allowPasswordlessAuth = options.allowPasswordlessAuth ?? envFlag("AGORA_PASSWORDLESS_AUTH", false);
 
@@ -1037,11 +1166,13 @@ function createServer(options = {}) {
       }
 
       if (request.method === "GET" && url.pathname === "/api/capabilities") {
+        assertRateLimit(request, "public-discovery", rateLimitPolicy.publicRead.attempts, rateLimitPolicy.publicRead.windowMs);
         sendJson(response, 200, apiCapabilitiesDocument());
         return;
       }
 
       if (request.method === "GET" && url.pathname === "/api/openapi.json") {
+        assertRateLimit(request, "public-discovery", rateLimitPolicy.publicRead.attempts, rateLimitPolicy.publicRead.windowMs);
         sendJson(response, 200, openApiDocument());
         return;
       }
@@ -1051,7 +1182,7 @@ function createServer(options = {}) {
           sendError(response, 404, "Demo auth is disabled");
           return;
         }
-        assertRateLimit(request, "demo-login", 20);
+        assertRateLimit(request, "demo-login", 20, rateLimitPolicy.auth.windowMs);
         const body = await readJsonBody(request);
         const memberId = body.memberId || "mara";
         const user = demoUsers.find((item) => item.id === memberId);
@@ -1072,7 +1203,7 @@ function createServer(options = {}) {
           return;
         }
         const body = await readJsonBody(request);
-        assertRateLimit(request, `passwordless:${normalizeEmail(body.email)}`);
+        assertRateLimit(request, `passwordless:${normalizeEmail(body.email)}`, rateLimitPolicy.auth.attempts, rateLimitPolicy.auth.windowMs);
         const session = await createEmailSession(storage, body.email);
         sendJson(response, 200, publicSessionPayload(session));
         return;
@@ -1080,7 +1211,7 @@ function createServer(options = {}) {
 
       if (request.method === "POST" && url.pathname === "/api/auth/password-login") {
         const body = await readJsonBody(request);
-        assertRateLimit(request, `password:${normalizeEmail(body.email)}`);
+        assertRateLimit(request, `password:${normalizeEmail(body.email)}`, rateLimitPolicy.auth.attempts, rateLimitPolicy.auth.windowMs);
         const session = await createPasswordSession(storage, body.email, body.password);
         sendJson(response, 200, publicSessionPayload(session));
         return;
@@ -1088,7 +1219,7 @@ function createServer(options = {}) {
 
       if (request.method === "POST" && url.pathname === "/api/auth/password-reset/request") {
         const body = await readJsonBody(request);
-        assertRateLimit(request, `password-reset:${normalizeEmail(body.email)}`, 5);
+        assertRateLimit(request, `password-reset:${normalizeEmail(body.email)}`, 5, rateLimitPolicy.auth.windowMs);
         const result = await requestPasswordReset(storage, body.email);
         sendJson(response, 200, result);
         return;
@@ -1096,14 +1227,14 @@ function createServer(options = {}) {
 
       if (request.method === "POST" && url.pathname === "/api/auth/password-reset/confirm") {
         const body = await readJsonBody(request);
-        assertRateLimit(request, `password-reset-confirm:${normalizeEmail(body.email)}`, 8);
+        assertRateLimit(request, `password-reset-confirm:${normalizeEmail(body.email)}`, rateLimitPolicy.auth.attempts, rateLimitPolicy.auth.windowMs);
         const result = await confirmPasswordReset(storage, body);
         sendJson(response, 200, result);
         return;
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/signup") {
-        assertRateLimit(request, "signup", 5);
+        assertRateLimit(request, "signup", 5, rateLimitPolicy.auth.windowMs);
         const body = await readJsonBody(request);
         const session = await createOwnerAccount(storage, body);
         sendJson(response, 201, publicSessionPayload(session));
@@ -1111,7 +1242,7 @@ function createServer(options = {}) {
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/supabase-login") {
-        assertRateLimit(request, "supabase-login");
+        assertRateLimit(request, "supabase-login", rateLimitPolicy.auth.attempts, rateLimitPolicy.auth.windowMs);
         const body = await readJsonBody(request);
         const session = await createSupabaseSessionFromAccessToken(storage, body.accessToken);
         sendJson(response, 200, publicSessionPayload(session));
@@ -1119,7 +1250,7 @@ function createServer(options = {}) {
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/supabase-password-signup") {
-        assertRateLimit(request, "supabase-password-signup", 5);
+        assertRateLimit(request, "supabase-password-signup", 5, rateLimitPolicy.auth.windowMs);
         const body = await readJsonBody(request);
         const result = await createSupabasePasswordAccount(storage, body);
         sendJson(response, result.pendingConfirmation ? 202 : 201, publicSessionPayload(result));
@@ -1128,7 +1259,7 @@ function createServer(options = {}) {
 
       if (request.method === "POST" && url.pathname === "/api/auth/supabase-password-login") {
         const body = await readJsonBody(request);
-        assertRateLimit(request, `supabase-password:${normalizeEmail(body.email)}`);
+        assertRateLimit(request, `supabase-password:${normalizeEmail(body.email)}`, rateLimitPolicy.auth.attempts, rateLimitPolicy.auth.windowMs);
         const session = await createSupabasePasswordSession(storage, body);
         sendJson(response, 200, publicSessionPayload(session));
         return;
@@ -1153,7 +1284,7 @@ function createServer(options = {}) {
 
       const publicPortalLinkMatch = url.pathname.match(/^\/api\/portal-links\/validate\/([^/]+)$/);
       if (publicPortalLinkMatch && request.method === "GET") {
-        assertRateLimit(request, "public-portal-link", PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS, PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS);
+        assertRateLimit(request, "public-portal-link", rateLimitPolicy.publicPortal.attempts, rateLimitPolicy.publicPortal.windowMs);
         const result = await validatePortalLink(storage, decodeURIComponent(publicPortalLinkMatch[1]));
         sendJson(response, 200, result);
         return;
@@ -1161,7 +1292,7 @@ function createServer(options = {}) {
 
       const publicPortalActionMatch = url.pathname.match(/^\/api\/portal-links\/actions\/([^/]+)$/);
       if (publicPortalActionMatch && request.method === "POST") {
-        assertRateLimit(request, "public-portal-action", PUBLIC_PORTAL_RATE_LIMIT_ATTEMPTS, PUBLIC_PORTAL_RATE_LIMIT_WINDOW_MS);
+        assertRateLimit(request, "public-portal-action", rateLimitPolicy.publicPortal.attempts, rateLimitPolicy.publicPortal.windowMs);
         const body = await readJsonBody(request, PUBLIC_FEATURE_BODY_LIMIT_BYTES);
         const result = await handlePortalLinkAction(storage, decodeURIComponent(publicPortalActionMatch[1]), body);
         sendJson(response, 201, result);
@@ -1173,6 +1304,7 @@ function createServer(options = {}) {
           sendError(response, 404, "Public feature requests are disabled");
           return;
         }
+        assertRateLimit(request, "public-feature-config", rateLimitPolicy.publicRead.attempts, rateLimitPolicy.publicRead.windowMs);
         const config = await publicFeatureRequestConfig(storage);
         sendJson(response, 200, config);
         return;
@@ -1183,20 +1315,21 @@ function createServer(options = {}) {
           sendError(response, 404, "Public feature requests are disabled");
           return;
         }
-        assertRateLimit(request, "public-feature-request", PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS, PUBLIC_FEATURE_RATE_LIMIT_WINDOW_MS);
+        assertRateLimit(request, "public-feature-request", rateLimitPolicy.publicFeature.attempts, rateLimitPolicy.publicFeature.windowMs);
         const body = await readJsonBody(request, PUBLIC_FEATURE_BODY_LIMIT_BYTES);
         if (cleanString(body.website || body.url || body.companyWebsite)) {
           sendJson(response, 202, { ok: true, accepted: false });
           return;
         }
         const email = optionalEmail(body.email);
-        if (email) assertRateLimit(request, `public-feature-email:${email}`, PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS, 60 * 60 * 1000);
+        if (email) assertRateLimit(request, `public-feature-email:${email}`, rateLimitPolicy.publicFeature.emailAttempts, 60 * 60 * 1000);
         const result = await createPublicFeatureRequest(storage, body);
         sendJson(response, 201, result);
         return;
       }
 
       if (request.method === "GET" && url.pathname === "/api/integrations/github/status") {
+        assertRateLimit(request, "public-github-status", rateLimitPolicy.publicRead.attempts, rateLimitPolicy.publicRead.windowMs);
         const snapshot = await storage.loadWorkspaceSnapshot();
         sendJson(response, 200, githubIntegrationStatus(snapshot, storage));
         return;
@@ -1232,12 +1365,14 @@ function createServer(options = {}) {
 
       const session = await requireSession(request, response, storage);
       if (!session) return;
+      assertAuthenticatedRequestRateLimits(request, session, url, rateLimitPolicy);
 
       if (request.method === "GET" && url.pathname === "/api/realtime/events") {
         if (!hasPermission(session, "workspace:read")) {
           sendError(response, 403, "Missing workspace read permission");
           return;
         }
+        assertRealtimeConnectionLimit(request, session, rateLimitPolicy);
         openRealtimeStream(request, response, session);
         return;
       }
@@ -2017,6 +2152,7 @@ function createServer(options = {}) {
 
       sendError(response, 404, "Route not found");
     } catch (error) {
+      if (error.retryAfterSeconds) response.setHeader("Retry-After", String(error.retryAfterSeconds));
       sendError(response, error.statusCode || 500, error.publicMessage || "Internal server error");
     }
   });
@@ -2046,6 +2182,7 @@ async function buildBackendHealth(storage, session) {
   const notificationDelivery = notificationDeliveryAudit(email);
   const backupStatus = workspaceBackupStatus();
   const sessionHardening = sessionHardeningStatus();
+  const limiter = rateLimitSnapshot();
   const snapshotDocument = await storage.loadWorkspace();
   const snapshot = snapshotDocument?.snapshot || {};
   const githubRepositories = Array.isArray(snapshot.workspace?.integrations?.github?.repositories)
@@ -2137,6 +2274,13 @@ async function buildBackendHealth(storage, session) {
       fix: "Keep public request body, IP, and email rate limits low before sharing the public feedback URL."
     },
     {
+      id: "api-rate-limit-coverage",
+      label: "API rate limit coverage",
+      done: limiter.retryAfterHeader && limiter.categories.authenticatedWrite.attempts <= 500 && limiter.categories.expensive.attempts <= 60,
+      detail: `${limiter.mode} limiter; writes ${limiter.categories.authenticatedWrite.attempts}/${limiter.categories.authenticatedWrite.windowSeconds}s; expensive ${limiter.categories.expensive.attempts}/${limiter.categories.expensive.windowSeconds}s; realtime ${limiter.categories.realtime.perSession}/session`,
+      fix: "Keep authenticated write and expensive-operation limits bounded; use edge, Redis, or provider limits for multi-instance hosted deployments."
+    },
+    {
       id: "strict-csp",
       label: "Strict CSP",
       done: !productionTarget || strictCsp,
@@ -2211,7 +2355,7 @@ async function buildBackendHealth(storage, session) {
       id: "auth-hardening",
       label: "Auth hardening",
       done: !envFlag("AGORA_DEMO_AUTH", false) && !envFlag("AGORA_PASSWORDLESS_AUTH", false),
-      detail: "Demo and passwordless auth are opt-in, sessions expire, and public auth endpoints are rate limited",
+      detail: "Demo and passwordless auth are opt-in, sessions expire, public auth endpoints are rate limited, and 429 responses include Retry-After",
       fix: "Keep AGORA_DEMO_AUTH=false and AGORA_PASSWORDLESS_AUTH=false outside trusted demos."
     },
     {
@@ -2347,6 +2491,7 @@ async function buildBackendHealth(storage, session) {
     email,
     notificationDelivery,
     observability: requestMetricsSnapshot(),
+    rateLimits: rateLimitSnapshot(),
     jobs: backgroundJobSnapshot(),
     backups: backupStatus,
     generatedAt: new Date().toISOString()
@@ -8105,10 +8250,12 @@ function validateRequiredStringRecords(records, field, keys) {
   });
 }
 
-function publicError(statusCode, message) {
+function publicError(statusCode, message, options = {}) {
   const error = new Error(message);
   error.statusCode = statusCode;
   error.publicMessage = message;
+  if (options.retryAfterSeconds) error.retryAfterSeconds = options.retryAfterSeconds;
+  if (options.rateLimit) error.rateLimit = options.rateLimit;
   throw error;
 }
 
@@ -8257,6 +8404,7 @@ function openRealtimeStream(request, response, session) {
   const client = {
     id: crypto.randomUUID(),
     memberId: session.user.id,
+    ip: clientIp(request),
     companyId: sessionCompanyId(session),
     response
   };
