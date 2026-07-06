@@ -45,6 +45,21 @@ Every feedback item should have:
 - owner;
 - launch decision: fix now, document, defer, or reject.
 
+## Core Workflow Scorecard
+
+Ask each guided beta tester to score the existing Acme workflow before collecting wishlist items:
+
+| Question | Pass Signal | Failing Signal |
+| --- | --- | --- |
+| First win | Tester can start or load the Acme workspace and explain the next PM action within 10 minutes. | Tester gets lost, opens unrelated power-user surfaces, or cannot find the demo path. |
+| Client request to work | Tester can follow intake/backlog work into an active project without hand-holding. | Tester cannot tell whether a request is proposed, approved, active, or parked. |
+| Client safety | Tester can preview client-visible status and name what remains internal. | Tester worries internal notes, AI actions, or draft work may leak to clients. |
+| Recovery trust | Tester understands Autopilot proposals are previewed, auditable, and reversible. | Tester thinks automation will silently change work or message clients. |
+| Portability | Tester can export or identify recovery proof before entering real data. | Tester does not trust the workspace can be backed up, moved, or restored. |
+| Feedback loop | Tester can submit a feature request and see that it becomes owned work. | Tester feels feedback disappears or has no visible owner/status. |
+
+Record each score as `pass`, `friction`, or `blocker`. Treat blockers in first win, client safety, recovery trust, or portability as `P1` even if the underlying feature technically exists.
+
 ## Email And Taskboard Proof
 
 Before inviting public beta testers:

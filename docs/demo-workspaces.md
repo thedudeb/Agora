@@ -71,3 +71,5 @@ AGORA_GOLDEN_SUITE=demo npm run test:golden
 7. Refresh screenshots after major UI changes with `npm run screenshots`.
 
 The default demo should feel like a guided Acme Studio project story, not a feature inventory. Use the other scenarios as follow-up deep dives for scrum, client portal, trust, and marketplace-specific buyers.
+
+Before widening the demo, confirm the Acme story passes the scorecard in [`acme-client-launch-demo.md`](./acme-client-launch-demo.md): next PM action, request-to-work flow, client-safe review, timeline risk, status update, and recovery/export proof. If those moments are weak, improve the existing route sequence before adding another scenario.

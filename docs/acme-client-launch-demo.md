@@ -57,6 +57,29 @@ Then keep the story practical:
 - Timeline and reports use the same project state, reducing manual reporting drift.
 - Export, backup, import preview, and recovery language make portability concrete.
 
+## Evaluator Pass Criteria
+
+After the route sequence, the evaluator should be able to answer "yes" to these questions without seeing a feature inventory:
+
+- Can I tell what the PM should do first?
+- Can I see how a client request becomes scoped work?
+- Can I review what the client can see before sharing it?
+- Can I understand the schedule risk before sending an update?
+- Can I copy or draft a credible client status update?
+- Can I prove the workspace can be exported, backed up, or restored?
+
+If any answer is "no," treat it as a demo or workflow blocker before adding new surfaces. The fix should improve the existing Acme path first.
+
+## What Not To Demo First
+
+Keep these as follow-up routes unless the evaluator asks for them:
+
+- Marketplace pricing and payment-provider foundations.
+- Plugin authoring and MCP internals.
+- Native mobile wrapper planning.
+- Deep sprint, portfolio, and capacity scenarios outside the Acme launch story.
+- Broad integration setup before the evaluator trusts the core workflow.
+
 ## QA Gate
 
 Run the focused demo golden path before recording or sharing hosted links:
