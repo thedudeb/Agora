@@ -23170,6 +23170,7 @@ function renderClientVisibilityReview() {
 
     ${selected ? renderClientSendReadinessPanel(selected.company.id) : ""}
     ${selected ? renderClientVisibilityContrastPanel(selected.company.id) : ""}
+    ${selected ? renderClientCollaborationFlowPanel(selected.company.id) : ""}
     ${selected ? `<section class="panel">${renderClientShareComposer(selected.company.id)}</section>` : ""}
     ${selected ? renderClientHandoffBrief(selected.company.id) : ""}
 
@@ -23342,6 +23343,118 @@ function renderClientVisibilityPreviewRow(item, label) {
         <small>${escapeHtml(item.kind)} / ${escapeHtml(visibilityLabel(item.visibility))}</small>
       </div>
       <span class="status-pill inbox-${tone}">${escapeHtml(visibilityLabel(item.visibility))}</span>
+    </article>
+  `;
+}
+
+function clientCollaborationFlow(companyId) {
+  const portal = companyPortalSnapshot(companyId);
+  const featureRequests = portal.tasks.filter(isFeatureRequestTask);
+  const teamOwesClient = featureRequests
+    .filter((task) => !["shipped", "declined"].includes(featureRequestStatus(task)) || featureRequestNeedsRequesterResponse(task))
+    .slice(0, 5);
+  const resolvedApprovals = portal.approvals
+    .filter((approval) => approval.status === "approved")
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+  const resolvedRequests = featureRequests
+    .filter((task) => ["shipped", "declined"].includes(featureRequestStatus(task)))
+    .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+  return {
+    clientOwesUs: portal.pendingApprovals.slice(0, 5),
+    teamOwesClient,
+    resolved: [...resolvedApprovals, ...resolvedRequests].slice(0, 5)
+  };
+}
+
+function renderClientCollaborationFlowPanel(companyId) {
+  const company = byId(state.companies, companyId);
+  const flow = clientCollaborationFlow(companyId);
+  const waitingCount = flow.clientOwesUs.length + flow.teamOwesClient.length;
+  return `
+    <section class="panel client-collaboration-flow-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Approval and request flow</p>
+          <h2>${escapeHtml(company?.name || "Client")} next actions</h2>
+        </div>
+        <span class="status-pill ${waitingCount ? "inbox-amber" : "inbox-green"}">${waitingCount ? `${waitingCount} open` : "Clear"}</span>
+      </div>
+      <div class="client-collaboration-flow-grid">
+        <article>
+          <div class="portal-list-header">
+            <h3>Client owes us</h3>
+            <span>${flow.clientOwesUs.length}</span>
+          </div>
+          <div class="readiness-list compact-readiness">
+            ${flow.clientOwesUs.length ? flow.clientOwesUs.map(renderClientFlowApprovalRow).join("") : emptyState("No client approvals are waiting.")}
+          </div>
+        </article>
+        <article>
+          <div class="portal-list-header">
+            <h3>We owe client</h3>
+            <span>${flow.teamOwesClient.length}</span>
+          </div>
+          <div class="readiness-list compact-readiness">
+            ${flow.teamOwesClient.length ? flow.teamOwesClient.map(renderClientFlowRequestRow).join("") : emptyState("No open feature-request response is waiting.")}
+          </div>
+        </article>
+        <article>
+          <div class="portal-list-header">
+            <h3>Recently resolved</h3>
+            <span>${flow.resolved.length}</span>
+          </div>
+          <div class="readiness-list compact-readiness">
+            ${flow.resolved.length ? flow.resolved.map(renderClientFlowResolvedRow).join("") : emptyState("No resolved approvals or requests yet.")}
+          </div>
+        </article>
+      </div>
+    </section>
+  `;
+}
+
+function renderClientFlowApprovalRow(approval) {
+  return `
+    <article class="readiness-item is-pending">
+      <span>Approve</span>
+      <div>
+        <strong>${escapeHtml(approval.title)}</strong>
+        <p>${escapeHtml(approval.summary || "Client approval is waiting.")}</p>
+        <small>${escapeHtml(projectName(approval.projectId))} / due ${formatDate(approval.dueDate)} / reviewer ${escapeHtml(approval.reviewer || "Unassigned")}</small>
+      </div>
+      <button class="button button-secondary compact-button" type="button" data-project-id="${escapeHtml(approval.projectId)}">Project</button>
+    </article>
+  `;
+}
+
+function renderClientFlowRequestRow(task) {
+  const status = featureRequestStatus(task);
+  const needsResponse = featureRequestNeedsRequesterResponse(task);
+  return `
+    <article class="readiness-item is-pending">
+      <span>${needsResponse ? "Reply" : "Request"}</span>
+      <div>
+        <strong>${escapeHtml(task.title.replace(/^Feature request:\s*/i, ""))}</strong>
+        <p>${escapeHtml(featureRequestLifecycleSummary(task))}</p>
+        <small>${escapeHtml(task.customFields?.requester || "Requester")} / ${escapeHtml(featureRequestStatusLabel(status))} / owner ${escapeHtml(memberName(task.assignee))}</small>
+      </div>
+      <button class="button button-secondary compact-button" type="button" data-edit-task="${escapeHtml(task.id)}">Open</button>
+    </article>
+  `;
+}
+
+function renderClientFlowResolvedRow(item) {
+  const isApproval = Boolean(item.reviewer || item.summary);
+  const label = isApproval ? approvalStatusLabel(item.status) : featureRequestStatusLabel(featureRequestStatus(item));
+  const tone = isApproval ? approvalTone(item.status) : featureRequestStatus(item) === "shipped" ? "green" : "neutral";
+  return `
+    <article class="readiness-item is-done">
+      <span>Done</span>
+      <div>
+        <strong>${escapeHtml(isApproval ? item.title : item.title.replace(/^Feature request:\s*/i, ""))}</strong>
+        <p>${escapeHtml(isApproval ? item.summary || "Approval resolved." : featureRequestLifecycleSummary(item))}</p>
+        <small>${escapeHtml(isApproval ? projectName(item.projectId) : item.customFields?.requester || "Requester")} / ${escapeHtml(label)}</small>
+      </div>
+      <span class="status-pill inbox-${tone}">${escapeHtml(label)}</span>
     </article>
   `;
 }

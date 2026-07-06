@@ -10499,6 +10499,38 @@ body[data-tutorial-target="view"] #app-view {
   justify-self: start;
 }
 
+.client-collaboration-flow-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.client-collaboration-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.client-collaboration-flow-grid > article {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  min-height: 100%;
+  padding: 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.client-collaboration-flow-grid .readiness-item {
+  grid-template-columns: minmax(56px, 72px) minmax(0, 1fr);
+}
+
+.client-collaboration-flow-grid .readiness-item > .button,
+.client-collaboration-flow-grid .readiness-item > .status-pill {
+  justify-self: start;
+}
+
 .client-handoff-panel {
   display: grid;
   gap: 14px;
@@ -13247,6 +13279,7 @@ body[data-density="compact"] .main-content {
   .client-send-readiness-grid,
   .client-visibility-contrast-grid,
   .client-visibility-compare-grid,
+  .client-collaboration-flow-grid,
   .client-handoff-grid,
   .project-command-grid,
   .project-next-action-grid,
@@ -13754,6 +13787,7 @@ body[data-density="compact"] .main-content {
   .client-send-readiness-grid,
   .client-visibility-contrast-grid,
   .client-visibility-compare-grid,
+  .client-collaboration-flow-grid,
   .client-handoff-grid,
   .project-hero,
   .project-health-header,
