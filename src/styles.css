@@ -6778,6 +6778,60 @@ body[data-tutorial-target="view"] #app-view {
   margin: 0 0 16px;
 }
 
+.recovery-handoff-panel {
+  margin: 0 0 16px;
+  border-left: 4px solid var(--accent);
+}
+
+.recovery-handoff-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.recovery-handoff-grid article {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.recovery-handoff-grid article.is-ready {
+  border-color: color-mix(in srgb, var(--green), var(--line) 35%);
+}
+
+.recovery-handoff-grid article.needs-action {
+  border-color: color-mix(in srgb, var(--amber), var(--line) 45%);
+}
+
+.recovery-handoff-grid span,
+.recovery-handoff-grid small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.recovery-handoff-grid span {
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.recovery-handoff-grid strong,
+.recovery-handoff-grid em {
+  overflow-wrap: anywhere;
+}
+
+.recovery-handoff-grid em {
+  color: var(--accent-strong);
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 900;
+}
+
 .recovery-confidence-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -12911,6 +12965,7 @@ body[data-density="compact"] .main-content {
   .trust-grid,
   .command-inbox-brief,
   .pm-preference-grid,
+  .recovery-handoff-grid,
   .autopilot-hero-proof,
   .autopilot-scenario-grid,
   .autopilot-safety-grid,
@@ -13402,6 +13457,7 @@ body[data-density="compact"] .main-content {
   .notification-role-grid,
   .daily-command-digest-grid,
   .pm-preference-grid,
+  .recovery-handoff-grid,
   .plugin-readiness-strip,
   .plugin-card-grid,
   .task-time-grid,

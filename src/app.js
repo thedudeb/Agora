@@ -33952,6 +33952,107 @@ function portableRecoveryStatus() {
   };
 }
 
+function latestWorkspaceExportEvent() {
+  return state.auditEvents
+    .filter((event) => event.action === "workspace_export")
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
+}
+
+function isRecentTimestamp(value, maxAgeHours = 24) {
+  const time = Date.parse(value || "");
+  if (!Number.isFinite(time)) return false;
+  return Date.now() - time <= maxAgeHours * 60 * 60 * 1000;
+}
+
+function recoveryExportReadinessItems() {
+  const recovery = portableRecoveryStatus();
+  const latestExport = latestWorkspaceExportEvent();
+  const queue = apiSyncQueueSummary();
+  const hasRestorePreview = Boolean(state.portableImportPreview || state.switcherImportPreview || state.switcherImportRollback);
+  const latestBackupAt = recovery.latestBackup?.createdAt || "";
+  const latestExportAt = latestExport?.createdAt || "";
+  return [
+    {
+      label: "Fresh backup",
+      done: Boolean(recovery.latestBackup && isRecentTimestamp(latestBackupAt, 24)),
+      value: recovery.latestBackup ? formatTimestamp(latestBackupAt) : "Missing",
+      detail: recovery.latestBackup ? "A local rollback point exists for this browser workspace." : "Create a local backup before imports, API restores, or major edits.",
+      action: "create-backup",
+      actionLabel: "Create Backup"
+    },
+    {
+      label: "Portable bundle",
+      done: Boolean(latestExport && isRecentTimestamp(latestExportAt, 24)),
+      value: latestExport ? formatTimestamp(latestExportAt) : "Not downloaded",
+      detail: "The bundle contains workspace JSON, Markdown, CSV, automations, templates, audit history, and the offline contract.",
+      action: "download-bundle",
+      actionLabel: "Download Bundle"
+    },
+    {
+      label: "Restore preview",
+      done: hasRestorePreview,
+      value: hasRestorePreview ? "Preview available" : "Preview first",
+      detail: "Use bundle preview or Migration Studio before replacing the current workspace.",
+      action: "open-import",
+      actionLabel: "Open Import"
+    },
+    {
+      label: "Sync safety",
+      done: queue.total === 0 || queue.conflicts === 0,
+      value: queue.total ? `${queue.total} queued` : "Queue clear",
+      detail: queue.conflicts ? `${queue.conflicts} sync conflict${queue.conflicts === 1 ? "" : "s"} need review before claiming cloud parity.` : "Local work remains recoverable even when API sync is unavailable.",
+      action: "sync",
+      actionLabel: "Review Sync"
+    },
+    {
+      label: "Offline contract",
+      done: recovery.files.some((file) => file.path === "offline-storage-contract.json"),
+      value: `v${recovery.manifest.offlineStorageContract.version}`,
+      detail: `${recovery.manifest.offlineStorageContract.targets.length} native/PWA target${recovery.manifest.offlineStorageContract.targets.length === 1 ? "" : "s"} documented for offline app handoff.`,
+      action: "download-manifest",
+      actionLabel: "Download Manifest"
+    }
+  ];
+}
+
+function renderRecoveryExportReadinessPanel() {
+  const items = recoveryExportReadinessItems();
+  const doneCount = items.filter((item) => item.done).length;
+  const nextAction = items.find((item) => !item.done) || items[1];
+  return `
+    <section class="panel recovery-handoff-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Export and restore readiness</p>
+          <h2>${doneCount === items.length ? "This workspace is exit-ready." : "Make recovery believable before handoff."}</h2>
+        </div>
+        <span class="status-pill ${doneCount === items.length ? "inbox-green" : "inbox-amber"}">${doneCount}/${items.length}</span>
+      </div>
+      <p class="panel-note">Use this as the preflight before customer imports, API restores, self-hosted handoff, or offline app testing. It calls out the next safest action instead of making users infer it from separate export panels.</p>
+      <div class="recovery-handoff-grid">
+        ${items.map((item) => `
+          <article class="${item.done ? "is-ready" : "needs-action"}">
+            <span>${item.done ? "Ready" : "Check"}</span>
+            <strong>${escapeHtml(item.label)}</strong>
+            <em>${escapeHtml(item.value)}</em>
+            <small>${escapeHtml(item.detail)}</small>
+          </article>
+        `).join("")}
+      </div>
+      <div class="data-actions">
+        <span class="status-pill ${nextAction.done ? "inbox-green" : "inbox-blue"}">Next: ${escapeHtml(nextAction.label)}</span>
+        ${nextAction.action === "sync"
+          ? `<button class="button button-primary" type="button" data-onboarding-action="sync">${escapeHtml(nextAction.actionLabel)}</button>`
+          : nextAction.action === "open-import"
+            ? `<button class="button button-primary" type="button" data-route="data">${escapeHtml(nextAction.actionLabel)}</button>`
+            : `<button class="button button-primary" type="button" data-recovery-action="${escapeHtml(nextAction.action)}">${escapeHtml(nextAction.actionLabel)}</button>`}
+        <button class="button button-secondary" type="button" data-recovery-action="download-bundle">Download Bundle</button>
+        <button class="button button-secondary" type="button" data-recovery-action="download-manifest">Download Manifest</button>
+      </div>
+    </section>
+  `;
+}
+
 function openRecoveryPlanFlow() {
   state.selectedRoute = "data";
   openSidebarGroupForRoute("data");
@@ -34087,6 +34188,7 @@ function renderDataManagement() {
     ${renderTrustMoment("recovery")}
     ${!backups.length ? starterEmptyState("data") : ""}
 
+    ${renderRecoveryExportReadinessPanel()}
     ${renderPortableRecoveryConfidencePanel()}
     ${renderOpenOwnershipAdvantagePanel()}
     ${renderOfflineAppReadinessPanel()}
