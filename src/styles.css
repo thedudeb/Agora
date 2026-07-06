@@ -13725,12 +13725,19 @@ body[data-density="compact"] .main-content {
   }
 
   .workspace-switcher select {
-    min-height: 32px;
+    min-height: 40px;
   }
 
   .workspace-switcher-actions .icon-button {
-    width: 30px;
-    height: 30px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
+
+  .workspace-sample-actions button {
+    min-height: 40px;
+    padding: 8px;
+    font-size: 0.72rem;
   }
 
   .nav-list,
@@ -13743,27 +13750,27 @@ body[data-density="compact"] .main-content {
   }
 
   .nav-group-toggle {
-    min-height: 24px;
-    padding: 2px 6px;
+    min-height: 40px;
+    padding: 6px 8px;
   }
 
   .nav-item {
     min-width: 88px;
-    min-height: 34px;
-    padding: 5px 8px;
+    min-height: 44px;
+    padding: 8px 10px;
     font-size: 0.84rem;
   }
 
   .project-pill {
     min-width: 148px;
-    min-height: 34px;
-    padding: 5px 8px;
+    min-height: 44px;
+    padding: 8px 10px;
   }
 
   .secondary-action {
     width: auto;
-    min-height: 34px;
-    padding: 7px 10px;
+    min-height: 44px;
+    padding: 9px 12px;
     font-size: 0.84rem;
   }
 
@@ -13801,11 +13808,23 @@ body[data-density="compact"] .main-content {
   input,
   select,
   textarea {
-    min-height: 38px;
+    min-height: 42px;
   }
 
   .button {
     padding: 7px 9px;
+  }
+
+  .compact-button,
+  .inbox-actions .button {
+    min-height: 42px;
+    padding: 8px 10px;
+    font-size: 0.82rem;
+  }
+
+  .icon-button.compact-button {
+    width: 44px;
+    min-width: 44px;
   }
 
   .toolbar {
@@ -14121,6 +14140,11 @@ body[data-density="compact"] .main-content {
   .operator-action-row .button,
   .pulse-handoff {
     width: 100%;
+  }
+
+  .operator-action-row .button {
+    min-height: 42px;
+    padding: 8px 10px;
   }
 
   .toolbar {
