@@ -36700,7 +36700,93 @@ function renderBackendObservabilityPanel() {
         `).join("")}
       </div>
     ` : ""}
+    ${renderBackendRateLimitPanel()}
     ${renderIntegrationJobConsolePanel({ compact: true })}
+  `;
+}
+
+function renderBackendRateLimitPanel() {
+  const limits = backendHealth?.rateLimits || {};
+  const categories = limits.categories || {};
+  const hotBuckets = Array.isArray(limits.hotBuckets) ? limits.hotBuckets.slice(0, 6) : [];
+  const recent429s = Array.isArray(limits.recent429s) ? limits.recent429s.slice(0, 6) : [];
+  const categoryRows = [
+    ["Auth", categories.auth],
+    ["Public reads", categories.publicRead],
+    ["Public feedback", categories.publicFeature],
+    ["Portal", categories.publicPortal],
+    ["Writes", categories.authenticatedWrite],
+    ["Expensive", categories.expensive],
+    ["Realtime", categories.realtime]
+  ].filter(([, value]) => value);
+  const driverReady = limits.distributed || limits.edgeProtected || limits.mode === "in-memory";
+  return `
+    <section class="backend-rate-limit-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">API rate limits</p>
+          <h3>Limiter policy and abuse signals</h3>
+        </div>
+        <span class="status-pill ${driverReady ? "inbox-green" : "inbox-amber"}">${escapeHtml(limits.mode || "Unknown")}</span>
+      </div>
+      <div class="backend-health-summary">
+        <article>
+          <span>Configured</span>
+          <strong>${escapeHtml(limits.configuredDriver || "memory")}</strong>
+        </article>
+        <article>
+          <span>Distributed</span>
+          <strong>${limits.distributed ? "Yes" : "No"}</strong>
+        </article>
+        <article>
+          <span>Edge protected</span>
+          <strong>${limits.edgeProtected ? "Yes" : "No"}</strong>
+        </article>
+        <article>
+          <span>Tracked keys</span>
+          <strong>${Number(limits.trackedKeys || 0)}/${Number(limits.maxKeys || 0)}</strong>
+        </article>
+      </div>
+      ${limits.fallbackReason ? `<p class="panel-note">Limiter fallback: ${escapeHtml(limits.fallbackReason)}</p>` : ""}
+      <div class="backend-rate-limit-grid">
+        ${categoryRows.map(([label, value]) => `
+          <article>
+            <strong>${escapeHtml(label)}</strong>
+            <span>${value.perSession ? `${Number(value.perSession)} per session / ${Number(value.perIp)} per IP` : `${Number(value.attempts || 0)} in ${Number(value.windowSeconds || 0)}s${value.emailAttempts ? ` / ${Number(value.emailAttempts)} per email` : ""}`}</span>
+          </article>
+        `).join("")}
+      </div>
+      <div class="backend-rate-limit-columns">
+        <article>
+          <div class="portal-list-header">
+            <h3>Hot buckets</h3>
+            <span>${hotBuckets.length}</span>
+          </div>
+          <div class="backend-record-list">
+            ${hotBuckets.length ? hotBuckets.map((bucket) => `
+              <article class="${Number(bucket.count || 0) > 1 ? "is-pending" : "is-ready"}">
+                <strong>${escapeHtml(bucket.scope || "bucket")}</strong>
+                <span>${Number(bucket.count || 0)} hits / resets ${bucket.resetAt ? escapeHtml(formatTimestamp(bucket.resetAt)) : "soon"}</span>
+              </article>
+            `).join("") : emptyState("No local hot buckets are active.")}
+          </div>
+        </article>
+        <article>
+          <div class="portal-list-header">
+            <h3>Recent 429s</h3>
+            <span>${recent429s.length}</span>
+          </div>
+          <div class="backend-record-list">
+            ${recent429s.length ? recent429s.map((event) => `
+              <article class="is-pending">
+                <strong>${escapeHtml(event.category || event.scope || "rate limit")}</strong>
+                <span>${escapeHtml(event.route || "API")} / retry ${Number(event.retryAfterSeconds || 0)}s / ${escapeHtml(event.requestId || "no request id")}</span>
+              </article>
+            `).join("") : emptyState("No recent rate-limited requests.")}
+          </div>
+        </article>
+      </div>
+    </section>
   `;
 }
 

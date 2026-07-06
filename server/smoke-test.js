@@ -2082,6 +2082,10 @@ async function testAuthenticatedRateLimit() {
 
     const observability = await request(`${baseUrl}/api/observability`, { token: signup.token });
     assert(observability.rateLimits?.categories?.expensive?.attempts === 1, "observability should expose expensive rate-limit policy");
+    assert(observability.rateLimits?.recent429s?.some((event) => event.category === "expensive"), "observability should expose recent rate-limit events");
+
+    const audit = await request(`${baseUrl}/api/audit-log`, { token: signup.token });
+    assert(audit.events.some((event) => event.action === "api_rate_limit_exceeded" && event.metadata?.category === "expensive"), "sensitive rate-limit events should be audited");
   } finally {
     await new Promise((resolve) => server.close(resolve));
     fs.rmSync(dataDir, { recursive: true, force: true });

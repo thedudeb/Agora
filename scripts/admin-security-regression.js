@@ -84,7 +84,9 @@ assert(api.includes("function assertRealtimeConnectionLimit"), "realtime streams
 assert(api.includes('response.setHeader("Retry-After"'), "rate-limited API responses must include Retry-After");
 assert(api.includes('id: "api-rate-limit-coverage"'), "backend health must expose API rate-limit coverage");
 assert(api.includes("incrementRateLimitBucket") && api.includes("AGORA_RATE_LIMIT_DRIVER"), "API must support a distributed rate-limit adapter");
+assert(api.includes("recent429s") && api.includes("api_rate_limit_exceeded"), "rate-limit abuse must be observable and audited");
 assert(hostedVerifier.includes("function checkRateLimiting") && hostedVerifier.includes("AGORA_RATE_LIMIT_DRIVER=supabase"), "hosted verifier must require distributed or edge rate limits");
+assert(app.includes("function renderBackendRateLimitPanel"), "Backend Health UI must expose rate-limit controls and abuse signals");
 assert(envExample.includes("AGORA_AUTHENTICATED_WRITE_RATE_LIMIT_ATTEMPTS"), ".env.example must document authenticated write rate limits");
 assert(envExample.includes("AGORA_RATE_LIMIT_DRIVER=memory"), ".env.example must document rate limit driver selection");
 assert(api.includes("function authorizedClientAiBaseUrl") && api.includes("AGORA_AI_ALLOWED_BASE_URLS"), "client AI base URLs must be admin gated and allowlisted");

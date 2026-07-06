@@ -9976,6 +9976,66 @@ body[data-tutorial-target="view"] #app-view {
   white-space: nowrap;
 }
 
+.backend-rate-limit-panel {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.backend-rate-limit-grid,
+.backend-rate-limit-columns {
+  display: grid;
+  gap: 10px;
+}
+
+.backend-rate-limit-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.backend-rate-limit-columns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.backend-rate-limit-grid article,
+.backend-rate-limit-columns > article {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.backend-rate-limit-grid strong,
+.backend-rate-limit-columns strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.backend-rate-limit-grid span,
+.backend-rate-limit-columns span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.backend-rate-limit-columns .backend-record-list {
+  grid-template-columns: 1fr;
+  margin-top: 0;
+}
+
+.backend-rate-limit-columns .backend-record-list article {
+  align-items: flex-start;
+}
+
 .backend-job-console {
   margin-top: 12px;
 }
@@ -13962,6 +14022,11 @@ body[data-density="compact"] .main-content {
   }
 
   .backend-job-row {
+    grid-template-columns: 1fr;
+  }
+
+  .backend-rate-limit-grid,
+  .backend-rate-limit-columns {
     grid-template-columns: 1fr;
   }
 

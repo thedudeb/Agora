@@ -113,6 +113,7 @@ const requestMetrics = {
   recentErrors: []
 };
 const realtimeClients = new Set();
+const recentRateLimitEvents = [];
 let activeRateLimitPolicy = normalizeRateLimitPolicy();
 let activeRateLimitStorage = null;
 let lastRateLimitStorageError = "";
@@ -230,13 +231,15 @@ async function assertRateLimit(request, scope, limit = AUTH_RATE_LIMIT_ATTEMPTS,
   if (bucket.count > limit) {
     const resetAtMs = Date.parse(bucket.resetAt || "");
     const retryAfterSeconds = Math.max(1, Math.ceil(((Number.isFinite(resetAtMs) ? resetAtMs : now + windowMs) - now) / 1000));
+    const rateLimit = {
+      scope: cleanString(scope),
+      limit,
+      resetAt: bucket.resetAt || new Date(now + windowMs).toISOString()
+    };
+    rememberRateLimitEvent(request, rateLimit, retryAfterSeconds);
     publicError(429, "Too many attempts. Please wait before trying again.", {
       retryAfterSeconds,
-      rateLimit: {
-        scope: cleanString(scope),
-        limit,
-        resetAt: bucket.resetAt || new Date(now + windowMs).toISOString()
-      }
+      rateLimit
     });
   }
 }
@@ -312,6 +315,14 @@ function assertRealtimeConnectionLimit(request, session, policy = activeRateLimi
 function rateLimitSnapshot(policy = activeRateLimitPolicy) {
   pruneRateLimits();
   const supabaseStorageReady = activeRateLimitStorage?.driver === "supabase" && typeof activeRateLimitStorage.incrementRateLimitBucket === "function";
+  const hotBuckets = Array.from(rateLimits.entries())
+    .map(([key, bucket]) => ({
+      scope: key.includes(":") ? key.split(":").slice(1).join(":") : key,
+      count: Number(bucket.count || 0),
+      resetAt: bucket.resetAt ? new Date(bucket.resetAt).toISOString() : ""
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
   return {
     mode: policy.driver === "supabase" && supabaseStorageReady && !lastRateLimitStorageError ? "supabase" : "in-memory",
     configuredDriver: policy.driver,
@@ -322,6 +333,8 @@ function rateLimitSnapshot(policy = activeRateLimitPolicy) {
     retryAfterHeader: true,
     trackedKeys: rateLimits.size,
     maxKeys: policy.maxKeys,
+    hotBuckets,
+    recent429s: recentRateLimitEvents.slice(0, 12),
     categories: {
       auth: { attempts: policy.auth.attempts, windowSeconds: Math.round(policy.auth.windowMs / 1000) },
       publicRead: { attempts: policy.publicRead.attempts, windowSeconds: Math.round(policy.publicRead.windowMs / 1000) },
@@ -332,6 +345,59 @@ function rateLimitSnapshot(policy = activeRateLimitPolicy) {
       realtime: { perSession: policy.realtime.perSession, perIp: policy.realtime.perIp }
     }
   };
+}
+
+function rememberRateLimitEvent(request, rateLimit, retryAfterSeconds) {
+  recentRateLimitEvents.unshift({
+    scope: rateLimit.scope,
+    category: rateLimitCategory(rateLimit.scope),
+    limit: rateLimit.limit,
+    resetAt: rateLimit.resetAt,
+    retryAfterSeconds,
+    route: normalizeMetricPath(new URL(request.url, "http://localhost").pathname),
+    requestId: request.agoraRequestId || "",
+    memberId: request.agoraSession?.user?.id || "",
+    ip: clientIp(request),
+    createdAt: new Date().toISOString()
+  });
+  recentRateLimitEvents.splice(50);
+}
+
+function rateLimitCategory(scope = "") {
+  const value = cleanString(scope);
+  if (value.startsWith("auth-expensive")) return "expensive";
+  if (value.startsWith("auth-write")) return "write";
+  if (/password|signup|login|auth/.test(value)) return "auth";
+  if (value.startsWith("public-feature")) return "public-feedback";
+  if (value.startsWith("public-portal")) return "client-portal";
+  if (value.startsWith("invitation")) return "invitation";
+  if (value.startsWith("github")) return "webhook";
+  return "public";
+}
+
+function shouldAuditRateLimitScope(scope = "") {
+  return /auth|password|signup|login|public-feature|public-portal|invitation|github-webhook|auth-expensive|auth-write/.test(cleanString(scope));
+}
+
+async function recordRateLimitAuditEvent(storage, request, error) {
+  if (!error?.rateLimit || !shouldAuditRateLimitScope(error.rateLimit.scope) || typeof storage.appendAuditEvent !== "function") return;
+  const route = normalizeMetricPath(new URL(request.url, "http://localhost").pathname);
+  await storage.appendAuditEvent({
+    actorId: request.agoraSession?.user?.id || "rate-limit",
+    action: "api_rate_limit_exceeded",
+    workspaceId: storage.workspaceId || workspace.id,
+    detail: `Rate limit exceeded for ${error.rateLimit.scope} on ${route}`,
+    metadata: {
+      scope: error.rateLimit.scope,
+      category: rateLimitCategory(error.rateLimit.scope),
+      route,
+      requestId: request.agoraRequestId || "",
+      retryAfterSeconds: error.retryAfterSeconds || 0,
+      limit: error.rateLimit.limit,
+      resetAt: error.rateLimit.resetAt,
+      ipSource: envFlag("AGORA_TRUST_PROXY", false) ? "x-forwarded-for" : "socket"
+    }
+  });
 }
 
 function enqueueBackgroundJob(type, handler, metadata = {}, payload = {}) {
@@ -693,6 +759,9 @@ function normalizeMetricPath(pathname) {
     .replace(/\/api\/projects\/[^/]+/g, "/api/projects/:id")
     .replace(/\/api\/feature-requests\/[^/]+/g, "/api/feature-requests/:id")
     .replace(/\/api\/invitations\/[^/]+/g, "/api/invitations/:token")
+    .replace(/\/api\/portal-links\/validate\/[^/]+/g, "/api/portal-links/validate/:token")
+    .replace(/\/api\/portal-links\/actions\/[^/]+/g, "/api/portal-links/actions/:token")
+    .replace(/\/api\/portal-links\/[^/]+/g, "/api/portal-links/:id")
     .replace(/\/api\/records\/[^/]+/g, "/api/records/:collection")
     .replace(/\/api\/files\/[^/]+/g, "/api/files/:id");
 }
@@ -2189,6 +2258,7 @@ function createServer(options = {}) {
       sendError(response, 404, "Route not found");
     } catch (error) {
       if (error.retryAfterSeconds) response.setHeader("Retry-After", String(error.retryAfterSeconds));
+      if (error.statusCode === 429) await recordRateLimitAuditEvent(storage, request, error).catch(() => {});
       sendError(response, error.statusCode || 500, error.publicMessage || "Internal server error");
     }
   });
