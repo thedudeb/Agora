@@ -7,6 +7,7 @@ const tls = require("node:tls");
 const { URL } = require("node:url");
 const { loadEnvFile } = require("./env");
 const { createStorage } = require("./storage");
+const { workspace, demoUsers, demoMemberships, rolePermissions } = require("./api-contracts");
 const packageJson = require("../package.json");
 
 loadEnvFile();
@@ -41,33 +42,6 @@ const RATE_LIMIT_MAX_KEYS = positiveNumber(process.env.AGORA_RATE_LIMIT_MAX_KEYS
 const RATE_LIMIT_DRIVER = cleanString(process.env.AGORA_RATE_LIMIT_DRIVER || "memory").toLowerCase();
 const API_VERSION = packageJson.version || "0.1.0";
 const BACKUP_SCHEMA_VERSION = 1;
-
-const workspace = {
-  id: "workspace-acme",
-  name: "Acme Studio",
-  slug: "acme-studio"
-};
-
-const demoUsers = [
-  { id: "mara", name: "Mara Chen", email: "mara@acme.test" },
-  { id: "eli", name: "Eli Stone", email: "eli@acme.test" },
-  { id: "nina", name: "Nina Patel", email: "nina@acme.test" },
-  { id: "sam", name: "Sam Rivera", email: "sam@acme.test" }
-];
-
-const demoMemberships = [
-  { memberId: "mara", role: "admin", status: "active" },
-  { memberId: "eli", role: "manager", status: "active" },
-  { memberId: "nina", role: "member", status: "active" },
-  { memberId: "sam", role: "manager", status: "active" }
-];
-
-const rolePermissions = {
-  admin: ["workspace:read", "workspace:write", "workspace:import", "audit:read", "members:write", "projects:write", "tasks:write", "time:write", "comments:write", "activity:write", "attachments:write", "approvals:write", "notifications:write", "integrations:write", "scheduler:run", "payments:write"],
-  manager: ["workspace:read", "workspace:write", "audit:read", "projects:write", "tasks:write", "time:write", "comments:write", "activity:write", "attachments:write", "approvals:write", "notifications:write", "integrations:write", "scheduler:run", "payments:write"],
-  member: ["workspace:read", "time:write", "comments:write", "activity:write", "attachments:write"],
-  client: ["workspace:read", "comments:write", "activity:write", "approvals:write"]
-};
 
 const recordCollections = {
   companies: { writePermission: "projects:write", normalizer: normalizeCompany, label: "company" },
