@@ -10410,6 +10410,59 @@ body[data-tutorial-target="view"] #app-view {
   line-height: 1.35;
 }
 
+.client-visibility-contrast-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.client-visibility-contrast-grid,
+.client-visibility-compare-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.client-visibility-contrast-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.client-visibility-compare-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+
+.client-visibility-contrast-grid article,
+.client-visibility-compare-grid > article {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  min-height: 100%;
+  padding: 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.client-visibility-contrast-grid article strong {
+  font-size: 1.9rem;
+  line-height: 1;
+}
+
+.client-visibility-contrast-grid article small,
+.client-visibility-compare-grid article small {
+  min-width: 0;
+  color: var(--muted);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.client-visibility-compare-grid .readiness-item {
+  grid-template-columns: minmax(48px, 64px) minmax(0, 1fr);
+}
+
+.client-visibility-compare-grid .readiness-item > .status-pill {
+  justify-self: start;
+}
+
 .client-handoff-panel {
   display: grid;
   gap: 14px;
@@ -13155,6 +13208,8 @@ body[data-density="compact"] .main-content {
   .portal-grid,
   .client-portal-grid,
   .client-send-readiness-grid,
+  .client-visibility-contrast-grid,
+  .client-visibility-compare-grid,
   .client-handoff-grid,
   .project-command-grid,
   .project-next-action-grid,
@@ -13659,6 +13714,8 @@ body[data-density="compact"] .main-content {
   .portal-grid,
   .client-portal-grid,
   .client-send-readiness-grid,
+  .client-visibility-contrast-grid,
+  .client-visibility-compare-grid,
   .client-handoff-grid,
   .project-hero,
   .project-health-header,

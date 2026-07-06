@@ -23169,6 +23169,7 @@ function renderClientVisibilityReview() {
     ${renderTrustMoment("visibility")}
 
     ${selected ? renderClientSendReadinessPanel(selected.company.id) : ""}
+    ${selected ? renderClientVisibilityContrastPanel(selected.company.id) : ""}
     ${selected ? `<section class="panel">${renderClientShareComposer(selected.company.id)}</section>` : ""}
     ${selected ? renderClientHandoffBrief(selected.company.id) : ""}
 
@@ -23245,6 +23246,102 @@ function renderClientVisibilityCompanyRow(row) {
         <span>${row.visibleItems.length} visible packet items</span>
         <span>${row.warnings.length} visibility warnings</span>
       </div>
+    </article>
+  `;
+}
+
+function renderClientVisibilityContrastPanel(companyId) {
+  const row = clientVisibilityReviewForCompany(companyId);
+  if (!row) return "";
+  const clientItems = row.items.filter((item) => item.visibility === "client");
+  const sharedItems = row.items.filter((item) => item.visibility === "shared");
+  const internalItems = row.items.filter((item) => item.visibility === "internal");
+  const visiblePreview = [...clientItems, ...sharedItems].slice(0, 4);
+  const internalPreview = internalItems.slice(0, 4);
+  const warningPreview = row.warnings.slice(0, 4);
+  const contrast = [
+    {
+      label: "Client sees",
+      value: row.visibleItems.length,
+      tone: row.visibleItems.length ? "blue" : "amber",
+      detail: `${clientItems.length} client-visible / ${sharedItems.length} shared`
+    },
+    {
+      label: "Stays internal",
+      value: internalItems.length,
+      tone: "neutral",
+      detail: "Private tasks, docs, files, approvals, and decisions stay hidden."
+    },
+    {
+      label: "Needs PM check",
+      value: row.warnings.length,
+      tone: row.warnings.length ? "amber" : "green",
+      detail: row.warnings.length ? "Missing owner, due date, reviewer, or approval context." : "No visibility warnings for this packet."
+    }
+  ];
+
+  return `
+    <section class="panel client-visibility-contrast-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Client vs internal</p>
+          <h2>${escapeHtml(row.company.name)} exposure check</h2>
+        </div>
+        <span class="status-pill ${row.warnings.length ? "inbox-amber" : "inbox-green"}">${row.warnings.length ? "Review" : "Clear"}</span>
+      </div>
+      <div class="client-visibility-contrast-grid">
+        ${contrast.map((item) => `
+          <article>
+            <span class="status-pill inbox-${item.tone}">${escapeHtml(item.label)}</span>
+            <strong>${item.value}</strong>
+            <small>${escapeHtml(item.detail)}</small>
+          </article>
+        `).join("")}
+      </div>
+      <div class="client-visibility-compare-grid">
+        <article>
+          <div class="portal-list-header">
+            <h3>Visible in packet</h3>
+            <span>${visiblePreview.length}</span>
+          </div>
+          <div class="readiness-list compact-readiness">
+            ${visiblePreview.length ? visiblePreview.map((item) => renderClientVisibilityPreviewRow(item, "Shown")).join("") : emptyState("Nothing is visible to the client yet.")}
+          </div>
+        </article>
+        <article>
+          <div class="portal-list-header">
+            <h3>Internal only</h3>
+            <span>${internalPreview.length}</span>
+          </div>
+          <div class="readiness-list compact-readiness">
+            ${internalPreview.length ? internalPreview.map((item) => renderClientVisibilityPreviewRow(item, "Hidden")).join("") : emptyState("No internal-only records were found for this company.")}
+          </div>
+        </article>
+        <article>
+          <div class="portal-list-header">
+            <h3>PM review</h3>
+            <span>${warningPreview.length}</span>
+          </div>
+          <div class="readiness-list compact-readiness">
+            ${warningPreview.length ? warningPreview.map((item) => renderClientVisibilityPreviewRow(item, "Fix")).join("") : emptyState("No context gaps are blocking this packet.")}
+          </div>
+        </article>
+      </div>
+    </section>
+  `;
+}
+
+function renderClientVisibilityPreviewRow(item, label) {
+  const tone = item.visibility === "internal" ? "neutral" : visibilityTone(item.visibility);
+  return `
+    <article class="readiness-item ${item.visibility === "internal" ? "is-pending" : "is-done"}">
+      <span>${escapeHtml(label)}</span>
+      <div>
+        <strong>${escapeHtml(item.title)}</strong>
+        <p>${escapeHtml(item.warning || item.detail)}</p>
+        <small>${escapeHtml(item.kind)} / ${escapeHtml(visibilityLabel(item.visibility))}</small>
+      </div>
+      <span class="status-pill inbox-${tone}">${escapeHtml(visibilityLabel(item.visibility))}</span>
     </article>
   `;
 }
