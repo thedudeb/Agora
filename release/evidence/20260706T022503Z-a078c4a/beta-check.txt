@@ -1,0 +1,20 @@
+$ npm run beta:check
+
+> agora@0.1.0 beta:check
+> node scripts/beta-feedback-check.js
+
+Beta Feedback Loop Check
+Status: PASS
+Summary: 7/7 passed
+
+[PASS] Beta feedback command is exposed
+[PASS] Beta feedback loop doc defines testers, intake, triage, email, and data safety
+[PASS] Beta docs link the feedback loop
+[PASS] App exposes feedback form and request board routes
+[PASS] API keeps public feature requests opt-in and email-aware
+[PASS] Golden QA covers feedback surfaces
+[PASS] Beta loop records privacy and no-real-data guidance
+
+
+exitCode=0
+durationMs=263

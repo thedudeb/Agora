@@ -1,0 +1,20 @@
+$ npm run distribution:check
+
+> agora@0.1.0 distribution:check
+> node scripts/distribution-proof-check.js
+
+Distribution Proof Check
+Status: PASS
+Summary: 6/6 passed
+
+[PASS] Distribution proof command is exposed
+[PASS] Distribution evidence helper is exposed
+[PASS] Distribution proof doc has required release sections
+[PASS] Every manifest channel appears in the evidence matrix
+  Detail: source, docker-compose, hosted, pwa-offline, desktop-macos, desktop-windows, cli, mcp-server, portable-data
+[PASS] Distribution proof names the required gate commands
+[PASS] Distribution proof records offline and rollback evidence
+
+
+exitCode=0
+durationMs=257
