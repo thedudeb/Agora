@@ -1,4 +1,4 @@
-const CACHE_VERSION = "agora-pwa-v56";
+const CACHE_VERSION = "agora-pwa-v57";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -12,9 +12,11 @@ const APP_SHELL = [
   "./assets/screenshots/agora-dashboard.png",
   "./assets/screenshots/agora-mobile-launch.png",
   "./assets/screenshots/agora-mobile-today.png",
-  "./src/styles.css?v=workspace-platform-v5",
-  "./src/boot.js?v=workspace-platform-v5",
-  "./src/app.js?v=workspace-platform-v5"
+  "./src/styles.css?v=workspace-platform-v11",
+  "./src/project-launch.css?v=workspace-platform-v1",
+  "./src/boot.js?v=workspace-platform-v7",
+  "./src/project-launch.js?v=workspace-platform-v1",
+  "./src/app.js?v=workspace-platform-v7"
 ];
 
 self.addEventListener("install", (event) => {

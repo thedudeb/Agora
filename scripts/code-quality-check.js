@@ -23,6 +23,10 @@ assert.ok(fs.existsSync(path.join(root, "src/project-launch.css")), "project lau
 assert.ok(fs.existsSync(path.join(root, "server/api-contracts.js")), "API contract module must exist");
 assertIncludes("index.html", "./src/project-launch.js", "must load the launch module before app.js");
 assertIncludes("index.html", "./src/project-launch.css", "must load the launch stylesheet");
+assertIncludes("sw.js", "./src/project-launch.js?v=workspace-platform-v1", "must cache the launch module for offline reloads");
+assertIncludes("sw.js", "./src/project-launch.css?v=workspace-platform-v1", "must cache the launch stylesheet for offline reloads");
+assertIncludes("sw.js", "./src/app.js?v=workspace-platform-v7", "must cache the current app bundle version");
+assertIncludes("sw.js", "./src/styles.css?v=workspace-platform-v11", "must cache the current base stylesheet version");
 assertIncludes("src/app.js", "function renderHtml", "must define a named render helper for HTML assignment");
 assertIncludes("src/app.js", 'renderHtml(els.appView, `', "launch route should use the named render helper");
 assertIncludes("server/api.js", 'require("./api-contracts")', "must import shared API contracts");
