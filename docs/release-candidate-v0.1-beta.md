@@ -9,6 +9,7 @@ Use this as the live release record for the first external beta candidate. Updat
 - Release owner: Agora maintainer
 - Target audience: agencies, consultants, self-hosters, and power users evaluating the Acme client-delivery workflow
 - Decision: hold until the evidence ledger is filled from a clean release branch or release tag
+- Filled handoff: [`release-candidate-v0.1-beta-handoff.md`](./release-candidate-v0.1-beta-handoff.md)
 
 ## Evidence Ledger
 
