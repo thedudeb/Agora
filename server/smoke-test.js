@@ -96,6 +96,7 @@ async function run() {
       body: { memberId: "mara" }
     });
     assert(login.token, "demo login did not return a token");
+    assert(!login.tokenHash, "demo login leaked internal token hash");
     assert(login.membership.role === "admin", "demo login did not return admin role");
     assert(login.expiresAt, "session did not include an expiry");
 
@@ -114,9 +115,12 @@ async function run() {
       token: login.token
     });
     assert(activeSessions.scope === "workspace", "admin session list should include workspace scope");
+    assert(activeSessions.summary?.durablePersistence === true, "session list did not expose durable persistence");
+    assert(activeSessions.summary?.rotationSupported === true, "session list did not expose rotation support");
     const currentListedSession = activeSessions.sessions.find((item) => item.current === true && item.user.id === "mara");
     assert(currentListedSession, "session list did not include current session");
     assert(currentListedSession.clientIpHash && currentListedSession.clientIpHash.length === 16, "session list did not expose redacted client hash");
+    assert(currentListedSession.durable === true, "session list did not mark durable token hash metadata");
     const secondSession = activeSessions.sessions.find((item) => item.current === false && item.user.id === "mara");
     assert(secondSession?.id, "session list did not expose second session id");
     assert(secondSession.status === "active", "session list did not expose active status");
@@ -135,6 +139,45 @@ async function run() {
     });
     assert(revokedAccess.status === 401, "revoked token should not authenticate");
     assert(revokedAccess.body.requestId, "error responses should include request id");
+
+    const thirdLogin = await request(`${baseUrl}/api/auth/demo-login`, {
+      method: "POST",
+      body: { memberId: "mara" }
+    });
+    const revokeOthers = await request(`${baseUrl}/api/auth/sessions/revoke-others`, {
+      method: "POST",
+      token: login.token
+    });
+    assert(revokeOthers.ok === true && revokeOthers.revoked.length >= 1, "revoke other sessions did not revoke extra sessions");
+    const revokedOtherAccess = await requestError(`${baseUrl}/api/session`, {
+      token: thirdLogin.token
+    });
+    assert(revokedOtherAccess.status === 401, "revoke other sessions left old token active");
+
+    const rotateLogin = await request(`${baseUrl}/api/auth/demo-login`, {
+      method: "POST",
+      body: { memberId: "mara" }
+    });
+    const rotated = await request(`${baseUrl}/api/auth/session/rotate`, {
+      method: "POST",
+      token: rotateLogin.token
+    });
+    assert(rotated.token && rotated.token !== rotateLogin.token, "session rotation did not issue a fresh token");
+    assert(!rotated.tokenHash, "session rotation leaked internal token hash");
+    assert(rotated.rotatedFrom, "session rotation did not include previous token id");
+    const oldRotatedAccess = await requestError(`${baseUrl}/api/session`, {
+      token: rotateLogin.token
+    });
+    assert(oldRotatedAccess.status === 401, "rotated old token should not authenticate");
+    const newRotatedAccess = await request(`${baseUrl}/api/session`, {
+      token: rotated.token
+    });
+    assert(newRotatedAccess.user.id === "mara", "rotated session token did not authenticate");
+    assert(!newRotatedAccess.tokenHash, "current session endpoint leaked internal token hash");
+    await request(`${baseUrl}/api/auth/logout`, {
+      method: "POST",
+      token: rotated.token
+    });
 
     let backendHealth = await request(`${baseUrl}/api/backend/health`, {
       token: login.token
@@ -1416,6 +1459,7 @@ async function testAccountAuth() {
       }
     });
     assert(passwordLogin.user.id === signup.user.id, "password login did not return owner");
+    const ownerToken = passwordLogin.token;
 
     let webhookCalled = false;
     process.env.AGORA_PASSWORD_RESET_RETURN_TOKEN = "false";
@@ -1446,7 +1490,7 @@ async function testAccountAuth() {
     global.fetch = originalFetch;
 
     const members = await request(`${baseUrl}/api/members`, {
-      token: signup.token
+      token: ownerToken
     });
     const owner = members.users.find((user) => user.email === "owner@example.test");
     assert(owner && owner.hasPassword === true, "members did not include password status");
@@ -1454,7 +1498,7 @@ async function testAccountAuth() {
 
     const company = await request(`${baseUrl}/api/records/companies`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: {
         record: {
           id: "company-record",
@@ -1467,7 +1511,7 @@ async function testAccountAuth() {
 
     const portalLink = await request(`${baseUrl}/api/portal-links`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: {
         companyId: "company-record",
         packetSignature: "smoke-signature"
@@ -1480,20 +1524,20 @@ async function testAccountAuth() {
     assert(!portalLink.portalLink.token, "hosted portal link leaked raw token in record");
 
     const portalLinks = await request(`${baseUrl}/api/portal-links`, {
-      token: signup.token
+      token: ownerToken
     });
     assert(portalLinks.portalLinks.some((link) => link.id === portalLink.portalLink.id), "hosted portal link list missed created link");
     assert(portalLinks.portalLinks.every((link) => !link.tokenHash && !link.token), "hosted portal link list leaked token material");
 
     const recordCollections = await request(`${baseUrl}/api/records`, {
-      token: signup.token
+      token: ownerToken
     });
     assert(!recordCollections.collections.includes("clientPortalLinks"), "portal links should not be exposed as generic records");
     assert(recordCollections.collections.includes("automationRules"), "automation rules should be exposed as generic records");
 
     const otherCompany = await request(`${baseUrl}/api/records/companies`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: {
         record: {
           id: "other-company",
@@ -1506,7 +1550,7 @@ async function testAccountAuth() {
 
     const projectRecord = await request(`${baseUrl}/api/projects`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: {
         project: {
           id: "project-record",
@@ -1520,7 +1564,7 @@ async function testAccountAuth() {
 
     const portalTask = await request(`${baseUrl}/api/tasks`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: {
         task: {
           id: "portal-task-record",
@@ -1541,7 +1585,7 @@ async function testAccountAuth() {
 
     const otherProject = await request(`${baseUrl}/api/projects`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: {
         project: {
           id: "other-project",
@@ -1555,7 +1599,7 @@ async function testAccountAuth() {
 
     const approval = await request(`${baseUrl}/api/records/approvals`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: {
         record: {
           id: "approval-record",
@@ -1573,7 +1617,7 @@ async function testAccountAuth() {
 
     const otherApproval = await request(`${baseUrl}/api/records/approvals`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: {
         record: {
           id: "approval-other",
@@ -1587,13 +1631,13 @@ async function testAccountAuth() {
     assert(otherApproval.record.title === "Other Approval", "second record approval upsert failed");
 
     const records = await request(`${baseUrl}/api/records/approvals?companyId=company-record`, {
-      token: signup.token
+      token: ownerToken
     });
     assert(records.records.length === 1, "record approval filter failed");
 
     const portalDocument = await request(`${baseUrl}/api/records/documents`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: {
         record: {
           id: "portal-doc-record",
@@ -1609,7 +1653,7 @@ async function testAccountAuth() {
 
     const portalFile = await request(`${baseUrl}/api/records/files`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: {
         record: {
           id: "portal-file-record",
@@ -1628,7 +1672,7 @@ async function testAccountAuth() {
 
     const portalActivity = await request(`${baseUrl}/api/records/activities`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: {
         record: {
           id: "portal-activity-record",
@@ -1644,7 +1688,7 @@ async function testAccountAuth() {
 
     const portalComment = await request(`${baseUrl}/api/records/comments`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: {
         record: {
           id: "portal-comment-record",
@@ -1658,7 +1702,7 @@ async function testAccountAuth() {
 
     const portalAutomationRule = await request(`${baseUrl}/api/records/automationRules`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: {
         record: {
           id: "automation-portal-feature-smoke",
@@ -1750,24 +1794,24 @@ async function testAccountAuth() {
     });
     assert(oversizedPortalAction.status === 413, "hosted portal should reject oversized public action bodies");
     const portalAutomationRuns = await request(`${baseUrl}/api/records/automationRuns`, {
-      token: signup.token
+      token: ownerToken
     });
     assert(portalAutomationRuns.records.some((run) => run.automationId === "automation-portal-feature-smoke" && run.changedCount === 1), "portal feature request did not run matching automation");
     const portalAutomationWorkspace = await request(`${baseUrl}/api/workspace`, {
-      token: signup.token
+      token: ownerToken
     });
     assert(portalAutomationWorkspace.snapshot.tasks.some((task) => task.title === "Owner follow-up: Portal requested timeline"), "portal automation did not create follow-up task");
 
     const copiedPortalLink = await request(`${baseUrl}/api/portal-links/${encodeURIComponent(portalLink.portalLink.id)}/events`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: { event: "copied" }
     });
     assert(copiedPortalLink.portalLink.copiedAt, "hosted portal copy event was not recorded");
 
     const revokedPortalLink = await request(`${baseUrl}/api/portal-links/${encodeURIComponent(portalLink.portalLink.id)}/revoke`, {
       method: "POST",
-      token: signup.token
+      token: ownerToken
     });
     assert(revokedPortalLink.portalLink.status === "revoked", "hosted portal revoke failed");
     const blockedPortalValidation = await requestError(`${baseUrl}/api/portal-links/validate/${encodeURIComponent(portalLink.token)}`);
@@ -1775,7 +1819,7 @@ async function testAccountAuth() {
 
     const invitation = await request(`${baseUrl}/api/invitations`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: {
         name: "Client User",
         email: "client@example.test",
@@ -1785,14 +1829,14 @@ async function testAccountAuth() {
     });
     const resentInvitation = await request(`${baseUrl}/api/invitations/${invitation.invitation.id}/resend`, {
       method: "POST",
-      token: signup.token
+      token: ownerToken
     });
     assert(resentInvitation.invitation.token && resentInvitation.invitation.token !== invitation.invitation.token, "invite resend did not refresh token");
     assert(resentInvitation.invitation.expiresAt, "invite resend did not set expiry");
 
     const revokedInvite = await request(`${baseUrl}/api/invitations`, {
       method: "POST",
-      token: signup.token,
+      token: ownerToken,
       body: {
         name: "Revoked User",
         email: "revoked@example.test",
@@ -1801,7 +1845,7 @@ async function testAccountAuth() {
     });
     const revoked = await request(`${baseUrl}/api/invitations/${revokedInvite.invitation.id}`, {
       method: "DELETE",
-      token: signup.token
+      token: ownerToken
     });
     assert(revoked.invitation.status === "revoked", "invite revoke failed");
 
@@ -2121,6 +2165,7 @@ async function testSupabaseStorageAdapter() {
   const snapshots = new Map();
   const records = new Map();
   const backgroundJobs = new Map();
+  const authSessions = new Map();
   const auditEvents = [];
 
   global.fetch = async (url, options = {}) => {
@@ -2169,6 +2214,22 @@ async function testSupabaseStorageAdapter() {
         ...row
       }));
       return mockResponse(rows.map((row) => backgroundJobs.get(row.id)));
+    }
+
+    if (table === "agora_auth_sessions" && (!options.method || options.method === "GET")) {
+      const workspaceId = parsed.searchParams.get("workspace_id")?.replace(/^eq\./, "");
+      const rows = [...authSessions.values()].filter((row) => !workspaceId || row.workspace_id === workspaceId);
+      return mockResponse(rows);
+    }
+
+    if (table === "agora_auth_sessions" && options.method === "POST") {
+      const rows = Array.isArray(body) ? body : [body];
+      rows.forEach((row) => authSessions.set(row.token_hash, {
+        created_at: row.created_at || "2026-06-28T00:00:00.000Z",
+        updated_at: row.updated_at || "2026-06-28T00:00:00.000Z",
+        ...row
+      }));
+      return mockResponse(rows.map((row) => authSessions.get(row.token_hash)));
     }
 
     if (table.startsWith("agora_") && table !== "agora_workspace_snapshots" && table !== "agora_audit_events" && (!options.method || options.method === "GET")) {
@@ -2275,6 +2336,26 @@ async function testSupabaseStorageAdapter() {
     }]);
     const persistedJobs = await storage.loadBackgroundJobs();
     assert(persistedJobs.some((job) => job.id === "job-supabase" && job.payload.to === "owner@example.test"), "supabase background job persistence failed");
+
+    await storage.saveAuthSessions([{
+      tokenHash: "auth-session-hash-1",
+      workspaceId: "workspace-smoke",
+      userId: "user-1",
+      userEmail: "user@example.com",
+      userName: "User One",
+      role: "admin",
+      status: "active",
+      companyId: "",
+      permissions: ["workspace:read"],
+      createdAt: "2026-06-28T00:00:00.000Z",
+      expiresAt: "2026-06-28T08:00:00.000Z",
+      lastSeenAt: "2026-06-28T00:00:00.000Z",
+      requestCount: 1,
+      clientIpHash: "clienthash",
+      userAgent: "Smoke"
+    }]);
+    const persistedAuthSessions = await storage.loadAuthSessions();
+    assert(persistedAuthSessions.some((session) => session.tokenHash === "auth-session-hash-1" && session.role === "admin"), "supabase auth session persistence failed");
 
     const savedMembership = await storage.upsertAuthMembership({
       workspaceId: "workspace-smoke",

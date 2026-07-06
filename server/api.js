@@ -80,6 +80,7 @@ const recordCollections = {
 };
 
 const sessions = new Map();
+const persistedSessions = new Map();
 const rateLimits = new Map();
 const paymentIntents = new Map();
 const backgroundJobs = [];
@@ -89,6 +90,9 @@ let backgroundJobDrainTimer = null;
 let backgroundJobDrainAt = 0;
 let backgroundJobStorage = null;
 let backgroundJobHydration = null;
+let authSessionStorage = null;
+let authSessionHydration = null;
+let authSessionStorageIdentity = "";
 const requestMetrics = {
   startedAt: new Date().toISOString(),
   total: 0,
@@ -238,6 +242,54 @@ function initializeBackgroundJobs(storage) {
     })
     .catch((error) => {
       console.error("Failed to load persisted background jobs:", error.message);
+    });
+}
+
+function initializeAuthSessions(storage) {
+  if (!storage || typeof storage.loadAuthSessions !== "function") return;
+  const storageIdentity = authSessionStorageKey(storage);
+  if (storageIdentity !== authSessionStorageIdentity) {
+    persistedSessions.clear();
+    authSessionStorageIdentity = storageIdentity;
+  }
+  authSessionStorage = storage;
+  authSessionHydration = storage.loadAuthSessions()
+    .then((items) => {
+      const now = Date.now();
+      (Array.isArray(items) ? items : [])
+        .map(normalizePersistedSession)
+        .filter((session) => session && !isPersistedSessionExpired(session, now) && session.status !== "revoked")
+        .forEach((session) => persistedSessions.set(session.tokenHash, session));
+      if (items?.length) persistAuthSessions();
+    })
+    .catch((error) => {
+      console.error("Failed to load persisted auth sessions:", error.message);
+    });
+}
+
+function authSessionStorageKey(storage) {
+  return [
+    storage.driver || "unknown",
+    storage.workspaceId || workspace.id,
+    storage.dataDir || ""
+  ].join(":");
+}
+
+function persistAuthSessions() {
+  if (!authSessionStorage || typeof authSessionStorage.saveAuthSessions !== "function") return;
+  const now = Date.now();
+  const persisted = Array.from(persistedSessions.values())
+    .map(normalizePersistedSession)
+    .filter((session) => session && !isPersistedSessionExpired(session, now))
+    .sort((a, b) => cleanString(b.lastSeenAt || b.createdAt).localeCompare(cleanString(a.lastSeenAt || a.createdAt)))
+    .slice(0, 500);
+  persistedSessions.clear();
+  persisted.forEach((session) => persistedSessions.set(session.tokenHash, session));
+  Promise.resolve(authSessionHydration)
+    .catch(() => {})
+    .then(() => authSessionStorage.saveAuthSessions(persisted))
+    .catch((error) => {
+      console.error("Failed to persist auth sessions:", error.message);
     });
 }
 
@@ -762,6 +814,9 @@ function apiCapabilitiesDocument() {
         "POST /api/auth/password-login",
         "POST /api/auth/supabase-login",
         "POST /api/auth/logout",
+        "POST /api/auth/session/rotate",
+        "POST /api/auth/sessions/revoke-others",
+        "GET /api/auth/sessions",
         "GET /api/session"
       ]
     },
@@ -811,6 +866,15 @@ function openApiDocument() {
       },
       "/api/session": {
         get: operation("Current session", "Returns authenticated user, membership, permissions, and scope.")
+      },
+      "/api/auth/sessions": {
+        get: operation("List active sessions", "Lists current user sessions, or workspace sessions for admins, using hashed token ids only.")
+      },
+      "/api/auth/session/rotate": {
+        post: operation("Rotate current session", "Issues a fresh bearer token and revokes the current token.")
+      },
+      "/api/auth/sessions/revoke-others": {
+        post: operation("Revoke other sessions", "Revokes every active session for the current user except the current token.")
       },
       "/api/projects": {
         get: operation("List projects", "Lists visible projects with limit, offset, query, and companyId filters."),
@@ -915,6 +979,7 @@ function operation(summary, description) {
 function createServer(options = {}) {
   const storage = options.storage || createStorage();
   initializeBackgroundJobs(storage);
+  initializeAuthSessions(storage);
   const allowDemoAuth = options.allowDemoAuth ?? envFlag("AGORA_DEMO_AUTH", false);
   const allowPasswordlessAuth = options.allowPasswordlessAuth ?? envFlag("AGORA_PASSWORDLESS_AUTH", false);
 
@@ -997,7 +1062,7 @@ function createServer(options = {}) {
         }
 
         const session = createSession(user, membership);
-        sendJson(response, 200, session);
+        sendJson(response, 200, publicSessionPayload(session));
         return;
       }
 
@@ -1009,7 +1074,7 @@ function createServer(options = {}) {
         const body = await readJsonBody(request);
         assertRateLimit(request, `passwordless:${normalizeEmail(body.email)}`);
         const session = await createEmailSession(storage, body.email);
-        sendJson(response, 200, session);
+        sendJson(response, 200, publicSessionPayload(session));
         return;
       }
 
@@ -1017,7 +1082,7 @@ function createServer(options = {}) {
         const body = await readJsonBody(request);
         assertRateLimit(request, `password:${normalizeEmail(body.email)}`);
         const session = await createPasswordSession(storage, body.email, body.password);
-        sendJson(response, 200, session);
+        sendJson(response, 200, publicSessionPayload(session));
         return;
       }
 
@@ -1041,7 +1106,7 @@ function createServer(options = {}) {
         assertRateLimit(request, "signup", 5);
         const body = await readJsonBody(request);
         const session = await createOwnerAccount(storage, body);
-        sendJson(response, 201, session);
+        sendJson(response, 201, publicSessionPayload(session));
         return;
       }
 
@@ -1049,7 +1114,7 @@ function createServer(options = {}) {
         assertRateLimit(request, "supabase-login");
         const body = await readJsonBody(request);
         const session = await createSupabaseSessionFromAccessToken(storage, body.accessToken);
-        sendJson(response, 200, session);
+        sendJson(response, 200, publicSessionPayload(session));
         return;
       }
 
@@ -1057,7 +1122,7 @@ function createServer(options = {}) {
         assertRateLimit(request, "supabase-password-signup", 5);
         const body = await readJsonBody(request);
         const result = await createSupabasePasswordAccount(storage, body);
-        sendJson(response, result.pendingConfirmation ? 202 : 201, result);
+        sendJson(response, result.pendingConfirmation ? 202 : 201, publicSessionPayload(result));
         return;
       }
 
@@ -1065,7 +1130,7 @@ function createServer(options = {}) {
         const body = await readJsonBody(request);
         assertRateLimit(request, `supabase-password:${normalizeEmail(body.email)}`);
         const session = await createSupabasePasswordSession(storage, body);
-        sendJson(response, 200, session);
+        sendJson(response, 200, publicSessionPayload(session));
         return;
       }
 
@@ -1074,7 +1139,7 @@ function createServer(options = {}) {
         assertRateLimit(request, "invitation-accept", 12);
         const body = await readJsonBody(request);
         const session = await acceptInvitation(storage, decodeURIComponent(invitationAcceptMatch[1]), body.name, body.password);
-        sendJson(response, 200, session);
+        sendJson(response, 200, publicSessionPayload(session));
         return;
       }
 
@@ -1178,18 +1243,29 @@ function createServer(options = {}) {
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/logout") {
-        sessions.delete(session.token);
+        revokeSession(session, { revokedBy: session.user.id });
         sendJson(response, 200, { ok: true });
         return;
       }
 
       if (request.method === "GET" && url.pathname === "/api/session") {
-        sendJson(response, 200, session);
+        sendJson(response, 200, publicSessionPayload(session));
         return;
       }
 
       if (request.method === "GET" && url.pathname === "/api/auth/sessions") {
         sendJson(response, 200, listActiveSessions(session));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/auth/session/rotate") {
+        const nextSession = rotateCurrentSession(session);
+        sendJson(response, 200, publicSessionPayload(nextSession));
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/auth/sessions/revoke-others") {
+        sendJson(response, 200, revokeOtherUserSessions(session));
         return;
       }
 
@@ -2141,9 +2217,9 @@ async function buildBackendHealth(storage, session) {
     {
       id: "session-hardening",
       label: "Session hardening",
-      done: sessionHardening.ttlHours <= 12 && sessionHardening.resetTtlMinutes <= 60 && sessionHardening.invitationTtlDays <= 30 && sessionHardening.lastSeenTracking,
-      detail: `${sessionHardening.active} active session${sessionHardening.active === 1 ? "" : "s"}; ${sessionHardening.ttlHours}h session TTL; ${sessionHardening.resetTtlMinutes}m reset TTL; ${sessionHardening.invitationTtlDays}d invite TTL`,
-      fix: "Keep session TTL <= 12h, reset TTL <= 60m, invite TTL <= 30d, and review active sessions from Settings > Account."
+      done: sessionHardening.ttlHours <= 12 && sessionHardening.resetTtlMinutes <= 60 && sessionHardening.invitationTtlDays <= 30 && sessionHardening.lastSeenTracking && sessionHardening.durablePersistence,
+      detail: `${sessionHardening.active} active session${sessionHardening.active === 1 ? "" : "s"}; ${sessionHardening.ttlHours}h session TTL; ${sessionHardening.durablePersistence ? "durable hashes enabled" : "memory-only"}; rotate/revoke controls ${sessionHardening.rotationSupported && sessionHardening.revokeOthersSupported ? "on" : "need review"}`,
+      fix: "Keep session TTL <= 12h, reset TTL <= 60m, invite TTL <= 30d, persist hashed sessions, and review active sessions from Settings > Security."
     },
     {
       id: "file-uploads",
@@ -3538,13 +3614,16 @@ function createSession(user, membership) {
   const token = crypto.randomUUID();
   const session = buildSession(user, membership, token);
   sessions.set(token, session);
+  persistSession(session);
   return session;
 }
 
 function buildSession(user, membership, token) {
   const now = Date.now();
+  const tokenHash = sessionTokenHash(token);
   return {
     token,
+    tokenHash,
     user: publicUser(user),
     workspace,
     membership,
@@ -3564,6 +3643,7 @@ function touchSession(session, request) {
   session.requestCount = Number(session.requestCount || 0) + 1;
   session.clientIpHash = hashOperationalIdentifier(clientIp(request));
   session.userAgent = summarizeUserAgent(request.headers["user-agent"]);
+  if (!session.externalBearer) persistSession(session);
   return session;
 }
 
@@ -3573,11 +3653,24 @@ async function requireSession(request, response, storage) {
   const session = sessions.get(token);
   if (session) {
     if (isSessionExpired(session)) {
-      sessions.delete(token);
+      revokeSessionToken(token, { revokedBy: "expiry" });
       sendError(response, 401, "Session expired");
       return null;
     }
     request.agoraSession = touchSession(session, request);
+    return request.agoraSession;
+  }
+
+  const persistedSession = token ? await persistedSessionForToken(token) : null;
+  if (persistedSession) {
+    const hydratedSession = materializePersistedSession(token, persistedSession);
+    if (isSessionExpired(hydratedSession)) {
+      revokeSessionToken(token, { revokedBy: "expiry" });
+      sendError(response, 401, "Session expired");
+      return null;
+    }
+    sessions.set(token, hydratedSession);
+    request.agoraSession = touchSession(hydratedSession, request);
     return request.agoraSession;
   }
 
@@ -3598,33 +3691,33 @@ function isSessionExpired(session) {
 
 function listActiveSessions(currentSession) {
   const canSeeAll = hasPermission(currentSession, "members:write");
-  const activeSessions = Array.from(sessions.values()).filter((item) => {
+  pruneExpiredSessions();
+  const mergedSessions = mergedActiveSessions();
+  const activeSessions = mergedSessions.filter((item) => {
     if (isSessionExpired(item)) {
-      sessions.delete(item.token);
       return false;
     }
     return canSeeAll || item.user.id === currentSession.user.id;
   });
+  const currentTokenHash = currentSession.tokenHash || sessionTokenHash(currentSession.token);
 
   return {
-    sessions: activeSessions.map((item) => publicSessionToken(item, currentSession)),
-    scope: canSeeAll ? "workspace" : "self"
+    sessions: activeSessions.map((item) => publicSessionToken(item, currentSession, currentTokenHash)),
+    scope: canSeeAll ? "workspace" : "self",
+    summary: sessionSecuritySummary(activeSessions, currentSession)
   };
 }
 
 function sessionHardeningStatus() {
   const now = Date.now();
-  const activeSessions = Array.from(sessions.values()).filter((item) => {
-    if (isSessionExpired(item)) {
-      sessions.delete(item.token);
-      return false;
-    }
-    return true;
-  });
+  pruneExpiredSessions();
+  const activeSessions = mergedActiveSessions();
   const lastSeenTimes = activeSessions
     .map((session) => Date.parse(session.lastSeenAt || session.createdAt || ""))
     .filter(Number.isFinite);
   const oldestLastSeenMs = lastSeenTimes.length ? Math.min(...lastSeenTimes) : now;
+  const userCounts = new Map();
+  activeSessions.forEach((session) => userCounts.set(session.user?.id || "", (userCounts.get(session.user?.id || "") || 0) + 1));
   return {
     active: activeSessions.length,
     ttlHours: Math.round(SESSION_TTL_MS / 36_000) / 100,
@@ -3632,14 +3725,19 @@ function sessionHardeningStatus() {
     invitationTtlDays: Math.round(INVITATION_TTL_MS / 864000) / 100,
     lastSeenTracking: activeSessions.every((session) => Boolean(session.lastSeenAt)),
     requestCountTracking: activeSessions.every((session) => Number.isFinite(Number(session.requestCount || 0))),
-    oldestLastSeenMinutes: Math.max(0, Math.round((now - oldestLastSeenMs) / 60000))
+    oldestLastSeenMinutes: Math.max(0, Math.round((now - oldestLastSeenMs) / 60000)),
+    durablePersistence: Boolean(authSessionStorage && typeof authSessionStorage.saveAuthSessions === "function"),
+    rotationSupported: true,
+    revokeOthersSupported: true,
+    maxActiveForUser: Math.max(0, ...userCounts.values()),
+    persisted: Array.from(persistedSessions.values()).filter((session) => session.status !== "revoked").length
   };
 }
 
 function revokeActiveSession(currentSession, tokenId) {
-  const target = Array.from(sessions.values()).find((item) => sessionTokenId(item.token) === tokenId);
+  const target = mergedActiveSessions().find((item) => item.tokenId === tokenId || sessionTokenId(item.token) === tokenId);
   if (!target || isSessionExpired(target)) {
-    if (target) sessions.delete(target.token);
+    if (target?.token) revokeSessionToken(target.token, { revokedBy: currentSession.user.id });
     publicError(404, "Session token not found");
   }
 
@@ -3647,18 +3745,49 @@ function revokeActiveSession(currentSession, tokenId) {
     publicError(403, "Missing members write permission");
   }
 
-  sessions.delete(target.token);
+  revokeSession(target, { revokedBy: currentSession.user.id });
   return {
     ok: true,
-    revoked: sessionTokenId(target.token),
-    current: target.token === currentSession.token
+    revoked: target.tokenId || sessionTokenId(target.token),
+    current: sameSession(target, currentSession)
   };
 }
 
-function publicSessionToken(session, currentSession) {
+function rotateCurrentSession(currentSession) {
+  const nextSession = createSession(currentSession.user, currentSession.membership);
+  nextSession.rotatedFrom = sessionTokenId(currentSession.token);
+  persistSession(nextSession);
+  revokeSession(currentSession, { revokedBy: currentSession.user.id, rotatedTo: sessionTokenId(nextSession.token) });
   return {
-    id: sessionTokenId(session.token),
-    current: session.token === currentSession.token,
+    ...nextSession,
+    rotatedFrom: sessionTokenId(currentSession.token)
+  };
+}
+
+function revokeOtherUserSessions(currentSession) {
+  const currentHash = currentSession.tokenHash || sessionTokenHash(currentSession.token);
+  const revoked = revokeUserSessions(currentSession.user.id, { exceptTokenHash: currentHash, revokedBy: currentSession.user.id });
+  return {
+    ok: true,
+    revoked,
+    kept: sessionTokenId(currentSession.token)
+  };
+}
+
+function publicSessionPayload(session) {
+  if (!session || typeof session !== "object" || !session.token) return session;
+  const { tokenHash, externalBearer, ...publicSession } = session;
+  return {
+    ...publicSession,
+    tokenId: publicSession.tokenId || sessionTokenId(session.token)
+  };
+}
+
+function publicSessionToken(session, currentSession, currentTokenHash = currentSession.tokenHash || sessionTokenHash(currentSession.token)) {
+  const tokenId = session.tokenId || sessionTokenId(session.token);
+  return {
+    id: tokenId,
+    current: session.tokenHash === currentTokenHash,
     status: "active",
     user: session.user,
     membership: {
@@ -3672,18 +3801,205 @@ function publicSessionToken(session, currentSession) {
     lastSeenAt: session.lastSeenAt || session.createdAt,
     requestCount: Number(session.requestCount || 0),
     clientIpHash: session.clientIpHash || "",
-    userAgent: session.userAgent || ""
+    userAgent: session.userAgent || "",
+    durable: Boolean(session.tokenHash),
+    rotatedFrom: session.rotatedFrom || ""
   };
 }
 
 function sessionTokenId(token) {
-  return crypto.createHash("sha256").update(cleanString(token)).digest("hex").slice(0, 24);
+  return sessionTokenHash(token).slice(0, 24);
+}
+
+function sessionTokenHash(token) {
+  return crypto.createHash("sha256").update(cleanString(token)).digest("hex");
 }
 
 function hashOperationalIdentifier(value) {
   const normalized = cleanString(value);
   if (!normalized || normalized === "unknown") return "";
   return crypto.createHash("sha256").update(normalized).digest("hex").slice(0, 16);
+}
+
+function persistSession(session) {
+  const persisted = persistedSessionFromSession(session);
+  if (!persisted) return;
+  persistedSessions.set(persisted.tokenHash, persisted);
+  persistAuthSessions();
+}
+
+async function persistedSessionForToken(token) {
+  await Promise.resolve(authSessionHydration).catch(() => {});
+  const tokenHash = sessionTokenHash(token);
+  const session = persistedSessions.get(tokenHash);
+  if (!session || session.status === "revoked" || isPersistedSessionExpired(session)) return null;
+  return session;
+}
+
+function persistedSessionFromSession(session) {
+  const tokenHash = session.tokenHash || (session.token ? sessionTokenHash(session.token) : "");
+  if (!tokenHash || !session.user?.id) return null;
+  return normalizePersistedSession({
+    tokenHash,
+    tokenId: tokenHash.slice(0, 24),
+    workspaceId: session.workspace?.id || workspace.id,
+    userId: session.user.id,
+    userEmail: session.user.email || "",
+    userName: session.user.name || session.user.email || session.user.id,
+    role: session.membership?.role || "member",
+    status: session.status || "active",
+    companyId: session.membership?.companyId || "",
+    permissions: Array.isArray(session.permissions) ? session.permissions : [],
+    createdAt: session.createdAt,
+    expiresAt: session.expiresAt,
+    lastSeenAt: session.lastSeenAt || session.createdAt,
+    requestCount: Number(session.requestCount || 0),
+    clientIpHash: session.clientIpHash || "",
+    userAgent: session.userAgent || "",
+    rotatedFrom: session.rotatedFrom || "",
+    revokedAt: session.revokedAt || "",
+    revokedBy: session.revokedBy || ""
+  });
+}
+
+function normalizePersistedSession(session = {}) {
+  const tokenHash = cleanString(session.tokenHash);
+  if (!tokenHash) return null;
+  const role = rolePermissions[session.role] ? session.role : "member";
+  const createdAt = cleanString(session.createdAt) || new Date().toISOString();
+  return {
+    tokenHash,
+    tokenId: cleanString(session.tokenId) || tokenHash.slice(0, 24),
+    workspaceId: cleanString(session.workspaceId) || workspace.id,
+    userId: cleanString(session.userId),
+    userEmail: cleanString(session.userEmail),
+    userName: cleanString(session.userName) || cleanString(session.userEmail) || cleanString(session.userId),
+    role,
+    status: cleanString(session.status) === "revoked" ? "revoked" : "active",
+    companyId: cleanString(session.companyId),
+    permissions: Array.isArray(session.permissions) && session.permissions.length ? session.permissions : rolePermissions[role] || [],
+    createdAt,
+    expiresAt: cleanString(session.expiresAt) || new Date(Date.parse(createdAt) + SESSION_TTL_MS).toISOString(),
+    lastSeenAt: cleanString(session.lastSeenAt) || createdAt,
+    requestCount: Number(session.requestCount || 0),
+    clientIpHash: cleanString(session.clientIpHash),
+    userAgent: summarizeUserAgent(session.userAgent),
+    rotatedFrom: cleanString(session.rotatedFrom),
+    revokedAt: cleanString(session.revokedAt),
+    revokedBy: cleanString(session.revokedBy)
+  };
+}
+
+function materializePersistedSession(token, persistedSession) {
+  const role = rolePermissions[persistedSession.role] ? persistedSession.role : "member";
+  return {
+    token,
+    tokenHash: persistedSession.tokenHash,
+    user: publicUser({
+      id: persistedSession.userId,
+      name: persistedSession.userName,
+      email: persistedSession.userEmail,
+      companyId: persistedSession.companyId
+    }),
+    workspace,
+    membership: {
+      memberId: persistedSession.userId,
+      role,
+      status: "active",
+      companyId: persistedSession.companyId
+    },
+    permissions: persistedSession.permissions?.length ? persistedSession.permissions : rolePermissions[role] || [],
+    createdAt: persistedSession.createdAt,
+    expiresAt: persistedSession.expiresAt,
+    lastSeenAt: persistedSession.lastSeenAt,
+    requestCount: Number(persistedSession.requestCount || 0),
+    clientIpHash: persistedSession.clientIpHash || "",
+    userAgent: persistedSession.userAgent || "",
+    rotatedFrom: persistedSession.rotatedFrom || ""
+  };
+}
+
+function mergedActiveSessions() {
+  const byHash = new Map();
+  Array.from(persistedSessions.values()).forEach((session) => {
+    if (session.status !== "revoked") byHash.set(session.tokenHash, materializePersistedSession("", session));
+  });
+  Array.from(sessions.values()).forEach((session) => {
+    const tokenHash = session.tokenHash || sessionTokenHash(session.token);
+    if (!isSessionExpired(session)) byHash.set(tokenHash, session);
+  });
+  return Array.from(byHash.values()).filter((session) => !isSessionExpired(session));
+}
+
+function revokeSessionToken(token, metadata = {}) {
+  const session = sessions.get(token);
+  if (session) revokeSession(session, metadata);
+}
+
+function revokeSession(session, metadata = {}) {
+  const tokenHash = session.tokenHash || (session.token ? sessionTokenHash(session.token) : "");
+  if (!tokenHash) return;
+  if (session.token) sessions.delete(session.token);
+  const persisted = persistedSessions.get(tokenHash) || persistedSessionFromSession(session);
+  if (persisted) {
+    persistedSessions.set(tokenHash, {
+      ...persisted,
+      status: "revoked",
+      revokedAt: new Date().toISOString(),
+      revokedBy: cleanString(metadata.revokedBy),
+      rotatedFrom: cleanString(persisted.rotatedFrom)
+    });
+  }
+  persistAuthSessions();
+}
+
+function revokeUserSessions(userId, options = {}) {
+  const exceptTokenHash = cleanString(options.exceptTokenHash);
+  const targets = mergedActiveSessions().filter((session) => {
+    const tokenHash = session.tokenHash || (session.token ? sessionTokenHash(session.token) : "");
+    return session.user.id === userId && (!exceptTokenHash || tokenHash !== exceptTokenHash);
+  });
+  targets.forEach((session) => revokeSession(session, { revokedBy: options.revokedBy || userId }));
+  return targets.map((session) => session.tokenId || sessionTokenId(session.token));
+}
+
+function pruneExpiredSessions() {
+  let removedPersisted = false;
+  Array.from(sessions.values()).forEach((session) => {
+    if (isSessionExpired(session)) revokeSession(session, { revokedBy: "expiry" });
+  });
+  Array.from(persistedSessions.values()).forEach((session) => {
+    if (isPersistedSessionExpired(session)) {
+      persistedSessions.delete(session.tokenHash);
+      removedPersisted = true;
+    }
+  });
+  if (removedPersisted) persistAuthSessions();
+}
+
+function isPersistedSessionExpired(session, now = Date.now()) {
+  const expiresAt = Date.parse(session?.expiresAt || "");
+  return Number.isFinite(expiresAt) && expiresAt <= now;
+}
+
+function sameSession(left, right) {
+  const leftHash = left?.tokenHash || (left?.token ? sessionTokenHash(left.token) : "");
+  const rightHash = right?.tokenHash || (right?.token ? sessionTokenHash(right.token) : "");
+  return Boolean(leftHash && rightHash && leftHash === rightHash);
+}
+
+function sessionSecuritySummary(activeSessions, currentSession) {
+  const currentHash = currentSession.tokenHash || sessionTokenHash(currentSession.token);
+  const userSessions = activeSessions.filter((session) => session.user.id === currentSession.user.id);
+  return {
+    active: activeSessions.length,
+    currentUserActive: userSessions.length,
+    otherCurrentUserSessions: userSessions.filter((session) => session.tokenHash !== currentHash).length,
+    durablePersistence: Boolean(authSessionStorage && typeof authSessionStorage.saveAuthSessions === "function"),
+    rotationSupported: true,
+    revokeOthersSupported: true,
+    ttlHours: Math.round(SESSION_TTL_MS / 36_000) / 100
+  };
 }
 
 function summarizeUserAgent(value) {
@@ -4659,7 +4975,8 @@ async function confirmPasswordReset(storage, body) {
     workspaceId: workspace.id,
     detail: `${user.name} reset their password`
   });
-  return { ok: true };
+  const revoked = revokeUserSessions(user.id, { revokedBy: user.id });
+  return { ok: true, revokedSessions: revoked.length };
 }
 
 async function changePassword(storage, session, body) {
@@ -4692,7 +5009,8 @@ async function changePassword(storage, session, body) {
     workspaceId: workspace.id,
     detail: `${session.user.name} changed their password`
   });
-  return { ok: true };
+  const revoked = revokeUserSessions(session.user.id, { exceptTokenHash: session.tokenHash || sessionTokenHash(session.token), revokedBy: session.user.id });
+  return { ok: true, revokedSessions: revoked.length };
 }
 
 function hashResetToken(token) {
@@ -4706,7 +5024,7 @@ async function createSupabaseSessionFromAccessToken(storage, accessToken, option
   const supabaseUser = await fetchSupabaseUser(token);
   const { user, membership } = await syncSupabaseAuthUser(storage, supabaseUser);
   return options.persist === false
-    ? buildSession(user, membership, token)
+    ? { ...buildSession(user, membership, token), externalBearer: true }
     : createSession(user, membership);
 }
 

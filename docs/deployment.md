@@ -33,7 +33,7 @@ Recommended first production sequence:
 
 1. Deploy the static app and API behind HTTPS.
 2. Set the required production environment variables below.
-3. Configure Supabase storage/auth and run migrations `001`, `002`, and `003`.
+3. Configure Supabase storage/auth and run migrations `001`, `002`, `003`, and `004`.
 4. Configure SMTP or password-reset webhook delivery.
 5. Sign in, open Settings > Account, and use Hosted onboarding to complete owner, API sync, invite, email, feedback, and recovery checks.
 6. Before upgrades or migration changes, run `npm run verify:upgrade`; for new launches, run `npm run verify:production -- --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict`, refresh Backend Health, and confirm production gates, email diagnostics, background jobs, structured records, backups, and Supabase mode are green.
@@ -120,8 +120,9 @@ For the dedicated setup guide, troubleshooting table, and pre-launch gate, see [
 2. Run `server/migrations/001_supabase_storage.sql`.
 3. Run `server/migrations/002_supabase_auth_rls.sql`.
 4. Run `server/migrations/003_background_jobs.sql`.
-5. Create a private Storage bucket named `agora-files`.
-6. Set:
+5. Run `server/migrations/004_auth_sessions.sql`.
+6. Create a private Storage bucket named `agora-files`.
+7. Set:
 
 ```sh
 AGORA_STORAGE_DRIVER=supabase
@@ -191,7 +192,7 @@ Agora supports reset-token creation and confirmation through the API. Production
 
 Invitations and feature requests use the same SMTP settings. Set `AGORA_FEATURE_REQUEST_EMAIL` to receive an email whenever the in-app or public feature request form saves a task. The shareable public form lives at `#feedback` on your deployed app URL, but the public feature-request API is disabled by default. Set `AGORA_PUBLIC_FEATURE_REQUESTS=true` only when you are ready to accept public submissions, and tune public abuse limits with `AGORA_PUBLIC_FEATURE_RATE_LIMIT_ATTEMPTS`, `AGORA_PUBLIC_FEATURE_EMAIL_RATE_LIMIT_ATTEMPTS`, and `AGORA_PUBLIC_FEATURE_BODY_LIMIT_BYTES`.
 
-Invitation, feature request, and requester update emails are queued through persisted background job state. JSON deployments store this in `background-jobs.json`; Supabase deployments store it in `agora_background_jobs` after migration `003_background_jobs.sql`. Tune queue pressure and retry timing with:
+Invitation, feature request, and requester update emails are queued through persisted background job state. JSON deployments store this in `background-jobs.json`; Supabase deployments store it in `agora_background_jobs` after migration `003_background_jobs.sql`. API sessions store only hashed token identifiers in `agora_auth_sessions` after migration `004_auth_sessions.sql`, which keeps session rotation and revocation durable across restarts. Tune queue pressure and retry timing with:
 
 ```sh
 AGORA_BACKGROUND_JOB_MAX_QUEUE=100

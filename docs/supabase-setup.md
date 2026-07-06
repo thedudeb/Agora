@@ -29,8 +29,9 @@ Open the Supabase SQL editor and run these files in order:
 1. [`server/migrations/001_supabase_storage.sql`](../server/migrations/001_supabase_storage.sql)
 2. [`server/migrations/002_supabase_auth_rls.sql`](../server/migrations/002_supabase_auth_rls.sql)
 3. [`server/migrations/003_background_jobs.sql`](../server/migrations/003_background_jobs.sql)
+4. [`server/migrations/004_auth_sessions.sql`](../server/migrations/004_auth_sessions.sql)
 
-The first migration creates Agora storage tables. The second migration adds Supabase Auth memberships, helper functions, and RLS policies. The third migration adds persisted background jobs for retryable email and worker state.
+The first migration creates Agora storage tables. The second migration adds Supabase Auth memberships, helper functions, and RLS policies. The third migration adds persisted background jobs for retryable email and worker state. The fourth migration adds durable hashed API sessions for rotation and revocation across restarts.
 
 ## 3. Create The Storage Bucket
 
@@ -133,6 +134,7 @@ The verifier is non-destructive. It does not delete existing rows and does not t
 | File upload fails in Supabase mode | Storage bucket is missing or named differently | Create a private `agora-files` bucket, or set `AGORA_SUPABASE_STORAGE_BUCKET` to the actual bucket name. |
 | RLS or membership behavior looks wrong | Migration 002 did not run | Rerun `002_supabase_auth_rls.sql`, sign in again, then refresh Backend Health. |
 | Feature request emails never retry after a restart | Migration 003 did not run | Rerun `003_background_jobs.sql`, restart the API, then refresh Backend Health. |
+| Session rotation or revoke-others resets after restart | Migration 004 did not run | Rerun `004_auth_sessions.sql`, restart the API, then refresh Backend Health. |
 | `npm run test:supabase` fails on network or credentials | `.env` values are placeholders or unreachable | Confirm URL/key values and run the command from an environment that can reach Supabase. |
 
 ## Pre-Launch Gate

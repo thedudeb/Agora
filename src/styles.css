@@ -804,7 +804,8 @@ textarea:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
+  width: 44px;
+  min-width: 44px;
   min-height: 38px;
   color: var(--accent-strong);
   font-weight: 800;
@@ -839,7 +840,7 @@ textarea:focus {
 .notification-button .notification-badge {
   position: absolute;
   top: -8px;
-  right: -8px;
+  right: 0;
   border: 2px solid var(--bg);
 }
 
@@ -852,7 +853,8 @@ textarea:focus {
 
 .toolbar {
   display: grid;
-  grid-template-columns: repeat(7, minmax(124px, 1fr)) auto;
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
+  align-items: end;
   gap: 12px;
   margin-bottom: 20px;
   padding: 14px;
@@ -864,11 +866,15 @@ textarea:focus {
 .saved-view-actions {
   display: flex;
   align-items: end;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
   gap: 8px;
+  min-width: 0;
 }
 
 .saved-view-actions .button {
   min-height: 38px;
+  flex: 0 1 auto;
   white-space: nowrap;
 }
 
@@ -1297,12 +1303,14 @@ textarea:focus {
 
 .toast-region {
   position: fixed;
-  right: 22px;
-  bottom: 22px;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(16px, env(safe-area-inset-bottom));
   z-index: 20;
   display: grid;
   gap: 10px;
-  width: min(360px, calc(100vw - 32px));
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(42vh, 360px);
+  overflow-y: auto;
   pointer-events: none;
 }
 
@@ -3050,6 +3058,11 @@ body[data-tutorial-target="view"] #app-view {
 .dashboard-goal-list .progress-track,
 .dashboard-workload-list .portfolio-report-metrics {
   margin-top: 4px;
+}
+
+.goal-ladder.dashboard-goal-list article {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
 }
 
 .daily-hero {
@@ -5751,7 +5764,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .sprint-timeline-track {
   position: relative;
-  min-height: 60px;
+  min-height: 74px;
   overflow: hidden;
   background: #eee9df;
   border: 1px solid var(--line);
@@ -5799,15 +5812,16 @@ body[data-tutorial-target="view"] #app-view {
   position: absolute;
   top: 8px;
   display: grid;
-  min-width: 74px;
-  min-height: 34px;
+  min-width: 104px;
+  min-height: 46px;
   align-content: center;
-  padding: 4px 10px;
+  gap: 2px;
+  padding: 6px 10px;
   color: var(--text);
   text-align: left;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 14px;
   box-shadow: 0 8px 18px rgba(36, 33, 29, 0.08);
   cursor: grab;
   z-index: 2;
@@ -5817,17 +5831,22 @@ body[data-tutorial-target="view"] #app-view {
 .sprint-timeline-bar small {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .sprint-timeline-bar span {
+  display: -webkit-box;
   font-size: 0.72rem;
   font-weight: 900;
+  line-height: 1.15;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
 }
 
 .sprint-timeline-bar small {
   color: var(--muted);
   font-size: 0.66rem;
+  white-space: nowrap;
 }
 
 .sprint-timeline-bar.is-ready {
@@ -8246,6 +8265,33 @@ body[data-tutorial-target="view"] #app-view {
 
 .access-summary-grid p {
   margin: 4px 0 0;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.account-security-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+}
+
+.account-security-grid article {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.account-security-grid strong {
+  font-size: 1.1rem;
+  overflow-wrap: anywhere;
+}
+
+.account-security-grid small {
   color: var(--muted);
   line-height: 1.35;
 }
@@ -11228,9 +11274,10 @@ body[data-tutorial-target="view"] #app-view {
 
 .board {
   display: grid;
-  grid-template-columns: repeat(4, minmax(230px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   align-items: start;
+  min-width: 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-x: contain;
@@ -11239,6 +11286,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .board-column,
 .work-lane {
+  min-width: 0;
   min-height: 420px;
   padding: 12px;
 }
@@ -11263,7 +11311,7 @@ body[data-tutorial-target="view"] #app-view {
 
 .board-automation-builder {
   display: grid;
-  grid-template-columns: minmax(180px, 0.8fr) repeat(5, minmax(120px, 1fr)) auto auto auto;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   align-items: end;
   gap: 10px;
   margin-bottom: 12px;
@@ -13356,7 +13404,7 @@ body[data-density="compact"] .main-content {
 
   .topbar-actions {
     display: grid;
-    grid-template-columns: 38px repeat(3, minmax(0, 1fr));
+    grid-template-columns: 44px repeat(3, minmax(0, 1fr));
     gap: 8px;
     justify-content: stretch;
   }
@@ -13367,7 +13415,8 @@ body[data-density="compact"] .main-content {
   }
 
   .notification-button {
-    width: 38px;
+    width: 44px;
+    min-width: 44px;
     min-height: 38px;
   }
 
@@ -13392,6 +13441,8 @@ body[data-density="compact"] .main-content {
     margin-bottom: 12px;
     padding: 10px;
     scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+    box-shadow: inset -18px 0 18px -20px rgba(36, 33, 29, 0.55);
   }
 
   .toolbar label {
@@ -13514,6 +13565,7 @@ body[data-density="compact"] .main-content {
   .hosted-launch-grid,
   .hosted-launch-command,
   .access-summary-grid,
+  .account-security-grid,
   .admin-readiness-checklist,
   .admin-readiness-grid,
   .admin-action-list article,

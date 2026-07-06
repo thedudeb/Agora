@@ -17,7 +17,7 @@ Do not put Supabase service-role keys, SMTP credentials, AI provider keys, payme
 5. Set `AGORA_PUBLIC_APP_URL` to the static app HTTPS URL.
 6. Set `AGORA_ALLOW_LOCALHOST_ORIGINS=false`, `AGORA_DEMO_AUTH=false`, and `AGORA_PASSWORDLESS_AUTH=false`.
 7. Configure SMTP or webhook password reset delivery.
-8. Run Supabase migrations `001`, `002`, and `003`, then create the private file bucket.
+8. Run Supabase migrations `001`, `002`, `003`, and `004`, then create the private file bucket.
 9. Run `npm run verify:production -- --env .env.production --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict`.
 10. Open Backend Health and Hosted onboarding before inviting users.
 
@@ -85,9 +85,10 @@ Use Supabase for hosted persistence/Auth/Storage:
 1. Run `server/migrations/001_supabase_storage.sql`.
 2. Run `server/migrations/002_supabase_auth_rls.sql`.
 3. Run `server/migrations/003_background_jobs.sql`.
-4. Create the private storage bucket configured by `AGORA_SUPABASE_STORAGE_BUCKET`.
-5. Set `AGORA_STORAGE_DRIVER=supabase` and `AGORA_AUTH_DRIVER=supabase` on the API.
-6. Run `npm run test:supabase` against a disposable verification workspace.
+4. Run `server/migrations/004_auth_sessions.sql`.
+5. Create the private storage bucket configured by `AGORA_SUPABASE_STORAGE_BUCKET`.
+6. Set `AGORA_STORAGE_DRIVER=supabase` and `AGORA_AUTH_DRIVER=supabase` on the API.
+7. Run `npm run test:supabase` against a disposable verification workspace.
 
 Keep `SUPABASE_SERVICE_ROLE_KEY` API-only. Never expose it to the static app or desktop client.
 

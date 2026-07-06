@@ -102,6 +102,14 @@ function createJsonStorage(options = {}) {
     return writeJson("background-jobs.json", Array.isArray(jobs) ? jobs.slice(0, 100) : []);
   }
 
+  async function loadAuthSessions() {
+    return readJson("auth-sessions.json", []);
+  }
+
+  async function saveAuthSessions(authSessions = []) {
+    return writeJson("auth-sessions.json", Array.isArray(authSessions) ? authSessions.slice(0, 500) : []);
+  }
+
   async function loadRecords(collectionKey, filters = {}) {
     const snapshot = await loadWorkspaceSnapshot();
     const records = Array.isArray(snapshot[collectionKey]) ? snapshot[collectionKey] : [];
@@ -138,6 +146,8 @@ function createJsonStorage(options = {}) {
     appendAuditEvent,
     loadBackgroundJobs,
     saveBackgroundJobs,
+    loadAuthSessions,
+    saveAuthSessions,
     loadRecords,
     loadRecordPage,
     upsertRecord,
@@ -286,6 +296,27 @@ function createSupabaseStorage(options = {}) {
     return Array.isArray(rows) ? rows.map(fromSupabaseBackgroundJobRow).filter(Boolean) : [];
   }
 
+  async function loadAuthSessions() {
+    const rows = await request(
+      "agora_auth_sessions",
+      `?workspace_id=eq.${encodeURIComponent(workspaceId)}&select=*&order=last_seen_at.desc&limit=500`
+    );
+    return Array.isArray(rows) ? rows.map(fromSupabaseAuthSessionRow).filter(Boolean) : [];
+  }
+
+  async function saveAuthSessions(authSessions = []) {
+    const body = (Array.isArray(authSessions) ? authSessions.slice(0, 500) : []).map((session) => toSupabaseAuthSessionRow(workspaceId, session));
+    if (!body.length) return [];
+    const rows = await request("agora_auth_sessions", "", {
+      method: "POST",
+      headers: {
+        Prefer: "resolution=merge-duplicates,return=representation"
+      },
+      body
+    });
+    return Array.isArray(rows) ? rows.map(fromSupabaseAuthSessionRow).filter(Boolean) : [];
+  }
+
   async function loadRecords(collectionKey, filters = {}) {
     const table = recordTables[collectionKey];
     if (!table) throw new Error(`Unsupported record collection: ${collectionKey}`);
@@ -353,6 +384,8 @@ function createSupabaseStorage(options = {}) {
     appendAuditEvent,
     loadBackgroundJobs,
     saveBackgroundJobs,
+    loadAuthSessions,
+    saveAuthSessions,
     loadRecords,
     loadRecordPage,
     upsertRecord,
@@ -484,6 +517,54 @@ function fromSupabaseBackgroundJobRow(row = {}) {
     finishedAt: row.finished_at || row.finishedAt || "",
     createdAt: row.created_at || row.createdAt || "",
     updatedAt: row.updated_at || row.updatedAt || ""
+  };
+}
+
+function toSupabaseAuthSessionRow(workspaceId, session = {}) {
+  return {
+    token_hash: session.tokenHash,
+    workspace_id: session.workspaceId || workspaceId,
+    user_id: session.userId || "",
+    user_email: session.userEmail || "",
+    user_name: session.userName || "",
+    role: session.role || "member",
+    status: session.status || "active",
+    company_id: session.companyId || "",
+    permissions: Array.isArray(session.permissions) ? session.permissions : [],
+    created_at: session.createdAt || new Date().toISOString(),
+    expires_at: session.expiresAt || null,
+    last_seen_at: session.lastSeenAt || session.createdAt || new Date().toISOString(),
+    request_count: Number(session.requestCount || 0),
+    client_ip_hash: session.clientIpHash || "",
+    user_agent: session.userAgent || "",
+    rotated_from: session.rotatedFrom || "",
+    revoked_at: session.revokedAt || null,
+    revoked_by: session.revokedBy || ""
+  };
+}
+
+function fromSupabaseAuthSessionRow(row = {}) {
+  if (!row?.token_hash) return null;
+  return {
+    tokenHash: row.token_hash,
+    tokenId: String(row.token_hash).slice(0, 24),
+    workspaceId: row.workspace_id || "",
+    userId: row.user_id || "",
+    userEmail: row.user_email || "",
+    userName: row.user_name || "",
+    role: row.role || "member",
+    status: row.status || "active",
+    companyId: row.company_id || "",
+    permissions: Array.isArray(row.permissions) ? row.permissions : [],
+    createdAt: row.created_at || "",
+    expiresAt: row.expires_at || "",
+    lastSeenAt: row.last_seen_at || "",
+    requestCount: Number(row.request_count || 0),
+    clientIpHash: row.client_ip_hash || "",
+    userAgent: row.user_agent || "",
+    rotatedFrom: row.rotated_from || "",
+    revokedAt: row.revoked_at || "",
+    revokedBy: row.revoked_by || ""
   };
 }
 

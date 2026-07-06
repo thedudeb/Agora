@@ -2730,6 +2730,7 @@ let activeApiSessionsStatus = "";
 let activeApiSessionsLoading = false;
 let activeApiSessionsRefreshedAt = "";
 let activeApiSessionsAutoRefreshKey = "";
+let activeApiSessionSummary = null;
 let marketplaceApiCatalog = null;
 let marketplaceApiLoading = false;
 let realtimePollTimer = null;
@@ -4642,6 +4643,7 @@ function clearApiSession() {
   activeApiSessionsLoading = false;
   activeApiSessionsRefreshedAt = "";
   activeApiSessionsAutoRefreshKey = "";
+  activeApiSessionSummary = null;
   apiSessionStore.clear();
   stopRealtimePolling();
 }
@@ -4947,6 +4949,7 @@ async function refreshApiSessions(options = {}) {
     activeApiSessionsStatus = "Connect the API to manage sessions.";
     activeApiSessionsLoading = false;
     activeApiSessionsRefreshedAt = "";
+    activeApiSessionSummary = null;
     if (!options.silent) render();
     return null;
   }
@@ -4957,6 +4960,7 @@ async function refreshApiSessions(options = {}) {
   try {
     const result = await apiRequest("/api/auth/sessions");
     activeApiSessions = Array.isArray(result.sessions) ? result.sessions : [];
+    activeApiSessionSummary = result.summary || null;
     activeApiSessionsStatus = result.scope === "workspace" ? "Showing workspace sessions." : "Showing your sessions.";
     activeApiSessionsRefreshedAt = new Date().toISOString();
     activeApiSessionsLoading = false;
@@ -5014,6 +5018,49 @@ async function revokeApiSession(sessionId) {
     showToast("API session revoked", "success");
   } catch (error) {
     showToast(`Session revoke failed: ${error.message}`, "info");
+  }
+}
+
+async function rotateApiSession() {
+  if (!apiSession) {
+    showToast("Connect the API before rotating a session", "info");
+    return;
+  }
+  try {
+    const nextSession = await apiRequest("/api/auth/session/rotate", {
+      method: "POST"
+    });
+    saveApiSession({
+      ...nextSession,
+      apiHealth: apiSession.apiHealth,
+      backendHealth,
+      githubIntegrationStatus,
+      storageDriver: apiSession.storageDriver,
+      lastBackendCheckedAt: apiSession.lastBackendCheckedAt
+    });
+    activeApiSessionsAutoRefreshKey = "";
+    await refreshApiSessions({ silent: true });
+    render();
+    showToast("Current API token rotated", "success");
+  } catch (error) {
+    showToast(`Session rotation failed: ${error.message}`, "info");
+  }
+}
+
+async function revokeOtherApiSessions() {
+  if (!apiSession) {
+    showToast("Connect the API before revoking sessions", "info");
+    return;
+  }
+  try {
+    const result = await apiRequest("/api/auth/sessions/revoke-others", {
+      method: "POST"
+    });
+    await refreshApiSessions({ silent: true });
+    render();
+    showToast(result.revoked?.length ? `Revoked ${result.revoked.length} other session${result.revoked.length === 1 ? "" : "s"}` : "No other sessions to revoke", "success");
+  } catch (error) {
+    showToast(`Revoke other sessions failed: ${error.message}`, "info");
   }
 }
 
@@ -10350,6 +10397,8 @@ function renderSessionManagementPanel() {
   const statusText = activeApiSessionsStatus || (apiSession ? "Refresh to list active API sessions." : "Connect the API to manage sessions.");
   const currentSession = sessions.find((session) => session.current);
   const lastChecked = activeApiSessionsRefreshedAt ? formatTimestamp(activeApiSessionsRefreshedAt) : "Not checked";
+  const summary = activeApiSessionSummary || {};
+  const otherSessions = Number(summary.otherCurrentUserSessions || sessions.filter((session) => !session.current && session.user?.id === apiSession?.user?.id).length);
   return `
     <section class="panel access-panel">
       <div class="panel-header">
@@ -10357,7 +10406,11 @@ function renderSessionManagementPanel() {
           <p class="eyebrow">Tokens</p>
           <h2>Active sessions</h2>
         </div>
-        <button class="button button-secondary compact-button" type="button" id="api-sessions-refresh" ${apiSession && !activeApiSessionsLoading ? "" : "disabled"}>${activeApiSessionsLoading ? "Refreshing" : "Refresh"}</button>
+        <div class="portal-actions">
+          <button class="button button-secondary compact-button" type="button" id="api-session-rotate" ${apiSession && !activeApiSessionsLoading ? "" : "disabled"}>Rotate Token</button>
+          <button class="button button-secondary compact-button" type="button" id="api-sessions-revoke-others" ${apiSession && otherSessions > 0 && !activeApiSessionsLoading ? "" : "disabled"}>Revoke Others</button>
+          <button class="button button-secondary compact-button" type="button" id="api-sessions-refresh" ${apiSession && !activeApiSessionsLoading ? "" : "disabled"}>${activeApiSessionsLoading ? "Refreshing" : "Refresh"}</button>
+        </div>
       </div>
       <p class="panel-note">Agora shows hashed token ids only. Revoke sessions after MCP demos, shared config exposure, lost devices, or old browser sessions.</p>
       <div class="switcher-report-grid">
@@ -10368,18 +10421,18 @@ function renderSessionManagementPanel() {
         </article>
         <article>
           <span>Sessions</span>
-          <strong>${activeApiSessionsLoading ? "..." : sessions.length}</strong>
-          <small>${apiSession ? `Last checked ${escapeHtml(lastChecked)}.` : "No API session connected."}</small>
+          <strong>${activeApiSessionsLoading ? "..." : summary.active || sessions.length}</strong>
+          <small>${apiSession ? `${otherSessions} other for this user. Last checked ${escapeHtml(lastChecked)}.` : "No API session connected."}</small>
         </article>
         <article>
           <span>Current token</span>
           <strong>${escapeHtml(currentSession?.id || (apiSession ? "Connected" : "Offline"))}</strong>
-          <small>${currentSession ? "Revoking this signs out this browser." : "Refresh to match the current browser token."}</small>
+          <small>${currentSession ? `${currentSession.durable ? "Durable hash stored" : "Memory-only"}; revoking signs out this browser.` : "Refresh to match the current browser token."}</small>
         </article>
         <article>
-          <span>Token safety</span>
-          <strong>${apiSession ? "Hashed ids" : "Offline"}</strong>
-          <small>Raw API tokens are never rendered in the session list.</small>
+          <span>Hardening</span>
+          <strong>${summary.durablePersistence ? "Durable" : apiSession ? "Memory" : "Offline"}</strong>
+          <small>${summary.rotationSupported ? `Rotation on; ${summary.ttlHours || 8}h TTL.` : "Refresh Backend Health to verify controls."}</small>
         </article>
       </div>
       <div class="invitation-list">
@@ -10467,13 +10520,63 @@ function renderApiSessionRow(session) {
       </div>
       <div>
         <span class="status-pill ${session.current ? "inbox-green" : "inbox-neutral"}">${session.current ? "Current" : "Active"}</span>
+        <span class="status-pill ${session.durable ? "inbox-green" : "inbox-amber"}">${session.durable ? "Durable" : "Memory"}</span>
         <small>Created ${escapeHtml(formatTimestamp(session.createdAt))}</small>
         <small>Last seen ${escapeHtml(formatTimestamp(session.lastSeenAt || session.createdAt))}</small>
         <small>${Number(session.requestCount || 0)} request${Number(session.requestCount || 0) === 1 ? "" : "s"}${session.clientIpHash ? ` / client ${escapeHtml(session.clientIpHash)}` : ""}</small>
         <small>Expires ${escapeHtml(formatTimestamp(session.expiresAt))}</small>
+        ${session.rotatedFrom ? `<small>Rotated from ${escapeHtml(session.rotatedFrom)}</small>` : ""}
         <button class="button button-secondary compact-button" type="button" data-api-session-revoke="${escapeHtml(session.id)}" aria-label="${escapeHtml(revokeLabel)} ${escapeHtml(session.id)}">${escapeHtml(revokeLabel)}</button>
       </div>
     </article>
+  `;
+}
+
+function accountSecurityOverviewItems() {
+  const health = backendHealth || apiSession?.backendHealth || {};
+  const sessionHardening = health.sessionHardening || {};
+  const summary = activeApiSessionSummary || {};
+  const localSecureStore = Boolean(window.AGORA_DESKTOP?.secureSession || window.AGORA_DESKTOP?.offlineCapable);
+  return [
+    {
+      label: "Auth mode",
+      value: escapeHtml(health.auth || apiSession?.apiHealth?.auth || "local"),
+      tone: health.auth === "supabase" ? "green" : apiSession ? "blue" : "neutral",
+      detail: apiSession ? `${escapeHtml(apiSession.membership?.role || "member")} session connected` : "Connect the API to verify account posture."
+    },
+    {
+      label: "Session TTL",
+      value: escapeHtml(`${summary.ttlHours || sessionHardening.ttlHours || 8}h`),
+      tone: (summary.ttlHours || sessionHardening.ttlHours || 8) <= 12 ? "green" : "amber",
+      detail: `${summary.currentUserActive || sessionHardening.maxActiveForUser || 0} active for this user; ${summary.otherCurrentUserSessions || 0} other.`
+    },
+    {
+      label: "Token storage",
+      value: summary.durablePersistence || sessionHardening.durablePersistence ? "Hashed" : apiSession ? "Local" : "None",
+      tone: summary.durablePersistence || sessionHardening.durablePersistence ? "green" : apiSession ? "amber" : "neutral",
+      detail: summary.durablePersistence || sessionHardening.durablePersistence ? "Server persists hashed token ids only." : localSecureStore ? "Desktop secure storage is available." : "Browser session fallback is local to this profile."
+    },
+    {
+      label: "Controls",
+      value: summary.rotationSupported || sessionHardening.rotationSupported ? "Ready" : "Review",
+      tone: summary.rotationSupported || sessionHardening.rotationSupported ? "green" : "amber",
+      detail: "Rotate current token, revoke other sessions, or clear local storage."
+    }
+  ];
+}
+
+function renderAccountSecurityOverview() {
+  const items = accountSecurityOverviewItems();
+  return `
+    <div class="account-security-grid">
+      ${items.map((item) => `
+        <article>
+          <span class="status-pill inbox-${item.tone}">${escapeHtml(item.label)}</span>
+          <strong>${item.value}</strong>
+          <small>${item.detail}</small>
+        </article>
+      `).join("")}
+    </div>
   `;
 }
 
@@ -10492,6 +10595,7 @@ function renderApiAccountPanel() {
           <strong>${escapeHtml(apiConnectionLabel())}</strong>
           <p>${apiSession ? `${escapeHtml(realtimeStatusLabel())} - Last saved ${escapeHtml(apiLastSyncedLabel())}` : "Start the API server, create the workspace owner account, or connect as a demo member."}</p>
         </div>
+        ${renderAccountSecurityOverview()}
         <div class="api-sync-form">
           <label class="api-url-field">
             <span>API URL</span>
@@ -44749,6 +44853,18 @@ document.addEventListener("click", (event) => {
   const apiSessionsRefreshButton = event.target.closest("#api-sessions-refresh");
   if (apiSessionsRefreshButton) {
     refreshApiSessions();
+    return;
+  }
+
+  const apiSessionRotateButton = event.target.closest("#api-session-rotate");
+  if (apiSessionRotateButton) {
+    rotateApiSession();
+    return;
+  }
+
+  const apiSessionsRevokeOthersButton = event.target.closest("#api-sessions-revoke-others");
+  if (apiSessionsRevokeOthersButton) {
+    revokeOtherApiSessions();
     return;
   }
 
