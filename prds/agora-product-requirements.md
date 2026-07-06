@@ -6,6 +6,8 @@ Build Agora, an open source project management platform for teams that want Asan
 
 Current prototype note: Agora now has a dependency-free browser app, local API, JSON storage, optional Supabase persistence, account auth, invitations, roles, client portals, project/task views, time tracking, notifications, templates, automations, import/export, PWA shell support, and baseline accessibility features.
 
+Scope note, 2026-07-05: this PRD records the original first-release target. The active beta scope is now governed by [`docs/product-readiness-roadmap.md`](../docs/product-readiness-roadmap.md) and [`docs/release-candidate-v0.1-beta.md`](../docs/release-candidate-v0.1-beta.md). Features beyond the original MVP, including AI Operator, Project Autopilot, marketplace foundations, CLI/MCP, collaboration confidence tools, portfolio views, capacity planning, and sprint forecasting, are beta/platform readiness surfaces unless a release candidate explicitly promotes them into the core first-run workflow.
+
 ## Background
 
 - Modern teams often rely on SaaS tools such as Asana, Nifty, ClickUp, Monday, or Jira to manage projects, tasks, milestones, and collaboration.
@@ -94,11 +96,11 @@ Current prototype note: Agora now has a dependency-free browser app, local API, 
 
 ## Out of Scope
 
-- Native mobile apps for the first release.
-- Advanced enterprise portfolio management, resource forecasting, and capacity planning.
-- Built-in chat, video calls, whiteboards, docs suite, or full CRM functionality.
-- Full automation builder comparable to Zapier, Asana Rules, or ClickUp Automations.
-- Deep two-way integrations with every major SaaS tool in the initial launch.
+- Native mobile apps for the first release. Current mobile coverage is the installable offline PWA; native iOS and Android wrappers require separate release evidence.
+- Advanced enterprise portfolio management, resource forecasting, and capacity planning as required first-run features. Lightweight beta planning surfaces may ship behind the agency/client-work wedge.
+- Built-in chat, video calls, whiteboards, docs suite, or full CRM functionality as a full replacement for dedicated tools. Lightweight decision capture and client-work collaboration aids may exist when they support project execution.
+- Full automation builder comparable to Zapier, Asana Rules, or ClickUp Automations. Agora automations should remain previewable, auditable, reversible, and scoped to project-management workflows.
+- Deep two-way integrations with every major SaaS tool in the initial launch. Import/export, webhooks, CLI, MCP, and documented adapter contracts remain the preferred first integration layer.
 
 ## Open Questions
 

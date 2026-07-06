@@ -412,38 +412,8 @@ window.AGORA_RELEASE = AGORA_RELEASE;
 const RELEASE_EVIDENCE_INDEX_FALLBACK = Object.freeze({
   type: "agora.release-evidence-index",
   version: 1,
-  generatedAt: "2026-07-05T15:34:26.121Z",
-  bundles: [
-    {
-      id: "20260705T153426Z-3099231",
-      label: "Full local release evidence",
-      kind: "local-release",
-      path: "release/evidence/20260705T153426Z-3099231/README.md",
-      summaryPath: "release/evidence/20260705T153426Z-3099231/summary.json",
-      summary: {
-        type: "agora.release-evidence",
-        generatedAt: "2026-07-05T15:34:26.121Z",
-        branch: "main",
-        commit: "3099231",
-        dirty: false,
-        mode: "full",
-        ok: true,
-        bundleDir: "release/evidence/20260705T153426Z-3099231",
-        commands: [
-          { id: "release-check", label: "Release candidate discipline", command: "npm run release:check", ok: true, output: "release-check.txt" },
-          { id: "demo-check", label: "Hosted demo readiness", command: "npm run demo:check", ok: true, output: "demo-check.txt" },
-          { id: "distribution-check", label: "Distribution proof ledger", command: "npm run distribution:check", ok: true, output: "distribution-check.txt" },
-          { id: "beta-check", label: "Beta feedback loop", command: "npm run beta:check", ok: true, output: "beta-check.txt" },
-          { id: "package-check", label: "Packaging manifest", command: "npm run package:check", ok: true, output: "package-check.txt" },
-          { id: "trust", label: "Trust evidence", command: "npm run trust", ok: true, output: "trust.txt" },
-          { id: "golden-demo", label: "Acme demo browser golden path", command: "npm run test:golden", ok: true, output: "golden-demo.txt" },
-          { id: "golden-feedback", label: "Feedback browser golden path", command: "npm run test:golden", ok: true, output: "golden-feedback.txt" },
-          { id: "qa", label: "Full release QA", command: "npm run qa", ok: true, output: "qa.txt" },
-          { id: "security", label: "Security gate", command: "npm run security", ok: true, output: "security.txt" }
-        ]
-      }
-    }
-  ]
+  generatedAt: "",
+  bundles: []
 });
 
 let releaseEvidenceIndex = RELEASE_EVIDENCE_INDEX_FALLBACK;
@@ -19838,7 +19808,7 @@ function renderMobileAppPanel() {
           <div class="panel-header">
             <div>
               <p class="eyebrow">Native wrapper plan</p>
-              <h3>iOS and Android offline targets</h3>
+              <h3>Planned iOS and Android targets</h3>
             </div>
             <span class="status-pill inbox-blue">${nativeTargets.length} targets</span>
           </div>
@@ -19884,7 +19854,7 @@ function renderLandingPage() {
   const landingReleaseLabel = releaseStatus.risk ? "Beta proof in progress" : releaseStatus.pending ? "Beta-ready core" : "Beta ready";
   const ownershipRows = [
     ["Portability", "Full bundle", "JSON, CSV, Markdown, templates, automations, audit history, and operator context travel together."],
-    ["Offline", "5 app targets", "PWA, Mac, Windows, iOS, and Android share a local-first storage and retry queue contract."],
+    ["Offline", "PWA + desktop", "The PWA and Mac/Windows shell use the local-first storage and retry contract; native mobile wrappers stay on the roadmap."],
     ["AI", "Receipts", "Operator actions show rationale, data sources, permissions, audit trail, and undo where possible."],
     ["Migration", "Preview first", "Importer previews, mapping reports, local recovery snapshots, and rollback paths reduce switching risk."],
     ["Ecosystem", "Open edge", "CLI, MCP, plugins, integration playbooks, marketplace templates, and automation packs extend the core."]
@@ -21453,17 +21423,36 @@ function releaseEvidenceCommand(commandId) {
   return (localBundle?.summary?.commands || []).find((command) => command.id === commandId) || null;
 }
 
+function releaseMetadataCommit() {
+  return cleanString(AGORA_RELEASE.shortCommit || AGORA_RELEASE.commit || "");
+}
+
+function releaseEvidenceCommitMatches(releaseCommit, evidenceCommit) {
+  if (!releaseCommit || !evidenceCommit) return true;
+  return releaseCommit.startsWith(evidenceCommit) || evidenceCommit.startsWith(releaseCommit);
+}
+
 function releaseCockpitGates() {
   const hostedBundle = latestReleaseEvidenceBundle((bundle) => (bundle.summary?.type || bundle.kind || "").includes("hosted-demo"));
   const distributionBundle = latestReleaseEvidenceBundle((bundle) => (bundle.summary?.type || bundle.kind || "").includes("distribution"));
   const localBundle = latestReleaseEvidenceBundle((bundle) => (bundle.summary?.type || bundle.kind || "").includes("release-evidence") || (bundle.kind || "").includes("local-release"));
+  const releaseCommit = releaseMetadataCommit();
+  const evidenceCommit = cleanString(localBundle?.summary?.commit || "");
+  const evidenceDirty = Boolean(localBundle?.summary?.dirty);
+  const evidenceMismatch = Boolean(releaseCommit && evidenceCommit && !releaseEvidenceCommitMatches(releaseCommit, evidenceCommit));
+  const evidenceIntegrityIssue = evidenceDirty
+    ? `Latest local evidence was generated from a dirty worktree at ${evidenceCommit || "unknown commit"}.`
+    : evidenceMismatch
+      ? `Latest local evidence is for ${evidenceCommit}; release metadata points to ${releaseCommit}.`
+      : "";
   const commandGate = (id, label, detail, action) => {
     const command = releaseEvidenceCommand(id);
+    const passed = command?.ok && !evidenceIntegrityIssue;
     return {
       id,
       label,
-      status: command?.ok ? "pass" : "risk",
-      detail: command?.ok ? `${command.command || id} passed in ${localBundle?.summary?.bundleDir || "latest evidence"}.` : detail,
+      status: passed ? "pass" : "risk",
+      detail: command?.ok && evidenceIntegrityIssue ? evidenceIntegrityIssue : command?.ok ? `${command.command || id} passed in ${localBundle?.summary?.bundleDir || "latest evidence"}.` : detail,
       action
     };
   };
@@ -33500,7 +33489,7 @@ function openOwnershipAdvantageRows() {
     {
       title: "Offline-native continuity",
       proof: `${offlineItems.filter((item) => item.done).length}/${offlineItems.length} readiness checks`,
-      detail: "PWA, desktop, iOS, Android, and Windows targets share the same local-first storage and retry queue contract.",
+      detail: "PWA and Mac/Windows desktop targets share the local-first storage and retry queue contract; native mobile wrappers remain planned.",
       moat: "Work keeps moving when the network, vendor API, or hosted service is unavailable."
     },
     {

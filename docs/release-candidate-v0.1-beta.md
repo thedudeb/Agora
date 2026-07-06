@@ -37,27 +37,16 @@ npm run release:evidence
 
 ## Latest Local Evidence Bundle
 
-- Generated: 2026-07-05T15:34:26.121Z
-- Commit: 3099231
-- Dirty worktree: no
-- Mode: full
-- Status: PASS
-- Bundle: [release/evidence/20260705T153426Z-3099231](../release/evidence/20260705T153426Z-3099231/README.md)
+- Generated: pending from a clean release branch or release tag
+- Commit: pending
+- Dirty worktree: must be no
+- Mode: pending
+- Status: pending
+- Bundle: pending
 
-| Gate | Status | Evidence |
-| --- | --- | --- |
-| Release candidate discipline | PASS | [release-check.txt](../release/evidence/20260705T153426Z-3099231/release-check.txt) |
-| Hosted demo readiness | PASS | [demo-check.txt](../release/evidence/20260705T153426Z-3099231/demo-check.txt) |
-| Distribution proof ledger | PASS | [distribution-check.txt](../release/evidence/20260705T153426Z-3099231/distribution-check.txt) |
-| Beta feedback loop | PASS | [beta-check.txt](../release/evidence/20260705T153426Z-3099231/beta-check.txt) |
-| Packaging manifest | PASS | [package-check.txt](../release/evidence/20260705T153426Z-3099231/package-check.txt) |
-| Trust evidence | PASS | [trust.txt](../release/evidence/20260705T153426Z-3099231/trust.txt) |
-| Acme demo browser golden path | PASS | [golden-demo.txt](../release/evidence/20260705T153426Z-3099231/golden-demo.txt) |
-| Feedback browser golden path | PASS | [golden-feedback.txt](../release/evidence/20260705T153426Z-3099231/golden-feedback.txt) |
-| Full release QA | PASS | [qa.txt](../release/evidence/20260705T153426Z-3099231/qa.txt) |
-| Security gate | PASS | [security.txt](../release/evidence/20260705T153426Z-3099231/security.txt) |
+The previous local evidence bundle for `3099231` is retained under `release/evidence/20260705T153426Z-3099231/` for audit history, but it is no longer indexed as current release proof. Regenerate the local evidence bundle after scope/copy fixes land, then commit or attach the generated evidence to the release handoff.
 
-Manual evidence still required: hosted demo URL, hosted production verify, real device/offline checks, release backup, portable bundle, and beta tester follow-up.
+Manual evidence still required: clean local evidence bundle, hosted demo URL, hosted production verify, real device/offline checks, release backup, portable bundle, and beta tester follow-up.
 
 ## Latest Distribution Evidence Bundle
 

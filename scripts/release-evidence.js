@@ -70,6 +70,7 @@ async function main() {
   writeJson(path.join(bundleDir, "summary.json"), summary);
   fs.writeFileSync(path.join(bundleDir, "README.md"), renderBundleReadme(summary), "utf8");
 
+  updateEvidenceIndex(summary);
   if (updateDocs) updateReleaseCandidate(summary);
 
   console.log("");
@@ -174,7 +175,9 @@ ${summary.commands.map((command) => `| ${command.label} | ${command.ok ? "PASS" 
 Manual evidence still required: hosted demo URL, hosted production verify, real device/offline checks, release backup, portable bundle, and beta tester follow-up.
 `;
   const marker = "## Latest Local Evidence Bundle";
-  const nextHeading = "\n## Acme Demo Gate";
+  const nextHeading = current.includes("\n## Latest Distribution Evidence Bundle")
+    ? "\n## Latest Distribution Evidence Bundle"
+    : "\n## Acme Demo Gate";
   let updated;
   if (current.includes(marker)) {
     const start = current.indexOf(marker);
@@ -187,6 +190,30 @@ Manual evidence still required: hosted demo URL, hosted production verify, real 
   fs.writeFileSync(rcPath, updated, "utf8");
 }
 
+function updateEvidenceIndex(summary) {
+  const indexPath = path.join(ROOT, "release", "evidence", "index.json");
+  const current = fs.existsSync(indexPath) ? readJson(indexPath) : {};
+  const bundles = Array.isArray(current.bundles) ? current.bundles : [];
+  const nextBundle = {
+    id: path.basename(summary.bundleDir),
+    label: summary.mode === "full" ? "Full local release evidence" : summary.mode === "browser" ? "Browser release evidence" : "Local release evidence",
+    kind: "local-release",
+    path: `${summary.bundleDir}/README.md`,
+    summaryPath: `${summary.bundleDir}/summary.json`,
+    summary
+  };
+  const next = {
+    type: "agora.release-evidence-index",
+    version: 1,
+    generatedAt: summary.generatedAt,
+    bundles: [
+      nextBundle,
+      ...bundles.filter((bundle) => bundle?.id !== nextBundle.id && bundle?.summaryPath !== nextBundle.summaryPath)
+    ].slice(0, 10)
+  };
+  writeJson(indexPath, next);
+}
+
 function git(argsList) {
   const result = spawnSync("git", argsList, { cwd: ROOT, encoding: "utf8" });
   return result.status === 0 ? result.stdout.trim() : "";
@@ -194,4 +221,12 @@ function git(argsList) {
 
 function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+}
+
+function readJson(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
 }

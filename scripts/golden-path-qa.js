@@ -1126,7 +1126,7 @@ const routeChecks = [
       "Mobile app",
       "Install and alerts",
       "Native wrapper plan",
-      "iOS and Android offline targets",
+      "Planned iOS and Android targets",
       "Offline command center",
       "Phone jobs that must work without internet",
       "Desktop and mobile readiness",
