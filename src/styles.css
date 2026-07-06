@@ -2883,6 +2883,94 @@ body[data-tutorial-target="view"] #app-view {
   justify-self: start;
 }
 
+.client-proof-panel {
+  margin-bottom: 16px;
+}
+
+.client-proof-grid,
+.ownership-question-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.client-proof-grid article,
+.ownership-question-grid article {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.client-proof-grid article {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+}
+
+.client-proof-grid article.is-proven {
+  border-color: color-mix(in srgb, var(--green) 36%, var(--line));
+}
+
+.client-proof-grid article > span {
+  display: inline-flex;
+  justify-content: center;
+  min-width: 30px;
+  padding: 5px 8px;
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  font-weight: 900;
+  background: var(--accent-soft);
+  border-radius: 999px;
+}
+
+.client-proof-grid article.is-proven > span {
+  color: #ffffff;
+  background: var(--green);
+}
+
+.client-proof-grid div,
+.ownership-question-grid article {
+  min-width: 0;
+}
+
+.client-proof-grid strong,
+.client-proof-grid em,
+.client-proof-grid small,
+.ownership-question-grid strong,
+.ownership-question-grid small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.client-proof-grid em {
+  display: block;
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 800;
+}
+
+.client-proof-grid small,
+.ownership-question-grid small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.client-proof-grid .button {
+  grid-column: 2;
+  justify-self: start;
+}
+
+.ownership-question-grid {
+  margin-bottom: 12px;
+}
+
+.ownership-question-grid .status-pill {
+  justify-self: start;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -12855,6 +12943,8 @@ body[data-density="compact"] .main-content {
   .route-header,
   .workspace-trust-strip,
   .acme-receipt-grid,
+  .client-proof-grid,
+  .ownership-question-grid,
   .autopilot-hero,
   .command-inbox-hero,
   .launch-step-grid,
@@ -13013,6 +13103,8 @@ body[data-density="compact"] .main-content {
   .trust-grid,
   .command-inbox-brief,
   .pm-preference-grid,
+  .client-proof-grid,
+  .ownership-question-grid,
   .recovery-handoff-grid,
   .autopilot-hero-proof,
   .autopilot-scenario-grid,
@@ -13508,6 +13600,8 @@ body[data-density="compact"] .main-content {
   .notification-role-grid,
   .daily-command-digest-grid,
   .pm-preference-grid,
+  .client-proof-grid,
+  .ownership-question-grid,
   .recovery-handoff-grid,
   .plugin-readiness-strip,
   .plugin-card-grid,

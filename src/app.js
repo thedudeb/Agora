@@ -22743,6 +22743,98 @@ function pmCommandCenterData() {
   };
 }
 
+function clientDeliveryProofItems() {
+  const projects = activeProjects();
+  const tasks = activeTasks();
+  const visibleTasks = tasks.filter((task) => task.clientVisible || task.visibility === "client");
+  const activeApprovals = state.approvals.filter((approval) => approval.status !== "approved");
+  const requests = featureRequestTasks();
+  const visibility = clientVisibilityReviewData();
+  const recovery = portableRecoveryStatus();
+  const aiActions = Array.isArray(state.operatorActions) ? state.operatorActions : [];
+  const blockers = tasks.filter((task) => task.status === "blocked" || openTaskDependencies(task).length || isOverdue(task));
+  return [
+    {
+      id: "scope",
+      label: "Scope is real",
+      done: projects.length > 0 && tasks.length > 0,
+      value: `${projects.length} project${projects.length === 1 ? "" : "s"}`,
+      detail: tasks.length ? `${tasks.length} tasks are in the workspace.` : "Create or import the first client project.",
+      route: "project-backlog"
+    },
+    {
+      id: "flow",
+      label: "Work can move",
+      done: tasks.some((task) => task.status === "in-progress" || task.status === "review" || task.status === "done"),
+      value: `${tasks.filter((task) => task.status !== "done").length} open`,
+      detail: "Board/list/timeline views have enough task state to manage daily work.",
+      route: "board"
+    },
+    {
+      id: "client",
+      label: "Client packet is safe",
+      done: visibleTasks.length > 0 && visibility.warnings.length === 0,
+      value: `${visibleTasks.length} visible`,
+      detail: visibility.warnings.length ? `${visibility.warnings.length} warning${visibility.warnings.length === 1 ? "" : "s"} before sharing.` : "Client-visible work is explicit.",
+      route: "visibility"
+    },
+    {
+      id: "feedback",
+      label: "Approvals have a lane",
+      done: activeApprovals.length > 0 || requests.length > 0,
+      value: `${activeApprovals.length + requests.length} item${activeApprovals.length + requests.length === 1 ? "" : "s"}`,
+      detail: "Approvals, feature requests, and requester updates have visible owners.",
+      route: activeApprovals.length ? "visibility" : "feature-requests"
+    },
+    {
+      id: "recovery",
+      label: "Risk has a recovery path",
+      done: blockers.length > 0 || aiActions.length > 0,
+      value: `${blockers.length} signal${blockers.length === 1 ? "" : "s"}`,
+      detail: aiActions.length ? `${aiActions.length} operator actions are logged.` : "Autopilot can review drift before changes are applied.",
+      route: "autopilot"
+    },
+    {
+      id: "ownership",
+      label: "You can leave",
+      done: recovery.score >= Math.max(3, recovery.total - 1),
+      value: `${recovery.score}/${recovery.total}`,
+      detail: `${recovery.files.length} portable files and ${recovery.backups.length} backup${recovery.backups.length === 1 ? "" : "s"}.`,
+      route: "data"
+    }
+  ];
+}
+
+function renderClientDeliveryProofPanel() {
+  const items = clientDeliveryProofItems();
+  const doneCount = items.filter((item) => item.done).length;
+  return `
+    <section class="panel client-proof-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Client delivery golden path</p>
+          <h2>Can a team trust this for real client work?</h2>
+        </div>
+        <span class="status-pill ${doneCount === items.length ? "inbox-green" : "inbox-amber"}">${doneCount}/${items.length} proven</span>
+      </div>
+      <p class="panel-note">This is the product promise in one place: scope the project, move work, share only safe client context, capture approvals, recover drift, and leave with portable data.</p>
+      <div class="client-proof-grid">
+        ${items.map((item, index) => `
+          <article class="${item.done ? "is-proven" : "needs-proof"}">
+            <span>${index + 1}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <em>${escapeHtml(item.value)}</em>
+              <small>${escapeHtml(item.detail)}</small>
+            </div>
+            <button class="button button-secondary compact-button" type="button" data-route="${escapeHtml(item.route)}">${item.done ? "Review" : "Prove"}</button>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderPmCommandCenter() {
   const center = pmCommandCenterData();
   const atRiskProjects = center.projectRows.filter((row) => row.health < 75);
@@ -22772,6 +22864,8 @@ function renderPmCommandCenter() {
       nextLabel: "Scope the project",
       nextRoute: "project-backlog"
     })}
+
+    ${renderClientDeliveryProofPanel()}
 
     <div class="metric-grid">
       ${metric("Needs attention", center.attentionItems.length)}
@@ -33832,6 +33926,11 @@ function renderOpenOwnershipAdvantagePanel() {
         <p>Every serious workspace needs a visible answer to four questions: can we leave, can we recover, can we audit AI, and can we keep working offline?</p>
         <span>Agora answers those in-product.</span>
       </div>
+      <div class="data-actions ownership-actions">
+        <button class="button button-primary compact-button" type="button" data-route="data">Prove Portability</button>
+        <button class="button button-secondary compact-button" type="button" data-route="operator">Review AI Ledger</button>
+        <button class="button button-secondary compact-button" type="button" data-route="settings">Review Security</button>
+      </div>
     </section>
   `;
 }
@@ -34119,10 +34218,50 @@ function recoveryExportReadinessItems() {
   ];
 }
 
+function ownershipQuestionRows() {
+  const items = recoveryExportReadinessItems();
+  const byLabel = Object.fromEntries(items.map((item) => [item.label, item]));
+  const ai = aiOperatorTrustState();
+  const migrationPreview = normalizeSwitcherImportPreview(state.switcherImportPreview);
+  return [
+    {
+      question: "Can we leave?",
+      answer: byLabel["Portable bundle"]?.done ? "Yes" : "Not yet",
+      tone: byLabel["Portable bundle"]?.done ? "green" : "amber",
+      detail: byLabel["Portable bundle"]?.detail || "Download the portable bundle first."
+    },
+    {
+      question: "Can we recover?",
+      answer: byLabel["Fresh backup"]?.done ? "Yes" : "Create backup",
+      tone: byLabel["Fresh backup"]?.done ? "green" : "amber",
+      detail: byLabel["Fresh backup"]?.detail || "Create a rollback point before risky work."
+    },
+    {
+      question: "Can we switch tools safely?",
+      answer: migrationPreview ? `${migrationPreview.stats.confidence}% preview` : "Preview first",
+      tone: migrationPreview ? (migrationPreview.stats.confidence >= 80 ? "green" : "amber") : "neutral",
+      detail: migrationPreview ? `${migrationPreview.stats.tasks} tasks mapped with ${migrationPreview.warnings.length} warning${migrationPreview.warnings.length === 1 ? "" : "s"}.` : "Use Migration Studio before applying any external export."
+    },
+    {
+      question: "Can we audit AI?",
+      answer: ai.actionLedgerEntries ? `${ai.actionLedgerEntries} entries` : "No actions yet",
+      tone: ai.actionLedgerEntries ? "green" : "neutral",
+      detail: `${ai.auditMode}; ${ai.permissionSummary}.`
+    },
+    {
+      question: "Can we work offline?",
+      answer: byLabel["Offline contract"]?.done ? "Documented" : "Review",
+      tone: byLabel["Offline contract"]?.done ? "green" : "amber",
+      detail: byLabel["Offline contract"]?.detail || "Review offline app readiness before field use."
+    }
+  ];
+}
+
 function renderRecoveryExportReadinessPanel() {
   const items = recoveryExportReadinessItems();
   const doneCount = items.filter((item) => item.done).length;
   const nextAction = items.find((item) => !item.done) || items[1];
+  const questions = ownershipQuestionRows();
   return `
     <section class="panel recovery-handoff-panel">
       <div class="panel-header">
@@ -34133,6 +34272,15 @@ function renderRecoveryExportReadinessPanel() {
         <span class="status-pill ${doneCount === items.length ? "inbox-green" : "inbox-amber"}">${doneCount}/${items.length}</span>
       </div>
       <p class="panel-note">Use this as the preflight before customer imports, API restores, self-hosted handoff, or offline app testing. It calls out the next safest action instead of making users infer it from separate export panels.</p>
+      <div class="ownership-question-grid">
+        ${questions.map((item) => `
+          <article>
+            <span class="status-pill inbox-${item.tone}">${escapeHtml(item.answer)}</span>
+            <strong>${escapeHtml(item.question)}</strong>
+            <small>${escapeHtml(item.detail)}</small>
+          </article>
+        `).join("")}
+      </div>
       <div class="recovery-handoff-grid">
         ${items.map((item) => `
           <article class="${item.done ? "is-ready" : "needs-action"}">

@@ -232,7 +232,7 @@ For a fast local confidence check while iterating:
 npm run verify:quick
 ```
 
-For hosted Supabase installs, configure `.env`, run all three migrations, create the private storage bucket, then run:
+For hosted Supabase installs, configure `.env`, run all four migrations, create the private storage bucket, then run:
 
 ```sh
 npm run verify:hosted
@@ -284,7 +284,7 @@ Invitations and memberships can be assigned to a company. Scoped users only rece
 
 Use the Backend Health panel, or `GET /api/backend/health` with an authenticated bearer token, to confirm that Supabase storage, Supabase Auth, RLS-backed memberships, workspace snapshots, and structured records are reachable.
 
-After running both migrations and creating the private storage bucket, run `npm run test:supabase` to verify the real Supabase project through the Agora API. The verifier uses a unique temporary workspace by default and checks snapshots, structured records, notification scheduler permissions, payment entitlements, audit events, and Supabase Storage upload/download without deleting existing rows.
+After running the migrations and creating the private storage bucket, run `npm run test:supabase` to verify the real Supabase project through the Agora API. The verifier uses a unique temporary workspace by default and checks snapshots, structured records, notification scheduler permissions, payment entitlements, audit events, auth session persistence, and Supabase Storage upload/download without deleting existing rows.
 
 ## AI Operator
 
