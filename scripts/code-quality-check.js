@@ -19,8 +19,12 @@ function assertIncludes(relativePath, needle, message) {
 const packageJson = JSON.parse(read("package.json"));
 
 assert.ok(fs.existsSync(path.join(root, "src/project-launch.js")), "project launch module must exist");
+assert.ok(fs.existsSync(path.join(root, "src/project-launch.css")), "project launch stylesheet must exist");
 assert.ok(fs.existsSync(path.join(root, "server/api-contracts.js")), "API contract module must exist");
 assertIncludes("index.html", "./src/project-launch.js", "must load the launch module before app.js");
+assertIncludes("index.html", "./src/project-launch.css", "must load the launch stylesheet");
+assertIncludes("src/app.js", "function renderHtml", "must define a named render helper for HTML assignment");
+assertIncludes("src/app.js", 'renderHtml(els.appView, `', "launch route should use the named render helper");
 assertIncludes("server/api.js", 'require("./api-contracts")', "must import shared API contracts");
 assertIncludes("src/project-launch.js", "window.AgoraProjectLaunch", "must expose the launch module API");
 
@@ -30,7 +34,7 @@ assert.equal(packageJson.scripts["code:quality"], "node scripts/code-quality-che
 const ceilings = {
   "src/app.js": 47500,
   "server/api.js": 8600,
-  "src/styles.css": 14600
+  "src/styles.css": 14500
 };
 
 Object.entries(ceilings).forEach(([relativePath, ceiling]) => {

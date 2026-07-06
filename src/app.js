@@ -15476,6 +15476,12 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function renderHtml(element, html, label = "view") {
+  if (!element) return;
+  element.innerHTML = html;
+  element.dataset.renderedView = label;
+}
+
 function getFilteredTasks() {
   const query = state.filters.query.trim().toLowerCase();
   return activeTasks().filter((task) => {
@@ -21476,7 +21482,7 @@ function renderLaunchAutopilotDemoPanel() {
 function renderLaunchWorkspaceFlow() {
   const items = launchWorkspaceItems();
   const doneCount = items.filter((item) => item.done).length;
-  els.appView.innerHTML = `
+  renderHtml(els.appView, `
     ${renderRouteHeader({
       eyebrow: "Project launch",
       title: "Launch the first real project",
@@ -21510,7 +21516,7 @@ function renderLaunchWorkspaceFlow() {
         </div>
       </section>
     ` : ""}
-  `;
+  `, "launch-workspace-flow");
 }
 
 function readinessScore(items) {
