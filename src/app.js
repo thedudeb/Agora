@@ -6236,6 +6236,26 @@ function renderRouteHeader({ eyebrow = "", title, description = "", actions = []
   `;
 }
 
+function renderAcmePathGuide({ step, title, detail, proof, nextLabel = "", nextRoute = "", nextHref = "", commandId = "" }) {
+  return `
+    <section class="acme-path-guide">
+      <div>
+        <p class="eyebrow">Acme client-launch path / Step ${escapeHtml(step)}</p>
+        <h2>${escapeHtml(title)}</h2>
+        <p>${escapeHtml(detail)}</p>
+        <small>${escapeHtml(proof)}</small>
+      </div>
+      ${nextLabel ? `
+        <div class="route-header-actions">
+          ${nextHref
+            ? `<a class="button button-primary" href="${escapeHtml(nextHref)}">${escapeHtml(nextLabel)}</a>`
+            : `<button class="button button-primary" type="button" ${commandId ? `data-command-id="${escapeHtml(commandId)}"` : `data-route="${escapeHtml(nextRoute)}"`}>${escapeHtml(nextLabel)}</button>`}
+        </div>
+      ` : ""}
+    </section>
+  `;
+}
+
 function createBlankWorkspaceState(options = {}) {
   const blank = structuredClone(seedData);
   const owner = members[0];
@@ -22514,6 +22534,15 @@ function renderPmCommandCenter() {
       ]
     })}
 
+    ${renderAcmePathGuide({
+      step: "1 of 6",
+      title: "Start here: pick the PM action that protects the client launch.",
+      detail: center.attentionItems[0] ? `${center.attentionItems[0].title} is the first item to clear before you scope or share updates.` : "Nothing is urgent right now; use the next best actions to keep delivery moving.",
+      proof: "A tester should be able to name the next PM action within 10 minutes.",
+      nextLabel: "Scope the project",
+      nextRoute: "project-backlog"
+    })}
+
     <div class="metric-grid">
       ${metric("Needs attention", center.attentionItems.length)}
       ${metric("Overdue", center.overdueTasks.length)}
@@ -22690,6 +22719,15 @@ function renderClientVisibilityReview() {
         { label: "Preview as Client", id: "client-visibility-preview", primary: true, disabled: !selected },
         { label: "Open Command Center", route: "command-center" }
       ]
+    })}
+
+    ${renderAcmePathGuide({
+      step: "3 of 6",
+      title: "Confirm what the client can safely see.",
+      detail: warnings.length ? `${warnings.length} visibility warning${warnings.length === 1 ? "" : "s"} need PM review before sending.` : "The packet is clear of owner, due-date, reviewer, and approval warnings.",
+      proof: "A tester should be able to name what is shared with the client and what stays internal.",
+      nextLabel: "Inspect timeline risk",
+      nextHref: "?route=project&project=launch&tab=timeline"
     })}
 
     <div class="metric-grid">
@@ -27880,6 +27918,9 @@ function renderProjectBoard(tasks) {
 function renderProjectTimeline(project, tasks, milestones) {
   const datedTasks = tasks.filter((task) => task.dueDate);
   const undatedTasks = tasks.filter((task) => !task.dueDate);
+  const criticalTasks = tasks.filter((task) => ganttTaskRisk(task).critical);
+  const slippedTasks = tasks.filter((task) => ganttTaskRisk(task).slipped);
+  const blockedTasks = tasks.filter((task) => openTaskDependencies(task).length);
   const gantt = renderProjectGantt(project, tasks, milestones);
   const timelineItems = [
     project.startDate ? {
@@ -27932,6 +27973,15 @@ function renderProjectTimeline(project, tasks, milestones) {
           <button class="button button-secondary compact-button" type="button" data-export-timeline="json" data-project-id="${project.id}">Export JSON</button>
         </div>
       </div>
+
+      ${renderAcmePathGuide({
+        step: "4 of 6",
+        title: "Spot delivery risk before writing the client update.",
+        detail: `${criticalTasks.length} critical path item${criticalTasks.length === 1 ? "" : "s"}, ${slippedTasks.length} slipped item${slippedTasks.length === 1 ? "" : "s"}, and ${blockedTasks.length} dependency risk${blockedTasks.length === 1 ? "" : "s"} are visible in this plan.`,
+        proof: "A tester should be able to explain schedule risk without understanding the whole data model.",
+        nextLabel: "Draft client update",
+        nextRoute: "reports"
+      })}
 
       <div class="timeline-controls">
         <label>
@@ -30774,6 +30824,15 @@ function renderReports() {
       ${metric("RAID", openRaidItems.length)}
       ${metric("Tracked", formatDuration(sumMinutes(timeEntries)))}
     </div>
+
+    ${renderAcmePathGuide({
+      step: "5 of 6",
+      title: "Turn project truth into a client update.",
+      detail: `${blockedTasks.length} blocked, ${overdueTasks.length} overdue, and ${openRaidItems.length} open RAID item${openRaidItems.length === 1 ? "" : "s"} are already folded into the report below.`,
+      proof: "A tester should be able to copy a credible update without rebuilding status manually.",
+      nextLabel: "Prove recovery",
+      nextHref: "?route=data&demoAction=recoveryPlan"
+    })}
 
     <section class="panel status-report-panel">
       <div class="panel-header">
@@ -33879,6 +33938,15 @@ function renderDataManagement() {
       ]
     })}
 
+    ${renderAcmePathGuide({
+      step: "6 of 6",
+      title: "Leave with recovery proof.",
+      detail: backups.length ? `${backups.length} local backup${backups.length === 1 ? "" : "s"} exist; export a portable bundle before real customer work.` : "Create a backup and download a portable bundle before imports, browser resets, or API restores.",
+      proof: "A tester should trust that the workspace can be backed up, moved, restored, or self-hosted.",
+      nextLabel: "Create backup",
+      commandId: "backup:create"
+    })}
+
     <div class="metric-grid">
       ${metric("Projects", activeProjects().length)}
       ${metric("Tasks", activeTasks().length)}
@@ -36494,6 +36562,15 @@ function renderProjectBacklog() {
   const canManageProjects = canWrite("projects:write");
 
   els.appView.innerHTML = `
+    ${renderAcmePathGuide({
+      step: "2 of 6",
+      title: "Decide what becomes active delivery.",
+      detail: approved.length ? `${approved.length} approved request${approved.length === 1 ? "" : "s"} can be promoted when the team is ready.` : "Review impact, confidence, urgency, owner, and decision notes before any idea becomes active work.",
+      proof: "A tester should be able to tell proposed, approved, parked, rejected, and active work apart at a glance.",
+      nextLabel: "Review client visibility",
+      nextRoute: "visibility"
+    })}
+
     <div class="metric-grid">
       ${metric("Pipeline", activeIdeas.length)}
       ${metric("Approved", approved.length)}
