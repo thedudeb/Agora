@@ -36,6 +36,11 @@ const checks = [
     fix: "Link docs/beta-feedback-loop.md from beta notes and beta test script."
   }),
   check({
+    title: "Beta docs point testers at the accepted gaps board",
+    pass: notes.includes("known-gaps-v0.1-beta.md") && loopDoc.includes("release-candidate-v0.1-beta.md"),
+    fix: "Link docs/known-gaps-v0.1-beta.md from beta notes and keep accepted risks tied to the release candidate."
+  }),
+  check({
     title: "Beta test script scores the core Acme workflow before wishlist collection",
     pass: [
       "## Core Workflow Scorecard",

@@ -128,6 +128,8 @@ These are acceptable for v0.1 beta only if they remain clearly documented in rel
 - Hosted production launches require operator-provided Supabase, SMTP/webhook, backup, and domain configuration.
 - Real production upgrades require a fresh server backup and strict verification.
 
+Canonical accepted-gaps board: [`known-gaps-v0.1-beta.md`](./known-gaps-v0.1-beta.md)
+
 ## Release Notes
 
 Draft release notes: [`release-notes-v0.1-beta.md`](./release-notes-v0.1-beta.md)

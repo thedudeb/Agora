@@ -33,9 +33,11 @@ The v0.1 beta is for guided evaluation by project managers, self-hosters, and po
 - Public feedback is opt-in and should stay rate-limited.
 - Browser-local workspaces should not be the only copy of important work.
 
+Canonical accepted-gaps board: [`known-gaps-v0.1-beta.md`](./known-gaps-v0.1-beta.md)
+
 ## Verification Summary
 
-Latest local evidence bundle: [`release/evidence/20260705T153426Z-3099231`](../release/evidence/20260705T153426Z-3099231/README.md)
+Latest indexed local evidence bundle: [`release/evidence/20260706T022503Z-a078c4a`](../release/evidence/20260706T022503Z-a078c4a/README.md)
 
 Passed locally:
 

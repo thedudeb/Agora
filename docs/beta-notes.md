@@ -2,6 +2,8 @@
 
 Agora is ready for guided beta use by technical founders, small agencies, and self-hosting-minded teams. It is not yet a hands-off SaaS with production onboarding, billing enforcement, or managed support. Use [`beta-feedback-loop.md`](./beta-feedback-loop.md) to run tester intake, triage, and taskboard follow-up.
 
+Accepted beta gaps are tracked in [`known-gaps-v0.1-beta.md`](./known-gaps-v0.1-beta.md). Keep that board visible before widening beyond guided testers.
+
 ## What Works Best
 
 - Launch Flow gives a guided path for the first client workspace.
@@ -63,4 +65,4 @@ Agora is ready for guided beta use by technical founders, small agencies, and se
 - Run the manual [`beta-test-script.md`](./beta-test-script.md) on desktop and mobile width.
 - Confirm screenshots are current with `npm run screenshots`.
 - Confirm `npm run launch:check` passes.
-- Write down any accepted risks in release notes.
+- Confirm accepted risks are current in [`known-gaps-v0.1-beta.md`](./known-gaps-v0.1-beta.md) and release notes.
