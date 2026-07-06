@@ -23467,12 +23467,42 @@ function renderClientHandoffBrief(companyId) {
   const decisions = portalDecisionItems(companyId).slice(0, 3);
   const nextApprovals = portal.pendingApprovals.slice(0, 3);
   const nextTasks = portal.openTasks.slice(0, 4);
+  const flow = clientCollaborationFlow(companyId);
+  const sharedAssets = [...portal.documents, ...portal.files];
   const latestUpdate = portal.updatedAt ? formatTimestamp(portal.updatedAt) : "No recent update";
   const handoffActions = [
     ...(!readiness.ready ? readiness.blockers.slice(0, 3).map((blocker) => ({ tone: "amber", label: "Fix visibility", detail: blocker })) : []),
     ...(!link && readiness.ready ? [{ tone: "blue", label: "Generate link", detail: "Create a client-scoped portal link before sending the packet." }] : []),
     ...(nextApprovals.length ? [{ tone: "amber", label: "Client review", detail: `${nextApprovals.length} approval${nextApprovals.length === 1 ? "" : "s"} need a response.` }] : []),
     ...(!portal.updatedAt ? [{ tone: "neutral", label: "Draft update", detail: "Add a recent status note before the client review." }] : [])
+  ];
+  const nextClientAsk = nextApprovals[0]?.title || decisions[0]?.approval.title || "No client decision waiting";
+  const nextTeamFollowup = flow.teamOwesClient[0]?.title?.replace(/^Feature request:\s*/i, "") || handoffActions[0]?.detail || "No PM follow-up is blocking send.";
+  const summaryCards = [
+    {
+      label: "Send verdict",
+      value: readiness.ready ? "Ready" : "Review",
+      detail: readiness.ready ? "Visibility warnings are clear." : readiness.blockers[0],
+      tone: readiness.ready ? "green" : "amber"
+    },
+    {
+      label: "Client ask",
+      value: nextApprovals.length + decisions.length,
+      detail: nextClientAsk,
+      tone: nextApprovals.length + decisions.length ? "amber" : "green"
+    },
+    {
+      label: "Shared proof",
+      value: sharedAssets.length,
+      detail: `${portal.progress}% complete / ${latestUpdate}`,
+      tone: sharedAssets.length ? "blue" : "neutral"
+    },
+    {
+      label: "PM follow-up",
+      value: flow.teamOwesClient.length || handoffActions.length,
+      detail: nextTeamFollowup,
+      tone: flow.teamOwesClient.length || handoffActions.length ? "amber" : "green"
+    }
   ];
 
   return `
@@ -23487,6 +23517,16 @@ function renderClientHandoffBrief(companyId) {
           <button class="button button-secondary compact-button" type="button" data-copy-portal-packet="${escapeHtml(companyId)}" ${readiness.ready ? "" : "disabled"}>Copy Packet</button>
           <button class="button button-primary compact-button" type="button" data-email-portal-packet="${escapeHtml(companyId)}" ${readiness.ready ? "" : "disabled"}>Email Draft</button>
         </div>
+      </div>
+
+      <div class="client-handoff-summary-grid">
+        ${summaryCards.map((card) => `
+          <article>
+            <span class="status-pill inbox-${card.tone}">${escapeHtml(card.label)}</span>
+            <strong>${escapeHtml(String(card.value))}</strong>
+            <small>${escapeHtml(card.detail || "No detail available.")}</small>
+          </article>
+        `).join("")}
       </div>
 
       <div class="client-handoff-grid">

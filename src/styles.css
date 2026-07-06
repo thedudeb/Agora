@@ -10536,6 +10536,34 @@ body[data-tutorial-target="view"] #app-view {
   gap: 14px;
 }
 
+.client-handoff-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.client-handoff-summary-grid article {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.client-handoff-summary-grid article strong {
+  font-size: 1.45rem;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.client-handoff-summary-grid article small {
+  color: var(--muted);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .client-handoff-grid {
   display: grid;
   grid-template-columns: minmax(220px, 0.8fr) repeat(2, minmax(0, 1fr));
@@ -13280,6 +13308,7 @@ body[data-density="compact"] .main-content {
   .client-visibility-contrast-grid,
   .client-visibility-compare-grid,
   .client-collaboration-flow-grid,
+  .client-handoff-summary-grid,
   .client-handoff-grid,
   .project-command-grid,
   .project-next-action-grid,
@@ -13788,6 +13817,7 @@ body[data-density="compact"] .main-content {
   .client-visibility-contrast-grid,
   .client-visibility-compare-grid,
   .client-collaboration-flow-grid,
+  .client-handoff-summary-grid,
   .client-handoff-grid,
   .project-hero,
   .project-health-header,
