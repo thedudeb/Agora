@@ -8276,6 +8276,7 @@ function renderOnboardingPanel() {
       </div>
       ${renderActivationLoop()}
       ${renderProjectManagementPreferencePicker()}
+      ${renderProjectManagementPreferenceReceipt()}
       ${renderFirstRunCommandCenter()}
       ${renderGuidedEvaluationChecklist()}
       ${renderFirstValuePath()}
@@ -8851,6 +8852,54 @@ function renderProjectManagementPreferencePicker() {
             <em>${preference.id === state.onboarding?.pmPreference ? "Applied" : "Set this up"}</em>
           </button>
         `).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderProjectManagementPreferenceReceipt() {
+  const selected = onboardingProjectManagementPreference();
+  if (!selected) return "";
+
+  const automationCount = (selected.automationKinds || []).length;
+  const routeLabel = selected.projectTab === "timeline"
+    ? "Project Timeline"
+    : selected.route === "visibility"
+      ? "Client Visibility"
+      : selected.route === "sprint"
+        ? "Sprint"
+        : selected.route === "board"
+          ? "Board"
+          : selected.route === "list"
+            ? "List"
+            : "Workspace";
+  const applied = [
+    `${selected.dashboardName || selected.label} dashboard`,
+    `${selected.boardTemplate || "default"} workflow columns`,
+    selected.board?.swimlane && selected.board.swimlane !== "none" ? `${selected.board.swimlane} swimlanes` : "simple swimlane-free board",
+    `${automationCount} safeguard automation${automationCount === 1 ? "" : "s"}`,
+    selected.savedViewName ? `${selected.savedViewName} saved view` : "starter saved view"
+  ];
+
+  return `
+    <div class="pm-preference-receipt">
+      <div>
+        <p class="eyebrow">Applied setup</p>
+        <h3>${escapeHtml(selected.label)} is now the workspace default.</h3>
+        <p>${escapeHtml(selected.detail)}</p>
+      </div>
+      <div class="pm-receipt-grid">
+        ${applied.map((item) => `
+          <article>
+            <span>Ready</span>
+            <strong>${escapeHtml(item)}</strong>
+          </article>
+        `).join("")}
+      </div>
+      <div class="pm-receipt-actions">
+        <span>Next best screen: ${escapeHtml(routeLabel)}</span>
+        <button class="button button-primary compact-button" type="button" data-onboarding-action="pm-open">Open ${escapeHtml(routeLabel)}</button>
+        <button class="button button-secondary compact-button" type="button" data-onboarding-action="pm-style">Change Style</button>
       </div>
     </div>
   `;
@@ -17667,6 +17716,23 @@ function applyProjectManagementPreference(preferenceId) {
   showToast(`${preference.label} setup applied`, "success");
 }
 
+function openProjectManagementPreferenceHome() {
+  const preference = onboardingProjectManagementPreference();
+  if (!preference) {
+    handleOnboardingAction("pm-style");
+    return;
+  }
+
+  state.selectedRoute = preference.route;
+  if (preference.projectTab) state.selectedProjectTab = preference.projectTab;
+  if (!preference.projectTab && preference.route !== "project") state.selectedProjectTab = "overview";
+  if (preference.route === "project" && activeProjects()[0]) state.selectedProject = activeProjects()[0].id;
+  openSidebarGroupForRoute(preference.route);
+  saveState();
+  render();
+  showToast(`${preference.label} workspace opened`, "success");
+}
+
 function openGuidedEvaluationStep(stepId) {
   const item = guidedEvaluationItems().find((candidate) => candidate.id === stepId);
   if (!item) return;
@@ -17724,6 +17790,11 @@ function handleOnboardingAction(action) {
     saveState();
     render();
     showToast("Choose a project management style from the First run panel", "info");
+    return;
+  }
+
+  if (action === "pm-open") {
+    openProjectManagementPreferenceHome();
     return;
   }
 

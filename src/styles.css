@@ -1601,6 +1601,66 @@ body[data-tutorial-target="view"] #app-view {
   font-weight: 900;
 }
 
+.pm-preference-receipt {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--accent-soft) 38%, var(--surface));
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+}
+
+.pm-preference-receipt h3,
+.pm-preference-receipt p {
+  margin: 0;
+}
+
+.pm-preference-receipt p:not(.eyebrow) {
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.pm-receipt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.pm-receipt-grid article {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.pm-receipt-grid span,
+.pm-receipt-actions span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.pm-receipt-grid strong {
+  line-height: 1.25;
+}
+
+.pm-receipt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.pm-receipt-actions span {
+  margin-right: auto;
+}
+
 .launch-checklist {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
