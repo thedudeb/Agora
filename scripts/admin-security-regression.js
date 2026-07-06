@@ -78,12 +78,15 @@ assert(app.includes("function redactExportInvitations"), "portable exports must 
 assert(app.includes("function redactExportPortalLinks"), "portable exports must redact portal link tokens");
 assert(!app.includes('searchParams.set("token", apiSession.token)'), "realtime events must not put bearer tokens in URLs");
 assert(app.includes("connectRealtimeStream(connection)") && app.includes("Authorization: `Bearer ${apiSession.token}`"), "realtime events must authenticate with bearer headers");
-assert(api.includes('assertRateLimit(request, "invitation-lookup", 12);'), "public invitation lookup must be rate limited");
+assert(api.includes('await assertRateLimit(request, "invitation-lookup", 12);'), "public invitation lookup must be rate limited");
 assert(api.includes("function assertAuthenticatedRequestRateLimits"), "authenticated API mutations must pass through user rate limits");
 assert(api.includes("function assertRealtimeConnectionLimit"), "realtime streams must enforce concurrent connection limits");
 assert(api.includes('response.setHeader("Retry-After"'), "rate-limited API responses must include Retry-After");
 assert(api.includes('id: "api-rate-limit-coverage"'), "backend health must expose API rate-limit coverage");
+assert(api.includes("incrementRateLimitBucket") && api.includes("AGORA_RATE_LIMIT_DRIVER"), "API must support a distributed rate-limit adapter");
+assert(hostedVerifier.includes("function checkRateLimiting") && hostedVerifier.includes("AGORA_RATE_LIMIT_DRIVER=supabase"), "hosted verifier must require distributed or edge rate limits");
 assert(envExample.includes("AGORA_AUTHENTICATED_WRITE_RATE_LIMIT_ATTEMPTS"), ".env.example must document authenticated write rate limits");
+assert(envExample.includes("AGORA_RATE_LIMIT_DRIVER=memory"), ".env.example must document rate limit driver selection");
 assert(api.includes("function authorizedClientAiBaseUrl") && api.includes("AGORA_AI_ALLOWED_BASE_URLS"), "client AI base URLs must be admin gated and allowlisted");
 assert(api.includes("function localCorsOriginsAllowed()"), "localhost CORS origins must be environment gated");
 assert(hostedVerifier.includes("function checkCorsPolicy()"), "hosted verifier must fail unsafe production CORS policy");

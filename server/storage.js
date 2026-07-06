@@ -110,6 +110,24 @@ function createJsonStorage(options = {}) {
     return writeJson("auth-sessions.json", Array.isArray(authSessions) ? authSessions.slice(0, 500) : []);
   }
 
+  async function incrementRateLimitBucket({ key, windowMs }) {
+    const now = Date.now();
+    const safeKey = String(key || "").slice(0, 240);
+    const resetAt = new Date(now + Number(windowMs || 60000)).toISOString();
+    const buckets = readJson("rate-limit-buckets.json", {});
+    Object.keys(buckets).forEach((bucketKey) => {
+      if (Date.parse(buckets[bucketKey]?.resetAt || "") <= now) delete buckets[bucketKey];
+    });
+    const current = buckets[safeKey];
+    const currentReset = Date.parse(current?.resetAt || "");
+    const nextBucket = current && Number.isFinite(currentReset) && currentReset > now
+      ? { count: Number(current.count || 0) + 1, resetAt: current.resetAt }
+      : { count: 1, resetAt };
+    buckets[safeKey] = nextBucket;
+    writeJson("rate-limit-buckets.json", buckets);
+    return nextBucket;
+  }
+
   async function loadRecords(collectionKey, filters = {}) {
     const snapshot = await loadWorkspaceSnapshot();
     const records = Array.isArray(snapshot[collectionKey]) ? snapshot[collectionKey] : [];
@@ -148,6 +166,7 @@ function createJsonStorage(options = {}) {
     saveBackgroundJobs,
     loadAuthSessions,
     saveAuthSessions,
+    incrementRateLimitBucket,
     loadRecords,
     loadRecordPage,
     upsertRecord,
@@ -317,6 +336,22 @@ function createSupabaseStorage(options = {}) {
     return Array.isArray(rows) ? rows.map(fromSupabaseAuthSessionRow).filter(Boolean) : [];
   }
 
+  async function incrementRateLimitBucket({ key, windowMs }) {
+    const rows = await request("rpc/agora_increment_rate_limit", "", {
+      method: "POST",
+      body: {
+        p_workspace_id: workspaceId,
+        p_key: String(key || "").slice(0, 240),
+        p_window_ms: Math.max(1000, Math.round(Number(windowMs || 60000)))
+      }
+    });
+    const row = Array.isArray(rows) ? rows[0] : rows;
+    return {
+      count: Number(row?.count || 0),
+      resetAt: row?.reset_at || row?.resetAt || new Date(Date.now() + Number(windowMs || 60000)).toISOString()
+    };
+  }
+
   async function loadRecords(collectionKey, filters = {}) {
     const table = recordTables[collectionKey];
     if (!table) throw new Error(`Unsupported record collection: ${collectionKey}`);
@@ -386,6 +421,7 @@ function createSupabaseStorage(options = {}) {
     saveBackgroundJobs,
     loadAuthSessions,
     saveAuthSessions,
+    incrementRateLimitBucket,
     loadRecords,
     loadRecordPage,
     upsertRecord,

@@ -8,7 +8,9 @@ const ROOT = path.resolve(__dirname, "..");
 const REQUIRED_MIGRATIONS = [
   "server/migrations/001_supabase_storage.sql",
   "server/migrations/002_supabase_auth_rls.sql",
-  "server/migrations/003_background_jobs.sql"
+  "server/migrations/003_background_jobs.sql",
+  "server/migrations/004_auth_sessions.sql",
+  "server/migrations/005_rate_limit_buckets.sql"
 ];
 
 const args = parseArgs(process.argv.slice(2));

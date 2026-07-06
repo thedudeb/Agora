@@ -38,6 +38,7 @@ const EXPENSIVE_API_RATE_LIMIT_WINDOW_MS = positiveNumber(process.env.AGORA_EXPE
 const REALTIME_CONNECTION_LIMIT_PER_SESSION = positiveNumber(process.env.AGORA_REALTIME_CONNECTION_LIMIT_PER_SESSION, 6);
 const REALTIME_CONNECTION_LIMIT_PER_IP = positiveNumber(process.env.AGORA_REALTIME_CONNECTION_LIMIT_PER_IP, 30);
 const RATE_LIMIT_MAX_KEYS = positiveNumber(process.env.AGORA_RATE_LIMIT_MAX_KEYS, 5000);
+const RATE_LIMIT_DRIVER = cleanString(process.env.AGORA_RATE_LIMIT_DRIVER || "memory").toLowerCase();
 const API_VERSION = packageJson.version || "0.1.0";
 const BACKUP_SCHEMA_VERSION = 1;
 
@@ -113,6 +114,8 @@ const requestMetrics = {
 };
 const realtimeClients = new Set();
 let activeRateLimitPolicy = normalizeRateLimitPolicy();
+let activeRateLimitStorage = null;
+let lastRateLimitStorageError = "";
 const BACKGROUND_JOB_MAX_QUEUE = positiveNumber(process.env.AGORA_BACKGROUND_JOB_MAX_QUEUE, 100);
 const BACKGROUND_JOB_BASE_RETRY_MS = positiveNumber(process.env.AGORA_BACKGROUND_JOB_BASE_RETRY_MS, 5000);
 const BACKGROUND_JOB_MAX_RETRY_MS = positiveNumber(process.env.AGORA_BACKGROUND_JOB_MAX_RETRY_MS, 60000);
@@ -167,7 +170,11 @@ function clientIp(request) {
 }
 
 function normalizeRateLimitPolicy(overrides = {}) {
+  const driver = cleanString(overrides.driver || RATE_LIMIT_DRIVER || "memory").toLowerCase();
+  const edgeProtected = overrides.edgeProtected ?? envFlag("AGORA_EDGE_RATE_LIMITS_ENABLED", false);
   return {
+    driver: ["memory", "supabase"].includes(driver) ? driver : "memory",
+    edgeProtected: Boolean(edgeProtected),
     auth: {
       attempts: positiveNumber(overrides.auth?.attempts, AUTH_RATE_LIMIT_ATTEMPTS),
       windowMs: positiveNumber(overrides.auth?.windowMs, AUTH_RATE_LIMIT_WINDOW_MS)
@@ -213,29 +220,51 @@ function pruneRateLimits(now = Date.now()) {
     .forEach(([key]) => rateLimits.delete(key));
 }
 
-function assertRateLimit(request, scope, limit = AUTH_RATE_LIMIT_ATTEMPTS, windowMs = AUTH_RATE_LIMIT_WINDOW_MS, options = {}) {
+async function assertRateLimit(request, scope, limit = AUTH_RATE_LIMIT_ATTEMPTS, windowMs = AUTH_RATE_LIMIT_WINDOW_MS, options = {}) {
   if (!limit || limit < 1) return;
   const now = Date.now();
-  pruneRateLimits(now);
   const key = options.includeIp === false ? cleanString(scope) : `${clientIp(request)}:${cleanString(scope)}`;
-  const current = rateLimits.get(key);
-  if (!current || current.resetAt <= now) {
-    rateLimits.set(key, { count: 1, resetAt: now + windowMs });
-    return;
-  }
+  const policy = options.policy || activeRateLimitPolicy;
+  const bucket = await incrementRateLimitBucket(key, windowMs, policy, now);
 
-  current.count += 1;
-  if (current.count > limit) {
-    const retryAfterSeconds = Math.max(1, Math.ceil((current.resetAt - now) / 1000));
+  if (bucket.count > limit) {
+    const resetAtMs = Date.parse(bucket.resetAt || "");
+    const retryAfterSeconds = Math.max(1, Math.ceil(((Number.isFinite(resetAtMs) ? resetAtMs : now + windowMs) - now) / 1000));
     publicError(429, "Too many attempts. Please wait before trying again.", {
       retryAfterSeconds,
       rateLimit: {
         scope: cleanString(scope),
         limit,
-        resetAt: new Date(current.resetAt).toISOString()
+        resetAt: bucket.resetAt || new Date(now + windowMs).toISOString()
       }
     });
   }
+}
+
+async function incrementRateLimitBucket(key, windowMs, policy = activeRateLimitPolicy, now = Date.now()) {
+  if (policy.driver === "supabase" && activeRateLimitStorage?.driver === "supabase" && typeof activeRateLimitStorage.incrementRateLimitBucket === "function") {
+    try {
+      const bucket = await activeRateLimitStorage.incrementRateLimitBucket({ key, windowMs });
+      lastRateLimitStorageError = "";
+      return {
+        count: Number(bucket.count || 0),
+        resetAt: bucket.resetAt || new Date(now + windowMs).toISOString()
+      };
+    } catch (error) {
+      lastRateLimitStorageError = error.message || "Supabase rate limiter unavailable";
+    }
+  }
+
+  pruneRateLimits(now);
+  const current = rateLimits.get(key);
+  if (!current || current.resetAt <= now) {
+    const bucket = { count: 1, resetAt: now + windowMs };
+    rateLimits.set(key, bucket);
+    return { count: bucket.count, resetAt: new Date(bucket.resetAt).toISOString() };
+  }
+
+  current.count += 1;
+  return { count: current.count, resetAt: new Date(current.resetAt).toISOString() };
 }
 
 function isAuthenticatedMutation(method) {
@@ -260,13 +289,13 @@ function isExpensiveApiRequest(method, pathname) {
   ].includes(pathname);
 }
 
-function assertAuthenticatedRequestRateLimits(request, session, url, policy = activeRateLimitPolicy) {
+async function assertAuthenticatedRequestRateLimits(request, session, url, policy = activeRateLimitPolicy) {
   const userId = cleanString(session.user?.id || "unknown");
   if (isAuthenticatedMutation(request.method)) {
-    assertRateLimit(request, `auth-write:${userId}`, policy.authenticatedWrite.attempts, policy.authenticatedWrite.windowMs, { includeIp: false });
+    await assertRateLimit(request, `auth-write:${userId}`, policy.authenticatedWrite.attempts, policy.authenticatedWrite.windowMs, { includeIp: false, policy });
   }
   if (isExpensiveApiRequest(request.method, url.pathname)) {
-    assertRateLimit(request, `auth-expensive:${userId}`, policy.expensive.attempts, policy.expensive.windowMs, { includeIp: false });
+    await assertRateLimit(request, `auth-expensive:${userId}`, policy.expensive.attempts, policy.expensive.windowMs, { includeIp: false, policy });
   }
 }
 
@@ -282,9 +311,14 @@ function assertRealtimeConnectionLimit(request, session, policy = activeRateLimi
 
 function rateLimitSnapshot(policy = activeRateLimitPolicy) {
   pruneRateLimits();
+  const supabaseStorageReady = activeRateLimitStorage?.driver === "supabase" && typeof activeRateLimitStorage.incrementRateLimitBucket === "function";
   return {
-    mode: "in-memory",
-    distributed: false,
+    mode: policy.driver === "supabase" && supabaseStorageReady && !lastRateLimitStorageError ? "supabase" : "in-memory",
+    configuredDriver: policy.driver,
+    distributed: policy.driver === "supabase" && supabaseStorageReady && !lastRateLimitStorageError,
+    edgeProtected: policy.edgeProtected,
+    storage: activeRateLimitStorage?.driver || "none",
+    fallbackReason: lastRateLimitStorageError,
     retryAfterHeader: true,
     trackedKeys: rateLimits.size,
     maxKeys: policy.maxKeys,
@@ -1109,6 +1143,8 @@ function createServer(options = {}) {
   initializeAuthSessions(storage);
   const rateLimitPolicy = normalizeRateLimitPolicy(options.rateLimits);
   activeRateLimitPolicy = rateLimitPolicy;
+  activeRateLimitStorage = storage;
+  lastRateLimitStorageError = "";
   const allowDemoAuth = options.allowDemoAuth ?? envFlag("AGORA_DEMO_AUTH", false);
   const allowPasswordlessAuth = options.allowPasswordlessAuth ?? envFlag("AGORA_PASSWORDLESS_AUTH", false);
 
@@ -1166,13 +1202,13 @@ function createServer(options = {}) {
       }
 
       if (request.method === "GET" && url.pathname === "/api/capabilities") {
-        assertRateLimit(request, "public-discovery", rateLimitPolicy.publicRead.attempts, rateLimitPolicy.publicRead.windowMs);
+        await assertRateLimit(request, "public-discovery", rateLimitPolicy.publicRead.attempts, rateLimitPolicy.publicRead.windowMs);
         sendJson(response, 200, apiCapabilitiesDocument());
         return;
       }
 
       if (request.method === "GET" && url.pathname === "/api/openapi.json") {
-        assertRateLimit(request, "public-discovery", rateLimitPolicy.publicRead.attempts, rateLimitPolicy.publicRead.windowMs);
+        await assertRateLimit(request, "public-discovery", rateLimitPolicy.publicRead.attempts, rateLimitPolicy.publicRead.windowMs);
         sendJson(response, 200, openApiDocument());
         return;
       }
@@ -1182,7 +1218,7 @@ function createServer(options = {}) {
           sendError(response, 404, "Demo auth is disabled");
           return;
         }
-        assertRateLimit(request, "demo-login", 20, rateLimitPolicy.auth.windowMs);
+        await assertRateLimit(request, "demo-login", 20, rateLimitPolicy.auth.windowMs);
         const body = await readJsonBody(request);
         const memberId = body.memberId || "mara";
         const user = demoUsers.find((item) => item.id === memberId);
@@ -1203,7 +1239,7 @@ function createServer(options = {}) {
           return;
         }
         const body = await readJsonBody(request);
-        assertRateLimit(request, `passwordless:${normalizeEmail(body.email)}`, rateLimitPolicy.auth.attempts, rateLimitPolicy.auth.windowMs);
+        await assertRateLimit(request, `passwordless:${normalizeEmail(body.email)}`, rateLimitPolicy.auth.attempts, rateLimitPolicy.auth.windowMs);
         const session = await createEmailSession(storage, body.email);
         sendJson(response, 200, publicSessionPayload(session));
         return;
@@ -1211,7 +1247,7 @@ function createServer(options = {}) {
 
       if (request.method === "POST" && url.pathname === "/api/auth/password-login") {
         const body = await readJsonBody(request);
-        assertRateLimit(request, `password:${normalizeEmail(body.email)}`, rateLimitPolicy.auth.attempts, rateLimitPolicy.auth.windowMs);
+        await assertRateLimit(request, `password:${normalizeEmail(body.email)}`, rateLimitPolicy.auth.attempts, rateLimitPolicy.auth.windowMs);
         const session = await createPasswordSession(storage, body.email, body.password);
         sendJson(response, 200, publicSessionPayload(session));
         return;
@@ -1219,7 +1255,7 @@ function createServer(options = {}) {
 
       if (request.method === "POST" && url.pathname === "/api/auth/password-reset/request") {
         const body = await readJsonBody(request);
-        assertRateLimit(request, `password-reset:${normalizeEmail(body.email)}`, 5, rateLimitPolicy.auth.windowMs);
+        await assertRateLimit(request, `password-reset:${normalizeEmail(body.email)}`, 5, rateLimitPolicy.auth.windowMs);
         const result = await requestPasswordReset(storage, body.email);
         sendJson(response, 200, result);
         return;
@@ -1227,14 +1263,14 @@ function createServer(options = {}) {
 
       if (request.method === "POST" && url.pathname === "/api/auth/password-reset/confirm") {
         const body = await readJsonBody(request);
-        assertRateLimit(request, `password-reset-confirm:${normalizeEmail(body.email)}`, rateLimitPolicy.auth.attempts, rateLimitPolicy.auth.windowMs);
+        await assertRateLimit(request, `password-reset-confirm:${normalizeEmail(body.email)}`, rateLimitPolicy.auth.attempts, rateLimitPolicy.auth.windowMs);
         const result = await confirmPasswordReset(storage, body);
         sendJson(response, 200, result);
         return;
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/signup") {
-        assertRateLimit(request, "signup", 5, rateLimitPolicy.auth.windowMs);
+        await assertRateLimit(request, "signup", 5, rateLimitPolicy.auth.windowMs);
         const body = await readJsonBody(request);
         const session = await createOwnerAccount(storage, body);
         sendJson(response, 201, publicSessionPayload(session));
@@ -1242,7 +1278,7 @@ function createServer(options = {}) {
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/supabase-login") {
-        assertRateLimit(request, "supabase-login", rateLimitPolicy.auth.attempts, rateLimitPolicy.auth.windowMs);
+        await assertRateLimit(request, "supabase-login", rateLimitPolicy.auth.attempts, rateLimitPolicy.auth.windowMs);
         const body = await readJsonBody(request);
         const session = await createSupabaseSessionFromAccessToken(storage, body.accessToken);
         sendJson(response, 200, publicSessionPayload(session));
@@ -1250,7 +1286,7 @@ function createServer(options = {}) {
       }
 
       if (request.method === "POST" && url.pathname === "/api/auth/supabase-password-signup") {
-        assertRateLimit(request, "supabase-password-signup", 5, rateLimitPolicy.auth.windowMs);
+        await assertRateLimit(request, "supabase-password-signup", 5, rateLimitPolicy.auth.windowMs);
         const body = await readJsonBody(request);
         const result = await createSupabasePasswordAccount(storage, body);
         sendJson(response, result.pendingConfirmation ? 202 : 201, publicSessionPayload(result));
@@ -1259,7 +1295,7 @@ function createServer(options = {}) {
 
       if (request.method === "POST" && url.pathname === "/api/auth/supabase-password-login") {
         const body = await readJsonBody(request);
-        assertRateLimit(request, `supabase-password:${normalizeEmail(body.email)}`, rateLimitPolicy.auth.attempts, rateLimitPolicy.auth.windowMs);
+        await assertRateLimit(request, `supabase-password:${normalizeEmail(body.email)}`, rateLimitPolicy.auth.attempts, rateLimitPolicy.auth.windowMs);
         const session = await createSupabasePasswordSession(storage, body);
         sendJson(response, 200, publicSessionPayload(session));
         return;
@@ -1267,7 +1303,7 @@ function createServer(options = {}) {
 
       const invitationAcceptMatch = url.pathname.match(/^\/api\/invitations\/([^/]+)\/accept$/);
       if (invitationAcceptMatch && request.method === "POST") {
-        assertRateLimit(request, "invitation-accept", 12);
+        await assertRateLimit(request, "invitation-accept", 12);
         const body = await readJsonBody(request);
         const session = await acceptInvitation(storage, decodeURIComponent(invitationAcceptMatch[1]), body.name, body.password);
         sendJson(response, 200, publicSessionPayload(session));
@@ -1276,7 +1312,7 @@ function createServer(options = {}) {
 
       const publicInvitationMatch = url.pathname.match(/^\/api\/invitations\/([^/]+)$/);
       if (publicInvitationMatch && request.method === "GET") {
-        assertRateLimit(request, "invitation-lookup", 12);
+        await assertRateLimit(request, "invitation-lookup", 12);
         const invitation = await getInvitation(storage, decodeURIComponent(publicInvitationMatch[1]));
         sendJson(response, 200, { invitation });
         return;
@@ -1284,7 +1320,7 @@ function createServer(options = {}) {
 
       const publicPortalLinkMatch = url.pathname.match(/^\/api\/portal-links\/validate\/([^/]+)$/);
       if (publicPortalLinkMatch && request.method === "GET") {
-        assertRateLimit(request, "public-portal-link", rateLimitPolicy.publicPortal.attempts, rateLimitPolicy.publicPortal.windowMs);
+        await assertRateLimit(request, "public-portal-link", rateLimitPolicy.publicPortal.attempts, rateLimitPolicy.publicPortal.windowMs);
         const result = await validatePortalLink(storage, decodeURIComponent(publicPortalLinkMatch[1]));
         sendJson(response, 200, result);
         return;
@@ -1292,7 +1328,7 @@ function createServer(options = {}) {
 
       const publicPortalActionMatch = url.pathname.match(/^\/api\/portal-links\/actions\/([^/]+)$/);
       if (publicPortalActionMatch && request.method === "POST") {
-        assertRateLimit(request, "public-portal-action", rateLimitPolicy.publicPortal.attempts, rateLimitPolicy.publicPortal.windowMs);
+        await assertRateLimit(request, "public-portal-action", rateLimitPolicy.publicPortal.attempts, rateLimitPolicy.publicPortal.windowMs);
         const body = await readJsonBody(request, PUBLIC_FEATURE_BODY_LIMIT_BYTES);
         const result = await handlePortalLinkAction(storage, decodeURIComponent(publicPortalActionMatch[1]), body);
         sendJson(response, 201, result);
@@ -1304,7 +1340,7 @@ function createServer(options = {}) {
           sendError(response, 404, "Public feature requests are disabled");
           return;
         }
-        assertRateLimit(request, "public-feature-config", rateLimitPolicy.publicRead.attempts, rateLimitPolicy.publicRead.windowMs);
+        await assertRateLimit(request, "public-feature-config", rateLimitPolicy.publicRead.attempts, rateLimitPolicy.publicRead.windowMs);
         const config = await publicFeatureRequestConfig(storage);
         sendJson(response, 200, config);
         return;
@@ -1315,28 +1351,28 @@ function createServer(options = {}) {
           sendError(response, 404, "Public feature requests are disabled");
           return;
         }
-        assertRateLimit(request, "public-feature-request", rateLimitPolicy.publicFeature.attempts, rateLimitPolicy.publicFeature.windowMs);
+        await assertRateLimit(request, "public-feature-request", rateLimitPolicy.publicFeature.attempts, rateLimitPolicy.publicFeature.windowMs);
         const body = await readJsonBody(request, PUBLIC_FEATURE_BODY_LIMIT_BYTES);
         if (cleanString(body.website || body.url || body.companyWebsite)) {
           sendJson(response, 202, { ok: true, accepted: false });
           return;
         }
         const email = optionalEmail(body.email);
-        if (email) assertRateLimit(request, `public-feature-email:${email}`, rateLimitPolicy.publicFeature.emailAttempts, 60 * 60 * 1000);
+        if (email) await assertRateLimit(request, `public-feature-email:${email}`, rateLimitPolicy.publicFeature.emailAttempts, 60 * 60 * 1000);
         const result = await createPublicFeatureRequest(storage, body);
         sendJson(response, 201, result);
         return;
       }
 
       if (request.method === "GET" && url.pathname === "/api/integrations/github/status") {
-        assertRateLimit(request, "public-github-status", rateLimitPolicy.publicRead.attempts, rateLimitPolicy.publicRead.windowMs);
+        await assertRateLimit(request, "public-github-status", rateLimitPolicy.publicRead.attempts, rateLimitPolicy.publicRead.windowMs);
         const snapshot = await storage.loadWorkspaceSnapshot();
         sendJson(response, 200, githubIntegrationStatus(snapshot, storage));
         return;
       }
 
       if (request.method === "POST" && url.pathname === "/api/integrations/github/webhook") {
-        assertRateLimit(request, "github-webhook", 120, 60 * 1000);
+        await assertRateLimit(request, "github-webhook", 120, 60 * 1000);
         const body = await readJsonBodyWithRaw(request, 1024 * 1024);
         try {
           verifyGitHubWebhookSignature(storage, request, body.raw);
@@ -1365,7 +1401,7 @@ function createServer(options = {}) {
 
       const session = await requireSession(request, response, storage);
       if (!session) return;
-      assertAuthenticatedRequestRateLimits(request, session, url, rateLimitPolicy);
+      await assertAuthenticatedRequestRateLimits(request, session, url, rateLimitPolicy);
 
       if (request.method === "GET" && url.pathname === "/api/realtime/events") {
         if (!hasPermission(session, "workspace:read")) {
@@ -2276,9 +2312,12 @@ async function buildBackendHealth(storage, session) {
     {
       id: "api-rate-limit-coverage",
       label: "API rate limit coverage",
-      done: limiter.retryAfterHeader && limiter.categories.authenticatedWrite.attempts <= 500 && limiter.categories.expensive.attempts <= 60,
-      detail: `${limiter.mode} limiter; writes ${limiter.categories.authenticatedWrite.attempts}/${limiter.categories.authenticatedWrite.windowSeconds}s; expensive ${limiter.categories.expensive.attempts}/${limiter.categories.expensive.windowSeconds}s; realtime ${limiter.categories.realtime.perSession}/session`,
-      fix: "Keep authenticated write and expensive-operation limits bounded; use edge, Redis, or provider limits for multi-instance hosted deployments."
+      done: limiter.retryAfterHeader
+        && limiter.categories.authenticatedWrite.attempts <= 500
+        && limiter.categories.expensive.attempts <= 60
+        && (!productionTarget || limiter.distributed || limiter.edgeProtected),
+      detail: `${limiter.mode} limiter${limiter.edgeProtected ? " with edge protection" : ""}; writes ${limiter.categories.authenticatedWrite.attempts}/${limiter.categories.authenticatedWrite.windowSeconds}s; expensive ${limiter.categories.expensive.attempts}/${limiter.categories.expensive.windowSeconds}s; realtime ${limiter.categories.realtime.perSession}/session${limiter.fallbackReason ? `; fallback: ${limiter.fallbackReason}` : ""}`,
+      fix: "Set AGORA_RATE_LIMIT_DRIVER=supabase after migration 005, or set AGORA_EDGE_RATE_LIMITS_ENABLED=true only when edge/provider limits protect every API worker."
     },
     {
       id: "strict-csp",

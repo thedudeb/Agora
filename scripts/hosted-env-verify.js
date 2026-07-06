@@ -57,6 +57,7 @@ function hostedEnvironmentReport(options = {}) {
     checkEmailDelivery(),
     checkAiProvider(),
     checkPublicFeatureRequests(options),
+    checkRateLimiting(),
     checkGithubWebhook(options),
     checkOperationalLimits()
   ];
@@ -272,6 +273,23 @@ function checkPublicFeatureRequests(options = {}) {
     done: !enabled || saneLimits,
     detail: enabled ? `${ipLimit} IP attempts, ${emailLimit} email attempts, ${Math.round(bodyLimit / 1024)}KB body cap` : "Public feature requests are disabled",
     fix: "Keep public feature request body, IP, and email limits low before sharing the public feedback URL."
+  });
+}
+
+function checkRateLimiting() {
+  const driver = env("AGORA_RATE_LIMIT_DRIVER") || "memory";
+  const edgeProtected = boolEnv("AGORA_EDGE_RATE_LIMITS_ENABLED");
+  const writes = positiveNumber(env("AGORA_AUTHENTICATED_WRITE_RATE_LIMIT_ATTEMPTS"), 240);
+  const expensive = positiveNumber(env("AGORA_EXPENSIVE_API_RATE_LIMIT_ATTEMPTS"), 30);
+  const realtimeSession = positiveNumber(env("AGORA_REALTIME_CONNECTION_LIMIT_PER_SESSION"), 6);
+  const sharedCounters = driver === "supabase";
+  const saneLimits = writes <= 500 && expensive <= 60 && realtimeSession <= 12;
+  return gate({
+    id: "rate-limit-driver",
+    label: "Distributed rate limiting",
+    done: saneLimits && (sharedCounters || edgeProtected),
+    detail: `${driver} limiter${edgeProtected ? " with edge/provider protection" : ""}; writes ${writes}/window; expensive ${expensive}/window; realtime ${realtimeSession}/session`,
+    fix: "Set AGORA_RATE_LIMIT_DRIVER=supabase after running migration 005, or set AGORA_EDGE_RATE_LIMITS_ENABLED=true only when provider/edge limits protect every API worker."
   });
 }
 

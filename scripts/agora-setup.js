@@ -142,7 +142,7 @@ function nextSteps(profile) {
   if (profile === "hosted") {
     return [
       "fill Supabase, SMTP, origin, and backup secrets in .env",
-      "run server/migrations/001, 002, and 003 in Supabase",
+      "run server/migrations/001 through 005 in Supabase",
       "npm run verify:hosted",
       "npm run rehearse:hosted"
     ];

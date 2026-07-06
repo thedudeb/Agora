@@ -33,7 +33,7 @@ Recommended first production sequence:
 
 1. Deploy the static app and API behind HTTPS.
 2. Set the required production environment variables below.
-3. Configure Supabase storage/auth and run migrations `001`, `002`, `003`, and `004`.
+3. Configure Supabase storage/auth and run migrations `001`, `002`, `003`, `004`, and `005`.
 4. Configure SMTP or password-reset webhook delivery.
 5. Sign in, open Settings > Account, and use Hosted onboarding to complete owner, API sync, invite, email, feedback, and recovery checks.
 6. Before upgrades or migration changes, run `npm run verify:upgrade`; for new launches, run `npm run verify:production -- --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict`, refresh Backend Health, and confirm production gates, email diagnostics, background jobs, structured records, backups, and Supabase mode are green.
@@ -121,8 +121,9 @@ For the dedicated setup guide, troubleshooting table, and pre-launch gate, see [
 3. Run `server/migrations/002_supabase_auth_rls.sql`.
 4. Run `server/migrations/003_background_jobs.sql`.
 5. Run `server/migrations/004_auth_sessions.sql`.
-6. Create a private Storage bucket named `agora-files`.
-7. Set:
+6. Run `server/migrations/005_rate_limit_buckets.sql`.
+7. Create a private Storage bucket named `agora-files`.
+8. Set:
 
 ```sh
 AGORA_STORAGE_DRIVER=supabase
@@ -195,6 +196,8 @@ Invitations and feature requests use the same SMTP settings. Set `AGORA_FEATURE_
 The API also applies in-memory rate limits to public discovery/config reads, authenticated write bursts, expensive operations such as backups/imports/uploads/AI/scheduler/payment actions, and concurrent realtime streams. `429` responses include `Retry-After`. Tune these with:
 
 ```sh
+AGORA_RATE_LIMIT_DRIVER=memory
+AGORA_EDGE_RATE_LIMITS_ENABLED=false
 AGORA_PUBLIC_READ_RATE_LIMIT_ATTEMPTS=120
 AGORA_PUBLIC_READ_RATE_LIMIT_WINDOW_MS=60000
 AGORA_AUTHENTICATED_WRITE_RATE_LIMIT_ATTEMPTS=240
@@ -206,7 +209,7 @@ AGORA_REALTIME_CONNECTION_LIMIT_PER_IP=30
 AGORA_RATE_LIMIT_MAX_KEYS=5000
 ```
 
-For multi-instance hosted deployments, keep these app-level limits but add an edge, Redis, Upstash, or provider-level limiter so counters are shared across workers.
+For multi-instance hosted deployments, keep these app-level limits and either set `AGORA_RATE_LIMIT_DRIVER=supabase` after running migration `005_rate_limit_buckets.sql`, or add an edge, Redis, Upstash, or provider-level limiter and set `AGORA_EDGE_RATE_LIMITS_ENABLED=true` to document that every API worker is protected.
 
 Invitation, feature request, and requester update emails are queued through persisted background job state. JSON deployments store this in `background-jobs.json`; Supabase deployments store it in `agora_background_jobs` after migration `003_background_jobs.sql`. API sessions store only hashed token identifiers in `agora_auth_sessions` after migration `004_auth_sessions.sql`, which keeps session rotation and revocation durable across restarts. Tune queue pressure and retry timing with:
 
