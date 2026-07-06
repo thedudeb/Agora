@@ -15779,6 +15779,129 @@ function clientShareReadiness(companyId) {
   };
 }
 
+function clientPacketFreshness(portal) {
+  if (!portal?.updatedAt) {
+    return {
+      done: false,
+      label: "No update",
+      detail: "Add a recent client-visible update before sending the packet."
+    };
+  }
+  const fresh = isRecentTimestamp(portal.updatedAt, 7 * 24);
+  return {
+    done: fresh,
+    label: fresh ? "Fresh" : "Stale",
+    detail: fresh
+      ? `Latest client-visible update was ${formatTimestamp(portal.updatedAt)}.`
+      : `Latest client-visible update was ${formatTimestamp(portal.updatedAt)}; refresh the packet before sending.`
+  };
+}
+
+function clientSendReadinessStatus(companyId) {
+  const readiness = clientShareReadiness(companyId);
+  const portal = companyPortalSnapshot(companyId);
+  const link = activeClientPortalLink(companyId) || latestClientPortalLink(companyId);
+  const linkStatus = clientPortalLinkStatus(link);
+  const linkReady = linkStatus === "active";
+  const freshness = clientPacketFreshness(portal);
+  const nextAskCount = portal.pendingApprovals.length + portal.openTasks.filter(isFeatureRequestTask).length;
+  const items = [
+    {
+      id: "packet",
+      label: "Visible packet",
+      done: readiness.visibleItems.length > 0,
+      value: `${readiness.visibleItems.length} item${readiness.visibleItems.length === 1 ? "" : "s"}`,
+      detail: readiness.visibleItems.length ? "Shared and client-visible records are ready for review." : "Mark at least one task, approval, doc, file, or decision as shared."
+    },
+    {
+      id: "cleanup",
+      label: "Cleanup blockers",
+      done: readiness.blockers.length === 0,
+      value: readiness.blockers.length ? `${readiness.blockers.length} blocker${readiness.blockers.length === 1 ? "" : "s"}` : "Clear",
+      detail: readiness.blockers[0] || "Owners, due dates, reviewers, and approval state are clear."
+    },
+    {
+      id: "link",
+      label: "Portal link",
+      done: linkReady,
+      value: linkReady ? "Active" : linkStatus === "missing" ? "Missing" : clientPortalStatusLabel(linkStatus),
+      detail: linkReady ? `Expires ${formatFullDate(link.expiresAt)}.` : "Generate or rotate a client-scoped portal link before sending."
+    },
+    {
+      id: "freshness",
+      label: "Update freshness",
+      done: freshness.done,
+      value: freshness.label,
+      detail: freshness.detail
+    },
+    {
+      id: "ask",
+      label: "Client ask",
+      done: nextAskCount > 0,
+      value: nextAskCount ? `${nextAskCount} ask${nextAskCount === 1 ? "" : "s"}` : "None",
+      detail: nextAskCount ? "Approvals or requests make the next client action explicit." : "Add an approval, request, or next ask so the packet is actionable."
+    }
+  ];
+  const blockers = [
+    ...readiness.blockers,
+    ...(!linkReady ? ["No active portal link."] : []),
+    ...(!freshness.done ? [freshness.detail] : []),
+    ...(!nextAskCount ? ["No explicit client ask is included."] : [])
+  ];
+  return {
+    readiness,
+    portal,
+    link,
+    linkStatus,
+    items,
+    blockers,
+    ready: items.every((item) => item.done)
+  };
+}
+
+function clientPortalStatusLabel(status) {
+  return {
+    active: "Active",
+    stale: "Packet changed",
+    expired: "Expired",
+    revoked: "Revoked",
+    missing: "Missing",
+    redacted: "Redacted"
+  }[status] || "Missing";
+}
+
+function renderClientSendReadinessPanel(companyId) {
+  const status = clientSendReadinessStatus(companyId);
+  const nextBlocker = status.blockers[0] || "Packet is ready to send.";
+  return `
+    <section class="panel client-send-readiness-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Send readiness</p>
+          <h2>${status.ready ? "Ready to send this client packet" : "Clean this up before sending"}</h2>
+        </div>
+        <span class="status-pill ${status.ready ? "inbox-green" : "inbox-amber"}">${status.ready ? "Ready" : `${status.blockers.length} blocker${status.blockers.length === 1 ? "" : "s"}`}</span>
+      </div>
+      <p class="panel-note">${escapeHtml(nextBlocker)}</p>
+      <div class="client-send-readiness-grid">
+        ${status.items.map((item) => `
+          <article class="${item.done ? "is-ready" : "needs-action"}">
+            <span>${item.done ? "OK" : "Fix"}</span>
+            <strong>${escapeHtml(item.label)}</strong>
+            <em>${escapeHtml(item.value)}</em>
+            <small>${escapeHtml(item.detail)}</small>
+          </article>
+        `).join("")}
+      </div>
+      <div class="data-actions">
+        <button class="button ${status.ready ? "button-primary" : "button-secondary"} compact-button" type="button" data-preview-client-company="${escapeHtml(companyId)}">Preview as Client</button>
+        <button class="button button-secondary compact-button" type="button" data-copy-portal-packet="${escapeHtml(companyId)}" ${status.ready ? "" : "disabled"}>Copy Packet</button>
+        <button class="button button-secondary compact-button" type="button" data-generate-portal-link="${escapeHtml(companyId)}" ${status.readiness.ready && status.linkStatus !== "active" ? "" : "disabled"}>Generate Link</button>
+      </div>
+    </section>
+  `;
+}
+
 function clientShareEmailDraft(companyId) {
   const company = byId(state.companies, companyId);
   if (!company) return "";
@@ -23009,6 +23132,7 @@ function renderClientVisibilityReview() {
   const visiblePacket = selected ? selected.items : review.items;
   const warnings = selected ? selected.warnings : review.warnings;
   const auditRows = clientVisibilityAuditEvents(selected?.company.id);
+  const selectedSendReadiness = selected ? clientSendReadinessStatus(selected.company.id) : null;
 
   els.appView.innerHTML = `
     ${renderRouteHeader({
@@ -23024,7 +23148,11 @@ function renderClientVisibilityReview() {
     ${renderAcmePathGuide({
       step: "3 of 6",
       title: "Confirm what the client can safely see.",
-      detail: warnings.length ? `${warnings.length} visibility warning${warnings.length === 1 ? "" : "s"} need PM review before sending.` : "The packet is clear of owner, due-date, reviewer, and approval warnings.",
+      detail: selectedSendReadiness
+        ? selectedSendReadiness.ready
+          ? "The selected client packet is ready to preview and send."
+          : `${selectedSendReadiness.blockers.length} send blocker${selectedSendReadiness.blockers.length === 1 ? "" : "s"} need PM review before sending.`
+        : warnings.length ? `${warnings.length} visibility warning${warnings.length === 1 ? "" : "s"} need PM review before sending.` : "The packet is clear of owner, due-date, reviewer, and approval warnings.",
       proof: "A tester should be able to name what is shared with the client and what stays internal.",
       nextLabel: "Inspect timeline risk",
       nextHref: "?route=project&project=launch&tab=timeline"
@@ -23040,6 +23168,7 @@ function renderClientVisibilityReview() {
 
     ${renderTrustMoment("visibility")}
 
+    ${selected ? renderClientSendReadinessPanel(selected.company.id) : ""}
     ${selected ? `<section class="panel">${renderClientShareComposer(selected.company.id)}</section>` : ""}
     ${selected ? renderClientHandoffBrief(selected.company.id) : ""}
 

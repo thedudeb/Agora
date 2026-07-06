@@ -10341,6 +10341,75 @@ body[data-tutorial-target="view"] #app-view {
   margin: 0;
 }
 
+.client-send-readiness-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.client-send-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.client-send-readiness-grid article {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.client-send-readiness-grid article.is-ready {
+  border-color: color-mix(in srgb, var(--green) 36%, var(--line));
+}
+
+.client-send-readiness-grid article.needs-action {
+  border-color: color-mix(in srgb, var(--amber) 40%, var(--line));
+}
+
+.client-send-readiness-grid span {
+  justify-self: start;
+  padding: 3px 7px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.client-send-readiness-grid article.is-ready span {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 34%, var(--line));
+}
+
+.client-send-readiness-grid article.needs-action span {
+  color: var(--amber);
+  border-color: color-mix(in srgb, var(--amber) 38%, var(--line));
+}
+
+.client-send-readiness-grid strong,
+.client-send-readiness-grid em,
+.client-send-readiness-grid small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.client-send-readiness-grid em {
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 900;
+}
+
+.client-send-readiness-grid small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .client-handoff-panel {
   display: grid;
   gap: 14px;
@@ -13085,6 +13154,7 @@ body[data-density="compact"] .main-content {
   .company-detail-grid,
   .portal-grid,
   .client-portal-grid,
+  .client-send-readiness-grid,
   .client-handoff-grid,
   .project-command-grid,
   .project-next-action-grid,
@@ -13588,6 +13658,7 @@ body[data-density="compact"] .main-content {
   .company-detail-grid,
   .portal-grid,
   .client-portal-grid,
+  .client-send-readiness-grid,
   .client-handoff-grid,
   .project-hero,
   .project-health-header,
