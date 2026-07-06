@@ -26422,26 +26422,72 @@ function renderClientShareComposer(companyId) {
   `;
 }
 
+function clientPortalLinkStateItems(link, status) {
+  const sourceLabel = link ? clientPortalLinkSourceLabel(link) : (apiSession ? "Hosted" : "Device-local");
+  const active = status === "active";
+  return [
+    {
+      label: "Access",
+      value: clientPortalStatusLabel(status),
+      detail: active ? "Client access is available." : status === "stale" ? "Packet changed after this link was created." : status === "missing" ? "Generate a scoped link when ready." : "Client access is blocked.",
+      tone: active ? "green" : status === "stale" || status === "expired" ? "amber" : "neutral"
+    },
+    {
+      label: "Source",
+      value: sourceLabel,
+      detail: link?.source === "api" ? "Hosted link with server-side revoke and event tracking." : "Device-local link stored in this workspace.",
+      tone: link?.source === "api" ? "blue" : "neutral"
+    },
+    {
+      label: "Last viewed",
+      value: link?.viewedAt ? formatTimestamp(link.viewedAt) : "No views",
+      detail: link?.viewCount ? `${link.viewCount} total view${link.viewCount === 1 ? "" : "s"}.` : "No client has opened this link yet.",
+      tone: link?.viewedAt ? "green" : "neutral"
+    },
+    {
+      label: "Copied",
+      value: link?.copiedAt ? formatTimestamp(link.copiedAt) : "Not copied",
+      detail: link?.copiedAt ? "A share URL was copied from this workspace." : "Copy activity has not been recorded.",
+      tone: link?.copiedAt ? "blue" : "neutral"
+    },
+    {
+      label: "Email draft",
+      value: link?.emailedAt ? formatTimestamp(link.emailedAt) : "Not sent",
+      detail: link?.emailedAt ? "An email draft was opened for this link." : "No email draft activity has been recorded.",
+      tone: link?.emailedAt ? "blue" : "neutral"
+    },
+    {
+      label: "Expiry",
+      value: link?.expiresAt ? formatFullDate(link.expiresAt) : "No link",
+      detail: active ? "Rotate when the packet changes or access should be refreshed." : link?.revokedAt ? `Revoked ${formatTimestamp(link.revokedAt)}.` : "Generate or rotate before sharing.",
+      tone: active ? "green" : "neutral"
+    }
+  ];
+}
+
 function renderClientPortalLinkPanel(companyId) {
   const readiness = clientShareReadiness(companyId);
   const link = activeClientPortalLink(companyId) || latestClientPortalLink(companyId);
   const status = clientPortalLinkStatus(link);
   const active = status === "active";
-  const statusLabel = {
-    active: "Active",
-    stale: "Packet changed",
-    expired: "Expired",
-    revoked: "Revoked",
-    missing: "No link"
-  }[status] || "No link";
   const tone = active ? "green" : status === "stale" || status === "expired" ? "amber" : "neutral";
   const sourceLabel = link ? clientPortalLinkSourceLabel(link) : (apiSession ? "Hosted" : "Device-local");
   const shareable = active && clientPortalLinkCanShare(link);
+  const stateItems = clientPortalLinkStateItems(link, status);
   return `
     <article class="portal-status-card">
-      <span class="status-pill inbox-${tone}">${escapeHtml(statusLabel)}</span>
+      <span class="status-pill inbox-${tone}">${escapeHtml(clientPortalStatusLabel(status))}</span>
       <h3>Client portal link</h3>
-      <p>${active ? `${escapeHtml(sourceLabel)} link. Expires ${formatFullDate(link.expiresAt)}. ${link.viewCount ? `${link.viewCount} view${link.viewCount === 1 ? "" : "s"}.` : "No views yet."}` : status === "stale" ? "The visible packet changed. Rotate the link before sending it again." : `Generate a ${apiSession ? "hosted" : "device-local"} company-scoped portal link when the packet is ready.`}</p>
+      <p>${active ? `${escapeHtml(sourceLabel)} link is ready to share.` : status === "stale" ? "The visible packet changed. Rotate the link before sending it again." : `Generate a ${apiSession ? "hosted" : "device-local"} company-scoped portal link when the packet is ready.`}</p>
+      <div class="portal-link-state-grid">
+        ${stateItems.map((item) => `
+          <span class="portal-link-state-item">
+            <strong>${escapeHtml(item.label)}</strong>
+            <em>${escapeHtml(item.value)}</em>
+            <small>${escapeHtml(item.detail)}</small>
+          </span>
+        `).join("")}
+      </div>
       ${link ? `<small>${escapeHtml(sourceLabel)}. Created ${escapeHtml(formatTimestamp(link.createdAt))} by ${escapeHtml(memberName(link.createdBy))}${link.source === "api" && link.tokenId ? ` - token ${escapeHtml(link.tokenId)}` : ""}</small>` : "<small>No client access link has been generated.</small>"}
       ${shareable ? `<code>${escapeHtml(clientPortalLinkUrl(link))}</code>` : active ? "<small>Raw hosted URL is only available on the device that created it. Rotate to create a new share URL.</small>" : ""}
       <div class="portal-actions">
