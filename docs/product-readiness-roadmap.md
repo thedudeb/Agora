@@ -2,6 +2,18 @@
 
 This is the working product-management checklist for turning Agora from a powerful prototype into a product real teams can confidently adopt.
 
+## Current Operating Mode
+
+Agora is now in beta hardening mode, not feature expansion mode. New surfaces should wait unless they unblock release proof, tester feedback, trust, migration safety, or the Acme client-delivery story.
+
+Near-term work should improve what already exists:
+
+- Make the release evidence current and reproducible.
+- Make the Acme demo easier to understand in one pass.
+- Make the first-run and beta scorecards expose friction quickly.
+- Make migration, export, recovery, permissions, and AI actions feel trustworthy.
+- Move advanced surfaces into core only after beta evidence shows they help the primary workflow.
+
 ## Product Wedge
 
 Agora should first be unmistakably excellent for agencies and consultants running client-facing project work. That wedge fits the strongest parts of the product today: client portals, approvals, time, reusable templates, audits, offline/local-first control, imports, and AI actions with previews and undo.
