@@ -2178,6 +2178,43 @@ body[data-tutorial-target="view"] #app-view {
   line-height: 1.4;
 }
 
+.acme-completion-receipt {
+  border-left: 4px solid var(--green);
+}
+
+.acme-receipt-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.acme-receipt-grid article {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.acme-receipt-grid span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.acme-receipt-grid strong {
+  line-height: 1.2;
+}
+
+.acme-receipt-grid small {
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .route-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -12655,6 +12692,7 @@ body[data-density="compact"] .main-content {
 
   .route-header,
   .workspace-trust-strip,
+  .acme-receipt-grid,
   .autopilot-hero,
   .command-inbox-hero,
   .launch-step-grid,

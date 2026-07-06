@@ -6256,6 +6256,61 @@ function renderAcmePathGuide({ step, title, detail, proof, nextLabel = "", nextR
   `;
 }
 
+function renderAcmeCompletionReceipt() {
+  const recovery = portableRecoveryStatus();
+  const launchProject = activeProjects().find((project) => project.id === "launch") || activeProjects()[0];
+  const visibleTasks = activeTasks().filter((task) => task.clientVisible || task.visibility === "client");
+  const blockers = activeTasks().filter((task) => task.status === "blocked" || openTaskDependencies(task).length);
+  const items = [
+    {
+      label: "Scope",
+      value: launchProject ? launchProject.name : "Project ready",
+      detail: launchProject ? "Backlog and active delivery are connected." : "Create or import a project before a real client review."
+    },
+    {
+      label: "Client visibility",
+      value: `${visibleTasks.length} visible item${visibleTasks.length === 1 ? "" : "s"}`,
+      detail: "Shared work is explicit before it leaves the team workspace."
+    },
+    {
+      label: "Delivery risk",
+      value: `${blockers.length} risk${blockers.length === 1 ? "" : "s"} tracked`,
+      detail: "Timeline, blockers, and dependencies are ready for the client update."
+    },
+    {
+      label: "Recovery proof",
+      value: `${recovery.score}/${recovery.total} ready`,
+      detail: `${recovery.files.length} portable files and ${recovery.backups.length} local backup${recovery.backups.length === 1 ? "" : "s"}.`
+    }
+  ];
+
+  return `
+    <section class="panel acme-completion-receipt">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Acme walkthrough complete</p>
+          <h2>You have enough proof for a real project-manager review.</h2>
+        </div>
+        <span class="status-pill ${recovery.score >= Math.max(3, recovery.total - 1) ? "inbox-green" : "inbox-amber"}">${recovery.score}/${recovery.total} recovery</span>
+      </div>
+      <p class="panel-note">This path now leaves a tester with scope, client visibility, timeline risk, status reporting, and recovery evidence instead of a loose tour of screens.</p>
+      <div class="acme-receipt-grid">
+        ${items.map((item) => `
+          <article>
+            <span>${escapeHtml(item.label)}</span>
+            <strong>${escapeHtml(item.value)}</strong>
+            <small>${escapeHtml(item.detail)}</small>
+          </article>
+        `).join("")}
+      </div>
+      <div class="data-actions">
+        <button class="button button-primary" type="button" data-recovery-action="download-bundle">Download Bundle</button>
+        <button class="button button-secondary" type="button" data-route="command-center">Replay Path</button>
+      </div>
+    </section>
+  `;
+}
+
 function createBlankWorkspaceState(options = {}) {
   const blank = structuredClone(seedData);
   const owner = members[0];
@@ -33926,6 +33981,8 @@ function renderDataManagement() {
   const taskCsv = exportTasksCsv();
   const timeCsv = exportTimeCsv();
   const backups = loadWorkspaceBackups();
+  const demoAction = new URLSearchParams(window.location.search).get("demoAction") || "";
+  const showAcmeCompletion = demoAction === "recoveryPlan";
 
   els.appView.innerHTML = `
     ${renderRouteHeader({
@@ -33946,6 +34003,8 @@ function renderDataManagement() {
       nextLabel: "Create backup",
       commandId: "backup:create"
     })}
+
+    ${showAcmeCompletion ? renderAcmeCompletionReceipt() : ""}
 
     <div class="metric-grid">
       ${metric("Projects", activeProjects().length)}
