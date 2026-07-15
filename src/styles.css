@@ -2461,6 +2461,50 @@ body[data-tutorial-target="view"] #app-view {
   align-content: start;
 }
 
+.launch-handoff-packet {
+  margin-bottom: 16px;
+}
+
+.launch-handoff-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.launch-handoff-grid article {
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.launch-handoff-grid span,
+.launch-handoff-grid strong,
+.launch-handoff-grid small {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.launch-handoff-grid span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.launch-handoff-grid strong {
+  margin-top: 5px;
+}
+
+.launch-handoff-grid small {
+  margin-top: 5px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .launch-inline-form {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: end;
@@ -13252,6 +13296,7 @@ body[data-density="compact"] .main-content {
   }
 
   .launch-inline-form,
+  .launch-handoff-grid,
   .launch-fact-grid {
     grid-template-columns: 1fr;
   }

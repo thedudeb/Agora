@@ -20983,6 +20983,109 @@ function projectLaunchPlan(styleId, sourceId) {
   return window.AgoraProjectLaunch.plan(styleId, sourceId);
 }
 
+function projectLaunchHandoffProject(projectId = state.projectLaunchWizard?.lastCreatedProjectId) {
+  const project = projectId ? byId(state.projects, projectId) : null;
+  return project && project.customFields?.launchWizard ? project : null;
+}
+
+function launchHandoffPacket(projectId = state.projectLaunchWizard?.lastCreatedProjectId) {
+  const project = projectLaunchHandoffProject(projectId);
+  if (!project) return null;
+
+  const company = byId(state.companies, project.companyId);
+  const tasks = state.tasks
+    .filter((task) => task.projectId === project.id)
+    .filter((task) => task.customFields?.launchWizard || task.tags?.includes("launch"))
+    .sort((a, b) => String(a.dueDate || "").localeCompare(String(b.dueDate || "")));
+  const startDate = project.startDate || todayKey();
+  const firstWeekEnd = shiftDate(startDate, 7);
+  const firstWeekTasks = tasks.filter((task) => !task.dueDate || task.dueDate <= firstWeekEnd);
+  const openTasks = tasks.filter((task) => task.status !== "done");
+  const milestones = state.milestones.filter((milestone) => milestone.projectId === project.id);
+  const docs = state.documents.filter((document) => document.projectId === project.id);
+  const recovery = portableRecoveryStatus();
+  const visibility = company ? clientVisibilityReviewForCompany(company.id) : null;
+  const sendReadiness = company ? clientSendReadinessStatus(company.id) : null;
+  const visibilityBlockers = sendReadiness?.blockers?.length ?? visibility?.warnings?.length ?? 0;
+  const firstWeekTitles = firstWeekTasks.slice(0, 3).map((task) => task.title).join(" / ");
+  const nextTask = openTasks[0] || tasks[0] || null;
+  const backupLabel = recovery.latestBackup ? formatTimestamp(recovery.latestBackup.createdAt) : "No backup yet";
+
+  return {
+    project,
+    company,
+    owner: memberName(project.owner),
+    tasks,
+    firstWeekTasks,
+    openTasks,
+    milestones,
+    docs,
+    recovery,
+    visibilityBlockers,
+    nextTask,
+    rows: [
+      {
+        label: "Owner",
+        value: memberName(project.owner),
+        detail: `${company?.name || "Workspace"} / ${formatDate(project.startDate)} to ${formatDate(project.dueDate)}`
+      },
+      {
+        label: "First week",
+        value: `${firstWeekTasks.length} task${firstWeekTasks.length === 1 ? "" : "s"}`,
+        detail: firstWeekTitles || "No first-week tasks were generated."
+      },
+      {
+        label: "Client packet",
+        value: visibilityBlockers ? `${visibilityBlockers} blocker${visibilityBlockers === 1 ? "" : "s"}` : "Ready to review",
+        detail: visibilityBlockers ? "Review visibility warnings before sending." : "Shared and client-visible records are ready for PM review."
+      },
+      {
+        label: "Recovery",
+        value: `${recovery.score}/${recovery.total} ready`,
+        detail: backupLabel
+      },
+      {
+        label: "Evidence",
+        value: `${milestones.length} milestones / ${docs.length} docs`,
+        detail: nextTask ? `Next move: ${nextTask.title}` : "Launch evidence is ready."
+      }
+    ]
+  };
+}
+
+function renderLaunchHandoffPacket(projectId = state.projectLaunchWizard?.lastCreatedProjectId) {
+  const packet = launchHandoffPacket(projectId);
+  if (!packet) return "";
+  const recoveryReady = packet.recovery.score >= Math.max(3, packet.recovery.total - 1);
+  return `
+    <section class="panel launch-handoff-packet">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Launch handoff packet</p>
+          <h2>${escapeHtml(packet.project.name)} is ready for PM handoff.</h2>
+        </div>
+        <span class="status-pill ${packet.visibilityBlockers ? "inbox-amber" : "inbox-green"}">${packet.visibilityBlockers ? "Review before share" : "Ready"}</span>
+      </div>
+      <p class="panel-note">Use this as the launch receipt: owner, first-week work, client visibility, recovery posture, and the next action are together before the team starts operating from Inbox and Today.</p>
+      <div class="launch-handoff-grid">
+        ${packet.rows.map((row) => `
+          <article>
+            <span>${escapeHtml(row.label)}</span>
+            <strong>${escapeHtml(row.value)}</strong>
+            <small>${escapeHtml(row.detail)}</small>
+          </article>
+        `).join("")}
+      </div>
+      <div class="launch-action-row">
+        <button class="button button-primary" type="button" data-route="daily">Open Today</button>
+        <button class="button button-secondary" type="button" data-project-id="${escapeHtml(packet.project.id)}">Open Project</button>
+        ${packet.company ? `<button class="button button-secondary" type="button" data-route="visibility">Review Visibility</button>` : ""}
+        <button class="button button-secondary" type="button" data-recovery-action="${recoveryReady ? "download-bundle" : "create-backup"}">${recoveryReady ? "Download Bundle" : "Create Backup"}</button>
+      </div>
+    </section>
+  `;
+}
+
 function readProjectLaunchForm() {
   const current = projectLaunchWizardState();
   return normalizeProjectLaunchWizard({
@@ -21494,6 +21597,7 @@ function renderLaunchWorkspaceFlow() {
     })}
 
     ${renderLaunchProgressPanel()}
+    ${renderLaunchHandoffPacket()}
 
     <div class="launch-flow-grid">
       ${renderLaunchClientSetupPanel()}
@@ -23518,6 +23622,7 @@ function renderClientVisibilityReview() {
     </div>
 
     ${renderTrustMoment("visibility")}
+    ${selected ? renderLaunchHandoffPacket(state.projectLaunchWizard?.lastCreatedProjectId) : ""}
 
     ${selected ? renderClientSendReadinessPanel(selected.company.id) : ""}
     ${selected ? renderClientVisibilityContrastPanel(selected.company.id) : ""}
@@ -27782,6 +27887,8 @@ function renderProjectPage() {
       </div>
       ${renderProjectHealthHeader(project, healthSnapshot)}
     </section>
+
+    ${renderLaunchHandoffPacket(project.id)}
 
     <nav class="tab-list" aria-label="Project sections">
       ${projectTabButton("overview", "Overview")}
