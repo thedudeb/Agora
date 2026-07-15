@@ -86,6 +86,7 @@ Use these focused non-browser checks when changing frontend modules, cached scri
 npm run test:modules        # script order, service worker cache entries, syntax coverage, route wrappers
 npm run test:board-commands # filtered-board escape hatch and command behavior
 npm run test:budgets        # frontend line and size budgets
+npm run test:project-board-quality # project/board render-context and derivation guardrails
 ```
 
 See [`docs/architecture.md`](./architecture.md) for the current frontend ownership map and where new route code should live.
