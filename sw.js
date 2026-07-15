@@ -1,4 +1,4 @@
-const CACHE_VERSION = "agora-pwa-v62";
+const CACHE_VERSION = "agora-pwa-v63";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -12,7 +12,7 @@ const APP_SHELL = [
   "./assets/screenshots/agora-dashboard.png",
   "./assets/screenshots/agora-mobile-launch.png",
   "./assets/screenshots/agora-mobile-today.png",
-  "./src/styles.css?v=workspace-platform-v16",
+  "./src/styles.css?v=workspace-platform-v17",
   "./src/project-launch.css?v=workspace-platform-v1",
   "./src/boot.js?v=workspace-platform-v7",
   "./src/project-launch.js?v=workspace-platform-v1",
