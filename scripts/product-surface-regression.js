@@ -13,9 +13,9 @@ function includes(relativePath, needle, message) {
 }
 
 includes("index.html", "./src/app-runtime.js?v=workspace-platform-v2", "loads runtime wiring after the app bundle");
-includes("index.html", "./src/app-inbox.js?v=workspace-platform-v1", "loads Inbox route rendering after the app bundle");
+includes("index.html", "./src/app-inbox.js?v=workspace-platform-v2", "loads Inbox route rendering after the app bundle");
 includes("sw.js", "./src/app-runtime.js?v=workspace-platform-v2", "caches runtime wiring for offline reloads");
-includes("sw.js", "./src/app-inbox.js?v=workspace-platform-v1", "caches Inbox route rendering for offline reloads");
+includes("sw.js", "./src/app-inbox.js?v=workspace-platform-v2", "caches Inbox route rendering for offline reloads");
 includes("package.json", "node --check src/app-runtime.js", "syntax-checks runtime wiring");
 includes("package.json", "node --check src/app-inbox.js", "syntax-checks Inbox route rendering");
 

@@ -1,41 +1,74 @@
 /* Agora Inbox route rendering. Loaded after app.js so shared workspace helpers stay global. */
-function commandInboxGroups(items) {
+const COMMAND_INBOX_DECISION_TYPES = new Set(["approval", "sync conflict", "ai review", "feature request"]);
+const COMMAND_INBOX_RISK_TYPES = new Set(["blocked", "overdue", "project risk"]);
+const COMMAND_INBOX_SYNC_TYPES = new Set(["failed sync", "sync conflict"]);
+const COMMAND_INBOX_TODAY_TYPES = new Set(["assignment", "due soon", "reminder", "mention", "watched", "comment", "activity"]);
+const COMMAND_INBOX_URGENT_TYPES = new Set(["overdue", "blocked", "project risk", "assignment", "approval", "mention", "sync conflict", "failed sync", "ai review", "feature request"]);
+
+function inboxRouteBuckets(items) {
+  return items.reduce((buckets, item) => {
+    const read = isInboxRead(item.id);
+    if (!read) buckets.unreadItems.push(item);
+    if (read) buckets.hasRead = true;
+    if (COMMAND_INBOX_DECISION_TYPES.has(item.type)) {
+      buckets.groups.decision.push(item);
+      buckets.decisions += 1;
+    }
+    if (COMMAND_INBOX_RISK_TYPES.has(item.type)) {
+      buckets.groups.risk.push(item);
+      buckets.risks += 1;
+    }
+    if (COMMAND_INBOX_SYNC_TYPES.has(item.type)) {
+      buckets.groups.sync.push(item);
+      buckets.syncs += 1;
+    }
+    if (item.type === "ai review") buckets.groups.ai.push(item);
+    if (item.type === "feature request") buckets.groups.feedback.push(item);
+    if (COMMAND_INBOX_TODAY_TYPES.has(item.type)) buckets.groups.today.push(item);
+    if (COMMAND_INBOX_URGENT_TYPES.has(item.type)) buckets.urgentItems.push(item);
+    if (item.type === "due soon") buckets.dueItems.push(item);
+    if (item.type === "mention" || item.type === "watched") buckets.mentionItems.push(item);
+    return buckets;
+  }, { unreadItems: [], urgentItems: [], dueItems: [], mentionItems: [], decisions: 0, risks: 0, syncs: 0, hasRead: false, groups: { decision: [], risk: [], sync: [], ai: [], feedback: [], today: [] } });
+}
+
+function commandInboxGroups(items, buckets = inboxRouteBuckets(items)) {
   return [
     {
       id: "decision",
       title: "Needs decision",
       description: "Approvals, conflicts, feedback responses, and AI proposals that need a human call.",
-      items: items.filter((item) => ["approval", "sync conflict", "ai review", "feature request"].includes(item.type))
+      items: buckets.groups.decision
     },
     {
       id: "risk",
       title: "At risk",
       description: "Blocked work, overdue tasks, and project health signals that can slip delivery.",
-      items: items.filter((item) => ["blocked", "overdue", "project risk"].includes(item.type))
+      items: buckets.groups.risk
     },
     {
       id: "sync",
       title: "Failed syncs",
       description: "Local changes that need retry, support details, or conflict handling.",
-      items: items.filter((item) => ["failed sync", "sync conflict"].includes(item.type))
+      items: buckets.groups.sync
     },
     {
       id: "ai",
       title: "AI review",
       description: "Operator proposals waiting for approval before they touch workspace data.",
-      items: items.filter((item) => item.type === "ai review")
+      items: buckets.groups.ai
     },
     {
       id: "feedback",
       title: "Feedback",
       description: "Feature requests that need triage or requester follow-up.",
-      items: items.filter((item) => item.type === "feature request")
+      items: buckets.groups.feedback
     },
     {
       id: "today",
       title: "Today",
       description: "Assigned, due-soon, reminder, mention, and collaboration signals for daily clearing.",
-      items: items.filter((item) => ["assignment", "due soon", "reminder", "mention", "watched", "comment", "activity"].includes(item.type))
+      items: buckets.groups.today
     }
   ];
 }
@@ -67,17 +100,13 @@ function commandInboxPriorityTone(item) {
   return "neutral";
 }
 
-function commandInboxDailyBrief(items) {
-  const unread = items.filter((item) => !isInboxRead(item.id)).length;
-  const decisions = items.filter((item) => ["approval", "sync conflict", "ai review", "feature request"].includes(item.type)).length;
-  const risks = items.filter((item) => ["blocked", "overdue", "project risk"].includes(item.type)).length;
-  const syncs = items.filter((item) => ["failed sync", "sync conflict"].includes(item.type)).length;
-  const top = items.find((item) => !isInboxRead(item.id)) || items[0];
+function commandInboxDailyBrief(items, buckets = inboxRouteBuckets(items)) {
+  const top = buckets.unreadItems[0] || items[0];
   return {
-    unread,
-    decisions,
-    risks,
-    syncs,
+    unread: buckets.unreadItems.length,
+    decisions: buckets.decisions,
+    risks: buckets.risks,
+    syncs: buckets.syncs,
     summary: top
       ? `${top.title} is the top item to clear first.`
       : "No active command items need attention right now."
@@ -218,18 +247,15 @@ function renderDailyCommandDigestPanel(items) {
 
 function renderInbox() {
   const items = getInboxItems();
-  const groups = commandInboxGroups(items);
-  const dailyBrief = commandInboxDailyBrief(items);
-  const unreadItems = items.filter((item) => !isInboxRead(item.id));
-  const urgentItems = items.filter((item) => ["overdue", "blocked", "project risk", "assignment", "approval", "mention", "sync conflict", "failed sync", "ai review", "feature request"].includes(item.type));
-  const dueItems = items.filter((item) => item.type === "due soon");
-  const mentionItems = items.filter((item) => item.type === "mention" || item.type === "watched");
+  const buckets = inboxRouteBuckets(items);
+  const groups = commandInboxGroups(items, buckets);
+  const dailyBrief = commandInboxDailyBrief(items, buckets);
   const briefs = operatorBriefs(3);
   const pulse = workspacePulse();
 
   els.appView.innerHTML = `
     <div class="metric-grid">
-      ${metric("Unread", unreadItems.length)}
+      ${metric("Unread", buckets.unreadItems.length)}
       ${metric("Decisions", dailyBrief.decisions)}
       ${metric("At risk", dailyBrief.risks)}
       ${metric("Failed syncs", dailyBrief.syncs)}
@@ -244,12 +270,12 @@ function renderInbox() {
       <div class="command-inbox-brief">
         <article>
           <span>Clear first</span>
-          <strong>${urgentItems[0] ? escapeHtml(urgentItems[0].title) : "Nothing urgent"}</strong>
-          <small>${urgentItems[0] ? escapeHtml(urgentItems[0].message) : "The workspace is quiet."}</small>
+          <strong>${buckets.urgentItems[0] ? escapeHtml(buckets.urgentItems[0].title) : "Nothing urgent"}</strong>
+          <small>${buckets.urgentItems[0] ? escapeHtml(buckets.urgentItems[0].message) : "The workspace is quiet."}</small>
         </article>
         <article>
           <span>Daily sweep</span>
-          <strong>${dueItems.length + mentionItems.length}</strong>
+          <strong>${buckets.dueItems.length + buckets.mentionItems.length}</strong>
           <small>due-soon, mention, and watched-task signals</small>
         </article>
       </div>
@@ -266,7 +292,7 @@ function renderInbox() {
           </div>
           <div class="inbox-header-actions">
             <button class="button button-secondary" type="button" data-inbox-bulk="read" ${items.length ? "" : "disabled"}>Mark All Read</button>
-            <button class="button button-secondary" type="button" data-inbox-bulk="archive-read" ${items.some((item) => isInboxRead(item.id)) ? "" : "disabled"}>Clear Read</button>
+            <button class="button button-secondary" type="button" data-inbox-bulk="archive-read" ${buckets.hasRead ? "" : "disabled"}>Clear Read</button>
           </div>
         </div>
         <div class="inbox-lanes">
