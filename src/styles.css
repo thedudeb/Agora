@@ -3393,6 +3393,49 @@ body[data-tutorial-target="view"] #app-view {
   line-height: 1.4;
 }
 
+.inbox-clear-day-panel { margin-bottom: 16px; }
+
+.inbox-clear-focus {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 14px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.inbox-clear-focus strong,
+.inbox-clear-focus p,
+.inbox-clear-focus small { display: block; min-width: 0; overflow-wrap: anywhere; }
+
+.inbox-clear-focus strong { margin-top: 8px; font-size: 1.08rem; }
+.inbox-clear-focus p { margin: 6px 0 0; color: var(--text); line-height: 1.45; }
+.inbox-clear-focus small { margin-top: 7px; color: var(--muted); line-height: 1.4; }
+
+.inbox-clear-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; max-width: 360px; }
+
+.inbox-clear-queue { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 10px; }
+
+.inbox-clear-queue button {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  min-height: 88px;
+  padding: 10px;
+  color: var(--text);
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.inbox-clear-queue strong,
+.inbox-clear-queue small { min-width: 0; overflow-wrap: anywhere; }
+
+.inbox-clear-queue small { color: var(--muted); }
+
 .command-inbox-panel {
   align-content: start;
 }
@@ -13301,6 +13344,12 @@ body[data-density="compact"] .main-content {
     grid-template-columns: 1fr;
   }
 
+  .inbox-clear-focus { grid-template-columns: 1fr; }
+
+  .inbox-clear-actions { justify-content: flex-start; max-width: none; }
+
+  .inbox-clear-queue { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
   .onboarding-wizard {
     grid-template-columns: 1fr;
   }
@@ -13622,6 +13671,12 @@ body[data-density="compact"] .main-content {
   .workspace-trust-card .button {
     width: 100%;
   }
+
+  .inbox-clear-actions { display: grid; grid-template-columns: 1fr; }
+
+  .inbox-clear-actions .button { width: 100%; }
+
+  .inbox-clear-queue { grid-template-columns: 1fr; }
 
   .launch-action-row,
   .launch-inline-form .button {

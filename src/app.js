@@ -26467,6 +26467,58 @@ function commandInboxDailyBrief(items) {
   };
 }
 
+function inboxClearDayItems(items) {
+  const priorityTypes = new Set(["approval", "sync conflict", "ai review", "feature request", "blocked", "overdue", "project risk", "assignment", "mention", "due soon", "reminder"]);
+  return items
+    .filter((item) => !isInboxRead(item.id) && priorityTypes.has(item.type))
+    .slice(0, 6);
+}
+
+function renderInboxClearDayPanel(items) {
+  const queue = inboxClearDayItems(items);
+  const top = queue[0] || items.find((item) => !isInboxRead(item.id)) || items[0];
+  const clearedCount = items.filter((item) => isInboxRead(item.id) || isInboxArchived(item.id)).length;
+  const total = items.length;
+  return `
+    <section class="panel inbox-clear-day-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Clear the day</p>
+          <h2>${top ? "Handle the next useful item." : "The command queue is clear."}</h2>
+        </div>
+        <span class="status-pill ${queue.length ? "inbox-amber" : "inbox-green"}">${clearedCount}/${total} cleared</span>
+      </div>
+      ${top ? `
+        <article class="inbox-clear-focus">
+          <div>
+            <span class="status-pill inbox-${top.tone}">${escapeHtml(top.type)}</span>
+            <strong>${escapeHtml(top.title)}</strong>
+            <p>${escapeHtml(top.message)}</p>
+            <small>${escapeHtml(inboxItemReason(top))}</small>
+          </div>
+          <div class="inbox-clear-actions">
+            ${top.approvalId ? `<button class="button button-primary" type="button" data-approval-action="approved" data-approval-id="${top.approvalId}" data-inbox-id="${top.id}">Approve</button>` : ""}
+            ${top.taskId ? `<button class="button button-primary" type="button" data-inbox-plan="${top.taskId}" data-inbox-id="${top.id}">Plan Today</button>` : ""}
+            ${top.taskId ? `<button class="button button-secondary" type="button" data-edit-task="${top.taskId}" data-inbox-id="${top.id}">Open</button>` : ""}
+            ${!top.taskId && top.projectId ? `<button class="button button-secondary" type="button" data-project-id="${escapeHtml(top.projectId)}">Open Project</button>` : ""}
+            <button class="button button-secondary" type="button" data-inbox-remind="tomorrow" data-inbox-id="${top.id}">Tomorrow</button>
+            <button class="button button-secondary" type="button" data-inbox-clear="${top.id}">Clear</button>
+          </div>
+        </article>
+        <div class="inbox-clear-queue">
+          ${queue.slice(1, 5).map((item) => `
+            <button type="button" ${item.taskId ? `data-edit-task="${item.taskId}" data-inbox-id="${item.id}"` : item.projectId ? `data-project-id="${escapeHtml(item.projectId)}"` : `data-inbox-read="${item.id}"`}>
+              <span class="status-pill inbox-${item.tone}">${escapeHtml(commandInboxItemPriority(item))}</span>
+              <strong>${escapeHtml(item.title)}</strong>
+              <small>${escapeHtml(commandInboxItemSource(item))}</small>
+            </button>
+          `).join("")}
+        </div>
+      ` : emptyState("Nothing needs clearing right now.")}
+    </section>
+  `;
+}
+
 function dailyCommandDigestRows(items) {
   const syncQueue = apiSyncQueueSummary();
   const visibilityWarnings = clientVisibilityReviewData().warnings || [];
@@ -26585,6 +26637,8 @@ function renderInbox() {
         </article>
       </div>
     </section>
+
+    ${renderInboxClearDayPanel(items)}
 
     <div class="command-center-grid">
       <section class="panel inbox-panel command-inbox-panel">
