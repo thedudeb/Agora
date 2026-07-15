@@ -35226,6 +35226,46 @@ function openRecoveryPlanFlow() {
   showToast("Recovery plan is ready to review", "success");
 }
 
+function recoveryConfidenceReceiptRows() {
+  const status = portableRecoveryStatus();
+  const latestExport = latestWorkspaceExportEvent();
+  const queue = apiSyncQueueSummary();
+  const hasRestorePreview = Boolean(state.portableImportPreview || state.switcherImportPreview || state.switcherImportRollback);
+  const contract = status.manifest.offlineStorageContract;
+  return [
+    { label: "Receipt", value: `${status.score}/${status.total} ready`, detail: status.score === status.total ? "Backup, bundle, manifest, audit log, and offline contract are all present." : "Create a backup and download the bundle before a serious handoff." },
+    { label: "Rollback point", value: status.latestBackup ? formatTimestamp(status.latestBackup.createdAt) : "Missing", detail: status.latestBackup ? `${status.backups.length} local backup${status.backups.length === 1 ? "" : "s"} available in this browser.` : "No browser-local restore point exists yet." },
+    { label: "Portable export", value: latestExport ? formatTimestamp(latestExport.createdAt) : "Not recorded", detail: `${status.files.length} bundle file${status.files.length === 1 ? "" : "s"} cover workspace JSON, CSV, Markdown, audit log, and templates.` },
+    { label: "Offline target", value: `v${contract.version}`, detail: `${contract.targets.join(", ")} with ${contract.collections} offline collections documented.` },
+    { label: "Restore rehearsal", value: hasRestorePreview ? "Previewed" : "Preview first", detail: hasRestorePreview ? "A bundle or migration preview is available before replacing workspace data." : "Use import preview before claiming the bundle is safely restorable." },
+    { label: "Not covered", value: queue.conflicts ? `${queue.conflicts} conflict${queue.conflicts === 1 ? "" : "s"}` : "Cloud parity", detail: queue.total ? `${queue.total} sync item${queue.total === 1 ? "" : "s"} still need cloud review.` : "This receipt proves local portability; API backups still depend on connected sync." }
+  ];
+}
+
+function renderRecoveryConfidenceReceipt() {
+  const rows = recoveryConfidenceReceiptRows();
+  return `
+    <section class="panel recovery-confidence-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Recovery receipt</p>
+          <h2>Proof a project owner can understand.</h2>
+        </div>
+        <span class="status-pill inbox-blue">Live proof</span>
+      </div>
+      <p class="panel-note">This is the plain-English handoff receipt for exports, rollback, offline app readiness, restore rehearsal, and the one thing still not guaranteed by a local bundle.</p>
+      <div class="recovery-confidence-grid">
+        ${rows.map((item) => `<article><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong><small>${escapeHtml(item.detail)}</small></article>`).join("")}
+      </div>
+      <div class="data-actions">
+        <button class="button button-primary" type="button" data-recovery-action="download-bundle">Download Bundle</button>
+        <button class="button button-secondary" type="button" data-recovery-action="create-backup">Create Backup</button>
+        <button class="button button-secondary" type="button" data-recovery-action="download-manifest">Download Manifest</button>
+      </div>
+    </section>
+  `;
+}
+
 function renderPortableRecoveryConfidencePanel() {
   const status = portableRecoveryStatus();
   const counts = status.manifest.counts;
@@ -35354,6 +35394,7 @@ function renderDataManagement() {
     ${!backups.length ? starterEmptyState("data") : ""}
 
     ${renderRecoveryExportReadinessPanel()}
+    ${renderRecoveryConfidenceReceipt()}
     ${renderPortableRecoveryConfidencePanel()}
     ${renderOpenOwnershipAdvantagePanel()}
     ${renderOfflineAppReadinessPanel()}
