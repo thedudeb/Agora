@@ -27,6 +27,7 @@ assertIncludes("sw.js", "./src/project-launch.js?v=workspace-platform-v1", "must
 assertIncludes("sw.js", "./src/project-launch.css?v=workspace-platform-v1", "must cache the launch stylesheet for offline reloads");
 assertIncludes("sw.js", "./src/app.js?v=workspace-platform-v12", "must cache the current app bundle version");
 assertIncludes("sw.js", "./src/app-inbox.js?v=workspace-platform-v2", "must cache Inbox route rendering");
+assertIncludes("sw.js", "./src/app-recovery.js?v=workspace-platform-v1", "must cache Data and Recovery route rendering");
 assertIncludes("sw.js", "./src/app-runtime.js?v=workspace-platform-v2", "must cache the runtime event wiring");
 assertIncludes("sw.js", "./src/styles.css?v=workspace-platform-v18", "must cache the current base stylesheet version");
 assertIncludes("src/app.js", "function renderHtml", "must define a named render helper for HTML assignment");
@@ -39,6 +40,7 @@ assert.equal(packageJson.scripts["test:product-surfaces"], "node scripts/product
 assert.equal(packageJson.scripts["test:golden:inbox"], "AGORA_GOLDEN_ONLY=inbox npm run test:golden");
 assert.equal(packageJson.scripts["test:golden:recovery"], "AGORA_GOLDEN_ONLY=recovery npm run test:golden");
 assert.equal(packageJson.scripts["test:golden:mobile"], "AGORA_GOLDEN_SUITE=mobile npm run test:golden");
+assert.equal(packageJson.scripts["test:golden:readiness"], "AGORA_GOLDEN_ONLY=readiness npm run test:golden");
 assert.equal(packageJson.scripts["code:quality"], "node scripts/code-quality-check.js");
 
 const ceilings = {
