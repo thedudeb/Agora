@@ -14256,6 +14256,23 @@ function executeCommand(commandId) {
     return;
   }
 
+  if (commandId === "board:show-all") {
+    state.selectedProject = "all";
+    state.filters = {
+      ...state.filters,
+      company: "all",
+      assignee: "all",
+      status: "all",
+      priority: "all",
+      query: ""
+    };
+    saveState();
+    renderFilters();
+    render();
+    showToast("Board filters cleared", "success");
+    return;
+  }
+
   if (commandId === "create:project") {
     if (!canWrite("projects:write")) {
       showToast("Your role cannot create projects", "info");

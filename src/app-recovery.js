@@ -733,7 +733,7 @@ function renderDataManagementRoute() {
         <div class="api-sync-card">
           <div>
             <strong>${escapeHtml(apiConnectionLabel())}</strong>
-            <p>${apiSession ? `${escapeHtml(realtimeStatusLabel())} - Last saved ${escapeHtml(apiLastSyncedLabel())}` : "Connect from Settings to save or load workspace snapshots through the API."}</p>
+            <p>${apiSession ? `${escapeHtml(realtimeStatusLabel())} - Last saved ${escapeHtml(apiLastSyncedLabel())}` : "Local mode is safe for planning, imports, exports, and recovery. Connect from Settings when this workspace needs team or server sync."}</p>
           </div>
           <div class="data-actions">
             <button class="button button-primary" type="button" id="api-load-workspace" ${apiSession ? "" : "disabled"}>Load Records</button>
@@ -1052,7 +1052,7 @@ function renderPortableImportPreview() {
     return `
       <div class="switcher-preview-empty">
         <strong>No portable import preview yet</strong>
-        <span>Preview first to confirm workspace counts before restoring.</span>
+        <span>Preview first to confirm counts and import mode. Nothing changes until you choose restore, merge, or append.</span>
       </div>
     `;
   }
@@ -1087,4 +1087,3 @@ function renderPortableImportPreview() {
     </div>
   `;
 }
-

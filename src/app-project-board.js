@@ -1311,8 +1311,8 @@ function renderBoardColumn(column, tasks) {
           <button class="button button-secondary compact-button" type="submit">Add</button>
         </form>
         <div class="task-stack" data-drop-status="${column.id}">
-          ${columnTasks.length ? columnTasks.map(renderTaskCard).join("") : emptyState("No tasks here.", [
-            { label: "Add a card", commandId: "create:task", detail: "Use the quick-add field above to capture the next piece of work for this lane." },
+          ${columnTasks.length ? columnTasks.map(renderTaskCard).join("") : emptyState("No cards in this lane yet.", [
+            { label: "Add a card", commandId: "create:task", detail: "Use the quick-add field above to capture work directly into this lane, or bring in existing work from an import." },
             { label: "Import Tasks", commandId: "migration:open" },
             { label: "Load Sample", onboardingAction: "sample:agency" }
           ])}
@@ -2224,8 +2224,14 @@ function renderComment(comment, depth = 0) {
 function renderBoardRoute() {
   const tasks = getFilteredTasks();
   const hasWorkspaceWork = activeTasks().length || activeProjects().length;
+  const hasFilteredOutWork = hasWorkspaceWork && !tasks.length;
   els.appView.innerHTML = `
     ${!hasWorkspaceWork ? starterEmptyState("board") : ""}
+    ${hasFilteredOutWork ? emptyState("No cards match the current board filters.", [
+      { label: "Show All Cards", commandId: "board:show-all", detail: "Your cards are still safe. Clear board filters to return to the full workspace board." },
+      { label: "Create Card", commandId: "create:task" },
+      { label: "Import Tasks", commandId: "migration:open" }
+    ]) : ""}
     ${renderKanbanBoard(tasks, { controls: true, label: "Task board" })}
   `;
 }
