@@ -78,6 +78,18 @@ npm run test:golden:mobile     # Mobile dashboard, evaluator, native offline pla
 
 These scripts still run the static shell checks first. They are meant for local iteration; run `npm run test:golden` before pushing product or routing changes.
 
+## Module And Budget Checks
+
+Use these focused non-browser checks when changing frontend modules, cached script URLs, route wrappers, or board command behavior:
+
+```sh
+npm run test:modules        # script order, service worker cache entries, syntax coverage, route wrappers
+npm run test:board-commands # filtered-board escape hatch and command behavior
+npm run test:budgets        # frontend line and size budgets
+```
+
+See [`docs/architecture.md`](./architecture.md) for the current frontend ownership map and where new route code should live.
+
 Chrome route checks retry once by default when Chrome times out. Tune that with:
 
 ```sh

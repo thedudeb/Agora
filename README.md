@@ -21,7 +21,7 @@ Try the bundled Acme demo from the browser app with `?route=evaluate&demoAction=
 
 See the [product readiness roadmap](./docs/product-readiness-roadmap.md) for the working checklist Agora is using to become a full product. For real workspace rollout, use the [production readiness checklist](./docs/production-readiness.md).
 
-Contributors can start with [CONTRIBUTING.md](./CONTRIBUTING.md), the [contributor path](./docs/contributor-path.md), and [starter issues](./docs/starter-issues.md).
+Contributors can start with [CONTRIBUTING.md](./CONTRIBUTING.md), the [contributor path](./docs/contributor-path.md), [starter issues](./docs/starter-issues.md), and the [frontend architecture map](./docs/architecture.md).
 
 ## Product Snapshot
 
@@ -130,6 +130,8 @@ npm run package:check # validate release packaging manifest
 npm run mcp       # start the local stdio MCP server for power-user clients
 npm run plugins   # validate local plugin manifests
 npm run check     # syntax-check app and server files
+npm run test:modules # verify frontend module order, cache coverage, and route wrappers
+npm run test:budgets # verify frontend module line and size budgets
 npm run qa        # release QA: quick verification + browser golden-path QA
 npm run release:evidence # collect local release gate outputs into release/evidence
 npm run verify:quick # syntax + portable fixture validation + recovery stress test

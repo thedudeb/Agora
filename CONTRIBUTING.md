@@ -16,8 +16,9 @@ Thanks for helping make Agora a real open source product. The best first contrib
 ## Start Here
 
 1. Read [`docs/contributor-path.md`](./docs/contributor-path.md).
-2. Pick a starter issue lane from [`docs/starter-issues.md`](./docs/starter-issues.md).
-3. Run the quick local checks:
+2. Read [`docs/architecture.md`](./docs/architecture.md) before changing frontend routes, runtime wiring, cached scripts, or split modules.
+3. Pick a starter issue lane from [`docs/starter-issues.md`](./docs/starter-issues.md).
+4. Run the quick local checks:
 
 ```sh
 npm run check
@@ -25,8 +26,8 @@ npm run demo:check
 npm run release:check
 ```
 
-4. For product-facing changes, include the smallest useful acceptance test or screenshot note.
-5. For security, migration, data export, plugin, MCP, or API changes, include rollback and portability notes.
+5. For product-facing changes, include the smallest useful acceptance test or screenshot note.
+6. For security, migration, data export, plugin, MCP, or API changes, include rollback and portability notes.
 
 ## Local Setup
 
@@ -62,6 +63,9 @@ Use focused gates when your change touches those surfaces:
 ```sh
 npm run demo:check
 npm run release:check
+npm run test:modules
+npm run test:budgets
+npm run test:board-commands
 npm run test:importers
 npm run test:plugins
 npm run test:mcp
@@ -121,6 +125,7 @@ Keep changes scoped. If a PR touches app behavior, release gates, docs, and scre
 ## Project Style
 
 - The current app is dependency-light and mostly plain HTML/CSS/JavaScript.
+- Frontend route/module ownership is documented in [`docs/architecture.md`](./docs/architecture.md).
 - Prefer readable, explicit code over clever abstraction.
 - Keep UI dense enough for operational work and calm enough for repeated use.
 - Use stable dimensions for boards, lists, cards, toolbars, and controls to avoid layout shifts.
