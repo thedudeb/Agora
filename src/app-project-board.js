@@ -149,6 +149,7 @@ function renderProjectPageRoute() {
     </nav>
 
     ${state.selectedProjectTab === "overview" ? renderProjectOverview(project, {
+      allProjectTasks,
       openTasks,
       completedTasks,
       overdueTasks,
@@ -343,8 +344,7 @@ function renderProjectAutopilotPanel(project) {
   `;
 }
 
-function projectTeamLoadRows(projectId) {
-  const tasks = getProjectTasks(projectId, false).filter((task) => task.status !== "done");
+function projectTeamLoadRows(projectId, tasks = getProjectTasks(projectId, false).filter((task) => task.status !== "done")) {
   return members
     .map((member) => {
       const owned = tasks.filter((task) => task.assignee === member.id);
@@ -362,7 +362,7 @@ function projectTeamLoadRows(projectId) {
 }
 
 function renderProjectTeamLoadPanel(project, details) {
-  const rows = projectTeamLoadRows(project.id);
+  const rows = projectTeamLoadRows(project.id, details.openTasks);
   const overloaded = rows.filter((row) => row.owned.length >= 4 || row.blocked || row.overdue);
   return `
     <section class="panel project-team-load-panel">
@@ -531,7 +531,7 @@ function renderProjectRiskDecisionStrip(project, details) {
 }
 
 function renderProjectCommandCenter(project, details) {
-  const { openTasks, overdueTasks, filteredProjectTasks, nextMilestone, trackedMinutes } = details;
+  const { allProjectTasks, openTasks, overdueTasks, filteredProjectTasks, nextMilestone, trackedMinutes } = details;
   const projectApprovals = state.approvals.filter((approval) => approval.projectId === project.id && approval.status !== "approved");
   const projectDocs = state.documents.filter((document) => document.projectId === project.id);
   const projectFiles = state.files.filter((file) => file.projectId === project.id);
@@ -540,8 +540,8 @@ function renderProjectCommandCenter(project, details) {
   const readinessItems = realProjectReadinessItems(project);
   const readinessDone = readinessItems.filter((item) => item.done).length;
   const blockedTasks = openTasks.filter(isTaskBlocked);
-  const progress = projectProgress(getProjectTasks(project.id, false));
-  const scheduledTasks = getProjectTasks(project.id, false).filter((task) => task.dueDate);
+  const progress = projectProgress(allProjectTasks);
+  const scheduledTasks = allProjectTasks.filter((task) => task.dueDate);
   const slippedTasks = scheduledTasks.filter((task) => isOverdue(task) && task.status !== "done");
   const clientVisibleTasks = filteredProjectTasks.filter((task) => taskVisibility(task) !== "internal");
   const staleTasks = openTasks.filter((task) => daysBetween((task.updatedAt || task.createdAt || todayKey()).slice(0, 10), todayKey()) >= 7);

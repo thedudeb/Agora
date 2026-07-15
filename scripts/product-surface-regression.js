@@ -15,11 +15,11 @@ function includes(relativePath, needle, message) {
 includes("index.html", "./src/app-runtime.js?v=workspace-platform-v2", "loads runtime wiring after the app bundle");
 includes("index.html", "./src/app-inbox.js?v=workspace-platform-v2", "loads Inbox route rendering after the app bundle");
 includes("index.html", "./src/app-recovery.js?v=workspace-platform-v2", "loads Data and Recovery route rendering after the app bundle");
-includes("index.html", "./src/app-project-board.js?v=workspace-platform-v3", "loads Project and Board route rendering before runtime wiring");
+includes("index.html", "./src/app-project-board.js?v=workspace-platform-v4", "loads Project and Board route rendering before runtime wiring");
 includes("sw.js", "./src/app-runtime.js?v=workspace-platform-v2", "caches runtime wiring for offline reloads");
 includes("sw.js", "./src/app-inbox.js?v=workspace-platform-v2", "caches Inbox route rendering for offline reloads");
 includes("sw.js", "./src/app-recovery.js?v=workspace-platform-v2", "caches Data and Recovery route rendering for offline reloads");
-includes("sw.js", "./src/app-project-board.js?v=workspace-platform-v3", "caches Project and Board route rendering for offline reloads");
+includes("sw.js", "./src/app-project-board.js?v=workspace-platform-v4", "caches Project and Board route rendering for offline reloads");
 includes("package.json", "node --check src/app-runtime.js", "syntax-checks runtime wiring");
 includes("package.json", "node --check src/app-inbox.js", "syntax-checks Inbox route rendering");
 includes("package.json", "node --check src/app-recovery.js", "syntax-checks Data and Recovery route rendering");

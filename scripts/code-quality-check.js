@@ -28,7 +28,7 @@ assertIncludes("sw.js", "./src/project-launch.css?v=workspace-platform-v1", "mus
 assertIncludes("sw.js", "./src/app.js?v=workspace-platform-v13", "must cache the current app bundle version");
 assertIncludes("sw.js", "./src/app-inbox.js?v=workspace-platform-v2", "must cache Inbox route rendering");
 assertIncludes("sw.js", "./src/app-recovery.js?v=workspace-platform-v2", "must cache Data and Recovery route rendering");
-assertIncludes("sw.js", "./src/app-project-board.js?v=workspace-platform-v3", "must cache Project and Board route rendering");
+assertIncludes("sw.js", "./src/app-project-board.js?v=workspace-platform-v4", "must cache Project and Board route rendering");
 assertIncludes("sw.js", "./src/app-runtime.js?v=workspace-platform-v2", "must cache the runtime event wiring");
 assertIncludes("sw.js", "./src/styles.css?v=workspace-platform-v18", "must cache the current base stylesheet version");
 assertIncludes("src/app.js", "function renderHtml", "must define a named render helper for HTML assignment");
@@ -40,6 +40,7 @@ assert.equal(packageJson.scripts["test:project-launch"], "node scripts/project-l
 assert.equal(packageJson.scripts["test:product-surfaces"], "node scripts/product-surface-regression.js");
 assert.equal(packageJson.scripts["test:modules"], "node scripts/module-registry-regression.js");
 assert.equal(packageJson.scripts["test:board-commands"], "node scripts/board-command-regression.js");
+assert.equal(packageJson.scripts["test:budgets"], "node scripts/performance-budget-check.js");
 assert.equal(packageJson.scripts["test:a11y"], "node scripts/accessibility-regression.js");
 assert.equal(packageJson.scripts["test:golden:inbox"], "AGORA_GOLDEN_ONLY=inbox npm run test:golden");
 assert.equal(packageJson.scripts["test:golden:recovery"], "AGORA_GOLDEN_ONLY=recovery npm run test:golden");

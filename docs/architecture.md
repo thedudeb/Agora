@@ -42,6 +42,7 @@ This keeps the central route registry stable while allowing large route implemen
 
 - `npm run test:modules` checks script order, service worker cache coverage, syntax-check coverage, and route wrapper contracts.
 - `npm run test:product-surfaces` checks that split modules still expose important product surfaces.
+- `npm run test:budgets` checks frontend module line and size budgets so the split files do not quietly balloon.
 - `npm run code:quality` checks core quality invariants and file-size ceilings.
 - Targeted golden paths exist for split routes, including `npm run test:golden:board`, `npm run test:golden:project`, `npm run test:golden:inbox`, and `npm run test:golden:recovery`.
 
