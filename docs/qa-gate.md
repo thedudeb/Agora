@@ -65,6 +65,19 @@ AGORA_GOLDEN_SUITE=admin AGORA_GOLDEN_ONLY=settings npm run test:golden
 
 Useful suites today are `marketing`, `first-run`, `workspace`, `ai`, `release`, `security`, `data`, `admin`, `offline`, `feedback`, and `mobile`. `AGORA_GOLDEN_ONLY` matches the check name, suite, or route as a case-insensitive substring.
 
+## Targeted Browser Scripts
+
+Use the named shortcuts when you are working on one product surface and want a faster browser check before the full sweep:
+
+```sh
+npm run test:golden:inbox      # Command Inbox, clear-day mode, inbox route wiring
+npm run test:golden:recovery   # Data recovery, portable bundle, Acme recovery proof
+npm run test:golden:readiness  # Production readiness audit and offline readiness
+npm run test:golden:mobile     # Mobile dashboard, evaluator, native offline plan
+```
+
+These scripts still run the static shell checks first. They are meant for local iteration; run `npm run test:golden` before pushing product or routing changes.
+
 Chrome route checks retry once by default when Chrome times out. Tune that with:
 
 ```sh
