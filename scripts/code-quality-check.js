@@ -39,6 +39,7 @@ assertIncludes("src/project-launch.js", "window.AgoraProjectLaunch", "must expos
 assert.equal(packageJson.scripts["test:project-launch"], "node scripts/project-launch-unit-test.js");
 assert.equal(packageJson.scripts["test:product-surfaces"], "node scripts/product-surface-regression.js");
 assert.equal(packageJson.scripts["test:modules"], "node scripts/module-registry-regression.js");
+assert.equal(packageJson.scripts["test:board-commands"], "node scripts/board-command-regression.js");
 assert.equal(packageJson.scripts["test:a11y"], "node scripts/accessibility-regression.js");
 assert.equal(packageJson.scripts["test:golden:inbox"], "AGORA_GOLDEN_ONLY=inbox npm run test:golden");
 assert.equal(packageJson.scripts["test:golden:recovery"], "AGORA_GOLDEN_ONLY=recovery npm run test:golden");
