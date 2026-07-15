@@ -13,13 +13,16 @@ function includes(relativePath, needle, message) {
 }
 
 includes("index.html", "./src/app-runtime.js?v=workspace-platform-v1", "loads runtime wiring after the app bundle");
+includes("index.html", "./src/app-inbox.js?v=workspace-platform-v1", "loads Inbox route rendering after the app bundle");
 includes("sw.js", "./src/app-runtime.js?v=workspace-platform-v1", "caches runtime wiring for offline reloads");
+includes("sw.js", "./src/app-inbox.js?v=workspace-platform-v1", "caches Inbox route rendering for offline reloads");
 includes("package.json", "node --check src/app-runtime.js", "syntax-checks runtime wiring");
+includes("package.json", "node --check src/app-inbox.js", "syntax-checks Inbox route rendering");
 
 includes("src/app.js", "function launchHandoffPacket", "keeps launch handoff packet derivation");
 includes("src/app.js", "Launch handoff packet", "renders launch handoff proof");
-includes("src/app.js", "function renderInboxClearDayPanel", "keeps clear-day inbox mode");
-includes("src/app.js", "data-inbox-remind=\"tomorrow\"", "keeps clear-day snooze action");
+includes("src/app-inbox.js", "function renderInboxClearDayPanel", "keeps clear-day inbox mode");
+includes("src/app-inbox.js", "data-inbox-remind=\"tomorrow\"", "keeps clear-day snooze action");
 includes("src/app.js", "function renderRecoveryConfidenceReceipt", "keeps recovery receipt");
 includes("src/app.js", "Not covered", "keeps recovery limitation disclosure");
 includes("src/app.js", "workspace-trust-strip", "keeps workspace trust proof strip");
