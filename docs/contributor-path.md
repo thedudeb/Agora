@@ -2,6 +2,8 @@
 
 Agora should be easy to help without becoming a maintainer first. This path gives contributors a clear first move and gives maintainers a consistent review bar.
 
+Start with [`CONTRIBUTING.md`](../CONTRIBUTING.md), use [`checks.md`](./checks.md) to choose the smallest verification command, then pick one issue from [`starter-issues.md`](./starter-issues.md). If you change frontend routes or cached scripts, read [`architecture.md`](./architecture.md) first.
+
 ## Who We Want To Help
 
 - Project managers and operators who can describe real workflows.
@@ -14,12 +16,12 @@ Agora should be easy to help without becoming a maintainer first. This path give
 
 | Lane | Good First Contribution | Verification |
 | --- | --- | --- |
-| Docs | Clarify install, hosted demo, migration, trust, or release steps. | Read the linked command path end to end. |
-| UI polish | Fix text overlap, mobile layout, empty states, or route copy. | `npm run check`; screenshot before/after when visual. |
-| Template pack | Add a reusable client-work, operations, or team workflow. | Export/import the pack and document expected generated work. |
+| Docs | Clarify install, hosted demo, migration, trust, or release steps. | `npm run check`; use [`checks.md`](./checks.md) if the docs mention a focused gate. |
+| UI polish | Fix text overlap, mobile layout, empty states, or route copy. | `npm run check`; run `npm run test:golden` or a targeted golden path when route behavior changes. |
+| Template pack | Add a reusable client-work, operations, or team workflow. | `npm run test:fixtures`; export/import the pack and document expected generated work. |
 | Automation pack | Add a previewable rule pack with clear safety language. | Validate with existing automation pack checks or manual preview. |
 | Migration fixture | Add anonymized Asana, Trello, Jira, Linear, ClickUp, CSV, or JSON edge cases. | `npm run test:importers`. |
-| Trust/release | Improve release checks, evidence docs, security guidance, or recovery proof. | Relevant gate plus `npm run release:check`. |
+| Trust/release | Improve release checks, evidence docs, security guidance, or recovery proof. | `npm run trust`, `npm run security`, or the relevant gate plus `npm run release:check`. |
 | Plugin/MCP | Propose manifest contracts, examples, or read-only tools first. | `npm run test:plugins` or `npm run test:mcp`. |
 
 ## Labels

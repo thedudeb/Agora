@@ -20,6 +20,7 @@ Use this page to choose the smallest check that proves the thing you changed. `n
 | Module order and route wrappers | `npm run test:modules` | Changing `index.html`, `sw.js`, route wrappers, or split frontend modules. |
 | Frontend size budgets | `npm run test:budgets` | Adding route code, large markup, or new cached frontend assets. |
 | Check discoverability | `npm run test:check-discoverability` | Changing README, contributing docs, QA docs, or this checks index. |
+| Contributor path docs | `npm run test:contributor-docs` | Changing `CONTRIBUTING.md`, starter issues, or contributor-path docs. |
 | Product surface contracts | `npm run test:product-surfaces` | Moving route rendering or proof surfaces between modules. |
 | Board command behavior | `npm run test:board-commands` | Changing board filters, empty states, or command handling. |
 | Project/board render quality | `npm run test:project-board-quality` | Changing `src/app-project-board.js` render context, Gantt, or board derivations. |
