@@ -13786,6 +13786,7 @@ function renderSearchResults() {
   const query = state.filters.query.trim();
   const results = globalSearchResults();
   els.searchResults.hidden = query.length < 2;
+  els.searchInput?.setAttribute("aria-expanded", String(!els.searchResults.hidden));
   if (els.searchResults.hidden) {
     els.searchResults.innerHTML = "";
     return;
@@ -13829,6 +13830,7 @@ function openSearchResult(button) {
   const companyId = button.dataset.searchCompany || "";
   const assignee = button.dataset.searchAssignee || "";
   els.searchResults.hidden = true;
+  els.searchInput?.setAttribute("aria-expanded", "false");
 
   if (taskId) {
     const task = byId(state.tasks, taskId);
@@ -14370,6 +14372,7 @@ function handleGlobalShortcut(event) {
     if (event.key === "Escape" && event.target === els.searchInput) {
       event.preventDefault();
       els.searchResults.hidden = true;
+      els.searchInput?.setAttribute("aria-expanded", "false");
       els.searchInput.blur();
       return true;
     }

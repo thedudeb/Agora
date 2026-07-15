@@ -14,6 +14,7 @@ document.addEventListener("click", (event) => {
 
   if (!event.target.closest(".search-control") && !event.target.closest("#search-results") && els.searchResults) {
     els.searchResults.hidden = true;
+    els.searchInput?.setAttribute("aria-expanded", "false");
   }
 
   const sidebarToggle = event.target.closest("[data-sidebar-toggle]");

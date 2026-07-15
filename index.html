@@ -32,7 +32,7 @@
     <link rel="stylesheet" href="./src/project-launch.css?v=workspace-platform-v1">
   </head>
   <body>
-    <a class="skip-link" href="#app-view">Skip to main content</a>
+    <a class="skip-link" href="#main-content">Skip to workspace content</a>
     <div class="app-shell">
       <aside class="sidebar" aria-label="Workspace navigation" data-lenis-prevent>
         <a class="brand" href="#landing" data-route="landing" aria-label="Agora home">
@@ -191,7 +191,7 @@
         <button class="secondary-action" type="button" id="seed-reset">Reset sample data</button>
       </aside>
 
-      <main class="main-content" id="main-content" tabindex="-1">
+      <main class="main-content" id="main-content" tabindex="-1" aria-labelledby="page-title" aria-describedby="route-status">
         <header class="topbar">
           <div>
             <p class="eyebrow">Open source project management</p>
@@ -200,9 +200,9 @@
           <div class="topbar-actions">
             <label class="search-control">
               <span>Search</span>
-              <input id="search-input" type="search" placeholder="Tasks, projects, people">
+              <input id="search-input" type="search" placeholder="Tasks, projects, people" autocomplete="off" aria-controls="search-results" aria-expanded="false">
             </label>
-            <div class="search-results" id="search-results" hidden></div>
+            <div class="search-results" id="search-results" role="region" aria-label="Search results" hidden></div>
             <button class="notification-button" type="button" id="notification-button" data-route="inbox" aria-label="Open notifications">
               <span aria-hidden="true">!</span>
               <small class="notification-badge" id="notification-count" hidden>0</small>
@@ -566,8 +566,8 @@
 
     <script src="./src/boot.js?v=workspace-platform-v7"></script>
     <script src="./src/project-launch.js?v=workspace-platform-v1"></script>
-    <script src="./src/app.js?v=workspace-platform-v11"></script>
+    <script src="./src/app.js?v=workspace-platform-v12"></script>
     <script src="./src/app-inbox.js?v=workspace-platform-v1"></script>
-    <script src="./src/app-runtime.js?v=workspace-platform-v1"></script>
+    <script src="./src/app-runtime.js?v=workspace-platform-v2"></script>
   </body>
 </html>
