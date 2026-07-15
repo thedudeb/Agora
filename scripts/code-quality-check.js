@@ -42,6 +42,7 @@ assert.equal(packageJson.scripts["test:modules"], "node scripts/module-registry-
 assert.equal(packageJson.scripts["test:board-commands"], "node scripts/board-command-regression.js");
 assert.equal(packageJson.scripts["test:budgets"], "node scripts/performance-budget-check.js");
 assert.equal(packageJson.scripts["test:project-board-quality"], "node scripts/project-board-quality-check.js");
+assert.equal(packageJson.scripts["test:check-discoverability"], "node scripts/check-discoverability-regression.js");
 assert.equal(packageJson.scripts["test:a11y"], "node scripts/accessibility-regression.js");
 assert.equal(packageJson.scripts["test:golden:inbox"], "AGORA_GOLDEN_ONLY=inbox npm run test:golden");
 assert.equal(packageJson.scripts["test:golden:recovery"], "AGORA_GOLDEN_ONLY=recovery npm run test:golden");

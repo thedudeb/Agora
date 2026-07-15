@@ -17,8 +17,9 @@ Thanks for helping make Agora a real open source product. The best first contrib
 
 1. Read [`docs/contributor-path.md`](./docs/contributor-path.md).
 2. Read [`docs/architecture.md`](./docs/architecture.md) before changing frontend routes, runtime wiring, cached scripts, or split modules.
-3. Pick a starter issue lane from [`docs/starter-issues.md`](./docs/starter-issues.md).
-4. Run the quick local checks:
+3. Use [`docs/checks.md`](./docs/checks.md) to choose the smallest check that proves your change.
+4. Pick a starter issue lane from [`docs/starter-issues.md`](./docs/starter-issues.md).
+5. Run the quick local checks:
 
 ```sh
 npm run check
@@ -26,8 +27,8 @@ npm run demo:check
 npm run release:check
 ```
 
-5. For product-facing changes, include the smallest useful acceptance test or screenshot note.
-6. For security, migration, data export, plugin, MCP, or API changes, include rollback and portability notes.
+6. For product-facing changes, include the smallest useful acceptance test or screenshot note.
+7. For security, migration, data export, plugin, MCP, or API changes, include rollback and portability notes.
 
 ## Local Setup
 
@@ -57,6 +58,8 @@ npm run check
 npm run test:fixtures
 npm run test:api
 ```
+
+For a fuller map of focused gates, see [`docs/checks.md`](./docs/checks.md).
 
 Use focused gates when your change touches those surfaces:
 

@@ -2,6 +2,8 @@
 
 Use this gate before a beta handoff, release tag, hosted deploy, or large product demo.
 
+For the broader command map, including fast local checks, security, migration, packaging, trust, frontend module, and budget gates, see [`docs/checks.md`](./checks.md).
+
 ## Main Command
 
 ```sh

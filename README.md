@@ -109,6 +109,19 @@ The API marketplace registry lets connected workspaces share packs through the s
 
 ## Useful Commands
 
+Most contributors only need this short loop at first:
+
+```sh
+npm run setup    # create .env and local persistent directories
+npm run dev      # serve the browser app
+npm run dev:api  # start the optional local API
+npm run check    # default local confidence gate
+npm run test:golden # full browser route sweep
+npm run security # check + admin security regression + dependency audit
+```
+
+For a complete command map by purpose, see [`docs/checks.md`](./docs/checks.md).
+
 ```sh
 npm run dev       # serve the browser app
 npm run dev:api   # start the local API
@@ -167,7 +180,7 @@ npm run agora -- migrate preview asana-export.csv --source asana-csv
 npm run agora -- migrate apply tasks.csv --source generic-csv --workspace tests/fixtures/workspace.json --out imported-workspace.json
 ```
 
-For focused browser QA, see [`docs/qa-gate.md`](./docs/qa-gate.md) for `AGORA_GOLDEN_SUITE`, `AGORA_GOLDEN_ONLY`, retry, timeout, and artifact options.
+For focused browser QA, see [`docs/qa-gate.md`](./docs/qa-gate.md) for `AGORA_GOLDEN_SUITE`, `AGORA_GOLDEN_ONLY`, retry, timeout, and artifact options. For non-browser gates, security, release, migration, packaging, trust, and module budget checks, see [`docs/checks.md`](./docs/checks.md).
 
 To use different local ports, set `AGORA_APP_PORT` or `AGORA_API_PORT` in `.env`. Add browser origins to `AGORA_ALLOWED_ORIGINS` when hosting the app somewhere other than localhost.
 
