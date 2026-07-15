@@ -26465,7 +26465,7 @@ function renderInboxClearDayPanel(items) {
       <div class="panel-header">
         <div>
           <p class="eyebrow">Clear the day</p>
-          <h2>${top ? "Handle the next useful item." : "The command queue is clear."}</h2>
+          <h2>${top ? "One decision at a time." : "The command queue is clear."}</h2>
         </div>
         <span class="status-pill ${queue.length ? "inbox-amber" : "inbox-green"}">${clearedCount}/${total} cleared</span>
       </div>
@@ -35234,7 +35234,7 @@ function renderRecoveryConfidenceReceipt() {
         </div>
         <span class="status-pill inbox-blue">Live proof</span>
       </div>
-      <p class="panel-note">This is the plain-English handoff receipt for exports, rollback, offline app readiness, restore rehearsal, and the one thing still not guaranteed by a local bundle.</p>
+      <p class="panel-note">A plain-English receipt for exports, rollback, offline app readiness, restore rehearsal, and the one thing still not guaranteed by a local bundle.</p>
       <div class="recovery-confidence-grid">
         ${rows.map((item) => `<article><span>${escapeHtml(item.label)}</span><strong>${escapeHtml(item.value)}</strong><small>${escapeHtml(item.detail)}</small></article>`).join("")}
       </div>

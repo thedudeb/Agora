@@ -34,6 +34,7 @@ assertIncludes("server/api.js", 'require("./api-contracts")', "must import share
 assertIncludes("src/project-launch.js", "window.AgoraProjectLaunch", "must expose the launch module API");
 
 assert.equal(packageJson.scripts["test:project-launch"], "node scripts/project-launch-unit-test.js");
+assert.equal(packageJson.scripts["test:product-surfaces"], "node scripts/product-surface-regression.js");
 assert.equal(packageJson.scripts["code:quality"], "node scripts/code-quality-check.js");
 
 const ceilings = {

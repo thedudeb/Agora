@@ -19,7 +19,7 @@ Try the bundled Acme demo from the browser app with `?route=evaluate&demoAction=
 - Open source and privacy-conscious teams that want project management without ads, trackers, or export lock-in.
 - Operators who want AI assistance with permissions, previews, rationale, audit logs, and undo paths instead of mystery automation.
 
-See the [product readiness roadmap](./docs/product-readiness-roadmap.md) for the working checklist Agora is using to become a full product.
+See the [product readiness roadmap](./docs/product-readiness-roadmap.md) for the working checklist Agora is using to become a full product. For real workspace rollout, use the [production readiness checklist](./docs/production-readiness.md).
 
 Contributors can start with [CONTRIBUTING.md](./CONTRIBUTING.md), the [contributor path](./docs/contributor-path.md), and [starter issues](./docs/starter-issues.md).
 
