@@ -831,14 +831,16 @@ function renderProjectTaskRow(task) {
   `;
 }
 
-function boardSortValue(task) {
+function boardSortValue(task, context = null) {
   const order = Number(task.boardOrder ?? task.customFields?.boardOrder);
-  return Number.isFinite(order) ? order : 100000 + state.tasks.findIndex((item) => item.id === task.id);
+  if (Number.isFinite(order)) return order;
+  const fallbackIndex = context?.taskOrder?.get(task.id) ?? state.tasks.findIndex((item) => item.id === task.id);
+  return 100000 + (fallbackIndex >= 0 ? fallbackIndex : state.tasks.length);
 }
 
-function boardOrderedTasks(tasks = []) {
-  const sort = normalizeWorkspaceBoard(state.workspace.board).sort;
-  const priorityOrder = new Map(priorities.map((priority, index) => [priority.id, index]));
+function boardOrderedTasks(tasks = [], context = null) {
+  const sort = (context?.board || normalizeWorkspaceBoard(state.workspace.board)).sort;
+  const priorityOrder = context?.priorityOrder || new Map(priorities.map((priority, index) => [priority.id, index]));
   return [...tasks].sort((a, b) => {
     if (sort === "due") {
       const dueSort = String(a.dueDate || "9999-12-31").localeCompare(String(b.dueDate || "9999-12-31"));
@@ -848,14 +850,13 @@ function boardOrderedTasks(tasks = []) {
       const prioritySort = (priorityOrder.get(a.priority) ?? 99) - (priorityOrder.get(b.priority) ?? 99);
       if (prioritySort) return prioritySort;
     }
-    const boardSort = boardSortValue(a) - boardSortValue(b);
+    const boardSort = boardSortValue(a, context) - boardSortValue(b, context);
     if (boardSort) return boardSort;
     return String(a.updatedAt || a.createdAt || "").localeCompare(String(b.updatedAt || b.createdAt || ""));
   });
 }
 
-function boardSwimlaneGroups(tasks = []) {
-  const board = normalizeWorkspaceBoard(state.workspace.board);
+function boardSwimlaneGroups(tasks = [], board = normalizeWorkspaceBoard(state.workspace.board)) {
   if (board.swimlane === "assignee") {
     const groups = workspaceMembers().map((member) => ({
       id: member.id,
@@ -927,9 +928,9 @@ function boardSwimlaneGroups(tasks = []) {
   return [{ id: "all", label: "All work", tasks }];
 }
 
-function boardHealthStats(tasks = []) {
-  const board = normalizeWorkspaceBoard(state.workspace.board);
-  const columns = board.columns.filter((column) => column.enabled);
+function boardHealthStats(tasks = [], context = null) {
+  const board = context?.board || normalizeWorkspaceBoard(state.workspace.board);
+  const columns = context?.enabledColumns || board.columns.filter((column) => column.enabled);
   const visibleTasks = tasks.filter((task) => task.status !== "done");
   const overWip = columns.filter((column) => {
     const count = tasks.filter((task) => task.status === column.id).length;
@@ -943,9 +944,9 @@ function boardHealthStats(tasks = []) {
   return { overWip, stale, blocked, overdue, unowned, review };
 }
 
-function renderBoardHealthStrip(tasks = []) {
-  const stats = boardHealthStats(tasks);
-  const board = normalizeWorkspaceBoard(state.workspace.board);
+function renderBoardHealthStrip(tasks = [], context = null) {
+  const stats = boardHealthStats(tasks, context);
+  const board = context?.board || normalizeWorkspaceBoard(state.workspace.board);
   const undo = board.lastUndo;
   return `
     <section class="board-health-strip" aria-label="Board health">
@@ -1097,8 +1098,8 @@ function renderBoardBacklogPanel(tasks = []) {
   `;
 }
 
-function boardFlowAnalytics(tasks = []) {
-  const activeTasks = boardActiveTasks(tasks);
+function boardFlowAnalytics(tasks = [], context = null) {
+  const activeTasks = context?.activeBoardTasks || boardActiveTasks(tasks);
   const openTasks = activeTasks.filter((task) => task.status !== "done");
   const doneThisWeek = activeTasks.filter((task) => task.status === "done" && daysBetween((task.updatedAt || task.createdAt || todayKey()).slice(0, 10), todayKey()) <= 7);
   const activeAges = openTasks.map((task) => daysBetween((task.createdAt || task.updatedAt || todayKey()).slice(0, 10), todayKey()));
@@ -1108,7 +1109,7 @@ function boardFlowAnalytics(tasks = []) {
   const blocked = openTasks.filter(isTaskBlocked).length;
   const overdue = openTasks.filter(isOverdue).length;
   const stale = staleAges.filter((age) => age >= 7).length;
-  const columns = boardColumns().map((column) => {
+  const columns = (context?.columns || boardColumns()).map((column) => {
     const columnTasks = activeTasks.filter((task) => task.status === column.id);
     return {
       ...column,
@@ -1135,8 +1136,8 @@ function boardFlowAnalytics(tasks = []) {
   };
 }
 
-function renderBoardFlowAnalytics(tasks = []) {
-  const flow = boardFlowAnalytics(tasks);
+function renderBoardFlowAnalytics(tasks = [], context = null) {
+  const flow = boardFlowAnalytics(tasks, context);
   return `
     <section class="board-flow-panel" aria-label="Flow analytics">
       <div>
@@ -1285,11 +1286,27 @@ function renderBoardControls() {
   `;
 }
 
-function renderBoardColumn(column, tasks) {
-  const columnTasks = boardOrderedTasks(tasks.filter((task) => task.status === column.id));
+function createBoardRenderContext(tasks = []) {
+  const board = normalizeWorkspaceBoard(state.workspace.board);
+  const enabledColumns = board.columns.filter((column) => column.enabled);
+  const columns = enabledColumns.filter((column) => board.showDone || column.id !== "done");
+  const activeBoardTasks = boardActiveTasks(tasks);
+  return {
+    board,
+    enabledColumns,
+    columns,
+    activeBoardTasks,
+    groups: boardSwimlaneGroups(activeBoardTasks, board),
+    priorityOrder: new Map(priorities.map((priority, index) => [priority.id, index])),
+    taskOrder: new Map(state.tasks.map((task, index) => [task.id, index]))
+  };
+}
+
+function renderBoardColumn(column, tasks, context = null) {
+  const columnTasks = boardOrderedTasks(tasks.filter((task) => task.status === column.id), context);
   const overLimit = column.wipLimit > 0 && columnTasks.length > column.wipLimit;
   const atLimit = column.wipLimit > 0 && columnTasks.length === column.wipLimit;
-  const board = normalizeWorkspaceBoard(state.workspace.board);
+  const board = context?.board || normalizeWorkspaceBoard(state.workspace.board);
   const collapsed = board.collapsed.includes(column.id);
   return `
     <section class="board-column ${overLimit ? "is-over-wip" : atLimit ? "is-at-wip" : ""} ${collapsed ? "is-collapsed" : ""} ${board.mobileColumn === column.id ? "is-mobile-active" : ""}" data-status="${column.id}">
@@ -1323,10 +1340,8 @@ function renderBoardColumn(column, tasks) {
 }
 
 function renderKanbanBoard(tasks, { controls = false, label = "Task board" } = {}) {
-  const board = normalizeWorkspaceBoard(state.workspace.board);
-  const columns = board.columns.filter((column) => column.enabled && (board.showDone || column.id !== "done"));
-  const activeBoardTasks = boardActiveTasks(tasks);
-  const groups = boardSwimlaneGroups(activeBoardTasks);
+  const context = createBoardRenderContext(tasks);
+  const { board, columns, activeBoardTasks, groups } = context;
   const boardMarkup = groups.map((group) => `
     <section class="board-swimlane" data-board-lane="${escapeHtml(group.id)}">
       ${board.swimlane === "none" ? "" : `
@@ -1336,11 +1351,11 @@ function renderKanbanBoard(tasks, { controls = false, label = "Task board" } = {
         </div>
       `}
       <div class="board board-density-${escapeHtml(board.density)}" aria-label="${escapeHtml(label)}${board.swimlane === "none" ? "" : ` - ${escapeHtml(group.label)}`}">
-        ${columns.map((column) => renderBoardColumn(column, group.tasks)).join("")}
+        ${columns.map((column) => renderBoardColumn(column, group.tasks, context)).join("")}
       </div>
     </section>
   `).join("");
-  return `${controls ? `${renderBoardControls()}${renderBoardBacklogPanel(tasks)}${renderBoardFlowAnalytics(activeBoardTasks)}${renderBoardHealthStrip(activeBoardTasks)}${renderBoardMobileTabs(columns)}` : ""}${boardMarkup}`;
+  return `${controls ? `${renderBoardControls()}${renderBoardBacklogPanel(tasks)}${renderBoardFlowAnalytics(activeBoardTasks, context)}${renderBoardHealthStrip(activeBoardTasks, context)}${renderBoardMobileTabs(columns)}` : ""}${boardMarkup}`;
 }
 
 function renderProjectBoard(tasks) {
