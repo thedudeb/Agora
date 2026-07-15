@@ -22082,6 +22082,53 @@ function renderProductionReadinessExportPanel() {
   `;
 }
 
+function productionCommandChecklistItems() {
+  const recovery = portableRecoveryStatus();
+  const health = backendHealthForReadiness();
+  const securityOpen = productionAuditAccessItems().filter((item) => !item.done).length;
+  const feedbackConfigured = Boolean(notificationSettings().delivery?.emailAddress || publicFeatureConfig?.projects?.length);
+  return [
+    { label: "Sync", done: Boolean(apiSession), detail: apiSession ? apiConnectionLabel() : "Connect the API before hosted team use.", action: "Open Sync", attrs: 'data-command-id="settings:sync"' },
+    { label: "Recovery", done: recovery.backups.length > 0 && recovery.score >= Math.max(3, recovery.total - 1), detail: `${recovery.backups.length} backup${recovery.backups.length === 1 ? "" : "s"} / ${recovery.score}/${recovery.total} recovery checks.`, action: "Recovery Plan", attrs: 'data-command-id="recovery:plan"' },
+    { label: "Sessions", done: securityOpen === 0, detail: securityOpen ? `${securityOpen} access or audit check${securityOpen === 1 ? "" : "s"} open.` : "Access and audit checks have evidence.", action: "Security", attrs: 'data-open-settings-tab="security"' },
+    { label: "Feature requests", done: feedbackConfigured, detail: feedbackConfigured ? "Feedback intake has public or email routing evidence." : "Configure public intake or email handoff before launch.", action: "Feedback", attrs: 'data-open-settings-tab="feedback"' },
+    { label: "Offline", done: offlineAppReadinessItems().every((item) => item.done), detail: "PWA, desktop, mobile, and bundle contract readiness are tracked.", action: "Data", attrs: 'data-route="data"' },
+    { label: "Checklist", done: true, detail: health.productionMode ? "Production backend mode is visible in health checks." : "Use the rollout checklist before real workspace adoption.", action: "Read Docs", href: "./docs/production-readiness.md" }
+  ];
+}
+
+function renderProductionCommandChecklistPanel() {
+  const items = productionCommandChecklistItems();
+  const score = readinessScore(items);
+  return `
+    <section class="panel readiness-audit-section readiness-audit-command-checklist">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">Production command checklist</p>
+          <h2>Launch controls in one place</h2>
+        </div>
+        <span class="status-pill inbox-${readinessTone(score)}">${score.done}/${score.total}</span>
+      </div>
+      <div class="readiness-audit-list">
+        ${items.map((item) => `
+          <article class="readiness-audit-item ${item.done ? "is-done" : "is-open"}">
+            <span>${item.done ? "OK" : "Next"}</span>
+            <div>
+              <strong>${escapeHtml(item.label)}</strong>
+              <p>${escapeHtml(item.detail)}</p>
+            </div>
+          </article>
+        `).join("")}
+      </div>
+      <div class="readiness-audit-actions">
+        ${items.map((item) => item.href
+          ? `<a class="button ${item.done ? "button-secondary" : "button-primary"} compact-button" href="${escapeHtml(item.href)}" target="_blank" rel="noopener">${escapeHtml(item.action)}</a>`
+          : `<button class="button ${item.done ? "button-secondary" : "button-primary"} compact-button" type="button" ${item.attrs}>${escapeHtml(item.action)}</button>`).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderReadinessCliPanel() {
   return `
     <section class="panel readiness-cli-panel">
@@ -22133,6 +22180,7 @@ function renderProductionReadinessAudit() {
     ${renderWorkspaceTrustStrip()}
 
     <div class="readiness-audit-grid">
+      ${renderProductionCommandChecklistPanel()}
       ${renderHostedSetupWizardPanel()}
       ${renderEnvironmentDiagnosticsPanel()}
       ${renderProductionReadinessExportPanel()}
