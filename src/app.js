@@ -20828,10 +20828,9 @@ function workspaceTrustSignals() {
   const health = backendHealth || apiSession?.backendHealth || {};
   const productionGates = Array.isArray(health.productionGates) ? health.productionGates : [];
   const failedProductionGates = productionGates.filter((gate) => !gate.done);
-  const backendValue = health.productionMode ? "Production" : apiSession ? "API connected" : "Local";
-  const backendDetail = apiSession
-    ? `${apiBackendLabel()} / ${apiLastSyncedLabel()}`
-    : "Browser storage until API is connected";
+  const ai = aiOperatorTrustState();
+  const portalLinks = normalizeClientPortalLinks(state.clientPortalLinks, state.companies);
+  const visibleTasks = state.tasks.filter((task) => task.clientVisible).length;
   const securityValue = productionGates.length
     ? failedProductionGates.length
       ? `${failedProductionGates.length} gate${failedProductionGates.length === 1 ? "" : "s"} open`
@@ -20848,29 +20847,11 @@ function workspaceTrustSignals() {
       : "No hosted surface is active in this browser workspace";
 
   return [
-    {
-      label: "Recovery",
-      value: `${recovery.score}/${recovery.total} ready`,
-      detail: recovery.score >= Math.max(3, recovery.total - 1) ? "Portable bundle, offline contract, and recovery evidence are available" : latestBackup,
-      tone: recovery.score >= Math.max(3, recovery.total - 1) ? "inbox-green" : "inbox-amber",
-      commandId: "recovery:plan"
-    },
-    {
-      label: "Backend",
-      value: backendValue,
-      detail: backendDetail,
-      tone: health.productionMode ? "inbox-green" : apiSession ? "inbox-blue" : "inbox-neutral",
-      commandId: "settings:sync"
-    },
-    {
-      label: "Security",
-      value: securityValue,
-      detail: securityDetail,
-      tone: productionGates.length
-        ? failedProductionGates.length ? "inbox-amber" : "inbox-green"
-        : apiSession ? "inbox-amber" : "inbox-neutral",
-      commandId: "settings:sync"
-    }
+    { label: "Recovery", value: `${recovery.score}/${recovery.total} ready`, detail: recovery.score >= Math.max(3, recovery.total - 1) ? "Portable bundle, offline contract, and recovery evidence are available" : latestBackup, tone: recovery.score >= Math.max(3, recovery.total - 1) ? "inbox-green" : "inbox-amber", commandId: "recovery:plan" },
+    { label: "Portability", value: `${recovery.files.length} files`, detail: `Schema v${CURRENT_WORKSPACE_SCHEMA_VERSION}, JSON export, CSVs, Markdown, audit log, and offline contract.`, tone: recovery.files.some((file) => file.path === "workspace.json") ? "inbox-green" : "inbox-amber", commandId: "recovery:plan" },
+    { label: "AI audit", value: `${ai.actionLedgerEntries} logged`, detail: `${ai.auditMode}; ${ai.permissionSummary}.`, tone: ai.actionLedgerEntries ? "inbox-green" : "inbox-neutral", commandId: "route:operator" },
+    { label: "Client safety", value: `${portalLinks.length + visibleTasks} scoped`, detail: `${portalLinks.length} portal link${portalLinks.length === 1 ? "" : "s"}, ${visibleTasks} client-visible task${visibleTasks === 1 ? "" : "s"}.`, tone: portalLinks.length || visibleTasks ? "inbox-green" : "inbox-blue", commandId: "route:visibility" },
+    { label: "Security", value: securityValue, detail: securityDetail, tone: productionGates.length ? failedProductionGates.length ? "inbox-amber" : "inbox-green" : apiSession ? "inbox-amber" : "inbox-neutral", commandId: "settings:sync" }
   ];
 }
 
