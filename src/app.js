@@ -21278,8 +21278,8 @@ function readinessTone(score) {
   return "red";
 }
 
-function productionAuditRecoveryItems() {
-  const recovery = portableRecoveryStatus();
+function productionAuditRecoveryItems(context = {}) {
+  const recovery = context.recovery || portableRecoveryStatus();
   const hasExport = state.auditEvents.some((event) => event.action === "workspace_export");
   return [
     {
@@ -21343,17 +21343,16 @@ function backendHealthForReadiness() {
   return backendHealth || apiSession?.backendHealth || {};
 }
 
-function readinessBackendItemsById() {
-  const health = backendHealthForReadiness();
+function readinessBackendItemsById(health = backendHealthForReadiness()) {
   const productionGates = Array.isArray(health.productionGates) ? health.productionGates : [];
   const readiness = Array.isArray(health.readiness) ? health.readiness : [];
   return Object.fromEntries([...productionGates, ...readiness].map((item) => [item.id, item]));
 }
 
-function hostedSetupWizardItems() {
-  const health = backendHealthForReadiness();
-  const byId = readinessBackendItemsById();
-  const recovery = portableRecoveryStatus();
+function hostedSetupWizardItems(context = {}) {
+  const health = context.health || backendHealthForReadiness();
+  const byId = context.byId || readinessBackendItemsById(health);
+  const recovery = context.recovery || portableRecoveryStatus();
   const hasOwner = Boolean(apiSession?.user || workspaceMembers().length);
   const hasLaunchProject = launchWorkspaceItems().filter((item) => item.done).length >= 3;
   const publicSurface = byId["public-app-url"];
@@ -21409,9 +21408,9 @@ function hostedSetupWizardItems() {
   ];
 }
 
-function environmentDiagnosticsItems() {
-  const health = backendHealthForReadiness();
-  const byId = readinessBackendItemsById();
+function environmentDiagnosticsItems(context = {}) {
+  const health = context.health || backendHealthForReadiness();
+  const byId = context.byId || readinessBackendItemsById(health);
   const supabase = byId["supabase-environment"];
   const strictCsp = byId["strict-csp"];
   const publicUrl = byId["public-app-url"];
@@ -21470,13 +21469,23 @@ function environmentDiagnosticsItems() {
   ];
 }
 
-function productionReadinessExportPayload() {
-  const sections = productionAuditSections();
-  const wizard = hostedSetupWizardItems();
-  const diagnostics = environmentDiagnosticsItems();
+function productionReadinessContext() {
+  const health = backendHealthForReadiness();
+  return {
+    health,
+    byId: readinessBackendItemsById(health),
+    recovery: portableRecoveryStatus(),
+    accessItems: productionAuditAccessItems()
+  };
+}
+
+function productionReadinessExportPayload(context = productionReadinessContext()) {
+  const sections = productionAuditSections(context);
+  const wizard = hostedSetupWizardItems(context);
+  const diagnostics = environmentDiagnosticsItems(context);
   const allItems = [...sections.flatMap((section) => section.items), ...wizard, ...diagnostics];
   const score = readinessScore(allItems);
-  const health = backendHealthForReadiness();
+  const health = context.health || backendHealthForReadiness();
   return {
     generatedAt: new Date().toISOString(),
     workspace: {
@@ -21548,7 +21557,7 @@ function exportProductionReadinessReport(format) {
   showToast("Production readiness Markdown downloaded", "success");
 }
 
-function productionAuditSections() {
+function productionAuditSections(context = {}) {
   return [
     {
       id: "launch",
@@ -21578,7 +21587,7 @@ function productionAuditSections() {
       id: "recovery",
       eyebrow: "Recovery",
       title: "Portable restore path",
-      items: productionAuditRecoveryItems(),
+      items: productionAuditRecoveryItems(context),
       actions: [
         { label: "Create Backup", commandId: "backup:create" },
         { label: "Open Recovery Plan", commandId: "recovery:plan" }
@@ -21588,7 +21597,7 @@ function productionAuditSections() {
       id: "access",
       eyebrow: "Security",
       title: "Access and audit controls",
-      items: productionAuditAccessItems(),
+      items: context.accessItems || productionAuditAccessItems(),
       actions: [
         { label: "Open Permissions", route: "permissions" },
         { label: "Open Audit", route: "audit" }
@@ -21636,8 +21645,8 @@ function renderProductionAuditSection(section) {
   `;
 }
 
-function renderHostedSetupWizardPanel() {
-  const items = hostedSetupWizardItems();
+function renderHostedSetupWizardPanel(context = {}) {
+  const items = hostedSetupWizardItems(context);
   const score = readinessScore(items);
   const tone = readinessTone(score);
   return `
@@ -21668,8 +21677,8 @@ function renderHostedSetupWizardPanel() {
   `;
 }
 
-function renderEnvironmentDiagnosticsPanel() {
-  const items = environmentDiagnosticsItems();
+function renderEnvironmentDiagnosticsPanel(context = {}) {
+  const items = environmentDiagnosticsItems(context);
   const score = readinessScore(items);
   const tone = readinessTone(score);
   return `
@@ -21700,8 +21709,8 @@ function renderEnvironmentDiagnosticsPanel() {
   `;
 }
 
-function renderProductionReadinessExportPanel() {
-  const report = productionReadinessExportPayload();
+function renderProductionReadinessExportPanel(context = productionReadinessContext()) {
+  const report = productionReadinessExportPayload(context);
   return `
     <section class="panel readiness-audit-section readiness-audit-export">
       <div class="panel-header">
@@ -21743,10 +21752,10 @@ function renderProductionReadinessExportPanel() {
   `;
 }
 
-function productionCommandChecklistItems() {
-  const recovery = portableRecoveryStatus();
-  const health = backendHealthForReadiness();
-  const securityOpen = productionAuditAccessItems().filter((item) => !item.done).length;
+function productionCommandChecklistItems(context = {}) {
+  const recovery = context.recovery || portableRecoveryStatus();
+  const health = context.health || backendHealthForReadiness();
+  const securityOpen = (context.accessItems || productionAuditAccessItems()).filter((item) => !item.done).length;
   const feedbackConfigured = Boolean(notificationSettings().delivery?.emailAddress || publicFeatureConfig?.projects?.length);
   return [
     { label: "Sync", done: Boolean(apiSession), detail: apiSession ? apiConnectionLabel() : "Connect the API before hosted team use.", action: "Open Sync", attrs: 'data-command-id="settings:sync"' },
@@ -21758,8 +21767,8 @@ function productionCommandChecklistItems() {
   ];
 }
 
-function renderProductionCommandChecklistPanel() {
-  const items = productionCommandChecklistItems();
+function renderProductionCommandChecklistPanel(context = {}) {
+  const items = productionCommandChecklistItems(context);
   const score = readinessScore(items);
   return `
     <section class="panel readiness-audit-section readiness-audit-command-checklist">
@@ -21812,12 +21821,13 @@ function renderReadinessCliPanel() {
 }
 
 function renderProductionReadinessAudit() {
-  const sections = productionAuditSections();
+  const context = productionReadinessContext();
+  const sections = productionAuditSections(context);
   const allItems = sections.flatMap((section) => section.items);
   const score = readinessScore(allItems);
   const tone = readinessTone(score);
-  const recovery = portableRecoveryStatus();
-  const health = backendHealth || apiSession?.backendHealth || {};
+  const recovery = context.recovery;
+  const health = context.health;
   els.appView.innerHTML = `
     ${renderRouteHeader({
       eyebrow: "Readiness",
@@ -21841,10 +21851,10 @@ function renderProductionReadinessAudit() {
     ${renderWorkspaceTrustStrip()}
 
     <div class="readiness-audit-grid">
-      ${renderProductionCommandChecklistPanel()}
-      ${renderHostedSetupWizardPanel()}
-      ${renderEnvironmentDiagnosticsPanel()}
-      ${renderProductionReadinessExportPanel()}
+      ${renderProductionCommandChecklistPanel(context)}
+      ${renderHostedSetupWizardPanel(context)}
+      ${renderEnvironmentDiagnosticsPanel(context)}
+      ${renderProductionReadinessExportPanel(context)}
       ${sections.map(renderProductionAuditSection).join("")}
       ${renderReadinessCliPanel()}
     </div>
