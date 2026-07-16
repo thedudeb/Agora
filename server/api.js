@@ -7,6 +7,7 @@ const tls = require("node:tls");
 const { URL } = require("node:url");
 const { loadEnvFile } = require("./env");
 const { createStorage } = require("./storage");
+const { createAsyncLock, normalizeRevision } = require("./concurrency");
 const { workspace, demoUsers, demoMemberships, rolePermissions } = require("./api-contracts");
 const packageJson = require("../package.json");
 
@@ -1182,6 +1183,7 @@ function operation(summary, description) {
 
 function createServer(options = {}) {
   const storage = options.storage || createStorage();
+  const workspaceWriteLock = createAsyncLock();
   initializeBackgroundJobs(storage);
   initializeAuthSessions(storage);
   const rateLimitPolicy = normalizeRateLimitPolicy(options.rateLimits);
@@ -1217,6 +1219,9 @@ function createServer(options = {}) {
         errorMessage: response.agoraErrorMessage
       });
     });
+    const releaseWorkspaceWrite = ["POST", "PUT", "PATCH", "DELETE"].includes(request.method)
+      ? await workspaceWriteLock.acquire()
+      : null;
     try {
       const corsAllowed = applyCors(request, response);
       if (request.method === "OPTIONS") {
@@ -2216,7 +2221,7 @@ function createServer(options = {}) {
           return;
         }
         const body = await readJsonBody(request);
-        const document = await saveWorkspaceSnapshot(storage, body.snapshot || body, session, "workspace_update");
+        const document = await saveWorkspaceSnapshot(storage, body.snapshot || body, session, "workspace_update", requestedWorkspaceRevision(request, body));
         sendJson(response, 200, publicWorkspaceDocument(document, session));
         return;
       }
@@ -2227,7 +2232,7 @@ function createServer(options = {}) {
           return;
         }
         const body = await readJsonBody(request);
-        const document = await saveWorkspaceSnapshot(storage, body.snapshot || body, session, "workspace_import");
+        const document = await saveWorkspaceSnapshot(storage, body.snapshot || body, session, "workspace_import", requestedWorkspaceRevision(request, body));
         sendJson(response, 200, publicWorkspaceDocument(document, session));
         return;
       }
@@ -2246,6 +2251,8 @@ function createServer(options = {}) {
       if (error.retryAfterSeconds) response.setHeader("Retry-After", String(error.retryAfterSeconds));
       if (error.statusCode === 429) await recordRateLimitAuditEvent(storage, request, error).catch(() => {});
       sendError(response, error.statusCode || 500, error.publicMessage || "Internal server error");
+    } finally {
+      releaseWorkspaceWrite?.();
     }
   });
 }
@@ -6736,17 +6743,30 @@ function verifyPassword(password, user) {
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 }
 
-async function saveWorkspaceSnapshot(storage, snapshot, session, action) {
+function requestedWorkspaceRevision(request, body = {}) {
+  const rawRevision = body.expectedRevision ?? request.headers["if-match"];
+  if (rawRevision === undefined || rawRevision === null || rawRevision === "") return null;
+  const revision = Number(String(rawRevision).replace(/^W\//, "").replaceAll('"', ""));
+  if (!Number.isInteger(revision) || revision < 0) publicError(400, "Workspace revision must be a non-negative integer");
+  return revision;
+}
+
+async function saveWorkspaceSnapshot(storage, snapshot, session, action, expectedRevision) {
   validateSnapshot(snapshot);
   if (sessionCompanyId(session)) {
     publicError(403, "Company-scoped sessions must use structured project, task, and record endpoints");
   }
-  const existingSnapshot = await storage.loadWorkspaceSnapshot();
+  const existingDocument = await storage.loadWorkspace();
+  const existingSnapshot = existingDocument?.snapshot || {};
+  if (existingDocument && expectedRevision === null) {
+    publicError(409, "Workspace revision is required. Reload the workspace before saving.");
+  }
   const mergedSnapshot = mergeSnapshotAccess(existingSnapshot, snapshot);
   const document = await storage.saveWorkspace(mergedSnapshot, {
     storage: storage.driver || "json-file",
     updatedBy: session.user.id,
-    action
+    action,
+    expectedRevision: expectedRevision ?? normalizeRevision(existingDocument?.metadata?.revision)
   });
   await storage.appendAuditEvent({
     actorId: session.user.id,

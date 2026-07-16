@@ -31,6 +31,7 @@ Open the Supabase SQL editor and run these files in order:
 3. [`server/migrations/003_background_jobs.sql`](../server/migrations/003_background_jobs.sql)
 4. [`server/migrations/004_auth_sessions.sql`](../server/migrations/004_auth_sessions.sql)
 5. [`server/migrations/005_rate_limit_buckets.sql`](../server/migrations/005_rate_limit_buckets.sql)
+6. [`server/migrations/006_workspace_revisions.sql`](../server/migrations/006_workspace_revisions.sql)
 
 The first migration creates Agora storage tables. The second migration adds Supabase Auth memberships, helper functions, and RLS policies. The third migration adds persisted background jobs for retryable email and worker state. The fourth migration adds durable hashed API sessions for rotation and revocation across restarts. The fifth migration adds distributed API rate-limit buckets for multi-worker hosted deployments.
 
@@ -136,6 +137,7 @@ The verifier is non-destructive. It does not delete existing rows and does not t
 | RLS or membership behavior looks wrong | Migration 002 did not run | Rerun `002_supabase_auth_rls.sql`, sign in again, then refresh Backend Health. |
 | Feature request emails never retry after a restart | Migration 003 did not run | Rerun `003_background_jobs.sql`, restart the API, then refresh Backend Health. |
 | Session rotation or revoke-others resets after restart | Migration 004 did not run | Rerun `004_auth_sessions.sql`, restart the API, then refresh Backend Health. |
+| Concurrent edits return missing-column or missing-function errors | Migration 006 did not run | Run `006_workspace_revisions.sql`, restart the API, and retry the edit. |
 | `npm run test:supabase` fails on network or credentials | `.env` values are placeholders or unreachable | Confirm URL/key values and run the command from an environment that can reach Supabase. |
 
 ## Pre-Launch Gate

@@ -8,6 +8,7 @@ const CURRENT_WORKSPACE_SCHEMA_VERSION = 2;
 const WORKSPACE_EXPORT_VERSION = 1;
 const MAX_WORKSPACE_BACKUPS = 12;
 const REALTIME_POLL_MS = 30000;
+let storageFailureNotificationScheduled = false;
 const API_BASE_URL = configuredApiBaseUrl();
 
 function configuredApiBaseUrl() {
@@ -24,7 +25,8 @@ function configuredApiBaseUrl() {
 function storageGet(key) {
   try {
     return window.localStorage?.getItem(key) || null;
-  } catch {
+  } catch (error) {
+    reportLocalPersistenceFailure(error);
     return null;
   }
 }
@@ -32,16 +34,30 @@ function storageGet(key) {
 function storageSet(key, value) {
   try {
     window.localStorage?.setItem(key, value);
-  } catch {
-    // Local persistence is best-effort when browser storage is unavailable.
+    return true;
+  } catch (error) {
+    reportLocalPersistenceFailure(error);
+    return false;
   }
+}
+
+function reportLocalPersistenceFailure(error) {
+  console.error("Agora local persistence failed", error);
+  if (storageFailureNotificationScheduled) return;
+  storageFailureNotificationScheduled = true;
+  window.setTimeout(() => {
+    storageFailureNotificationScheduled = false;
+    showToast("Local storage is full or unavailable. Export your workspace before closing this tab.", "info");
+  }, 0);
 }
 
 function storageRemove(key) {
   try {
     window.localStorage?.removeItem(key);
-  } catch {
-    // Local persistence is best-effort when browser storage is unavailable.
+    return true;
+  } catch (error) {
+    reportLocalPersistenceFailure(error);
+    return false;
   }
 }
 
@@ -126,8 +142,9 @@ const workspaceStore = {
     return storageGet(workspaceSnapshotKey(activeWorkspaceId)) || storageGet(STORAGE_KEY);
   },
   save(nextState) {
-    storageSet(workspaceSnapshotKey(activeWorkspaceId), JSON.stringify(nextState));
-    storageSet(STORAGE_KEY, JSON.stringify(nextState));
+    const workspaceSaved = storageSet(workspaceSnapshotKey(activeWorkspaceId), JSON.stringify(nextState));
+    const legacySaved = storageSet(STORAGE_KEY, JSON.stringify(nextState));
+    return workspaceSaved && legacySaved;
   },
   clear() {
     storageRemove(workspaceSnapshotKey(activeWorkspaceId));
@@ -4624,6 +4641,7 @@ async function apiRequest(path, options = {}) {
     method: options.method || "GET",
     headers: {
       "Content-Type": "application/json",
+      ...(options.headers || {}),
       ...(apiSession?.token ? { Authorization: `Bearer ${apiSession.token}` } : {})
     },
     body: options.body ? JSON.stringify(options.body) : undefined
@@ -4665,7 +4683,17 @@ function saveApiSyncQueue() {
 }
 
 function apiSyncQueueItemId({ path = "", method = "POST", body = {} }) {
-  return `${method}:${path}:${body?.project?.id || body?.task?.id || body?.record?.id || JSON.stringify(body).slice(0, 80)}`;
+  return `${method}:${path}:${body?.project?.id || body?.task?.id || body?.record?.id || hashQueuePayload(body)}`;
+}
+
+function hashQueuePayload(body) {
+  const value = JSON.stringify(body);
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${(hash >>> 0).toString(16)}:${value.length}`;
 }
 
 function apiSyncQueueBlocker(item = {}) {
@@ -4702,8 +4730,7 @@ function normalizeApiSyncQueue(queue = []) {
         nextRetryAt: item.nextRetryAt || "",
         blockedBy: item.blockedBy || apiSyncQueueBlocker(item)
       };
-    })
-    .slice(0, 50);
+    });
 }
 
 function apiSyncQueueSummary() {
@@ -4757,7 +4784,7 @@ function queueApiSyncFailure({ label, path, method = "POST", body = {}, error = 
     nextRetryAt: new Date(Date.now() + nextRetryDelayMs).toISOString(),
     blockedBy: conflict || status === "conflict" ? "conflict" : !canAttemptApiRequest() ? "network" : "api"
   };
-  apiSyncQueue = [item, ...apiSyncQueue.filter((entry) => entry.id !== id)].slice(0, 50);
+  apiSyncQueue = [item, ...apiSyncQueue.filter((entry) => entry.id !== id)];
   saveApiSyncQueue();
 }
 
@@ -5949,6 +5976,7 @@ async function pollApiForWorkspaceChanges() {
     changed = await loadStructuredRecordsFromApi() || changed;
     const remoteDocument = await apiRequest("/api/workspace");
     const updatedAt = remoteDocument.metadata?.updatedAt || "";
+    const workspaceRevision = Number(remoteDocument.metadata?.revision || 0);
     const hasSnapshotChange = Boolean(remoteDocument.snapshot && updatedAt && updatedAt !== apiSession.lastSyncedAt && updatedAt !== realtimeLastRefreshAt);
 
     if (hasSnapshotChange) {
@@ -5960,8 +5988,10 @@ async function pollApiForWorkspaceChanges() {
       changed = await loadStructuredRecordsFromApi() || changed;
       changed = true;
       markRealtimeChanged();
-      saveApiSession({ ...apiSession, lastSyncedAt: updatedAt, storageDriver: remoteDocument.metadata.storage || apiSession.storageDriver });
+      saveApiSession({ ...apiSession, lastSyncedAt: updatedAt, workspaceRevision, storageDriver: remoteDocument.metadata.storage || apiSession.storageDriver });
       handleOpenTaskRemoteRefresh(openTaskId, previousRevision);
+    } else if (workspaceRevision !== apiSession.workspaceRevision) {
+      saveApiSession({ ...apiSession, workspaceRevision });
     }
 
     if (!changed) return;
@@ -40528,11 +40558,17 @@ async function saveWorkspaceToApi(options = {}) {
   }
 
   try {
+    const expectedRevision = await currentWorkspaceApiRevision();
     const document = await apiRequest("/api/workspace", {
       method: "PUT",
-      body: { snapshot: workspaceSnapshot() }
+      body: { snapshot: workspaceSnapshot(), expectedRevision }
     });
-    saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, storageDriver: document.metadata.storage || apiSession.storageDriver });
+    saveApiSession({
+      ...apiSession,
+      lastSyncedAt: document.metadata.updatedAt,
+      workspaceRevision: document.metadata.revision,
+      storageDriver: document.metadata.storage || apiSession.storageDriver
+    });
     await refreshBackendHealth({ silent: true });
     if (!options.silent) {
       render();
@@ -40542,6 +40578,19 @@ async function saveWorkspaceToApi(options = {}) {
     if (!options.silent) showToast(`API save failed: ${error.message}`, "info");
     throw error;
   }
+}
+
+async function currentWorkspaceApiRevision() {
+  if (Number.isInteger(apiSession?.workspaceRevision)) return apiSession.workspaceRevision;
+  const document = await apiRequest("/api/workspace");
+  const revision = Number(document.metadata?.revision || 0);
+  saveApiSession({
+    ...apiSession,
+    workspaceRevision: revision,
+    lastSyncedAt: document.metadata?.updatedAt || apiSession.lastSyncedAt,
+    storageDriver: document.metadata?.storage || apiSession.storageDriver
+  });
+  return revision;
 }
 
 async function loadWorkspaceFromApi() {
@@ -40586,7 +40635,7 @@ async function restoreWorkspaceSnapshotFromApi() {
     });
     await loadCoreRecordsFromApi();
     await loadStructuredRecordsFromApi();
-    saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, storageDriver: document.metadata.storage || apiSession.storageDriver });
+    saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, workspaceRevision: document.metadata.revision, storageDriver: document.metadata.storage || apiSession.storageDriver });
     await refreshBackendHealth({ silent: true });
     render();
     showToast("Workspace snapshot restored from API", "success");
@@ -40610,9 +40659,10 @@ async function importWorkspaceToApi() {
 
   try {
     const snapshot = JSON.parse(rawJson);
+    const expectedRevision = await currentWorkspaceApiRevision();
     const document = await apiRequest("/api/workspace/import", {
       method: "POST",
-      body: { snapshot }
+      body: { snapshot, expectedRevision }
     });
     addAuditEvent({
       action: "workspace_import",
@@ -40621,7 +40671,7 @@ async function importWorkspaceToApi() {
       targetId: state.workspace.id,
       metadata: { source: "api-workspace-import" }
     });
-    saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, storageDriver: document.metadata.storage || apiSession.storageDriver });
+    saveApiSession({ ...apiSession, lastSyncedAt: document.metadata.updatedAt, workspaceRevision: document.metadata.revision, storageDriver: document.metadata.storage || apiSession.storageDriver });
     await refreshBackendHealth({ silent: true });
     render();
     showToast("JSON imported to API", "success");

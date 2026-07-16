@@ -366,6 +366,7 @@ async function run() {
       method: "PUT",
       token: acceptedManager.token,
       body: {
+        expectedRevision: managerWorkspace.metadata.revision,
         snapshot: {
           ...managerWorkspace.snapshot,
           users: managerWorkspace.snapshot.users.map((item) => item.id === acceptedManager.user.id
@@ -379,6 +380,13 @@ async function run() {
     const savedManagerMembership = managerSave.snapshot.memberships.find((item) => item.memberId === acceptedManager.user.id);
     assert(savedManagerMembership?.role === "manager", "workspace save allowed manager role escalation");
     assert(!managerSave.snapshot.invitations.some((item) => item.id === "forged-invite"), "workspace save allowed invitation injection");
+    assert(managerSave.metadata.revision > managerWorkspace.metadata.revision, "workspace save did not advance its revision");
+    const staleManagerSave = await requestError(`${baseUrl}/api/workspace`, {
+      method: "PUT",
+      token: acceptedManager.token,
+      body: { expectedRevision: managerWorkspace.metadata.revision, snapshot: managerWorkspace.snapshot }
+    });
+    assert(staleManagerSave.status === 409, "stale workspace save should return a conflict");
     const managerLogin = await request(`${baseUrl}/api/auth/password-login`, {
       method: "POST",
       body: { email: "manager@example.test", password: "manager-secret" }
@@ -449,10 +457,12 @@ async function run() {
     });
     assert(emailLogin.user.id === accepted.user.id, "email login did not find accepted invite user");
 
+    const workspaceBeforeSave = await request(`${baseUrl}/api/workspace`, { token: login.token });
     const saved = await request(`${baseUrl}/api/workspace`, {
       method: "PUT",
       token: login.token,
       body: {
+        expectedRevision: workspaceBeforeSave.metadata.revision,
         snapshot: {
           workspace: { id: "workspace-acme", name: "Smoke Test Studio" },
           projects: [],
@@ -731,9 +741,10 @@ async function run() {
     const syncedAtMs = Date.parse(githubTask.customFields.githubSyncedAt);
     const localEditAt = new Date(syncedAtMs + 1000).toISOString();
     const externalEditAt = new Date(syncedAtMs + 2000).toISOString();
+    const snapshotBeforeLocalEdit = await storage.loadWorkspaceSnapshot();
     await storage.saveWorkspaceSnapshot({
-      ...snapshotAfterGitHub,
-      tasks: snapshotAfterGitHub.tasks.map((task) => task.id === githubTask.id
+      ...snapshotBeforeLocalEdit,
+      tasks: snapshotBeforeLocalEdit.tasks.map((task) => task.id === githubTask.id
         ? { ...task, title: "Locally edited GitHub task", updatedAt: localEditAt }
         : task)
     });
@@ -2350,6 +2361,22 @@ async function testSupabaseStorageAdapter() {
         ...body
       };
       snapshots.set(body.workspace_id, row);
+      return mockResponse([row]);
+    }
+
+    if (table === "agora_compare_and_swap_workspace_snapshot" && options.method === "POST") {
+      const existing = snapshots.get(body.p_workspace_id);
+      const currentRevision = Number(existing?.revision || 0);
+      if (currentRevision !== Number(body.p_expected_revision)) return mockResponse([]);
+      const row = {
+        workspace_id: body.p_workspace_id,
+        snapshot: body.p_snapshot,
+        metadata: body.p_metadata,
+        revision: currentRevision + 1,
+        created_at: existing?.created_at || "2026-06-28T00:00:00.000Z",
+        updated_at: "2026-06-28T00:00:00.000Z"
+      };
+      snapshots.set(body.p_workspace_id, row);
       return mockResponse([row]);
     }
 

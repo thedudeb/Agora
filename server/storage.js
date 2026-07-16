@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { normalizeRevision, snapshotRevision, stampWorkspaceRevision, workspaceConflictError } = require("./concurrency");
 
 const DEFAULT_DATA_DIR = path.join(__dirname, "data");
 const DEFAULT_WORKSPACE_ID = "workspace-acme";
@@ -64,19 +65,26 @@ function createJsonStorage(options = {}) {
   }
 
   async function loadWorkspaceSnapshot() {
-    return (await loadWorkspace())?.snapshot || {};
+    const document = await loadWorkspace();
+    return stampWorkspaceRevision(document?.snapshot || {}, document?.metadata?.revision || 0);
   }
 
   async function saveWorkspace(snapshot, metadata = {}) {
     const now = new Date().toISOString();
     const existing = await loadWorkspace();
+    const currentRevision = normalizeRevision(existing?.metadata?.revision);
+    const expectedRevision = Number.isInteger(metadata.expectedRevision) ? metadata.expectedRevision : snapshotRevision(snapshot);
+    if (expectedRevision !== null && expectedRevision !== currentRevision) throw workspaceConflictError();
+    const { expectedRevision: ignoredExpectedRevision, ...persistedMetadata } = metadata;
+    const revision = currentRevision + 1;
     return writeJson("workspace.json", {
       metadata: {
         createdAt: existing?.metadata?.createdAt || now,
         updatedAt: now,
-        ...metadata
+        ...persistedMetadata,
+        revision
       },
-      snapshot
+      snapshot: stampWorkspaceRevision(snapshot, revision)
     });
   }
 
@@ -231,7 +239,7 @@ function createSupabaseStorage(options = {}) {
   async function loadWorkspace() {
     const rows = await request(
       "agora_workspace_snapshots",
-      `?workspace_id=eq.${encodeURIComponent(workspaceId)}&select=workspace_id,snapshot,metadata,created_at,updated_at&limit=1`
+      `?workspace_id=eq.${encodeURIComponent(workspaceId)}&select=workspace_id,snapshot,metadata,revision,created_at,updated_at&limit=1`
     );
     const row = Array.isArray(rows) ? rows[0] : null;
     if (!row) return null;
@@ -241,42 +249,51 @@ function createSupabaseStorage(options = {}) {
         createdAt: row.created_at || row.metadata?.createdAt || null,
         updatedAt: row.updated_at || row.metadata?.updatedAt || null,
         storage: "supabase",
-        ...(row.metadata || {})
+        ...(row.metadata || {}),
+        revision: normalizeRevision(row.revision)
       },
-      snapshot: row.snapshot
+      snapshot: stampWorkspaceRevision(row.snapshot, row.revision)
     };
   }
 
   async function loadWorkspaceSnapshot() {
-    return (await loadWorkspace())?.snapshot || {};
+    const document = await loadWorkspace();
+    return document?.snapshot || stampWorkspaceRevision({}, 0);
   }
 
   async function saveWorkspace(snapshot, metadata = {}) {
     const now = new Date().toISOString();
     const existing = await loadWorkspace();
+    const currentRevision = normalizeRevision(existing?.metadata?.revision);
+    const expectedRevision = Number.isInteger(metadata.expectedRevision)
+      ? metadata.expectedRevision
+      : snapshotRevision(snapshot) ?? currentRevision;
+    const { expectedRevision: ignoredExpectedRevision, ...persistedMetadata } = metadata;
     const nextMetadata = {
       createdAt: existing?.metadata?.createdAt || now,
       updatedAt: now,
       storage: "supabase",
-      ...metadata
+      ...persistedMetadata
     };
-    const rows = await request("agora_workspace_snapshots", "", {
+    const rows = await request("rpc/agora_compare_and_swap_workspace_snapshot", "", {
       method: "POST",
-      headers: {
-        Prefer: "resolution=merge-duplicates,return=representation"
-      },
       body: {
-        workspace_id: workspaceId,
-        snapshot,
-        metadata: nextMetadata,
-        updated_at: now
+        p_workspace_id: workspaceId,
+        p_expected_revision: expectedRevision,
+        p_snapshot: snapshot,
+        p_metadata: nextMetadata
       }
     });
 
     const row = Array.isArray(rows) ? rows[0] : null;
+    if (!row) throw workspaceConflictError();
     return {
-      metadata: row?.metadata || nextMetadata,
-      snapshot: row?.snapshot || snapshot
+      metadata: {
+        ...(row.metadata || nextMetadata),
+        revision: normalizeRevision(row.revision),
+        updatedAt: row.updated_at || row.metadata?.updatedAt || now
+      },
+      snapshot: stampWorkspaceRevision(row.snapshot || snapshot, row.revision)
     };
   }
 
@@ -286,9 +303,16 @@ function createSupabaseStorage(options = {}) {
 
   function mutateWorkspaceSnapshot(mutator, metadata = {}) {
     const mutation = workspaceMutationQueue.then(async () => {
-      const snapshot = await loadWorkspaceSnapshot();
-      const nextSnapshot = await mutator(snapshot);
-      return saveWorkspaceSnapshot(nextSnapshot, metadata);
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const snapshot = await loadWorkspaceSnapshot();
+        const nextSnapshot = await mutator(snapshot);
+        try {
+          return await saveWorkspaceSnapshot(nextSnapshot, metadata);
+        } catch (error) {
+          if (error.code !== "WORKSPACE_CONFLICT" || attempt === 2) throw error;
+        }
+      }
+      throw workspaceConflictError();
     });
     workspaceMutationQueue = mutation.catch(() => {});
     return mutation;

@@ -103,7 +103,7 @@ Agora can use Supabase Postgres for API persistence without adding a Node depend
 For the full setup and verification runbook, see [`../docs/supabase-setup.md`](../docs/supabase-setup.md).
 
 1. Create a Supabase project.
-2. Run [`migrations/001_supabase_storage.sql`](./migrations/001_supabase_storage.sql), [`migrations/002_supabase_auth_rls.sql`](./migrations/002_supabase_auth_rls.sql), [`migrations/003_background_jobs.sql`](./migrations/003_background_jobs.sql), [`migrations/004_auth_sessions.sql`](./migrations/004_auth_sessions.sql), and [`migrations/005_rate_limit_buckets.sql`](./migrations/005_rate_limit_buckets.sql) in the Supabase SQL editor.
+2. Run migrations [`001_supabase_storage.sql`](./migrations/001_supabase_storage.sql) through [`006_workspace_revisions.sql`](./migrations/006_workspace_revisions.sql) in numeric order in the Supabase SQL editor.
 3. Set these values in `.env`:
 
 ```sh
@@ -244,4 +244,4 @@ Sensitive operational actions use dedicated permissions in addition to role chec
 
 ## Database Target
 
-`schema.sql` is the normalized PostgreSQL target for the self-hosted backend. `migrations/001_supabase_storage.sql` stores the current workspace snapshot, audit log, structured work records, first-class notification records, inbox state, and integration settings in Postgres. `migrations/002_supabase_auth_rls.sql` adds the Supabase Auth membership/RLS layer. `migrations/003_background_jobs.sql` persists retryable worker/email job state. `migrations/004_auth_sessions.sql` persists hashed API sessions. `migrations/005_rate_limit_buckets.sql` adds distributed rate-limit buckets for multi-worker API deployments. The JSON storage adapter remains the low-friction local default while Supabase provides the production-ready persistence path.
+`schema.sql` is the normalized PostgreSQL target for the self-hosted backend. `migrations/001_supabase_storage.sql` stores the current workspace snapshot, audit log, structured work records, first-class notification records, inbox state, and integration settings in Postgres. `migrations/002_supabase_auth_rls.sql` adds the Supabase Auth membership/RLS layer. `migrations/003_background_jobs.sql` persists retryable worker/email job state. `migrations/004_auth_sessions.sql` persists hashed API sessions. `migrations/005_rate_limit_buckets.sql` adds distributed rate-limit buckets. `migrations/006_workspace_revisions.sql` adds compare-and-swap workspace revisions for multi-instance writes. The JSON storage adapter remains the low-friction local default while Supabase provides the production-ready persistence path.
