@@ -46,10 +46,14 @@ async function run() {
     assert(member.token, "member demo login failed");
 
     step = "workspace snapshot save";
+    const workspaceBeforeSave = await request(`${baseUrl}/api/workspace`, {
+      token: admin.token
+    });
     const workspaceSave = await request(`${baseUrl}/api/workspace`, {
       method: "PUT",
       token: admin.token,
       body: {
+        expectedRevision: workspaceBeforeSave.metadata?.revision ?? 0,
         snapshot: {
           workspace: {
             id: "workspace-acme",
@@ -288,7 +292,7 @@ async function run() {
   } catch (error) {
     error.message = [
       `Supabase verification failed for workspace ${workspaceId} during ${step}: ${error.message}`,
-      "Check that both migrations ran, the storage bucket exists, and SUPABASE_SERVICE_ROLE_KEY is set only on the API/server environment."
+      "Check that all six migrations ran in order, the storage bucket exists, and SUPABASE_SERVICE_ROLE_KEY is set only on the API/server environment."
     ].join("\n");
     throw error;
   } finally {
@@ -320,6 +324,9 @@ async function verifySupabasePreflight() {
       label: `table ${table}`
     });
   }
+  await supabaseRequest("/rest/v1/agora_workspace_snapshots?select=workspace_id,revision&limit=1", {
+    label: "workspace revision column from migration 006"
+  });
 
   const bucket = process.env.AGORA_SUPABASE_STORAGE_BUCKET || process.env.SUPABASE_STORAGE_BUCKET || "agora-files";
   await supabaseRequest(`/storage/v1/bucket/${encodeURIComponent(bucket)}`, {

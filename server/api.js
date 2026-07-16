@@ -849,6 +849,13 @@ async function runWorkspaceBackup(storage, options = {}) {
     name: snapshot.workspace?.name || workspace.name,
     slug: snapshot.workspace?.slug || workspace.slug
   };
+  const backupSnapshot = {
+    ...snapshot,
+    workspace: {
+      ...(snapshot.workspace || {}),
+      ...workspaceInfo
+    }
+  };
   const backup = {
     type: "agora.workspace-backup",
     version: BACKUP_SCHEMA_VERSION,
@@ -860,8 +867,8 @@ async function runWorkspaceBackup(storage, options = {}) {
       snapshotUpdatedAt: document?.metadata?.updatedAt || "",
       requestedBy: options.requestedBy || ""
     },
-    counts: workspaceSnapshotCounts(snapshot),
-    snapshot
+    counts: workspaceSnapshotCounts(backupSnapshot),
+    snapshot: backupSnapshot
   };
   const dir = workspaceBackupDir();
   fs.mkdirSync(dir, { recursive: true });

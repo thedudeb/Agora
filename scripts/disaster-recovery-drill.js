@@ -8,17 +8,19 @@ const ROOT = path.resolve(__dirname, "..");
 const DEFAULT_FIXTURE = "tests/fixtures/server-backups/agora-workspace-backup-demo.json";
 const COUNT_KEYS = ["companies", "projects", "tasks", "users", "memberships", "auditEvents"];
 
-const args = parseArgs(process.argv.slice(2));
-const report = runDisasterRecoveryDrill(args);
+if (require.main === module) {
+  const args = parseArgs(process.argv.slice(2));
+  const report = runDisasterRecoveryDrill(args);
 
-if (args.json) {
-  console.log(JSON.stringify(report, null, 2));
-} else {
-  printReport(report);
-}
+  if (args.json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    printReport(report);
+  }
 
-if (!report.ok) {
-  process.exitCode = 1;
+  if (!report.ok) {
+    process.exitCode = 1;
+  }
 }
 
 function parseArgs(values) {
@@ -190,3 +192,5 @@ Options:
   --json           Print machine-readable JSON
 `);
 }
+
+module.exports = { runDisasterRecoveryDrill };

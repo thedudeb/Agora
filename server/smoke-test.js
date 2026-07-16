@@ -4,6 +4,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { createServer } = require("./api");
 const { createStorage, createSupabaseStorage } = require("./storage");
+const { runDisasterRecoveryDrill } = require("../scripts/disaster-recovery-drill");
 
 async function run() {
   process.env.AGORA_PUBLIC_FEATURE_REQUESTS = "true";
@@ -225,7 +226,17 @@ async function run() {
       token: login.token
     });
     assert(backupRun.ok === true && backupRun.file.endsWith(".json"), "backup run did not create a JSON backup");
-    assert(fs.existsSync(path.join(process.env.AGORA_BACKUP_DIR, backupRun.file)), "backup file was not written");
+    const backupPath = path.join(process.env.AGORA_BACKUP_DIR, backupRun.file);
+    assert(fs.existsSync(backupPath), "backup file was not written");
+    const recoveryProof = runDisasterRecoveryDrill({
+      backup: backupPath,
+      outDir: path.join(dataDir, "recovery-proof")
+    });
+    assert(
+      recoveryProof.ok === true,
+      `fresh API backup did not pass the isolated recovery drill: ${recoveryProof.checks.filter((check) => check.status === "fail").map((check) => `${check.label}: ${check.detail}`).join("; ")}`
+    );
+    assert(fs.existsSync(recoveryProof.restoredWorkspacePath), "recovery drill did not write the restored workspace proof");
     const backupStatusAfter = await request(`${baseUrl}/api/backups/status`, {
       token: login.token
     });

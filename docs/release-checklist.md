@@ -32,6 +32,7 @@ For the automated product gate, use [`qa-gate.md`](./qa-gate.md).
 - Run `server/migrations/003_background_jobs.sql`.
 - Run `server/migrations/004_auth_sessions.sql`.
 - Run `server/migrations/005_rate_limit_buckets.sql`.
+- Run `server/migrations/006_workspace_revisions.sql`.
 - Create the private `agora-files` bucket.
 - Set `AGORA_STORAGE_DRIVER=supabase`, `AGORA_AUTH_DRIVER=supabase`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `AGORA_SUPABASE_STORAGE_BUCKET`.
 - Restart the API and verify Backend Health shows Supabase storage and Supabase Auth.
