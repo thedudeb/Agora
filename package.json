@@ -46,6 +46,7 @@
     "drill:recovery": "node scripts/disaster-recovery-drill.js",
     "test:golden": "node scripts/golden-path-qa.js",
     "test:admin-security": "node scripts/admin-security-regression.js",
+    "test:static-security": "node scripts/static-security-test.js",
     "test:plugins": "node scripts/agora-plugin-check.js",
     "test:supabase": "node server/supabase-verify.js",
     "test:project-launch": "node scripts/project-launch-unit-test.js",

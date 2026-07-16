@@ -9,6 +9,13 @@ loadEnvFile();
 const ROOT = path.resolve(__dirname, "..");
 const PORT = Number(process.env.AGORA_APP_PORT || 5174);
 const HOST = process.env.AGORA_APP_HOST || "127.0.0.1";
+const PUBLIC_ROOT_FILES = new Set([
+  "/index.html",
+  "/offline.html",
+  "/manifest.webmanifest",
+  "/sw.js"
+]);
+const PUBLIC_PATH_PREFIXES = ["/assets/", "/src/", "/release/evidence/"];
 
 const mimeTypes = {
   ".css": "text/css; charset=utf-8",
@@ -22,8 +29,16 @@ const mimeTypes = {
 };
 
 function safeFilePath(urlPath) {
-  const decodedPath = decodeURIComponent(urlPath);
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(urlPath);
+  } catch {
+    return "";
+  }
   const normalizedPath = decodedPath === "/" ? "/index.html" : decodedPath;
+  const publicPath = PUBLIC_ROOT_FILES.has(normalizedPath)
+    || PUBLIC_PATH_PREFIXES.some((prefix) => normalizedPath.startsWith(prefix));
+  if (!publicPath || normalizedPath.split("/").some((segment) => segment.startsWith("."))) return "";
   const filePath = path.resolve(ROOT, `.${normalizedPath}`);
   const relativePath = path.relative(ROOT, filePath);
   return relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath) ? filePath : "";
@@ -73,6 +88,11 @@ function securityHeaders() {
 }
 
 const server = http.createServer((request, response) => {
+  if (!["GET", "HEAD"].includes(request.method || "GET")) {
+    response.writeHead(405, { ...securityHeaders(), Allow: "GET, HEAD", "Content-Type": "text/plain; charset=utf-8" });
+    response.end("Method Not Allowed");
+    return;
+  }
   const url = new URL(request.url, `http://${request.headers.host || `${HOST}:${PORT}`}`);
   const filePath = safeFilePath(url.pathname);
   if (!filePath) {

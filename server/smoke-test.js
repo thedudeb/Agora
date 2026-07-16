@@ -342,6 +342,49 @@ async function run() {
     assert(accepted.user.email === "jordan@example.test", "accepted invite did not return invited user");
     assert(accepted.membership.role === "member", "accepted invite did not use invited role");
 
+    const managerInvitation = await request(`${baseUrl}/api/invitations`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        name: "Workspace Manager",
+        email: "manager@example.test",
+        role: "manager"
+      }
+    });
+    const memberAccess = await request(`${baseUrl}/api/members`, { token: accepted.token });
+    assert(memberAccess.invitations.some((item) => item.id === managerInvitation.invitation.id), "members should see invitation status metadata");
+    assert(memberAccess.invitations.every((item) => !item.token && !item.acceptUrl), "member access leaked invitation acceptance secrets");
+    const acceptedManager = await request(`${baseUrl}/api/invitations/${managerInvitation.invitation.token}/accept`, {
+      method: "POST",
+      body: { name: "Workspace Manager", password: "manager-secret" }
+    });
+    const managerWorkspace = await request(`${baseUrl}/api/workspace`, { token: acceptedManager.token });
+    const attemptedMemberships = managerWorkspace.snapshot.memberships.map((item) => item.memberId === acceptedManager.user.id
+      ? { ...item, role: "admin" }
+      : item);
+    const managerSave = await request(`${baseUrl}/api/workspace`, {
+      method: "PUT",
+      token: acceptedManager.token,
+      body: {
+        snapshot: {
+          ...managerWorkspace.snapshot,
+          users: managerWorkspace.snapshot.users.map((item) => item.id === acceptedManager.user.id
+            ? { ...item, passwordHash: "attacker-controlled", passwordSalt: "attacker-controlled" }
+            : item),
+          memberships: attemptedMemberships,
+          invitations: [{ id: "forged-invite", token: "forged-token", email: "attacker@example.test", role: "admin", status: "pending" }]
+        }
+      }
+    });
+    const savedManagerMembership = managerSave.snapshot.memberships.find((item) => item.memberId === acceptedManager.user.id);
+    assert(savedManagerMembership?.role === "manager", "workspace save allowed manager role escalation");
+    assert(!managerSave.snapshot.invitations.some((item) => item.id === "forged-invite"), "workspace save allowed invitation injection");
+    const managerLogin = await request(`${baseUrl}/api/auth/password-login`, {
+      method: "POST",
+      body: { email: "manager@example.test", password: "manager-secret" }
+    });
+    assert(managerLogin.membership.role === "manager", "workspace save changed manager access state");
+
     const blockedMemberEmailTest = await requestError(`${baseUrl}/api/notifications/test-email`, {
       method: "POST",
       token: accepted.token,
@@ -1324,6 +1367,7 @@ async function run() {
     assert(workspace.snapshot.users.some((user) => user.email === "jordan@example.test"), "workspace save dropped accepted invite user");
     assert(workspace.snapshot.users.every((user) => !user.passwordHash && !user.passwordSalt && !user.passwordResetTokenHash), "workspace snapshot leaked auth secret fields");
     assert(workspace.snapshot.invitations.some((invite) => invite.email === "jordan@example.test" && invite.status === "accepted"), "workspace save dropped invitation state");
+    assert(workspace.snapshot.invitations.every((invite) => !invite.token && !invite.acceptUrl), "workspace snapshot leaked invitation acceptance secrets");
     assert(workspace.snapshot.projects[0].name === "Updated Smoke Project", "project not stored in workspace");
     const smokeTask = workspace.snapshot.tasks.find((task) => task.id === "task-smoke");
     assert(smokeTask?.title === "Updated Smoke Task", "task not stored in workspace");

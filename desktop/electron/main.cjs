@@ -8,6 +8,13 @@ const isMac = process.platform === "darwin";
 let staticServer = null;
 let staticOrigin = "";
 const secureSessionFile = "agora-api-session.bin";
+const publicRootFiles = new Set([
+  "/index.html",
+  "/offline.html",
+  "/manifest.webmanifest",
+  "/sw.js"
+]);
+const publicPathPrefixes = ["/assets/", "/src/"];
 
 function appRoot() {
   if (process.env.AGORA_DESKTOP_ROOT) return path.resolve(process.env.AGORA_DESKTOP_ROOT);
@@ -70,8 +77,16 @@ function desktopSecurityHeaders() {
 }
 
 function safeDesktopFile(root, urlPath) {
-  const decodedPath = decodeURIComponent(urlPath);
+  let decodedPath;
+  try {
+    decodedPath = decodeURIComponent(urlPath);
+  } catch {
+    return "";
+  }
   const normalizedPath = decodedPath === "/" ? "/index.html" : decodedPath;
+  const publicPath = publicRootFiles.has(normalizedPath)
+    || publicPathPrefixes.some((prefix) => normalizedPath.startsWith(prefix));
+  if (!publicPath || normalizedPath.split("/").some((segment) => segment.startsWith("."))) return "";
   const filePath = path.resolve(root, `.${normalizedPath}`);
   const relativePath = path.relative(root, filePath);
   return relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath) ? filePath : "";
@@ -80,6 +95,11 @@ function safeDesktopFile(root, urlPath) {
 function startStaticServer() {
   const root = appRoot();
   staticServer = http.createServer((request, response) => {
+    if (!["GET", "HEAD"].includes(request.method || "GET")) {
+      response.writeHead(405, { ...desktopSecurityHeaders(), Allow: "GET, HEAD", "Content-Type": "text/plain; charset=utf-8" });
+      response.end("Method Not Allowed");
+      return;
+    }
     const url = new URL(request.url, "http://127.0.0.1");
     const filePath = safeDesktopFile(root, url.pathname);
     if (!filePath) {

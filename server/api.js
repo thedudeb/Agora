@@ -1756,7 +1756,7 @@ function createServer(options = {}) {
         sendJson(response, 200, {
           users: publicUsers(workspaceUsers(snapshot)),
           memberships: workspaceMemberships(snapshot),
-          invitations: workspaceInvitations(snapshot)
+          invitations: publicInvitationSummaries(workspaceInvitations(snapshot))
         });
         return;
       }
@@ -1767,7 +1767,7 @@ function createServer(options = {}) {
           return;
         }
         const snapshot = await storage.loadWorkspaceSnapshot();
-        sendJson(response, 200, { invitations: workspaceInvitations(snapshot) });
+        sendJson(response, 200, { invitations: publicInvitationSummaries(workspaceInvitations(snapshot)) });
         return;
       }
 
@@ -4270,7 +4270,7 @@ function publicSnapshot(snapshot = {}, session) {
     ...scoped,
     users: publicUsers(workspaceUsers(scoped)),
     memberships: workspaceMemberships(scoped),
-    invitations: workspaceInvitations(scoped)
+    invitations: publicInvitationSummaries(workspaceInvitations(scoped))
   };
 }
 
@@ -5604,7 +5604,7 @@ async function revokeInvitation(storage, invitationId, session) {
     workspaceId: workspace.id,
     detail: `${session.user.name} revoked an invitation to ${nextInvitation.email}`
   });
-  return publicInvitation(nextInvitation);
+  return publicInvitationSummary(nextInvitation);
 }
 
 async function getInvitation(storage, token) {
@@ -5613,7 +5613,7 @@ async function getInvitation(storage, token) {
   if (!invitation) publicError(404, "Invitation not found");
   if (invitation.status !== "pending") publicError(410, "Invitation is no longer active");
   if (isInvitationExpired(invitation)) publicError(410, "Invitation has expired");
-  return publicInvitation(invitation);
+  return publicInvitationSummary(invitation);
 }
 
 async function acceptInvitation(storage, token, name, password) {
@@ -6525,15 +6525,11 @@ function snapshotMembershipsOnly(snapshot = {}) {
 }
 
 function mergeSnapshotAccess(existingSnapshot = {}, incomingSnapshot = {}) {
-  const users = mergeById(snapshotUsersOnly(existingSnapshot), snapshotUsersOnly(incomingSnapshot), "id");
-  const memberships = mergeById(snapshotMembershipsOnly(existingSnapshot), snapshotMembershipsOnly(incomingSnapshot), "memberId");
-  const invitations = mergeById(workspaceInvitations(existingSnapshot), workspaceInvitations(incomingSnapshot), "id");
-
   return {
     ...incomingSnapshot,
-    users,
-    memberships,
-    invitations
+    users: snapshotUsersOnly(existingSnapshot),
+    memberships: snapshotMembershipsOnly(existingSnapshot),
+    invitations: workspaceInvitations(existingSnapshot)
   };
 }
 
@@ -6620,6 +6616,15 @@ function publicInvitation(invitation) {
     ...invitation,
     acceptUrl: `#invite/${invitation.token}`
   };
+}
+
+function publicInvitationSummary(invitation) {
+  const { token, ...summary } = invitation;
+  return summary;
+}
+
+function publicInvitationSummaries(invitations = []) {
+  return invitations.map(publicInvitationSummary);
 }
 
 function normalizeEmail(email) {

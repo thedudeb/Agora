@@ -31665,7 +31665,7 @@ function renderInvitationRow(invitation, roleById) {
         <h3>${escapeHtml(invitation.name || invitation.email)}</h3>
         <p>${escapeHtml(invitation.email)} - ${escapeHtml(role)} - ${escapeHtml(company)} - invited by ${escapeHtml(invitedBy)}</p>
         ${expires ? `<p>${escapeHtml(expires)}</p>` : ""}
-        ${invitation.status === "pending" ? `<code>${escapeHtml(invitation.acceptUrl || `#invite/${invitation.token || ""}`)}</code>` : ""}
+        ${invitation.status === "pending" && (invitation.acceptUrl || invitation.token) ? `<code>${escapeHtml(invitation.acceptUrl || `#invite/${invitation.token}`)}</code>` : ""}
       </div>
       <div>
         <span class="status-pill ${invitation.status === "accepted" ? "inbox-green" : "inbox-amber"}">${escapeHtml(invitation.status || "pending")}</span>
