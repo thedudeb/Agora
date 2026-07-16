@@ -38,25 +38,28 @@ npm run release:evidence
 
 
 
+
 ## Latest Local Evidence Bundle
 
-- Generated: 2026-07-06T03:14:28.744Z
-- Commit: 80f9e8d
+- Generated: 2026-07-16T23:24:53.940Z
+- Commit: 50d9cba
 - Dirty worktree: no
-- Mode: browser
+- Mode: full
 - Status: PASS
-- Bundle: [release/evidence/20260706T031428Z-80f9e8d](../release/evidence/20260706T031428Z-80f9e8d/README.md)
+- Bundle: [release/evidence/20260716T232453Z-50d9cba](../release/evidence/20260716T232453Z-50d9cba/README.md)
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
-| Release candidate discipline | PASS | [release-check.txt](../release/evidence/20260706T031428Z-80f9e8d/release-check.txt) |
-| Hosted demo readiness | PASS | [demo-check.txt](../release/evidence/20260706T031428Z-80f9e8d/demo-check.txt) |
-| Distribution proof ledger | PASS | [distribution-check.txt](../release/evidence/20260706T031428Z-80f9e8d/distribution-check.txt) |
-| Beta feedback loop | PASS | [beta-check.txt](../release/evidence/20260706T031428Z-80f9e8d/beta-check.txt) |
-| Packaging manifest | PASS | [package-check.txt](../release/evidence/20260706T031428Z-80f9e8d/package-check.txt) |
-| Trust evidence | PASS | [trust.txt](../release/evidence/20260706T031428Z-80f9e8d/trust.txt) |
-| Acme demo browser golden path | PASS | [golden-demo.txt](../release/evidence/20260706T031428Z-80f9e8d/golden-demo.txt) |
-| Feedback browser golden path | PASS | [golden-feedback.txt](../release/evidence/20260706T031428Z-80f9e8d/golden-feedback.txt) |
+| Release candidate discipline | PASS | [release-check.txt](../release/evidence/20260716T232453Z-50d9cba/release-check.txt) |
+| Hosted demo readiness | PASS | [demo-check.txt](../release/evidence/20260716T232453Z-50d9cba/demo-check.txt) |
+| Distribution proof ledger | PASS | [distribution-check.txt](../release/evidence/20260716T232453Z-50d9cba/distribution-check.txt) |
+| Beta feedback loop | PASS | [beta-check.txt](../release/evidence/20260716T232453Z-50d9cba/beta-check.txt) |
+| Packaging manifest | PASS | [package-check.txt](../release/evidence/20260716T232453Z-50d9cba/package-check.txt) |
+| Trust evidence | PASS | [trust.txt](../release/evidence/20260716T232453Z-50d9cba/trust.txt) |
+| Acme demo browser golden path | PASS | [golden-demo.txt](../release/evidence/20260716T232453Z-50d9cba/golden-demo.txt) |
+| Feedback browser golden path | PASS | [golden-feedback.txt](../release/evidence/20260716T232453Z-50d9cba/golden-feedback.txt) |
+| Full release QA | PASS | [qa.txt](../release/evidence/20260716T232453Z-50d9cba/qa.txt) |
+| Security gate | PASS | [security.txt](../release/evidence/20260716T232453Z-50d9cba/security.txt) |
 
 Manual evidence still required: hosted demo URL, hosted production verify, real device/offline checks, release backup, portable bundle, and beta tester follow-up.
 

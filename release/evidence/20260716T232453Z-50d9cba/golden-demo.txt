@@ -1,0 +1,27 @@
+$ npm run test:golden
+
+> agora@0.1.0 test:golden
+> node scripts/golden-path-qa.js
+
+Passed App shell
+Passed PWA manifest
+Passed Offline fallback page
+Passed Missing route uses offline fallback
+Running Acme demo triage request [demo]
+Passed Acme demo triage request [demo]
+Running Acme demo scope project [demo]
+Passed Acme demo scope project [demo]
+Running Acme demo review approvals [demo]
+Passed Acme demo review approvals [demo]
+Running Acme demo inspect timeline risk [demo]
+Passed Acme demo inspect timeline risk [demo]
+Running Acme demo draft client update [demo]
+Passed Acme demo draft client update [demo]
+Running Acme demo recovery proof [demo]
+Passed Acme demo recovery proof [demo]
+
+Golden path QA passed: 4 static checks, 6 route checks
+
+
+exitCode=0
+durationMs=12561
