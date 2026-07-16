@@ -1761,6 +1761,18 @@ function createServer(options = {}) {
         return;
       }
 
+      const memberAccessMatch = url.pathname.match(/^\/api\/members\/([^/]+)$/);
+      if (memberAccessMatch && request.method === "PATCH") {
+        if (!hasPermission(session, "members:write")) {
+          sendError(response, 403, "Missing members write permission");
+          return;
+        }
+        const body = await readJsonBody(request);
+        const membership = await updateWorkspaceMemberAccess(storage, decodeURIComponent(memberAccessMatch[1]), body, session);
+        sendJson(response, 200, { membership });
+        return;
+      }
+
       if (request.method === "GET" && url.pathname === "/api/invitations") {
         if (!hasPermission(session, "members:write")) {
           sendError(response, 403, "Missing members write permission");
@@ -3885,7 +3897,13 @@ async function requireSession(request, response, storage) {
       sendError(response, 401, "Session expired");
       return null;
     }
-    request.agoraSession = touchSession(session, request);
+    const refreshedSession = await refreshSessionAccess(session, storage);
+    if (!refreshedSession) {
+      revokeSessionToken(token, { revokedBy: "membership" });
+      sendError(response, 401, "Workspace membership is no longer active");
+      return null;
+    }
+    request.agoraSession = touchSession(refreshedSession, request);
     return request.agoraSession;
   }
 
@@ -3897,8 +3915,14 @@ async function requireSession(request, response, storage) {
       sendError(response, 401, "Session expired");
       return null;
     }
-    sessions.set(token, hydratedSession);
-    request.agoraSession = touchSession(hydratedSession, request);
+    const refreshedSession = await refreshSessionAccess(hydratedSession, storage);
+    if (!refreshedSession) {
+      revokeSession(hydratedSession, { revokedBy: "membership" });
+      sendError(response, 401, "Workspace membership is no longer active");
+      return null;
+    }
+    sessions.set(token, refreshedSession);
+    request.agoraSession = touchSession(refreshedSession, request);
     return request.agoraSession;
   }
 
@@ -3910,6 +3934,18 @@ async function requireSession(request, response, storage) {
 
   sendError(response, 401, "Authentication required");
   return null;
+}
+
+async function refreshSessionAccess(session, storage) {
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  const membership = workspaceMemberships(snapshot).find((item) => item.memberId === session.user?.id && item.status === "active");
+  const user = workspaceUsers(snapshot).find((item) => item.id === session.user?.id);
+  if (!membership || !user) return null;
+  session.user = publicUser(user);
+  session.membership = membership;
+  session.permissions = rolePermissions[membership.role] || [];
+  if (!session.externalBearer) persistSession(session);
+  return session;
 }
 
 function isSessionExpired(session) {
@@ -5344,61 +5380,59 @@ async function fetchSupabaseUser(accessToken) {
 
 async function syncSupabaseAuthUser(storage, supabaseUser) {
   const email = normalizeEmail(supabaseUser.email);
-  const now = new Date().toISOString();
-  const snapshot = await storage.loadWorkspaceSnapshot();
-  const storedUsers = snapshotUsersOnly(snapshot);
-  const memberships = snapshotMembershipsOnly(snapshot);
-  const invitations = workspaceInvitations(snapshot);
-  const existingUser = workspaceUsers(snapshot).find((item) => item.id === supabaseUser.id || normalizeEmail(item.email) === email);
-  const pendingInvitation = invitations.find((item) => normalizeEmail(item.email) === email && item.status === "pending");
-  const existingMembership = memberships.find((item) => item.memberId === supabaseUser.id || (existingUser && item.memberId === existingUser.id));
-  const canBootstrapOwner = storedUsers.length === 0 && memberships.length === 0;
+  let account;
+  await mutateStoredWorkspace(storage, (snapshot) => {
+    const now = new Date().toISOString();
+    const storedUsers = snapshotUsersOnly(snapshot);
+    const memberships = snapshotMembershipsOnly(snapshot);
+    const invitations = workspaceInvitations(snapshot);
+    const existingUser = workspaceUsers(snapshot).find((item) => item.id === supabaseUser.id || normalizeEmail(item.email) === email);
+    const pendingInvitation = invitations.find((item) => normalizeEmail(item.email) === email && item.status === "pending");
+    const existingMembership = memberships.find((item) => item.memberId === supabaseUser.id || (existingUser && item.memberId === existingUser.id));
+    const canBootstrapOwner = storedUsers.length === 0 && memberships.length === 0;
+    if (!existingMembership && !pendingInvitation && !canBootstrapOwner) {
+      publicError(403, "No active Agora membership exists for this Supabase user");
+    }
 
-  if (!existingMembership && !pendingInvitation && !canBootstrapOwner) {
-    publicError(403, "No active Agora membership exists for this Supabase user");
-  }
-
-  const metadata = supabaseUser.user_metadata || {};
-  const user = {
-    ...(existingUser || {}),
-    id: supabaseUser.id,
-    name: cleanString(metadata.full_name || metadata.name || existingUser?.name) || email.split("@")[0],
-    email,
-    role: "Supabase Auth",
-    companyId: pendingInvitation?.companyId || existingUser?.companyId || existingMembership?.companyId || "",
-    createdAt: existingUser?.createdAt || supabaseUser.created_at || now,
-    authProvider: "supabase"
-  };
-  const membership = {
-    memberId: user.id,
-    role: existingMembership?.role || pendingInvitation?.role || "admin",
-    status: "active",
-    companyId: pendingInvitation?.companyId || existingMembership?.companyId || "",
-    invitedBy: pendingInvitation?.invitedBy || existingMembership?.invitedBy || "",
-    joinedAt: existingMembership?.joinedAt || now,
-    authProvider: "supabase"
-  };
-  const nextInvitations = pendingInvitation
-    ? invitations.map((item) => item.id === pendingInvitation.id ? {
-      ...item,
-      status: "accepted",
-      acceptedAt: now,
-      acceptedBy: user.id
-    } : item)
-    : invitations;
-  const nextUsers = [user, ...storedUsers.filter((item) => item.id !== user.id && normalizeEmail(item.email) !== email)];
-  const nextMemberships = [membership, ...memberships.filter((item) => item.memberId !== user.id && item.memberId !== existingUser?.id)];
-
-  await storage.saveWorkspaceSnapshot({
-    ...snapshot,
-    users: nextUsers,
-    memberships: nextMemberships,
-    invitations: nextInvitations
+    const metadata = supabaseUser.user_metadata || {};
+    const user = {
+      ...(existingUser || {}),
+      id: supabaseUser.id,
+      name: cleanString(metadata.full_name || metadata.name || existingUser?.name) || email.split("@")[0],
+      email,
+      role: "Supabase Auth",
+      companyId: pendingInvitation?.companyId || existingUser?.companyId || existingMembership?.companyId || "",
+      createdAt: existingUser?.createdAt || supabaseUser.created_at || now,
+      authProvider: "supabase"
+    };
+    const membership = {
+      memberId: user.id,
+      role: existingMembership?.role || pendingInvitation?.role || "admin",
+      status: "active",
+      companyId: pendingInvitation?.companyId || existingMembership?.companyId || "",
+      invitedBy: pendingInvitation?.invitedBy || existingMembership?.invitedBy || "",
+      joinedAt: existingMembership?.joinedAt || now,
+      authProvider: "supabase"
+    };
+    account = {
+      user,
+      membership,
+      action: pendingInvitation ? "supabase_member_accept_invite" : canBootstrapOwner ? "supabase_owner_bootstrap" : "supabase_auth_login"
+    };
+    return {
+      ...snapshot,
+      users: [user, ...storedUsers.filter((item) => item.id !== user.id && normalizeEmail(item.email) !== email)],
+      memberships: [membership, ...memberships.filter((item) => item.memberId !== user.id && item.memberId !== existingUser?.id)],
+      invitations: pendingInvitation
+        ? invitations.map((item) => item.id === pendingInvitation.id ? { ...item, status: "accepted", acceptedAt: now, acceptedBy: user.id } : item)
+        : invitations
+    };
   }, {
     storage: storage.driver || "json-file",
-    updatedBy: user.id,
-    action: pendingInvitation ? "supabase_member_accept_invite" : canBootstrapOwner ? "supabase_owner_bootstrap" : "supabase_auth_login"
+    updatedBy: supabaseUser.id,
+    action: "supabase_auth_sync"
   });
+  const { user, membership, action } = account;
   if (typeof storage.upsertAuthMembership === "function") {
     await storage.upsertAuthMembership({
       workspaceId: storage.workspaceId || workspace.id,
@@ -5412,7 +5446,7 @@ async function syncSupabaseAuthUser(storage, supabaseUser) {
   }
   await storage.appendAuditEvent({
     actorId: user.id,
-    action: pendingInvitation ? "supabase_member_accept_invite" : canBootstrapOwner ? "supabase_owner_bootstrap" : "supabase_auth_login",
+    action,
     workspaceId: workspace.id,
     detail: `${user.name} signed in with Supabase Auth`
   });
@@ -5424,60 +5458,56 @@ async function createOwnerAccount(storage, body) {
   const email = normalizeEmail(body.email);
   const name = cleanString(body.name) || email.split("@")[0];
   const passwordFields = createPasswordFields(body.password);
-  const snapshot = await storage.loadWorkspaceSnapshot();
-  const storedUsers = snapshotUsersOnly(snapshot);
-  const existingUser = workspaceUsers(snapshot).find((item) => normalizeEmail(item.email) === email);
-  if (existingUser) publicError(409, "An account already exists for that email");
+  let account;
+  await mutateStoredWorkspace(storage, (snapshot) => {
+    const storedUsers = snapshotUsersOnly(snapshot);
+    const existingUser = workspaceUsers(snapshot).find((item) => normalizeEmail(item.email) === email);
+    if (existingUser) publicError(409, "An account already exists for that email");
+    const invitations = workspaceInvitations(snapshot);
+    const pendingInvitation = invitations.find((item) => normalizeEmail(item.email) === email && item.status === "pending");
+    if (storedUsers.length > 0 && !pendingInvitation) {
+      publicError(403, "Workspace already has an owner. Ask an admin for an invitation.");
+    }
 
-  const pendingInvitation = workspaceInvitations(snapshot).find((item) => normalizeEmail(item.email) === email && item.status === "pending");
-  if (storedUsers.length > 0 && !pendingInvitation) {
-    publicError(403, "Workspace already has an owner. Ask an admin for an invitation.");
-  }
-
-  const now = new Date().toISOString();
-  const user = {
-    id: createUserId(email),
-    name,
-    email,
-    role: "Workspace owner",
-    companyId: pendingInvitation?.companyId || "",
-    createdAt: now,
-    ...passwordFields
-  };
-  const membership = {
-    memberId: user.id,
-    role: pendingInvitation?.role || "admin",
-    status: "active",
-    companyId: pendingInvitation?.companyId || "",
-    invitedBy: pendingInvitation?.invitedBy || "",
-    joinedAt: now
-  };
-  const nextInvitations = pendingInvitation
-    ? workspaceInvitations(snapshot).map((item) => item.id === pendingInvitation.id ? {
-      ...item,
-      status: "accepted",
-      acceptedAt: now,
-      acceptedBy: user.id
-    } : item)
-    : workspaceInvitations(snapshot);
-  const nextWorkspace = {
-    ...workspace,
-    ...(snapshot.workspace || {}),
-    name: cleanString(body.workspaceName) || snapshot.workspace?.name || workspace.name,
-    slug: cleanString(body.workspaceSlug) || snapshot.workspace?.slug || workspace.slug
-  };
-
-  await storage.saveWorkspaceSnapshot({
-    ...snapshot,
-    workspace: nextWorkspace,
-    users: [user, ...storedUsers],
-    memberships: [membership, ...snapshotMembershipsOnly(snapshot).filter((item) => item.memberId !== user.id)],
-    invitations: nextInvitations
+    const now = new Date().toISOString();
+    const user = {
+      id: createUserId(email),
+      name,
+      email,
+      role: "Workspace owner",
+      companyId: pendingInvitation?.companyId || "",
+      createdAt: now,
+      ...passwordFields
+    };
+    const membership = {
+      memberId: user.id,
+      role: pendingInvitation?.role || "admin",
+      status: "active",
+      companyId: pendingInvitation?.companyId || "",
+      invitedBy: pendingInvitation?.invitedBy || "",
+      joinedAt: now
+    };
+    account = { user, membership, pendingInvitation };
+    return {
+      ...snapshot,
+      workspace: {
+        ...workspace,
+        ...(snapshot.workspace || {}),
+        name: cleanString(body.workspaceName) || snapshot.workspace?.name || workspace.name,
+        slug: cleanString(body.workspaceSlug) || snapshot.workspace?.slug || workspace.slug
+      },
+      users: [user, ...storedUsers],
+      memberships: [membership, ...snapshotMembershipsOnly(snapshot).filter((item) => item.memberId !== user.id)],
+      invitations: pendingInvitation
+        ? invitations.map((item) => item.id === pendingInvitation.id ? { ...item, status: "accepted", acceptedAt: now, acceptedBy: user.id } : item)
+        : invitations
+    };
   }, {
     storage: storage.driver || "json-file",
-    updatedBy: user.id,
-    action: pendingInvitation ? "member_accept_invite" : "account_signup"
+    updatedBy: email,
+    action: "account_signup"
   });
+  const { user, membership, pendingInvitation } = account;
   await storage.appendAuditEvent({
     actorId: user.id,
     action: pendingInvitation ? "member_accept_invite" : "account_signup",
@@ -5486,6 +5516,51 @@ async function createOwnerAccount(storage, body) {
   });
 
   return createSession(user, membership);
+}
+
+async function mutateStoredWorkspace(storage, mutator, metadata = {}) {
+  if (typeof storage.mutateWorkspaceSnapshot === "function") {
+    return storage.mutateWorkspaceSnapshot(mutator, metadata);
+  }
+  const snapshot = await storage.loadWorkspaceSnapshot();
+  return storage.saveWorkspaceSnapshot(await mutator(snapshot), metadata);
+}
+
+async function updateWorkspaceMemberAccess(storage, memberId, body, session) {
+  const role = body.role === undefined ? "" : cleanString(body.role);
+  const status = body.status === undefined ? "" : cleanString(body.status);
+  const companyId = body.companyId === undefined ? undefined : cleanString(body.companyId);
+  if (role && !rolePermissions[role]) publicError(400, "Member role is invalid");
+  if (status && !["active", "suspended"].includes(status)) publicError(400, "Member status is invalid");
+
+  let nextMembership;
+  await mutateStoredWorkspace(storage, (snapshot) => {
+    const memberships = snapshotMembershipsOnly(snapshot);
+    const current = workspaceMemberships(snapshot).find((item) => item.memberId === memberId);
+    if (!current) publicError(404, "Workspace member not found");
+    nextMembership = normalizeStoredMembership({
+      ...current,
+      ...(role ? { role } : {}),
+      ...(status ? { status } : {}),
+      ...(companyId !== undefined ? { companyId } : {})
+    });
+    return {
+      ...snapshot,
+      memberships: [nextMembership, ...memberships.filter((item) => item.memberId !== memberId)]
+    };
+  }, {
+    storage: storage.driver || "json-file",
+    updatedBy: session.user.id,
+    action: "member_access_update"
+  });
+  revokeUserSessions(memberId, { revokedBy: session.user.id });
+  await storage.appendAuditEvent({
+    actorId: session.user.id,
+    action: "member_access_update",
+    workspaceId: workspace.id,
+    detail: `${session.user.name} updated access for ${memberId}`
+  });
+  return nextMembership;
 }
 
 async function createInvitation(storage, body, session) {
@@ -5617,56 +5692,51 @@ async function getInvitation(storage, token) {
 }
 
 async function acceptInvitation(storage, token, name, password) {
-  const snapshot = await storage.loadWorkspaceSnapshot();
-  const invitations = workspaceInvitations(snapshot);
-  const invitation = invitations.find((item) => item.token === token && item.status === "pending");
-  if (!invitation) publicError(404, "Invitation not found or already used");
-  if (isInvitationExpired(invitation)) publicError(410, "Invitation has expired");
+  let acceptedAccount;
+  await mutateStoredWorkspace(storage, (snapshot) => {
+    const invitations = workspaceInvitations(snapshot);
+    const invitation = invitations.find((item) => item.token === token && item.status === "pending");
+    if (!invitation) publicError(404, "Invitation not found or already used");
+    if (isInvitationExpired(invitation)) publicError(410, "Invitation has expired");
 
-  const now = new Date().toISOString();
-  const users = snapshotUsersOnly(snapshot);
-  const memberships = snapshotMembershipsOnly(snapshot);
-  const existingUser = workspaceUsers(snapshot).find((user) => normalizeEmail(user.email) === normalizeEmail(invitation.email));
-  const user = existingUser || {
-    id: createUserId(invitation.email),
-    name: cleanString(name) || invitation.name || invitation.email.split("@")[0],
-    email: invitation.email,
-    role: "Team",
-    companyId: invitation.companyId,
-    createdAt: now
-  };
-  const passwordFields = password ? createPasswordFields(password) : {};
-  const nextUsers = existingUser
-    ? users.map((item) => item.id === existingUser.id ? { ...item, name: cleanString(name) || item.name, companyId: invitation.companyId || item.companyId || "", ...passwordFields } : item)
-    : [{ ...user, ...passwordFields }, ...users];
-  const nextMembership = {
-    memberId: user.id,
-    role: invitation.role,
-    status: "active",
-    companyId: invitation.companyId,
-    invitedBy: invitation.invitedBy,
-    joinedAt: now
-  };
-  const nextMemberships = memberships.some((membership) => membership.memberId === user.id)
-    ? memberships.map((membership) => membership.memberId === user.id ? { ...membership, ...nextMembership } : membership)
-    : [nextMembership, ...memberships];
-  const nextInvitations = invitations.map((item) => item.id === invitation.id ? {
-    ...item,
-    status: "accepted",
-    acceptedAt: now,
-    acceptedBy: user.id
-  } : item);
-
-  await storage.saveWorkspaceSnapshot({
-    ...snapshot,
-    users: nextUsers,
-    memberships: nextMemberships,
-    invitations: nextInvitations
+    const now = new Date().toISOString();
+    const users = snapshotUsersOnly(snapshot);
+    const memberships = snapshotMembershipsOnly(snapshot);
+    const existingUser = workspaceUsers(snapshot).find((user) => normalizeEmail(user.email) === normalizeEmail(invitation.email));
+    const user = existingUser || {
+      id: createUserId(invitation.email),
+      name: cleanString(name) || invitation.name || invitation.email.split("@")[0],
+      email: invitation.email,
+      role: "Team",
+      companyId: invitation.companyId,
+      createdAt: now
+    };
+    const passwordFields = password ? createPasswordFields(password) : {};
+    const nextMembership = {
+      memberId: user.id,
+      role: invitation.role,
+      status: "active",
+      companyId: invitation.companyId,
+      invitedBy: invitation.invitedBy,
+      joinedAt: now
+    };
+    acceptedAccount = { user: { ...user, ...passwordFields }, membership: nextMembership };
+    return {
+      ...snapshot,
+      users: existingUser
+        ? users.map((item) => item.id === existingUser.id ? { ...item, name: cleanString(name) || item.name, companyId: invitation.companyId || item.companyId || "", ...passwordFields } : item)
+        : [{ ...user, ...passwordFields }, ...users],
+      memberships: memberships.some((membership) => membership.memberId === user.id)
+        ? memberships.map((membership) => membership.memberId === user.id ? { ...membership, ...nextMembership } : membership)
+        : [nextMembership, ...memberships],
+      invitations: invitations.map((item) => item.id === invitation.id ? { ...item, status: "accepted", acceptedAt: now, acceptedBy: user.id } : item)
+    };
   }, {
     storage: storage.driver || "json-file",
-    updatedBy: user.id,
+    updatedBy: "invitation-acceptance",
     action: "member_accept_invite"
   });
+  const { user, membership } = acceptedAccount;
   await storage.appendAuditEvent({
     actorId: user.id,
     action: "member_accept_invite",
@@ -5674,7 +5744,7 @@ async function acceptInvitation(storage, token, name, password) {
     detail: `${user.name} accepted an invitation`
   });
 
-  return createSession({ ...user, ...passwordFields }, nextMembership);
+  return createSession(user, membership);
 }
 
 async function listPortalLinks(storage, session) {

@@ -31,6 +31,7 @@ function createStorage(options = {}) {
 
 function createJsonStorage(options = {}) {
   const dataDir = path.resolve(options.dataDir || process.env.AGORA_DATA_DIR || DEFAULT_DATA_DIR);
+  let workspaceMutationQueue = Promise.resolve();
 
   function ensureDataDir() {
     fs.mkdirSync(dataDir, { recursive: true });
@@ -81,6 +82,16 @@ function createJsonStorage(options = {}) {
 
   async function saveWorkspaceSnapshot(snapshot, metadata = {}) {
     return (await saveWorkspace(snapshot, metadata)).snapshot;
+  }
+
+  function mutateWorkspaceSnapshot(mutator, metadata = {}) {
+    const mutation = workspaceMutationQueue.then(async () => {
+      const snapshot = await loadWorkspaceSnapshot();
+      const nextSnapshot = await mutator(snapshot);
+      return saveWorkspaceSnapshot(nextSnapshot, metadata);
+    });
+    workspaceMutationQueue = mutation.catch(() => {});
+    return mutation;
   }
 
   async function loadAuditLog() {
@@ -160,6 +171,7 @@ function createJsonStorage(options = {}) {
     loadWorkspaceSnapshot,
     saveWorkspace,
     saveWorkspaceSnapshot,
+    mutateWorkspaceSnapshot,
     loadAuditLog,
     appendAuditEvent,
     loadBackgroundJobs,
@@ -178,6 +190,7 @@ function createSupabaseStorage(options = {}) {
   const supabaseUrl = trimTrailingSlash(options.supabaseUrl || process.env.SUPABASE_URL || process.env.AGORA_SUPABASE_URL || "");
   const serviceKey = options.supabaseServiceRoleKey || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.AGORA_SUPABASE_SERVICE_ROLE_KEY || "";
   const workspaceId = options.workspaceId || process.env.AGORA_WORKSPACE_ID || DEFAULT_WORKSPACE_ID;
+  let workspaceMutationQueue = Promise.resolve();
 
   if (!supabaseUrl || !serviceKey) {
     throw new Error("Supabase storage requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
@@ -269,6 +282,16 @@ function createSupabaseStorage(options = {}) {
 
   async function saveWorkspaceSnapshot(snapshot, metadata = {}) {
     return (await saveWorkspace(snapshot, metadata)).snapshot;
+  }
+
+  function mutateWorkspaceSnapshot(mutator, metadata = {}) {
+    const mutation = workspaceMutationQueue.then(async () => {
+      const snapshot = await loadWorkspaceSnapshot();
+      const nextSnapshot = await mutator(snapshot);
+      return saveWorkspaceSnapshot(nextSnapshot, metadata);
+    });
+    workspaceMutationQueue = mutation.catch(() => {});
+    return mutation;
   }
 
   async function loadAuditLog() {
@@ -415,6 +438,7 @@ function createSupabaseStorage(options = {}) {
     loadWorkspaceSnapshot,
     saveWorkspace,
     saveWorkspaceSnapshot,
+    mutateWorkspaceSnapshot,
     loadAuditLog,
     appendAuditEvent,
     loadBackgroundJobs,

@@ -39184,15 +39184,29 @@ function recordTestPaymentEvent() {
   showToast("Test payment event recorded", "success");
 }
 
-function updateMemberRole(memberId, role) {
+async function updateMemberRole(memberId, role) {
   if (!workspaceMembers().some((member) => member.id === memberId) || !workspaceRoles.some((item) => item.id === role)) return;
   if (!requireAdminAction("member-role-change", { deniedMessage: "Your role cannot manage members", renderOnDeny: true })) return;
 
-  const existing = state.memberships.some((membership) => membership.memberId === memberId);
   const previousRole = state.memberships.find((membership) => membership.memberId === memberId)?.role || state.workspace.defaultRole;
+  let serverMembership = null;
+  if (apiSession) {
+    try {
+      const result = await apiRequest(`/api/members/${encodeURIComponent(memberId)}`, {
+        method: "PATCH",
+        body: { role }
+      });
+      serverMembership = result.membership;
+    } catch (error) {
+      showToast(`Member role update failed: ${error.message}`, "info");
+      render();
+      return;
+    }
+  }
+  const existing = state.memberships.some((membership) => membership.memberId === memberId);
   state.memberships = existing
-    ? state.memberships.map((membership) => membership.memberId === memberId ? { ...membership, role } : membership)
-    : [...state.memberships, { memberId, role, status: "active" }];
+    ? state.memberships.map((membership) => membership.memberId === memberId ? { ...membership, role, ...(serverMembership || {}) } : membership)
+    : [...state.memberships, serverMembership || { memberId, role, status: "active" }];
   addAuditEvent({
     action: "member_role_update",
     detail: `Changed ${memberName(memberId)} role to ${workspaceRoles.find((item) => item.id === role)?.label || role}`,
@@ -39206,7 +39220,7 @@ function updateMemberRole(memberId, role) {
   showToast("Member role updated", "success");
 }
 
-function updateMemberCompanyAccess(memberId, companyId) {
+async function updateMemberCompanyAccess(memberId, companyId) {
   if (!workspaceMembers().some((member) => member.id === memberId)) return;
   if (companyId && !byId(state.companies, companyId)) return;
   if (!canWrite("members:write")) {
@@ -39216,14 +39230,27 @@ function updateMemberCompanyAccess(memberId, companyId) {
   }
 
   const existingMembership = state.memberships.find((membership) => membership.memberId === memberId);
-  const nextMembership = {
+  let nextMembership = {
     memberId,
     role: existingMembership?.role || state.workspace.defaultRole,
     status: existingMembership?.status || "active",
     ...(companyId ? { companyId } : {})
   };
+  if (apiSession) {
+    try {
+      const result = await apiRequest(`/api/members/${encodeURIComponent(memberId)}`, {
+        method: "PATCH",
+        body: { companyId }
+      });
+      nextMembership = result.membership;
+    } catch (error) {
+      showToast(`Company access update failed: ${error.message}`, "info");
+      render();
+      return;
+    }
+  }
   state.memberships = existingMembership
-    ? state.memberships.map((membership) => membership.memberId === memberId ? { ...membership, companyId } : membership)
+    ? state.memberships.map((membership) => membership.memberId === memberId ? { ...membership, ...nextMembership } : membership)
     : [...state.memberships, nextMembership];
   addAuditEvent({
     action: "member_company_scope_update",

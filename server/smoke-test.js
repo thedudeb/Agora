@@ -384,6 +384,14 @@ async function run() {
       body: { email: "manager@example.test", password: "manager-secret" }
     });
     assert(managerLogin.membership.role === "manager", "workspace save changed manager access state");
+    const demotedManager = await request(`${baseUrl}/api/members/${encodeURIComponent(acceptedManager.user.id)}`, {
+      method: "PATCH",
+      token: login.token,
+      body: { role: "member" }
+    });
+    assert(demotedManager.membership.role === "member", "member access endpoint did not update role");
+    const revokedManagerSession = await requestError(`${baseUrl}/api/workspace`, { token: managerLogin.token });
+    assert(revokedManagerSession.status === 401, "member access update did not revoke stale privileged sessions");
 
     const blockedMemberEmailTest = await requestError(`${baseUrl}/api/notifications/test-email`, {
       method: "POST",
@@ -1408,6 +1416,7 @@ async function run() {
     await testAuthenticatedRateLimit();
     await testSupabaseAuthBridge();
     await testSupabaseStorageAdapter();
+    await testConcurrentAuthMutations();
 
     console.log("API smoke test passed");
   } finally {
@@ -1997,6 +2006,52 @@ async function testAccountAuth() {
       process.env.AGORA_PASSWORD_RESET_WEBHOOK_SECRET = originalResetWebhookSecret;
     }
     global.fetch = originalFetch;
+  }
+}
+
+async function testConcurrentAuthMutations() {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "agora-auth-race-"));
+  const server = createServer({
+    storage: createStorage({ dataDir, driver: "json" }),
+    rateLimits: { auth: { attempts: 1000, windowMs: 60 * 1000 } }
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  try {
+    const signupResponses = await Promise.all([
+      fetch(`${baseUrl}/api/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Race Owner A", email: "race-a@example.test", password: "race-secret" })
+      }),
+      fetch(`${baseUrl}/api/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Race Owner B", email: "race-b@example.test", password: "race-secret" })
+      })
+    ]);
+    const signupPayloads = await Promise.all(signupResponses.map((response) => response.json()));
+    const successfulSignups = signupResponses.map((response, index) => ({ response, payload: signupPayloads[index] })).filter((item) => item.response.ok);
+    assert(successfulSignups.length === 1, "concurrent owner bootstrap created more than one owner");
+
+    const ownerToken = successfulSignups[0].payload.token;
+    const invitation = await request(`${baseUrl}/api/invitations`, {
+      method: "POST",
+      token: ownerToken,
+      body: { name: "Race Invite", email: "race-invite@example.test", role: "member" }
+    });
+    const acceptanceResponses = await Promise.all([0, 1].map(() => fetch(`${baseUrl}/api/invitations/${invitation.invitation.token}/accept`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Race Invite", password: "invite-secret" })
+    })));
+    const successfulAcceptances = acceptanceResponses.filter((response) => response.ok);
+    assert(successfulAcceptances.length === 1, "concurrent invitation redemption created more than one session");
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    fs.rmSync(dataDir, { recursive: true, force: true });
   }
 }
 

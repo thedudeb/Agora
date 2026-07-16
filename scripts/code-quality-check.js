@@ -55,7 +55,7 @@ assert.equal(packageJson.scripts["code:quality"], "node scripts/code-quality-che
 
 const ceilings = {
   "src/app.js": 47500,
-  "server/api.js": 8600,
+  "server/api.js": 8700,
   "src/styles.css": 14500
 };
 
