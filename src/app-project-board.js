@@ -10,7 +10,7 @@ function renderProjectSummary(project) {
         <p>${escapeHtml(project.description)}</p>
         <div class="meta-row">
           <span>${escapeHtml(companyName(project.companyId))}</span>
-          <span>${memberName(project.owner)}</span>
+          <span>${escapeHtml(memberName(project.owner))}</span>
           <span>Due ${formatDate(project.dueDate)}</span>
         </div>
       </div>
@@ -118,15 +118,15 @@ function renderProjectPageRoute() {
         <p>${escapeHtml(project.description)}</p>
         <div class="meta-row">
           <span>${escapeHtml(companyName(project.companyId))}</span>
-          <span>Owner ${memberName(project.owner)}</span>
+          <span>Owner ${escapeHtml(memberName(project.owner))}</span>
           <span>Start ${formatDate(project.startDate)}</span>
           <span>Due ${formatDate(project.dueDate)}</span>
           <span>${milestones.length} ${milestones.length === 1 ? "milestone" : "milestones"}</span>
         </div>
         <div class="inline-actions">
-          <button class="button button-secondary" type="button" data-edit-project="${project.id}">Edit Project</button>
-          <button class="button button-secondary" type="button" data-duplicate-project="${project.id}">Duplicate Project</button>
-          <button class="button button-secondary button-danger" type="button" data-archive-project="${project.id}">Archive Project</button>
+          <button class="button button-secondary" type="button" data-edit-project="${escapeHtml(project.id)}">Edit Project</button>
+          <button class="button button-secondary" type="button" data-duplicate-project="${escapeHtml(project.id)}">Duplicate Project</button>
+          <button class="button button-secondary button-danger" type="button" data-archive-project="${escapeHtml(project.id)}">Archive Project</button>
         </div>
       </div>
       <div class="project-progress-card">
@@ -765,7 +765,7 @@ function renderRaidItem(item) {
       <div>
         <strong>${escapeHtml(item.title)}</strong>
         <p>${escapeHtml(item.detail || item.mitigation || "No detail captured yet.")}</p>
-        <small>${escapeHtml(raidSeverityLabel(item.severity))} / ${escapeHtml(item.status)} / Owner ${memberName(item.owner)}${item.dueDate ? ` / Due ${formatDate(item.dueDate)}` : ""}</small>
+        <small>${escapeHtml(raidSeverityLabel(item.severity))} / ${escapeHtml(item.status)} / Owner ${escapeHtml(memberName(item.owner))}${item.dueDate ? ` / Due ${formatDate(item.dueDate)}` : ""}</small>
       </div>
     </article>
   `;
@@ -822,7 +822,7 @@ function renderProjectTaskRow(task) {
           ${fields}
         </button>
       </td>
-      <td>${memberName(task.assignee)}</td>
+      <td>${escapeHtml(memberName(task.assignee))}</td>
       <td>${selectControl("status", task.id, task.status, boardStatusOptions())}</td>
       <td>${selectControl("priority", task.id, task.priority, priorities)}</td>
       <td class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}</td>
@@ -1669,7 +1669,7 @@ function renderGanttTaskRow(task, rangeStart, totalDays, milestones) {
       <div class="gantt-label">
         <button class="table-task-button" type="button" data-edit-task="${task.id}">
           <strong>${escapeHtml(task.title)}</strong>
-          <span>${memberName(task.assignee)} - ${statusLabel(task.status)} - ${risk.label}</span>
+          <span>${escapeHtml(`${memberName(task.assignee)} - ${statusLabel(task.status)} - ${risk.label}`)}</span>
         </button>
         <div class="gantt-date-controls">
           <input type="date" value="${start}" data-task-start="${task.id}" aria-label="Change task start date">
@@ -1733,7 +1733,7 @@ function renderUndatedTask(task) {
     <article class="undated-task">
       <button class="table-task-button" type="button" data-edit-task="${task.id}">
         <strong>${escapeHtml(task.title)}</strong>
-        <span>${memberName(task.assignee)} - ${priorityLabel(task.priority)}</span>
+        <span>${escapeHtml(`${memberName(task.assignee)} - ${priorityLabel(task.priority)}`)}</span>
       </button>
       <input class="timeline-date-input" type="date" data-task-date="${task.id}" aria-label="Add task due date">
     </article>
@@ -1768,7 +1768,7 @@ function renderMilestoneCard(milestone) {
           <p>${escapeHtml(milestone.description)}</p>
         </div>
         <div class="meta-row">
-          <span>${memberName(milestone.owner)}</span>
+          <span>${escapeHtml(memberName(milestone.owner))}</span>
           <span>Due ${formatDate(milestone.dueDate)}</span>
           <span>${linkedTasks.length} linked ${linkedTasks.length === 1 ? "task" : "tasks"}</span>
         </div>
@@ -1788,9 +1788,9 @@ function renderActivityList(activities) {
     <div class="activity-list">
       ${activities.map((activity) => `
         <article class="activity-item">
-          <span class="avatar">${memberName(activity.memberId).split(" ").map((part) => part[0]).join("")}</span>
+          <span class="avatar">${escapeHtml(memberName(activity.memberId).split(" ").map((part) => part[0]).join(""))}</span>
           <div>
-            <p><strong>${memberName(activity.memberId)}</strong> ${escapeHtml(activity.message)}</p>
+            <p><strong>${escapeHtml(memberName(activity.memberId))}</strong> ${escapeHtml(activity.message)}</p>
             <small>${formatTimestamp(activity.createdAt)}</small>
           </div>
         </article>
@@ -1920,7 +1920,7 @@ function renderTaskCollaboration(taskId = "") {
               <span>Reply to</span>
               <select id="comment-parent">
                 <option value="">New thread</option>
-                ${rootComments.map((comment) => `<option value="${comment.id}">${escapeHtml(`${memberName(comment.author)}: ${comment.body.slice(0, 42)}`)}</option>`).join("")}
+                ${rootComments.map((comment) => `<option value="${escapeHtml(comment.id)}">${escapeHtml(`${memberName(comment.author)}: ${comment.body.slice(0, 42)}`)}</option>`).join("")}
               </select>
             </label>
           </div>
@@ -2113,7 +2113,7 @@ function renderTaskDependencies(task = null) {
               ${downstreamTasks.map((blockedTask) => `
                 <button class="table-task-button dependency-linked-task" type="button" data-edit-task="${blockedTask.id}">
                   <strong>${escapeHtml(blockedTask.title)}</strong>
-                  <span>${statusLabel(blockedTask.status)} - ${memberName(blockedTask.assignee)}</span>
+                  <span>${escapeHtml(`${statusLabel(blockedTask.status)} - ${memberName(blockedTask.assignee)}`)}</span>
                 </button>
               `).join("")}
             </div>
@@ -2171,7 +2171,7 @@ function renderTaskTimeEntry(entry) {
   return `
     <article class="task-time-entry">
       <div>
-        <strong>${memberName(entry.memberId)}</strong>
+        <strong>${escapeHtml(memberName(entry.memberId))}</strong>
         <span>${formatDate(entry.date)} - ${entry.billable ? "Billable" : "Internal"}</span>
         <p>${escapeHtml(entry.note || "No note")}</p>
       </div>
@@ -2214,11 +2214,11 @@ function renderComment(comment, depth = 0) {
   const canManage = comment.author === activeMemberId() || canWrite("comments:write");
   return `
     <article class="comment-item ${comment.status === "resolved" ? "is-resolved" : ""} ${depth ? "is-reply" : ""}">
-      <span class="avatar">${memberName(comment.author).split(" ").map((part) => part[0]).join("")}</span>
+      <span class="avatar">${escapeHtml(memberName(comment.author).split(" ").map((part) => part[0]).join(""))}</span>
       <div>
         <div class="comment-meta">
           <span>
-            <strong>${memberName(comment.author)}</strong>
+            <strong>${escapeHtml(memberName(comment.author))}</strong>
             <span class="status-pill inbox-${commentTone(comment)}">${escapeHtml(comment.status === "resolved" ? "Resolved" : commentKindLabel(comment.kind))}</span>
           </span>
           <small>${formatTimestamp(comment.updatedAt || comment.createdAt)}</small>

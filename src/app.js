@@ -16,10 +16,17 @@ function configuredApiBaseUrl() {
   const stored = storageGet("agora.api.baseUrl") || "";
   const candidate = window.AGORA_API_BASE_URL || window.AGORA_CONFIG?.apiBaseUrl || stored || fallback;
   try {
-    return new URL(candidate, window.location.origin).origin.replace(/\/+$/, "");
+    const url = new URL(candidate, window.location.origin);
+    return trustedApiOrigin(url) ? url.origin.replace(/\/+$/, "") : fallback;
   } catch {
     return fallback;
   }
+}
+
+function trustedApiOrigin(url) {
+  if (!["http:", "https:"].includes(url.protocol)) return false;
+  const hostname = url.hostname.toLowerCase();
+  return url.protocol === "https:" || ["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(hostname);
 }
 
 function storageGet(key) {
@@ -20305,7 +20312,7 @@ function renderWorkspaceChatMessage(message) {
   const decisionLogged = state.raidItems.some((item) => item.id === `decision-chat-${message.id}`);
   return `
     <article class="workspace-chat-message">
-      <span class="avatar">${memberName(message.author).split(" ").map((part) => part[0]).join("")}</span>
+      <span class="avatar">${escapeHtml(memberName(message.author).split(" ").map((part) => part[0]).join(""))}</span>
       <div>
         <div class="chat-message-meta">
           <strong>${escapeHtml(memberName(message.author))}</strong>
@@ -24490,7 +24497,7 @@ function renderDailyTask(task, lane) {
         <span>${escapeHtml(task.description)}</span>
       </button>
       <div class="task-meta">
-        <span class="avatar">${memberName(task.assignee).split(" ").map((part) => part[0]).join("")}</span>
+        <span class="avatar">${escapeHtml(memberName(task.assignee).split(" ").map((part) => part[0]).join(""))}</span>
         <span class="priority priority-${task.priority}">${priorityLabel(task.priority)}</span>
         <span class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}</span>
         ${checklist ? `<span>${escapeHtml(checklist)}</span>` : ""}
@@ -26180,7 +26187,7 @@ function renderCompanyCard(company) {
       </button>
       <div class="meta-row">
         <span>${escapeHtml(company.type)}</span>
-        <span>Owner ${memberName(company.owner)}</span>
+        <span>Owner ${escapeHtml(memberName(company.owner))}</span>
       </div>
       <div class="company-metrics">
         <span><strong>${projects.length}</strong> projects</span>
@@ -26990,7 +26997,7 @@ function renderCompanyPage() {
         <p>${escapeHtml(company.description)}</p>
         <div class="meta-row">
           <span>${escapeHtml(company.type)}</span>
-          <span>Owner ${memberName(company.owner)}</span>
+          <span>Owner ${escapeHtml(memberName(company.owner))}</span>
           <span>${escapeHtml(company.status)}</span>
         </div>
       </div>
@@ -27216,7 +27223,7 @@ function renderMyWork() {
       <div class="panel-header">
         <div>
           <p class="eyebrow">Assigned to</p>
-          <h2>${memberName(state.filters.assignee)}</h2>
+          <h2>${escapeHtml(memberName(state.filters.assignee))}</h2>
         </div>
       </div>
       <div class="work-lanes">
@@ -29687,7 +29694,7 @@ function renderProjectReportCard(row) {
       <div class="report-card-main">
         <button class="table-task-button" type="button" data-project-id="${row.project.id}">
           <strong>${escapeHtml(row.project.name)}</strong>
-          <span>${escapeHtml(companyName(row.project.companyId))} - ${memberName(row.project.owner)}</span>
+          <span>${escapeHtml(`${companyName(row.project.companyId)} - ${memberName(row.project.owner)}`)}</span>
         </button>
         ${renderHealthBar(row.health)}
       </div>
@@ -29859,7 +29866,7 @@ function renderCompanyReportRow(row) {
     <article class="portfolio-report-row">
       <button class="table-task-button" type="button" data-company-id="${row.company.id}">
         <strong>${escapeHtml(row.company.name)}</strong>
-        <span>${row.projectCount} ${row.projectCount === 1 ? "project" : "projects"} - owner ${memberName(row.company.owner)}</span>
+        <span>${row.projectCount} ${row.projectCount === 1 ? "project" : "projects"} - owner ${escapeHtml(memberName(row.company.owner))}</span>
       </button>
       ${renderHealthBar(row.health)}
       <div class="portfolio-report-metrics">
@@ -30664,7 +30671,7 @@ function renderProjectTemplatePreview(template) {
                 <input type="checkbox" data-template-task-key="${escapeHtml(task.key)}" checked>
                 <span>
                   <strong>${escapeHtml(task.title)}</strong>
-                  <small>${memberName(task.assignee)} - ${priorityLabel(task.priority)} - day ${task.startOffset} to ${task.dueOffset}</small>
+                  <small>${escapeHtml(`${memberName(task.assignee)} - ${priorityLabel(task.priority)} - day ${task.startOffset} to ${task.dueOffset}`)}</small>
                 </span>
               </label>
             `).join("")}
@@ -30676,7 +30683,7 @@ function renderProjectTemplatePreview(template) {
             ${template.milestones.map((milestone) => `
               <article>
                 <strong>${escapeHtml(milestone.title)}</strong>
-                <span>Day ${milestone.dueOffset} - ${memberName(milestone.owner)}</span>
+                <span>Day ${milestone.dueOffset} - ${escapeHtml(memberName(milestone.owner))}</span>
               </article>
             `).join("")}
             ${template.docs.map((document) => `
@@ -30705,7 +30712,7 @@ function renderTaskTemplateCard(template) {
         <h3>${escapeHtml(template.name)}</h3>
         <p>${escapeHtml(template.description)}</p>
         <div class="template-meta">
-          <span>${memberName(template.assignee)}</span>
+          <span>${escapeHtml(memberName(template.assignee))}</span>
           <span>${template.durationDays} days</span>
           <span>${template.subtasks.length} checklist</span>
         </div>
@@ -33983,7 +33990,7 @@ function renderDocumentCard(document) {
         <p>${escapeHtml(document.body)}</p>
         <div class="meta-row">
           <span>${escapeHtml(projectName(document.projectId))}</span>
-          <span>${memberName(document.owner)}</span>
+          <span>${escapeHtml(memberName(document.owner))}</span>
           <span>${formatTimestamp(document.updatedAt)}</span>
         </div>
       </div>
@@ -34000,7 +34007,7 @@ function renderFileCard(file) {
         <div class="meta-row">
           <span>${escapeHtml(projectName(file.projectId))}</span>
           <span>${escapeHtml(file.size)}</span>
-          <span>${memberName(file.owner)}</span>
+          <span>${escapeHtml(memberName(file.owner))}</span>
           <span>${formatTimestamp(file.updatedAt)}</span>
           ${file.storageProvider ? `<span>${escapeHtml(file.storageProvider)}</span>` : ""}
         </div>
@@ -34749,10 +34756,10 @@ function renderEmployeeTimeSummary(member) {
   return `
     <article class="employee-time-card">
       <div>
-        <span class="avatar">${member.name.split(" ").map((part) => part[0]).join("")}</span>
+        <span class="avatar">${escapeHtml(member.name.split(" ").map((part) => part[0]).join(""))}</span>
         <div>
-          <h3>${member.name}</h3>
-          <p>${member.role}</p>
+          <h3>${escapeHtml(member.name)}</h3>
+          <p>${escapeHtml(member.role)}</p>
         </div>
       </div>
       <div class="time-summary-metrics">
@@ -34793,7 +34800,7 @@ function renderTimeEntryRow(entry) {
   return `
     <tr>
       <td>${formatDate(entry.date)}</td>
-      <td>${memberName(entry.memberId)}</td>
+      <td>${escapeHtml(memberName(entry.memberId))}</td>
       <td>
         <button class="table-task-button" type="button" data-edit-task="${entry.taskId}">
           <strong>${escapeHtml(task?.title || "Unknown task")}</strong>
@@ -34849,7 +34856,7 @@ function renderTaskCard(task) {
         ${cardFields.description && task.description ? `<span>${escapeHtml(task.description)}</span>` : ""}
       </button>
       ${cardFields.meta ? `<div class="task-meta">
-        <span class="avatar">${memberName(task.assignee).split(" ").map((part) => part[0]).join("")}</span>
+        <span class="avatar">${escapeHtml(memberName(task.assignee).split(" ").map((part) => part[0]).join(""))}</span>
         <span class="priority priority-${task.priority}">${priorityLabel(task.priority)}</span>
         <span class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}</span>
         ${checklist ? `<span>${escapeHtml(checklist)}</span>` : ""}
@@ -34896,7 +34903,7 @@ function renderTaskRow(task) {
         <span class="table-kicker">${escapeHtml(company.name)}</span>
         ${escapeHtml(projectName(task.projectId))}
       </td>
-      <td>${memberName(task.assignee)}</td>
+      <td>${escapeHtml(memberName(task.assignee))}</td>
       <td>${selectControl("status", task.id, task.status, boardStatusOptions())}</td>
       <td>${selectControl("priority", task.id, task.priority, priorities)}</td>
       <td class="${isOverdue(task) ? "is-overdue" : ""}">${formatDate(task.dueDate)}${liveViewers ? `<br><span class="live-task-chip">Live ${liveViewers}</span>` : ""}</td>
@@ -40369,6 +40376,10 @@ function persistApiBaseUrl(rawUrl) {
 
   try {
     const url = new URL(rawUrl);
+    if (!trustedApiOrigin(url)) {
+      showToast("Remote API connections require HTTPS", "info");
+      return;
+    }
     const normalizedUrl = url.origin.replace(/\/+$/, "");
     storageSet("agora.api.baseUrl", normalizedUrl);
     showToast("API URL saved. Reloading Agora.", "success");

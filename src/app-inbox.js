@@ -328,7 +328,7 @@ function renderWorkspacePulse(pulse) {
   return `
     <div class="workspace-pulse">
       <div class="presence-row" aria-label="Active collaborators">
-        ${pulse.activeMembers.map((member) => `<span class="presence-pill"><span class="avatar">${member.name.split(" ").map((part) => part[0]).join("")}</span>${escapeHtml(member.name)}</span>`).join("")}
+        ${pulse.activeMembers.map((member) => `<span class="presence-pill"><span class="avatar">${escapeHtml(member.name.split(" ").map((part) => part[0]).join(""))}</span>${escapeHtml(member.name)}</span>`).join("")}
       </div>
       <div class="pulse-metrics">
         <span><strong>${pulse.activeMembers.length}</strong> active</span>
@@ -346,7 +346,7 @@ function renderWorkspacePulse(pulse) {
       ${pulse.handoffs.length ? `
         <div class="pulse-handoffs">
           ${pulse.handoffs.map((task) => `
-            <button class="pulse-handoff" type="button" data-edit-task="${task.id}">
+            <button class="pulse-handoff" type="button" data-edit-task="${escapeHtml(task.id)}">
               <span>${escapeHtml(projectName(task.projectId))}</span>
               <strong>${escapeHtml(task.title)}</strong>
             </button>

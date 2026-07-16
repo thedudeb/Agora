@@ -5405,7 +5405,7 @@ async function syncSupabaseAuthUser(storage, supabaseUser) {
     const user = {
       ...(existingUser || {}),
       id: supabaseUser.id,
-      name: cleanString(metadata.full_name || metadata.name || existingUser?.name) || email.split("@")[0],
+      name: cleanDisplayName(metadata.full_name || metadata.name || existingUser?.name, email.split("@")[0]),
       email,
       role: "Supabase Auth",
       companyId: pendingInvitation?.companyId || existingUser?.companyId || existingMembership?.companyId || "",
@@ -5463,7 +5463,7 @@ async function syncSupabaseAuthUser(storage, supabaseUser) {
 
 async function createOwnerAccount(storage, body) {
   const email = normalizeEmail(body.email);
-  const name = cleanString(body.name) || email.split("@")[0];
+  const name = cleanDisplayName(body.name, email.split("@")[0]);
   const passwordFields = createPasswordFields(body.password);
   let account;
   await mutateStoredWorkspace(storage, (snapshot) => {
@@ -5710,9 +5710,10 @@ async function acceptInvitation(storage, token, name, password) {
     const users = snapshotUsersOnly(snapshot);
     const memberships = snapshotMembershipsOnly(snapshot);
     const existingUser = workspaceUsers(snapshot).find((user) => normalizeEmail(user.email) === normalizeEmail(invitation.email));
-    const user = existingUser || {
+    const acceptedName = cleanDisplayName(name, existingUser?.name || invitation.name || invitation.email.split("@")[0]);
+    const user = existingUser ? { ...existingUser, name: acceptedName } : {
       id: createUserId(invitation.email),
-      name: cleanString(name) || invitation.name || invitation.email.split("@")[0],
+      name: acceptedName,
       email: invitation.email,
       role: "Team",
       companyId: invitation.companyId,
@@ -5731,7 +5732,7 @@ async function acceptInvitation(storage, token, name, password) {
     return {
       ...snapshot,
       users: existingUser
-        ? users.map((item) => item.id === existingUser.id ? { ...item, name: cleanString(name) || item.name, companyId: invitation.companyId || item.companyId || "", ...passwordFields } : item)
+        ? users.map((item) => item.id === existingUser.id ? { ...item, name: acceptedName, companyId: invitation.companyId || item.companyId || "", ...passwordFields } : item)
         : [{ ...user, ...passwordFields }, ...users],
       memberships: memberships.some((membership) => membership.memberId === user.id)
         ? memberships.map((membership) => membership.memberId === user.id ? { ...membership, ...nextMembership } : membership)
@@ -6627,7 +6628,7 @@ function normalizeInvitationInput(body, session) {
     id: `invite-${crypto.randomUUID()}`,
     token: crypto.randomUUID(),
     email,
-    name: cleanString(body.name),
+    name: cleanDisplayName(body.name),
     role,
     companyId: cleanString(body.companyId),
     status: "pending",
@@ -6708,6 +6709,13 @@ function normalizeEmail(email) {
   const value = cleanString(email).toLowerCase();
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) publicError(400, "A valid email is required");
   return value;
+}
+
+function cleanDisplayName(value, fallback = "") {
+  const name = cleanString(value) || cleanString(fallback);
+  if (/[\u0000-\u001f\u007f]/.test(name)) publicError(400, "Display name contains unsupported control characters");
+  if (name.length > 120) publicError(400, "Display name must be 120 characters or fewer");
+  return name;
 }
 
 function cleanString(value) {

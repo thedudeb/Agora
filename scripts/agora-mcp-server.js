@@ -806,7 +806,12 @@ function cleanString(value) {
 }
 
 function cleanUrl(value) {
-  return cleanString(value).replace(/\/+$/, "") || DEFAULT_API_URL;
+  const candidate = cleanString(value).replace(/\/+$/, "") || DEFAULT_API_URL;
+  const url = new URL(candidate);
+  const loopback = ["localhost", "127.0.0.1", "::1", "0.0.0.0"].includes(url.hostname.toLowerCase());
+  if (!["http:", "https:"].includes(url.protocol)) throw new Error("AGORA_API_URL must use HTTP or HTTPS.");
+  if (url.protocol !== "https:" && !loopback) throw new Error("AGORA_API_URL must use HTTPS for non-loopback hosts.");
+  return url.origin;
 }
 
 function envFlag(name, fallback = false) {
