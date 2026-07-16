@@ -5,10 +5,16 @@ const path = require("path");
 const assert = require("assert");
 
 const root = path.resolve(__dirname, "..");
-const app = fs.readFileSync(path.join(root, "src", "app.js"), "utf8");
+const app = ["app.js", "app-inbox.js", "app-recovery.js", "app-project-board.js", "app-runtime.js"]
+  .map((file) => fs.readFileSync(path.join(root, "src", file), "utf8"))
+  .join("\n");
 const api = fs.readFileSync(path.join(root, "server", "api.js"), "utf8");
+const storage = fs.readFileSync(path.join(root, "server", "storage.js"), "utf8");
+const concurrency = fs.readFileSync(path.join(root, "server", "concurrency.js"), "utf8");
 const staticServer = fs.readFileSync(path.join(root, "server", "static.js"), "utf8");
 const desktopMain = fs.readFileSync(path.join(root, "desktop", "electron", "main.cjs"), "utf8");
+const mcpServer = fs.readFileSync(path.join(root, "scripts", "agora-mcp-server.js"), "utf8");
+const workspaceRevisionMigration = fs.readFileSync(path.join(root, "server", "migrations", "006_workspace_revisions.sql"), "utf8");
 const hostedVerifier = fs.readFileSync(path.join(root, "scripts", "hosted-env-verify.js"), "utf8");
 const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "qa.yml"), "utf8");
 const rootPackage = fs.readFileSync(path.join(root, "package.json"), "utf8");
@@ -79,6 +85,10 @@ assert(app.includes("function redactExportPortalLinks"), "portable exports must 
 assert(!app.includes('searchParams.set("token", apiSession.token)'), "realtime events must not put bearer tokens in URLs");
 assert(app.includes("connectRealtimeStream(connection)") && app.includes("Authorization: `Bearer ${apiSession.token}`"), "realtime events must authenticate with bearer headers");
 assert(api.includes('await assertRateLimit(request, "invitation-lookup", 12);'), "public invitation lookup must be rate limited");
+assert(api.includes("publicInvitationSummaries(workspaceInvitations(snapshot))"), "workspace/member reads must redact invitation tokens");
+assert(api.includes("users: snapshotUsersOnly(existingSnapshot)") && api.includes("memberships: snapshotMembershipsOnly(existingSnapshot)"), "whole-workspace saves must preserve server-owned access state");
+assert(api.includes('request.method === "PATCH"') && api.includes("updateWorkspaceMemberAccess"), "member access changes must use a guarded endpoint");
+assert(api.includes("refreshSessionAccess(session, storage)"), "active sessions must refresh current membership permissions");
 assert(api.includes("function assertAuthenticatedRequestRateLimits"), "authenticated API mutations must pass through user rate limits");
 assert(api.includes("function assertRealtimeConnectionLimit"), "realtime streams must enforce concurrent connection limits");
 assert(api.includes('response.setHeader("Retry-After"'), "rate-limited API responses must include Retry-After");
@@ -99,6 +109,8 @@ assert(hostedVerifier.includes("AGORA_SMTP_USER") && hostedVerifier.includes("AG
 
 assert(staticServer.includes("function isProductionCsp()"), "static server must expose production CSP mode");
 assert(staticServer.includes("AGORA_STRICT_CSP"), "static server must support strict CSP flag");
+assert(staticServer.includes("PUBLIC_ROOT_FILES") && staticServer.includes("PUBLIC_PATH_PREFIXES"), "static server must use an explicit public-file allowlist");
+assert(staticServer.includes('segment.startsWith(".")'), "static server must reject hidden paths");
 assert(staticServer.includes("const connectSrc = production") && staticServer.includes('"https://*.supabase.co"') && staticServer.includes('"https:"'), "static server must split production and development connect sources");
 assert(api.includes('id: "strict-csp"'), "backend health must expose strict CSP as a production gate");
 assert(api.includes('Set AGORA_STRICT_CSP=true or NODE_ENV=production'), "strict CSP gate must include a concrete hosted fix");
@@ -111,6 +123,12 @@ assert(app.includes("storageRemove(API_SESSION_KEY)") && app.includes("desktopSe
 assert(fs.readFileSync(path.join(root, "desktop", "electron", "preload.cjs"), "utf8").includes("secureSession"), "desktop preload must expose the secure session bridge");
 
 assert(rootPackage.includes('"audit": "npm audit --audit-level=moderate && npm --prefix desktop audit --audit-level=moderate"'), "root package must expose dependency audit script");
+assert(packageJson.scripts["test:static-security"] === "node scripts/static-security-test.js", "security checks must include live static-file probes");
+assert(concurrency.includes("WORKSPACE_REVISION") && storage.includes("workspaceConflictError"), "workspace storage must reject stale revisions");
+assert(workspaceRevisionMigration.includes("agora_compare_and_swap_workspace_snapshot"), "Supabase must compare-and-swap workspace revisions");
+assert(app.includes("workspaceRevision") && app.includes("expectedRevision"), "browser workspace saves must carry revision tokens");
+assert(app.includes("reportLocalPersistenceFailure") && !app.includes("apiSyncQueue.filter((entry) => entry.id !== id)].slice"), "offline persistence must surface failures and retain queued writes");
+assert(mcpServer.includes("AGORA_API_URL must use HTTPS for non-loopback hosts"), "MCP bearer tokens must require HTTPS outside loopback");
 assert(app.includes(`version: "${packageJson.version}"`), "browser release metadata must match package.json version");
 assert(api.includes('const API_VERSION = packageJson.version || "0.1.0";'), "API version must come from package.json");
 assert(workflow.includes("node-version: \"22\""), "CI must use a Node version supported by desktop security tooling");

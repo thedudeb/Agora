@@ -44,6 +44,18 @@ function safeFilePath(urlPath) {
   return relativePath && !relativePath.startsWith("..") && !path.isAbsolute(relativePath) ? filePath : "";
 }
 
+function forbiddenStaticPath(urlPath) {
+  try {
+    const decodedPath = decodeURIComponent(urlPath);
+    const protectedPrefixes = ["/server/", "/scripts/", "/desktop/", "/docs/", "/tests/", "/plugins/"];
+    return decodedPath.split("/").some((segment) => segment.startsWith("."))
+      || protectedPrefixes.some((prefix) => decodedPath.startsWith(prefix))
+      || /\.[a-z0-9]+$/i.test(decodedPath);
+  } catch {
+    return true;
+  }
+}
+
 function envFlag(name, fallback = false) {
   const value = String(process.env[name] || "").trim().toLowerCase();
   if (!value) return fallback;
@@ -96,8 +108,9 @@ const server = http.createServer((request, response) => {
   const url = new URL(request.url, `http://${request.headers.host || `${HOST}:${PORT}`}`);
   const filePath = safeFilePath(url.pathname);
   if (!filePath) {
-    response.writeHead(403, { ...securityHeaders(), "Content-Type": "text/plain; charset=utf-8" });
-    response.end("Forbidden");
+    const forbidden = forbiddenStaticPath(url.pathname);
+    response.writeHead(forbidden ? 403 : 404, { ...securityHeaders(), "Content-Type": forbidden ? "text/plain; charset=utf-8" : "text/html; charset=utf-8" });
+    response.end(forbidden ? "Forbidden" : fs.readFileSync(path.join(ROOT, "offline.html")));
     return;
   }
 

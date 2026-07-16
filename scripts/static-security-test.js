@@ -37,6 +37,7 @@ async function run() {
   assert.equal(await status("/.git/config"), 403, "Git metadata must not be served");
   assert.equal(await status("/server/data/workspace.json"), 403, "server data must not be served");
   assert.equal(await status("/%E0%A4%A"), 403, "malformed URL encoding must be rejected without crashing");
+  assert.equal(await status("/missing-workspace-route"), 404, "ordinary missing routes should retain the offline fallback");
   assert.equal(await status("/index.html", "POST"), 405, "static server must reject write methods");
   console.log("Static server security test passed");
 }
