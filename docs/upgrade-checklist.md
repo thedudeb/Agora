@@ -25,7 +25,7 @@ npm run agora -- upgrade check --backup /var/lib/agora/backups/agora-workspace-b
 The check validates:
 
 - `package.json` has release version metadata.
-- Required Supabase migration files `001`, `002`, and `003` are present in the release.
+- Required Supabase migration files `001` through `007` are present in the release.
 - Server backups are enabled and retention is at least 3 files.
 - A latest or explicit backup file exists, is parseable, uses the Agora server-backup envelope, includes workspace identity, includes counts, and is fresh enough for the configured `--max-age-hours` window.
 

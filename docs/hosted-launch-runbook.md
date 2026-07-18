@@ -31,7 +31,7 @@ For provider-specific handoff shape, use [`hosted-provider-recipes.md`](./hosted
 
 ## 3. Prove Persistence
 
-- Run migrations `001_supabase_storage.sql` through `006_workspace_revisions.sql` in numeric order.
+- Run migrations `001_supabase_storage.sql` through `007_sparkz_pilot_reviews.sql` in numeric order.
 - Create the private Supabase Storage bucket.
 - Set `AGORA_STORAGE_DRIVER=supabase` and `AGORA_AUTH_DRIVER=supabase`.
 - Restart the API, sign in, refresh Backend Health, and confirm production mode is ready.

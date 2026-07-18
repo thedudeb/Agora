@@ -38,7 +38,9 @@ Imported text is reference data, not executable instruction. Project Memory extr
 
 ## Pilot Scorecard
 
-Use one real creator launch before adding a deeper provider adapter. Record:
+Start or open the pilot from the Sparkz Creator Launch card in Marketplace. Agora creates the project, installs the tag-scoped launch-control automations, and opens the project's **Pilot** tab.
+
+The pilot cockpit derives workflow completion, elapsed days, evidence count, blockers, overdue work, and pending approvals from the live project. The reviewer records:
 
 - Time from spark intake to tokenless launch.
 - Unowned, overdue, or blocked launch work.
@@ -47,5 +49,9 @@ Use one real creator launch before adding a deeper provider adapter. Record:
 - Time required to prepare creator and community updates.
 - Whether the graduation decision is supported by inspectable evidence.
 - Whether any operator tried to move financial or on-chain execution into Agora.
+
+Six human review gates cover creator fit and rights, the tokenless experience, collaborator approvals, public language and legal review, momentum evidence, and execution-boundary discipline. A reviewer then records a go, wait, or stop verdict with rationale. The resulting evidence packet exports as Markdown or JSON and retains the product boundary.
+
+Pilot reviews are offline-first and portable. Connected workspaces sync them through the structured `sparkzPilotReviews` API collection. Supabase deployments must apply `007_sparkz_pilot_reviews.sql` for project-scoped persistence and RLS.
 
 Build a dedicated Sparkz adapter only when the pilot identifies repeated manual data transfer that a read-only or signed-webhook integration can safely remove.

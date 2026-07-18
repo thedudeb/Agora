@@ -766,6 +766,7 @@ const routeChecks = [
       "Agency Client Handoff",
       "Sparkz Creator Launch",
       "Sparkz Launch Control",
+      "Start Pilot",
       "Install Recommended Pack",
       "Install workflow packs",
       "Validation",
@@ -773,6 +774,24 @@ const routeChecks = [
       "License",
       "No template preview yet",
       "No automation pack preview yet"
+    ]
+  },
+  {
+    name: "Sparkz creator pilot cockpit",
+    suite: "workspace",
+    route: "marketplace",
+    query: { goldenAction: "startSparkzPilot" },
+    width: 1265,
+    height: 712,
+    required: [
+      "Sparkz Creator Pilot",
+      "Sparkz pilot cockpit",
+      "Pilot scorecard",
+      "Record what automation cannot infer",
+      "Creator fit and rights",
+      "Execution boundary discipline",
+      "Go, wait, or stop",
+      "Agora stops at coordination and evidence"
     ]
   },
   {

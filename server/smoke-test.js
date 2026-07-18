@@ -143,6 +143,13 @@ async function run() {
     });
     assert(blockedMemberIcmContext.status === 403, "member should not preview remote ICM context");
 
+    const blockedMemberPilotReview = await requestError(`${baseUrl}/api/records/sparkzPilotReviews`, {
+      method: "POST",
+      token: memberIcmLogin.token,
+      body: { record: { projectId: "launch", creatorName: "Pilot creator" } }
+    });
+    assert(blockedMemberPilotReview.status === 403, "member should not update Sparkz pilot reviews");
+
     const icmContext = await request(`${baseUrl}/api/integrations/icm/context/preview`, {
       method: "POST",
       token: login.token,
@@ -688,6 +695,26 @@ async function run() {
       }
     });
     assert(createdProject.project.name === "Smoke Project", "project create failed");
+
+    const pilotReview = await request(`${baseUrl}/api/records/sparkzPilotReviews`, {
+      method: "POST",
+      token: login.token,
+      body: {
+        record: {
+          projectId: "project-smoke",
+          creatorName: "Pilot creator",
+          updatePrepMinutes: 18,
+          boundaryIncidents: 0,
+          scores: { "creator-fit": { status: "pass", note: "Rights reviewed" } },
+          verdict: "wait",
+          verdictNote: "Gather launch evidence"
+        }
+      }
+    });
+    assert(pilotReview.record.projectId === "project-smoke", "Sparkz pilot review did not retain project scope");
+    assert(pilotReview.record.creatorName === "Pilot creator", "Sparkz pilot review did not retain creator context");
+    assert(pilotReview.record.scores["creator-fit"].status === "pass", "Sparkz pilot review did not retain scorecard evidence");
+    assert(pilotReview.record.verdict === "wait", "Sparkz pilot review did not retain the human verdict");
 
     const updatedProject = await request(`${baseUrl}/api/projects/project-smoke`, {
       method: "PUT",

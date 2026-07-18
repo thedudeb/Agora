@@ -10,6 +10,7 @@ const { createStorage } = require("./storage");
 const { createAsyncLock, normalizeRevision } = require("./concurrency");
 const { workspace, demoUsers, demoMemberships, rolePermissions } = require("./api-contracts");
 const { previewIcmContext } = require("./icm-context");
+const { normalizeSparkzPilotReview } = require("./sparkz-pilot");
 const packageJson = require("../package.json");
 
 loadEnvFile();
@@ -62,7 +63,8 @@ const recordCollections = {
   inboxState: { writePermission: "workspace:read", normalizer: normalizeInboxStateRecord, label: "inbox state" },
   integrationSettings: { writePermission: "integrations:write", normalizer: normalizeIntegrationSettingsRecord, label: "integration settings" },
   automationRules: { writePermission: "projects:write", normalizer: normalizeAutomationRuleRecord, label: "automation rule" },
-  automationRuns: { writePermission: "scheduler:run", normalizer: normalizeAutomationRunRecord, label: "automation run" }
+  automationRuns: { writePermission: "scheduler:run", normalizer: normalizeAutomationRunRecord, label: "automation run" },
+  sparkzPilotReviews: { writePermission: "projects:write", normalizer: normalizeSparkzPilotReview, label: "Sparkz pilot review" }
 };
 
 const sessions = new Map();

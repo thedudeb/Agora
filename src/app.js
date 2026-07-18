@@ -1314,6 +1314,7 @@ const seedData = {
   clientPortalLinks: [],
   integrationConflicts: [],
   selectedProjectTab: "overview",
+  sparkzPilotReviews: [],
   selectedSettingsTab: "account",
   plugins: {
     enabled: []
@@ -5581,7 +5582,8 @@ const structuredRecordCollections = [
   "inboxState",
   "integrationSettings",
   "automationRules",
-  "automationRuns"
+  "automationRuns",
+  "sparkzPilotReviews"
 ];
 
 function mergeRecordsById(existingItems = [], incomingItems = []) {
@@ -13628,7 +13630,7 @@ function openSearchResult(button) {
   if (projectId) {
     state.selectedProject = projectId;
     state.selectedRoute = "project";
-    state.selectedProjectTab = ["overview", "tasks", "board", "timeline", "milestones", "docs"].includes(projectTab) ? projectTab : "overview";
+    state.selectedProjectTab = ["overview", "tasks", "board", "timeline", "milestones", "docs", "pilot"].includes(projectTab) ? projectTab : "overview";
     openSidebarGroupForRoute("project");
     saveState();
     render();
@@ -14274,7 +14276,7 @@ function openCommandSearchResult(result) {
   if (result.projectId) {
     state.selectedProject = result.projectId;
     state.selectedRoute = "project";
-    state.selectedProjectTab = ["overview", "tasks", "board", "timeline", "milestones", "docs"].includes(result.projectTab) ? result.projectTab : "overview";
+    state.selectedProjectTab = ["overview", "tasks", "board", "timeline", "milestones", "docs", "pilot"].includes(result.projectTab) ? result.projectTab : "overview";
     openSidebarGroupForRoute("project");
     saveState();
     render();
@@ -14328,7 +14330,7 @@ function executeCommand(commandId) {
     if (!project) return;
     state.selectedProject = project.id;
     state.selectedRoute = "project";
-    state.selectedProjectTab = ["overview", "tasks", "board", "timeline", "milestones", "docs"].includes(tab) ? tab : "overview";
+    state.selectedProjectTab = ["overview", "tasks", "board", "timeline", "milestones", "docs", "pilot"].includes(tab) ? tab : "overview";
     openSidebarGroupForRoute("project");
     saveState();
     render();
@@ -18188,7 +18190,7 @@ function routeFromLocation({ shouldRender = false } = {}) {
     const projectId = params.get("project") || params.get("projectId");
     if (projectId && byId(state.projects, projectId)) state.selectedProject = projectId;
     const requestedProjectTab = params.get("projectTab") || params.get("tab");
-    if (requestedProjectTab) state.selectedProjectTab = ["overview", "tasks", "board", "timeline", "milestones", "docs"].includes(requestedProjectTab) ? requestedProjectTab : "overview";
+    if (requestedProjectTab) state.selectedProjectTab = ["overview", "tasks", "board", "timeline", "milestones", "docs", "pilot"].includes(requestedProjectTab) ? requestedProjectTab : "overview";
   } else {
     state.selectedProjectTab = "overview";
   }
@@ -18221,6 +18223,9 @@ function runGoldenActionFromLocation() {
   }
   if (params.get("goldenAction") === "memorySampleCapture") {
     addSampleProjectMemoryCapture();
+  }
+  if (params.get("goldenAction") === "startSparkzPilot") {
+    startOrOpenSparkzPilot();
   }
 }
 
@@ -30592,6 +30597,7 @@ function renderMarketplaceTemplateCard(template) {
       <div class="marketplace-actions">
         <button class="button button-secondary compact-button" type="button" data-export-marketplace-template="${template.id}" ${locked ? "disabled" : ""}>Export JSON</button>
         ${locked ? `<button class="button button-secondary compact-button" type="button" data-grant-template-entitlement="${template.id}">Grant Test Access</button>` : ""}
+        ${template.id === SPARKZ_TEMPLATE_ID ? `<button class="button button-secondary compact-button" type="button" data-start-sparkz-pilot ${locked ? "disabled" : ""}>${sparkzPilotProject() ? "Open Pilot" : "Start Pilot"}</button>` : ""}
         <button class="button button-primary compact-button" type="button" data-install-marketplace-template="${template.id}" ${installed || locked ? "disabled" : ""}>${installed ? "Installed" : locked ? "Locked" : "Install"}</button>
       </div>
     </article>

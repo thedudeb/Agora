@@ -16,6 +16,7 @@ const staticServer = fs.readFileSync(path.join(root, "server", "static.js"), "ut
 const desktopMain = fs.readFileSync(path.join(root, "desktop", "electron", "main.cjs"), "utf8");
 const mcpServer = fs.readFileSync(path.join(root, "scripts", "agora-mcp-server.js"), "utf8");
 const workspaceRevisionMigration = fs.readFileSync(path.join(root, "server", "migrations", "006_workspace_revisions.sql"), "utf8");
+const sparkzPilotMigration = fs.readFileSync(path.join(root, "server", "migrations", "007_sparkz_pilot_reviews.sql"), "utf8");
 const hostedVerifier = fs.readFileSync(path.join(root, "scripts", "hosted-env-verify.js"), "utf8");
 const workflow = fs.readFileSync(path.join(root, ".github", "workflows", "qa.yml"), "utf8");
 const rootPackage = fs.readFileSync(path.join(root, "package.json"), "utf8");
@@ -105,6 +106,9 @@ assert(icmContext.includes("function icmObjectHash") && icmContext.includes('["u
 assert(icmContext.includes('redirect: "error"') && icmContext.includes("ICM_CONTEXT_LIMIT_BYTES") && icmContext.includes("ICM_CONTEXT_TIMEOUT_MS"), "ICM context reads must reject redirects and enforce size/time limits");
 assert(api.includes('hasPermission(session, "integrations:write")') && api.includes('url.pathname === "/api/integrations/icm/context/preview"'), "ICM context preview must require integration permission");
 assert(app.includes("untrusted import") && app.includes("contentHash"), "ICM captures must retain visible untrusted provenance");
+assert(api.includes('sparkzPilotReviews: { writePermission: "projects:write"'), "Sparkz pilot reviews must require project write permission");
+assert(storage.includes('sparkzPilotReviews: "agora_sparkz_pilot_reviews"'), "Sparkz pilot reviews must use first-class production storage");
+assert(sparkzPilotMigration.includes("enable row level security") && sparkzPilotMigration.includes("agora_can_read_record") && sparkzPilotMigration.includes("agora_can_write_team_record"), "Sparkz pilot review storage must enforce project-aware RLS");
 assert(api.includes("function localCorsOriginsAllowed()"), "localhost CORS origins must be environment gated");
 assert(hostedVerifier.includes("function checkCorsPolicy()"), "hosted verifier must fail unsafe production CORS policy");
 assert(hostedVerifier.includes("AGORA_ALLOW_LOCALHOST_ORIGINS=false"), "hosted verifier must guide localhost CORS hardening");

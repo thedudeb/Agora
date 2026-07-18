@@ -25,11 +25,12 @@ assertIncludes("index.html", "./src/project-launch.js", "must load the launch mo
 assertIncludes("index.html", "./src/project-launch.css", "must load the launch stylesheet");
 assertIncludes("sw.js", "./src/project-launch.js?v=workspace-platform-v1", "must cache the launch module for offline reloads");
 assertIncludes("sw.js", "./src/project-launch.css?v=workspace-platform-v1", "must cache the launch stylesheet for offline reloads");
-assertIncludes("sw.js", "./src/app.js?v=workspace-platform-v14", "must cache the current app bundle version");
+assertIncludes("sw.js", "./src/app.js?v=workspace-platform-v15", "must cache the current app bundle version");
 assertIncludes("sw.js", "./src/app-inbox.js?v=workspace-platform-v2", "must cache Inbox route rendering");
 assertIncludes("sw.js", "./src/app-recovery.js?v=workspace-platform-v2", "must cache Data and Recovery route rendering");
-assertIncludes("sw.js", "./src/app-project-board.js?v=workspace-platform-v4", "must cache Project and Board route rendering");
-assertIncludes("sw.js", "./src/app-runtime.js?v=workspace-platform-v3", "must cache the runtime event wiring");
+assertIncludes("sw.js", "./src/app-project-board.js?v=workspace-platform-v5", "must cache Project and Board route rendering");
+assertIncludes("sw.js", "./src/app-runtime.js?v=workspace-platform-v4", "must cache the runtime event wiring");
+assertIncludes("sw.js", "./src/sparkz-pilot.js?v=workspace-platform-v1", "must cache the Sparkz pilot module");
 assertIncludes("sw.js", "./src/styles.css?v=workspace-platform-v18", "must cache the current base stylesheet version");
 assertIncludes("src/app.js", "function renderHtml", "must define a named render helper for HTML assignment");
 assertIncludes("src/app.js", 'renderHtml(els.appView, `', "launch route should use the named render helper");

@@ -54,7 +54,7 @@ The Compose stack runs separate `app` and `api` services from the same image. AP
 npm run setup -- --profile hosted
 ```
 
-Then edit `.env` with real Supabase, SMTP/webhook, hosted origin, release, and backup values. Run Supabase migrations `001` through `006`, create the private `agora-files` bucket, and validate:
+Then edit `.env` with real Supabase, SMTP/webhook, hosted origin, release, and backup values. Run Supabase migrations `001` through `007`, create the private `agora-files` bucket, and validate:
 
 ```sh
 npm run verify:production -- --env .env.production --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict

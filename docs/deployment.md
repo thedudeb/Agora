@@ -33,7 +33,7 @@ Recommended first production sequence:
 
 1. Deploy the static app and API behind HTTPS.
 2. Set the required production environment variables below.
-3. Configure Supabase storage/auth and run migrations `001` through `006`.
+3. Configure Supabase storage/auth and run migrations `001` through `007`.
 4. Configure SMTP or password-reset webhook delivery.
 5. Sign in, open Settings > Account, and use Hosted onboarding to complete owner, API sync, invite, email, feedback, and recovery checks.
 6. Before upgrades or migration changes, run `npm run verify:upgrade`; for new launches, run `npm run verify:production -- --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict`, refresh Backend Health, and confirm production gates, email diagnostics, background jobs, structured records, backups, and Supabase mode are green.
@@ -123,6 +123,7 @@ For the dedicated setup guide, troubleshooting table, and pre-launch gate, see [
 5. Run `server/migrations/004_auth_sessions.sql`.
 6. Run `server/migrations/005_rate_limit_buckets.sql`.
 7. Run `server/migrations/006_workspace_revisions.sql`.
+8. Run `server/migrations/007_sparkz_pilot_reviews.sql`.
 7. Create a private Storage bucket named `agora-files`.
 8. Set:
 

@@ -523,6 +523,12 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const startSparkzPilotButton = event.target.closest("[data-start-sparkz-pilot]");
+  if (startSparkzPilotButton) {
+    startOrOpenSparkzPilot();
+    return;
+  }
+
   const grantTemplateEntitlementButton = event.target.closest("[data-grant-template-entitlement]");
   if (grantTemplateEntitlementButton) {
     grantMarketplaceTemplateEntitlement(grantTemplateEntitlementButton.dataset.grantTemplateEntitlement, "test");
@@ -1686,6 +1692,28 @@ document.addEventListener("click", (event) => {
     state.selectedProjectTab = projectTabButton.dataset.projectTab;
     saveState();
     render();
+  }
+
+  const sparkzPilotScoreButton = event.target.closest("[data-sparkz-pilot-score]");
+  if (sparkzPilotScoreButton) {
+    updateSparkzPilotScore(
+      sparkzPilotScoreButton.dataset.sparkzPilotProject,
+      sparkzPilotScoreButton.dataset.sparkzPilotScore,
+      sparkzPilotScoreButton.dataset.sparkzPilotStatus
+    );
+    return;
+  }
+
+  const sparkzPilotSaveButton = event.target.closest("[data-sparkz-pilot-save]");
+  if (sparkzPilotSaveButton) {
+    saveSparkzPilotReview(sparkzPilotSaveButton.dataset.sparkzPilotSave);
+    return;
+  }
+
+  const sparkzPilotExportButton = event.target.closest("[data-sparkz-pilot-export]");
+  if (sparkzPilotExportButton) {
+    exportSparkzPilot(sparkzPilotExportButton.dataset.sparkzPilotProject, sparkzPilotExportButton.dataset.sparkzPilotExport);
+    return;
   }
 
   const commentButton = event.target.closest("#comment-submit");

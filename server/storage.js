@@ -21,6 +21,7 @@ const recordTables = {
   notificationHistory: "agora_notification_history",
   inboxState: "agora_inbox_state",
   integrationSettings: "agora_integration_settings",
+  sparkzPilotReviews: "agora_sparkz_pilot_reviews",
   clientPortalLinks: "agora_client_portal_links"
 };
 

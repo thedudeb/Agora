@@ -34,11 +34,12 @@ function assertSyntaxChecked(sourcePath) {
 }
 
 const moduleScripts = [
-  "./src/app.js?v=workspace-platform-v14",
+  "./src/app.js?v=workspace-platform-v15",
+  "./src/sparkz-pilot.js?v=workspace-platform-v1",
   "./src/app-inbox.js?v=workspace-platform-v2",
   "./src/app-recovery.js?v=workspace-platform-v2",
-  "./src/app-project-board.js?v=workspace-platform-v4",
-  "./src/app-runtime.js?v=workspace-platform-v3"
+  "./src/app-project-board.js?v=workspace-platform-v5",
+  "./src/app-runtime.js?v=workspace-platform-v4"
 ];
 
 moduleScripts.slice(0, -1).forEach((script, index) => {
@@ -48,6 +49,7 @@ moduleScripts.forEach(assertCached);
 
 [
   "src/app.js",
+  "src/sparkz-pilot.js",
   "src/app-inbox.js",
   "src/app-recovery.js",
   "src/app-project-board.js",
@@ -55,6 +57,7 @@ moduleScripts.forEach(assertCached);
 ].forEach(assertSyntaxChecked);
 
 assertIncludes("src/app.js", "function renderDataManagement()", "keeps Data route wrapper in the app bundle");
+assertIncludes("src/sparkz-pilot.js", "function renderSparkzPilotTab", "keeps the Sparkz pilot route module");
 assertIncludes("src/app.js", "function renderProjectPage()", "keeps Project route wrapper in the app bundle");
 assertIncludes("src/app.js", "function renderBoard()", "keeps Board route wrapper in the app bundle");
 assertIncludes("src/app-recovery.js", "function renderDataManagementRoute", "keeps Data route implementation in recovery module");

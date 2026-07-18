@@ -11,7 +11,8 @@ const REQUIRED_MIGRATIONS = [
   "server/migrations/003_background_jobs.sql",
   "server/migrations/004_auth_sessions.sql",
   "server/migrations/005_rate_limit_buckets.sql",
-  "server/migrations/006_workspace_revisions.sql"
+  "server/migrations/006_workspace_revisions.sql",
+  "server/migrations/007_sparkz_pilot_reviews.sql"
 ];
 
 const args = parseArgs(process.argv.slice(2));

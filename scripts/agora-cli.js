@@ -8,7 +8,9 @@ const ROOT = path.resolve(__dirname, "..");
 
 const checkFiles = [
   "src/app.js",
+  "src/sparkz-pilot.js",
   "server/api.js",
+  "server/sparkz-pilot.js",
   "server/storage.js",
   "server/static.js",
   "server/env.js",

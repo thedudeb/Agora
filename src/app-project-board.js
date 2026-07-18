@@ -109,6 +109,8 @@ function renderProjectPageRoute() {
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
   const progress = projectProgress(allProjectTasks);
   const healthSnapshot = projectHealthSnapshot(project, allProjectTasks);
+  const sparkzPilot = isSparkzPilotProject(project);
+  if (state.selectedProjectTab === "pilot" && !sparkzPilot) state.selectedProjectTab = "overview";
 
   els.appView.innerHTML = `
     <section class="project-hero project-health-hero">
@@ -146,6 +148,7 @@ function renderProjectPageRoute() {
       ${projectTabButton("timeline", "Timeline")}
       ${projectTabButton("milestones", "Milestones")}
       ${projectTabButton("docs", "Docs")}
+      ${sparkzPilot ? projectTabButton("pilot", "Pilot") : ""}
     </nav>
 
     ${state.selectedProjectTab === "overview" ? renderProjectOverview(project, {
@@ -163,6 +166,7 @@ function renderProjectPageRoute() {
     ${state.selectedProjectTab === "timeline" ? renderProjectTimeline(project, filteredProjectTasks, milestones) : ""}
     ${state.selectedProjectTab === "milestones" ? renderProjectMilestones(milestones) : ""}
     ${state.selectedProjectTab === "docs" ? renderProjectDocs(project) : ""}
+    ${state.selectedProjectTab === "pilot" ? renderSparkzPilotTab(project) : ""}
   `;
 }
 

@@ -32,6 +32,7 @@ Open the Supabase SQL editor and run these files in order:
 4. [`server/migrations/004_auth_sessions.sql`](../server/migrations/004_auth_sessions.sql)
 5. [`server/migrations/005_rate_limit_buckets.sql`](../server/migrations/005_rate_limit_buckets.sql)
 6. [`server/migrations/006_workspace_revisions.sql`](../server/migrations/006_workspace_revisions.sql)
+7. [`server/migrations/007_sparkz_pilot_reviews.sql`](../server/migrations/007_sparkz_pilot_reviews.sql)
 
 The first migration creates Agora storage tables. The second migration adds Supabase Auth memberships, helper functions, and RLS policies. The third migration adds persisted background jobs for retryable email and worker state. The fourth migration adds durable hashed API sessions for rotation and revocation across restarts. The fifth migration adds distributed API rate-limit buckets for multi-worker hosted deployments.
 

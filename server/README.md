@@ -103,7 +103,7 @@ Agora can use Supabase Postgres for API persistence without adding a Node depend
 For the full setup and verification runbook, see [`../docs/supabase-setup.md`](../docs/supabase-setup.md).
 
 1. Create a Supabase project.
-2. Run migrations [`001_supabase_storage.sql`](./migrations/001_supabase_storage.sql) through [`006_workspace_revisions.sql`](./migrations/006_workspace_revisions.sql) in numeric order in the Supabase SQL editor.
+2. Run migrations [`001_supabase_storage.sql`](./migrations/001_supabase_storage.sql) through [`007_sparkz_pilot_reviews.sql`](./migrations/007_sparkz_pilot_reviews.sql) in numeric order in the Supabase SQL editor.
 3. Set these values in `.env`:
 
 ```sh
@@ -146,6 +146,7 @@ The verifier starts a temporary Agora API server with Supabase storage, uses a u
 - `POST /api/backend/jobs/:id/clear`: clears a completed, failed, rejected, or canceled background job from the recent operator console for sessions with `scheduler:run`.
 - `POST /api/integrations/sync`: queues an inbound, outbound, or two-way provider sync job for sessions with `integrations:write`. Body: `{ "provider": "github", "direction": "inbound", "mapping": { "issueTitle": "title" }, "records": [] }`.
 - `POST /api/integrations/icm/context/preview`: previews public ICM `llm.txt` context for sessions with `integrations:write`. The server accepts only an ICM hash or the canonical public `useicm.com` path, rejects redirects, caps the response at 12 KB, and returns SHA-256 provenance with `readOnly` and `untrusted` labels. It never accepts owner keys or writes back to ICM.
+- `POST /api/records/sparkzPilotReviews`: creates or updates a project-scoped Sparkz pilot scorecard for sessions with `projects:write`. The record retains operational measurements, six review gates, reviewer identity, and the explicit human go/wait/stop verdict.
 - `GET /api/integrations/github/status`: returns GitHub repository mapping, webhook readiness, and pending conflict count without exposing secrets.
 - `POST /api/integrations/github/webhook`: receives GitHub `issues` and `pull_request` webhooks, requires `X-Hub-Signature-256` when `AGORA_GITHUB_WEBHOOK_SECRET` is set or production GitHub secret enforcement is active, blocks duplicate `X-GitHub-Delivery` replays, maps events to tasks, and records accepted, ignored, conflict, and rejected deliveries for review.
 - `POST /api/integrations/github/conflicts/:id/resolve`: resolves an open GitHub conflict for sessions with `integrations:write` and `tasks:write`. Body: `{ "resolution": "keep-agora" | "use-github" | "merge" | "ignore", "note": "..." }`.
@@ -245,4 +246,4 @@ Sensitive operational actions use dedicated permissions in addition to role chec
 
 ## Database Target
 
-`schema.sql` is the normalized PostgreSQL target for the self-hosted backend. `migrations/001_supabase_storage.sql` stores the current workspace snapshot, audit log, structured work records, first-class notification records, inbox state, and integration settings in Postgres. `migrations/002_supabase_auth_rls.sql` adds the Supabase Auth membership/RLS layer. `migrations/003_background_jobs.sql` persists retryable worker/email job state. `migrations/004_auth_sessions.sql` persists hashed API sessions. `migrations/005_rate_limit_buckets.sql` adds distributed rate-limit buckets. `migrations/006_workspace_revisions.sql` adds compare-and-swap workspace revisions for multi-instance writes. The JSON storage adapter remains the low-friction local default while Supabase provides the production-ready persistence path.
+`schema.sql` is the normalized PostgreSQL target for the self-hosted backend. `migrations/001_supabase_storage.sql` stores the current workspace snapshot, audit log, and structured work records. Migrations `002` through `006` add Supabase Auth/RLS, background jobs, durable sessions, distributed rate limits, and compare-and-swap workspace revisions. `migrations/007_sparkz_pilot_reviews.sql` adds project-scoped Sparkz pilot scorecards with team-write and company-read policies. The JSON storage adapter remains the low-friction local default while Supabase provides the production-ready persistence path.

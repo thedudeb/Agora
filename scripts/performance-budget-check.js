@@ -29,6 +29,7 @@ function assertMax(actual, max, label, hint) {
 const lineBudgets = {
   "src/app.js": 43000,
   "src/app-project-board.js": 3000,
+  "src/sparkz-pilot.js": 700,
   "src/app-runtime.js": 3000,
   "src/app-recovery.js": 1600,
   "src/app-inbox.js": 900,
@@ -43,6 +44,7 @@ Object.entries(lineBudgets).forEach(([relativePath, maxLines]) => {
 const frontendModules = [
   "src/app.js",
   "src/app-project-board.js",
+  "src/sparkz-pilot.js",
   "src/app-runtime.js",
   "src/app-recovery.js",
   "src/app-inbox.js",
@@ -55,6 +57,7 @@ assertMax(frontendLineTotal, 50500, "frontend module line total", hints.frontend
 const sizeBudgetsKb = {
   "src/app.js": 1800,
   "src/app-project-board.js": 140,
+  "src/sparkz-pilot.js": 40,
   "src/app-runtime.js": 120,
   "src/app-recovery.js": 80,
   "src/app-inbox.js": 40,
