@@ -934,6 +934,34 @@ const automationMarketplacePacks = [
     ]
   },
   {
+    id: "automation-pack-sparkz-launch-control",
+    name: "Sparkz Launch Control",
+    category: "Creator Economy",
+    creatorName: "Agora + Sparkz",
+    license: "MIT-style workflow pack",
+    description: "Keep creator-launch blockers and near-term launch work visible while all financial and on-chain execution stays external.",
+    rules: [
+      {
+        name: "Escalate blocked Sparkz launch work",
+        triggerKind: "task_blocked",
+        conditionKind: "tag",
+        conditionValue: "sparkz",
+        actionKind: "set_risk",
+        actionTarget: "High",
+        enabled: true
+      },
+      {
+        name: "Draft Sparkz launch readiness update",
+        triggerKind: "task_due_soon",
+        conditionKind: "tag",
+        conditionValue: "sparkz",
+        actionKind: "draft_update",
+        actionTarget: "Sparkz launch readiness",
+        enabled: true
+      }
+    ]
+  },
+  {
     id: "automation-pack-release-control",
     name: "Release Control",
     category: "Software",
@@ -1087,6 +1115,42 @@ const marketplaceProjectTemplates = [
       title: "Hiring Request",
       assignee: "sam",
       description: "Capture a new role request, urgency, budget, and hiring manager notes."
+    }
+  },
+  {
+    id: "marketplace-sparkz-creator-launch",
+    name: "Sparkz Creator Launch",
+    category: "Creator Economy",
+    description: "Run a tokenless-first creator launch from spark intake and collectables through backing, boost momentum, collaborator approvals, and an optional graduation decision.",
+    owner: "mara",
+    creatorName: "Agora + Sparkz",
+    durationDays: 42,
+    tasks: [
+      { key: "spark-intake", title: "Capture the creator spark", description: "Document the creator, release, audience, desired momentum, collaborators, and why the project matters without leading with a token.", assignee: "mara", priority: "urgent", startOffset: 0, dueOffset: 3, tags: ["sparkz", "intake"], blockedBy: [], subtasks: ["Creator brief", "Release goal", "Audience and collaborators"] },
+      { key: "creator-review", title: "Complete creator and project review", description: "Confirm identity, quality bar, launch ownership, content rights, and the ZAO-backed acceptance decision.", assignee: "sam", priority: "high", startOffset: 2, dueOffset: 6, tags: ["sparkz", "review"], blockedBy: ["spark-intake"], subtasks: ["Identity and rights", "Quality review", "Acceptance decision"] },
+      { key: "tokenless-design", title: "Design the tokenless launch", description: "Define collectables, backing mechanics, boost participation, community perks, and success signals before considering any token path.", assignee: "nina", priority: "urgent", startOffset: 5, dueOffset: 12, tags: ["sparkz", "tokenless"], blockedBy: ["creator-review"], subtasks: ["Collectables", "Backing experience", "Boost and leaderboard"] },
+      { key: "launch-assets", title: "Produce creator launch assets", description: "Prepare the creator story, collectable media, campaign page, social assets, FAQs, and community update cadence.", assignee: "eli", priority: "high", startOffset: 8, dueOffset: 18, tags: ["sparkz", "creative"], blockedBy: ["tokenless-design"], subtasks: ["Creator story", "Collectable media", "Launch and social copy"] },
+      { key: "collaborator-split", title: "Approve collaborator fee-split intent", description: "Record participants, rationale, percentages, mutable split owner, and approval evidence without executing a transaction in Agora.", assignee: "mara", priority: "urgent", startOffset: 10, dueOffset: 18, tags: ["sparkz", "approval", "splits"], blockedBy: ["creator-review"], subtasks: ["Participant list", "Split rationale", "Recorded approvals"] },
+      { key: "legal-language", title: "Review public language and claims", description: "Use this workflow checklist to keep messaging feature-led and creator-friendly: backing and present-day perks, no promised returns, and no language that frames participation as a raise. This task is not legal advice.", assignee: "sam", priority: "urgent", startOffset: 14, dueOffset: 21, tags: ["sparkz", "legal-review"], blockedBy: ["launch-assets", "collaborator-split"], subtasks: ["Feature-first framing", "Perks and backing language", "Qualified legal review"] },
+      { key: "tokenless-launch", title: "Launch the spark", description: "Publish the tokenless experience, activate collectables and backing, open boost participation, and begin the community update loop.", assignee: "nina", priority: "urgent", startOffset: 21, dueOffset: 25, tags: ["sparkz", "launch"], blockedBy: ["legal-language"], subtasks: ["Publish experience", "Activate boost", "Send launch update"] },
+      { key: "momentum-review", title: "Review creator and community momentum", description: "Assess collectable activity, backing, boost participation, creator engagement, operational risks, and qualitative community signals.", assignee: "eli", priority: "high", startOffset: 25, dueOffset: 36, tags: ["sparkz", "momentum"], blockedBy: ["tokenless-launch"], subtasks: ["Momentum scorecard", "Creator check-in", "Risk and blocker review"] },
+      { key: "graduation-decision", title: "Decide whether the spark should graduate", description: "Document a human-reviewed go, wait, or never-token decision. If approved, hand execution to the configured external rails; Agora remains the decision and evidence system.", assignee: "mara", priority: "urgent", startOffset: 36, dueOffset: 42, tags: ["sparkz", "decision"], blockedBy: ["momentum-review"], subtasks: ["Readiness evidence", "Go/wait/never decision", "External execution handoff"] }
+    ],
+    milestones: [
+      { title: "Tokenless launch approved", description: "Creator review, experience design, split intent, assets, and public language are approved.", owner: "mara", dueOffset: 21, status: "planned", taskKeys: ["creator-review", "tokenless-design", "collaborator-split", "legal-language"] },
+      { title: "Spark live", description: "The tokenless creator experience is live and the community update loop has started.", owner: "nina", dueOffset: 25, status: "planned", taskKeys: ["tokenless-launch"] },
+      { title: "Graduation decision recorded", description: "The project has an evidence-backed go, wait, or never-token decision.", owner: "mara", dueOffset: 42, status: "planned", taskKeys: ["momentum-review", "graduation-decision"] }
+    ],
+    docs: [
+      { title: "Spark Brief", type: "Brief", body: "Creator, project, audience, collaborators, current momentum, tokenless offer, success signals, and launch owner." },
+      { title: "Legal-Safe Messaging Checklist", type: "Checklist", body: "Lead with features. Say backing and present-day perks. Avoid raise, promised returns, guaranteed upside, or coin-first framing. Record reviewer and approval date." },
+      { title: "Collaborator Split Decision", type: "Decision", body: "Participants, contribution rationale, proposed percentages, mutable split owner, approvals, external contract reference, and revision history. Agora records intent and evidence; external rails execute." },
+      { title: "Graduation Decision Record", type: "Decision", body: "Momentum evidence, creator preference, risks, legal review, fee and governance proposal, go/wait/never outcome, approvers, and external execution handoff." }
+    ],
+    intakeForm: {
+      title: "Creator Spark Intake",
+      assignee: "mara",
+      description: "Capture the creator, project, collaborators, audience, tokenless launch idea, rights posture, and desired community outcome."
     }
   },
   {
@@ -2767,6 +2831,10 @@ let activeApiSessionsAutoRefreshKey = "";
 let activeApiSessionSummary = null;
 let marketplaceApiCatalog = null;
 let marketplaceApiLoading = false;
+let icmContextPreview = null;
+let icmContextLoading = false;
+let icmContextProjectId = "";
+let icmContextInputValue = "";
 let realtimePollTimer = null;
 let realtimeEventSource = null;
 let realtimeEventRefreshTimer = null;
@@ -3242,8 +3310,21 @@ function normalizePluginSettings(value = {}) {
   };
 }
 
+function normalizeUpdateCaptureMetadata(metadata = {}) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return {};
+  return {
+    provider: String(metadata.provider || "").trim().slice(0, 48),
+    sourceUrl: String(metadata.sourceUrl || "").trim().slice(0, 500),
+    contentHash: String(metadata.contentHash || "").trim().slice(0, 128),
+    retrievedAt: String(metadata.retrievedAt || "").trim().slice(0, 64),
+    contentLength: Math.max(0, Math.round(Number(metadata.contentLength) || 0)),
+    readOnly: Boolean(metadata.readOnly),
+    untrusted: Boolean(metadata.untrusted)
+  };
+}
+
 function normalizeUpdateCaptures(captures = []) {
-  const validSources = new Set(["meeting", "email", "slack", "github", "client", "doc", "transcript", "csv", "other"]);
+  const validSources = new Set(["meeting", "email", "slack", "github", "client", "doc", "transcript", "csv", "icm", "other"]);
   return (Array.isArray(captures) ? captures : [])
     .filter((capture) => capture && typeof capture === "object")
     .map((capture) => ({
@@ -3254,6 +3335,9 @@ function normalizeUpdateCaptures(captures = []) {
       companyId: String(capture.companyId || ""),
       title: String(capture.title || updateCaptureTitle(capture)).slice(0, 160),
       body: String(capture.body || "").slice(0, 12000),
+      externalId: String(capture.externalId || "").trim().slice(0, 240),
+      occurredAt: String(capture.occurredAt || capture.createdAt || "").trim().slice(0, 64),
+      metadata: normalizeUpdateCaptureMetadata(capture.metadata),
       capturedBy: String(capture.capturedBy || activeMemberId()),
       createdAt: capture.createdAt || new Date().toISOString(),
       status: ["captured", "previewed", "reviewed", "applied", "archived"].includes(capture.status) ? capture.status : "captured"
@@ -3273,6 +3357,7 @@ function updateCaptureSourceLabel(source) {
     doc: "Document",
     transcript: "Call transcript",
     csv: "CSV / export",
+    icm: "ICM context",
     other: "Other update"
   }[source] || "Other update";
 }
@@ -3373,12 +3458,13 @@ function projectMemoryIngestionContract() {
     version: 1,
     generatedAt: new Date().toISOString(),
     entrypoint: "Project Memory > Universal Update Capture",
-    supportedSources: ["meeting", "email", "slack", "github", "client", "doc", "transcript", "csv", "other"],
+    supportedSources: ["meeting", "email", "slack", "github", "client", "doc", "transcript", "csv", "icm", "other"],
     connectorChannels: [
       { id: "email-forward", label: "Email forwarder", status: "contract-ready", payload: "subject, from, receivedAt, body, attachments[]" },
       { id: "github-webhook", label: "GitHub webhook", status: "contract-ready", payload: "repository, issue/pr, actor, event, body" },
       { id: "chat-export", label: "Slack/Teams/Discord export", status: "contract-ready", payload: "channel, author, messages[], permalink" },
       { id: "mobile-share", label: "Mobile share sheet", status: "contract-ready", payload: "source app, selected text, url, files[]" },
+      { id: "icm-public-context", label: "ICM public context", status: "preview-first", payload: "public hash/url, content hash, retrievedAt, untrusted text" },
       { id: "cli", label: "Agora CLI", status: "contract-ready", payload: "stdin/file, source, project, metadata" },
       { id: "mcp", label: "MCP server", status: "contract-ready", payload: "tool input, resource uri, source metadata" }
     ],
@@ -34023,7 +34109,7 @@ function renderProjectMemory() {
   const timeline = projectMemoryTimelineItems();
   const contract = projectMemoryIngestionContract();
   const latestPreview = previews[0];
-  const sourceCounts = ["meeting", "email", "slack", "github", "client"].map((source) => ({
+  const sourceCounts = ["meeting", "email", "slack", "github", "client", "icm"].map((source) => ({
     source,
     label: updateCaptureSourceLabel(source),
     count: captures.filter((capture) => capture.source === source).length
@@ -34053,7 +34139,7 @@ function renderProjectMemory() {
           <label>
             <span>Source</span>
             <select id="memory-capture-source">
-              ${["meeting", "email", "slack", "github", "client", "doc", "transcript", "csv", "other"].map((source) => `<option value="${source}">${escapeHtml(updateCaptureSourceLabel(source))}</option>`).join("")}
+              ${["meeting", "email", "slack", "github", "client", "doc", "transcript", "csv", "icm", "other"].map((source) => `<option value="${source}">${escapeHtml(updateCaptureSourceLabel(source))}</option>`).join("")}
             </select>
           </label>
           <label>
@@ -34073,6 +34159,36 @@ function renderProjectMemory() {
           </label>
           <button class="button button-primary" type="button" id="memory-capture-save">Capture Update</button>
         </div>
+      </section>
+
+      <section class="panel project-memory-icm-panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">Read-only context bridge</p>
+            <h2>Import public ICM context</h2>
+          </div>
+          <span class="status-pill inbox-amber">Untrusted source</span>
+        </div>
+        <p class="panel-note">Preview a public ICM <code>llm.txt</code> through Agora's authenticated API. Agora fixes the provider host, limits the response, hashes the content, and never executes embedded instructions or writes back to ICM.</p>
+        <div class="project-memory-form project-memory-icm-form">
+          <label class="wide-field">
+            <span>ICM hash or public llm.txt URL</span>
+            <input id="memory-icm-url" value="${escapeHtml(icmContextPreview?.sourceUrl || icmContextInputValue)}" placeholder="icm_... or https://useicm.com/api/objects/icm_.../llm.txt">
+          </label>
+          <label>
+            <span>Project</span>
+            <select id="memory-icm-project">
+              <option value="">Workspace memory</option>
+              ${activeProjects().map((project) => `<option value="${project.id}" ${project.id === (icmContextProjectId || state.selectedProject) ? "selected" : ""}>${escapeHtml(project.name)}</option>`).join("")}
+            </select>
+          </label>
+          <div class="project-memory-icm-actions">
+            <button class="button button-secondary" type="button" id="memory-icm-preview" ${apiSession && canWrite("integrations:write") && !icmContextLoading ? "" : "disabled"}>${icmContextLoading ? "Reading Context" : "Preview Context"}</button>
+            <small>Public read only. No ICM owner key is accepted or stored.</small>
+            ${!apiSession ? `<small>Connect Agora API to preview remote context.</small>` : !canWrite("integrations:write") ? `<small>Your session cannot manage integrations.</small>` : ""}
+          </div>
+        </div>
+        ${renderIcmContextPreview()}
       </section>
 
       <section class="panel project-memory-sources">
@@ -34168,6 +34284,105 @@ function renderProjectMemory() {
   `;
 }
 
+function renderIcmContextPreview() {
+  if (!icmContextPreview) return `<div class="project-memory-icm-empty"><span>No ICM context previewed.</span><small>Preview is temporary until you choose Capture into Project Memory.</small></div>`;
+  return `
+    <article class="project-memory-icm-preview">
+      <div>
+        <div class="project-memory-card-chips">
+          <span class="status-pill inbox-blue">${escapeHtml(icmContextPreview.hash)}</span>
+          <span class="status-pill inbox-neutral">${icmContextPreview.contentLength} bytes</span>
+          <span class="status-pill inbox-amber">Review required</span>
+        </div>
+        <h3>${escapeHtml(icmContextPreview.title)}</h3>
+        <p>${escapeHtml(icmContextPreview.content.slice(0, 520))}${icmContextPreview.content.length > 520 ? "..." : ""}</p>
+        <small>SHA-256 ${escapeHtml(icmContextPreview.contentHash.slice(0, 16))}... / retrieved ${escapeHtml(formatTimestamp(icmContextPreview.retrievedAt))}</small>
+      </div>
+      <button class="button button-primary" type="button" id="memory-icm-capture">Capture into Project Memory</button>
+    </article>
+  `;
+}
+
+async function previewIcmContext() {
+  if (!apiSession || !canWrite("integrations:write")) {
+    showToast("Connect an integration-enabled API session first", "info");
+    return;
+  }
+  const value = document.querySelector("#memory-icm-url")?.value.trim() || "";
+  icmContextInputValue = value;
+  icmContextProjectId = document.querySelector("#memory-icm-project")?.value || "";
+  if (!value) {
+    showToast("Enter an ICM hash or public llm.txt URL", "info");
+    return;
+  }
+  icmContextLoading = true;
+  render();
+  try {
+    icmContextPreview = await apiRequest("/api/integrations/icm/context/preview", {
+      method: "POST",
+      body: value.startsWith("icm_") ? { hash: value } : { url: value }
+    });
+    showToast("ICM context ready for review", "success");
+  } catch (error) {
+    icmContextPreview = null;
+    showToast(error.message, "info");
+  } finally {
+    icmContextLoading = false;
+    render();
+  }
+}
+
+function captureIcmContextPreview() {
+  if (!icmContextPreview) {
+    showToast("Preview ICM context before capturing it", "info");
+    return;
+  }
+  const externalId = `icm:${icmContextPreview.hash}:${icmContextPreview.contentHash}`;
+  if (normalizeUpdateCaptures(state.updateCaptures).some((capture) => capture.externalId === externalId)) {
+    showToast("This exact ICM context version is already captured", "info");
+    return;
+  }
+  const projectId = document.querySelector("#memory-icm-project")?.value || "";
+  const project = projectId ? byId(state.projects, projectId) : null;
+  const capture = {
+    id: uid("capture"),
+    source: "icm",
+    sourceLabel: updateCaptureSourceLabel("icm"),
+    projectId,
+    companyId: project?.companyId || "",
+    externalId,
+    occurredAt: icmContextPreview.retrievedAt,
+    title: icmContextPreview.title,
+    body: icmContextPreview.content,
+    metadata: {
+      provider: "icm",
+      sourceUrl: icmContextPreview.sourceUrl,
+      contentHash: icmContextPreview.contentHash,
+      retrievedAt: icmContextPreview.retrievedAt,
+      contentLength: icmContextPreview.contentLength,
+      readOnly: true,
+      untrusted: true
+    },
+    capturedBy: activeMemberId(),
+    createdAt: new Date().toISOString(),
+    status: "captured"
+  };
+  state.updateCaptures = normalizeUpdateCaptures([capture, ...(state.updateCaptures || [])]);
+  addAuditEvent({
+    action: "project_memory_icm_capture",
+    detail: `Captured reviewed public ICM context ${icmContextPreview.hash}`,
+    targetType: "updateCapture",
+    targetId: capture.id,
+    metadata: { projectId, sourceUrl: icmContextPreview.sourceUrl, contentHash: icmContextPreview.contentHash }
+  });
+  icmContextPreview = null;
+  icmContextProjectId = "";
+  icmContextInputValue = "";
+  saveState();
+  render();
+  showToast("ICM context captured into Project Memory", "success");
+}
+
 function renderUpdateCaptureCard(capture) {
   const preview = latestExtractionPreviewForCapture(capture.id);
   return `
@@ -34181,6 +34396,7 @@ function renderUpdateCaptureCard(capture) {
         <h3>${escapeHtml(capture.title)}</h3>
         <p>${escapeHtml(capture.body.slice(0, 260))}${capture.body.length > 260 ? "..." : ""}</p>
         <small>${escapeHtml(memberName(capture.capturedBy))} / ${escapeHtml(formatTimestamp(capture.createdAt))}${preview ? ` / ${preview.proposals.length} proposals` : ""}</small>
+        ${capture.metadata?.provider ? `<small class="project-memory-provenance">${escapeHtml(capture.metadata.provider.toUpperCase())} / SHA-256 ${escapeHtml(capture.metadata.contentHash.slice(0, 16))}... / ${capture.metadata.untrusted ? "untrusted import" : "sourced import"}</small>` : ""}
       </div>
       <div class="project-memory-card-actions">
         <button class="button button-primary compact-button" type="button" data-memory-preview="${escapeHtml(capture.id)}">${preview ? "Refresh Preview" : "Preview Extraction"}</button>

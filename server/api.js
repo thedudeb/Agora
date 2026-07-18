@@ -9,6 +9,7 @@ const { loadEnvFile } = require("./env");
 const { createStorage } = require("./storage");
 const { createAsyncLock, normalizeRevision } = require("./concurrency");
 const { workspace, demoUsers, demoMemberships, rolePermissions } = require("./api-contracts");
+const { previewIcmContext } = require("./icm-context");
 const packageJson = require("../package.json");
 
 loadEnvFile();
@@ -257,6 +258,7 @@ function isExpensiveApiRequest(method, pathname) {
     "/api/backups/run",
     "/api/files/upload",
     "/api/integrations/github/test-event",
+    "/api/integrations/icm/context/preview",
     "/api/integrations/sync",
     "/api/marketplace/catalog",
     "/api/payments/checkout-intent",
@@ -1147,6 +1149,9 @@ function openApiDocument() {
       },
       "/api/integrations/github/test-event": {
         post: operation("Send GitHub test event", "Sends a realistic GitHub issue event through the same task mapping and receipt path as production webhooks.")
+      },
+      "/api/integrations/icm/context/preview": {
+        post: operation("Preview public ICM context", "Reads a public ICM llm.txt through a fixed HTTPS provider URL and returns bounded, hashed, untrusted context for human review.")
       }
     },
     components: {
@@ -1190,6 +1195,7 @@ function operation(summary, description) {
 
 function createServer(options = {}) {
   const storage = options.storage || createStorage();
+  const remoteFetch = options.remoteFetch || fetch;
   const workspaceWriteLock = createAsyncLock();
   initializeBackgroundJobs(storage);
   initializeAuthSessions(storage);
@@ -1641,6 +1647,16 @@ function createServer(options = {}) {
           records: Array.isArray(body.records) ? body.records.slice(0, 100) : []
         });
         sendJson(response, job.status === "rejected" ? 202 : 201, { job, jobs: backgroundJobSnapshot() });
+        return;
+      }
+
+      if (request.method === "POST" && url.pathname === "/api/integrations/icm/context/preview") {
+        if (!hasPermission(session, "integrations:write")) {
+          sendError(response, 403, "Missing integrations write permission");
+          return;
+        }
+        const body = await readJsonBody(request, 4096);
+        sendJson(response, 200, await previewIcmContext(body, remoteFetch));
         return;
       }
 

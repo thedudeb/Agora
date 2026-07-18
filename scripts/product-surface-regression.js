@@ -12,14 +12,16 @@ function includes(relativePath, needle, message) {
   assert.ok(read(relativePath).includes(needle), `${relativePath}: ${message}`);
 }
 
-includes("index.html", "./src/app-runtime.js?v=workspace-platform-v2", "loads runtime wiring after the app bundle");
+includes("index.html", "./src/app-runtime.js?v=workspace-platform-v3", "loads runtime wiring after the app bundle");
 includes("index.html", "./src/app-inbox.js?v=workspace-platform-v2", "loads Inbox route rendering after the app bundle");
 includes("index.html", "./src/app-recovery.js?v=workspace-platform-v2", "loads Data and Recovery route rendering after the app bundle");
 includes("index.html", "./src/app-project-board.js?v=workspace-platform-v4", "loads Project and Board route rendering before runtime wiring");
-includes("sw.js", "./src/app-runtime.js?v=workspace-platform-v2", "caches runtime wiring for offline reloads");
+includes("index.html", "./src/icm-context.css?v=workspace-platform-v1", "loads focused ICM context bridge styles");
+includes("sw.js", "./src/app-runtime.js?v=workspace-platform-v3", "caches runtime wiring for offline reloads");
 includes("sw.js", "./src/app-inbox.js?v=workspace-platform-v2", "caches Inbox route rendering for offline reloads");
 includes("sw.js", "./src/app-recovery.js?v=workspace-platform-v2", "caches Data and Recovery route rendering for offline reloads");
 includes("sw.js", "./src/app-project-board.js?v=workspace-platform-v4", "caches Project and Board route rendering for offline reloads");
+includes("sw.js", "./src/icm-context.css?v=workspace-platform-v1", "caches ICM context bridge styles for offline reloads");
 includes("package.json", "node --check src/app-runtime.js", "syntax-checks runtime wiring");
 includes("package.json", "node --check src/app-inbox.js", "syntax-checks Inbox route rendering");
 includes("package.json", "node --check src/app-recovery.js", "syntax-checks Data and Recovery route rendering");
@@ -38,6 +40,14 @@ includes("src/app-project-board.js", "function renderBoardControls", "keeps powe
 includes("src/app.js", "workspace-trust-strip", "keeps workspace trust proof strip");
 includes("src/app.js", "AI audit", "keeps AI audit proof point");
 includes("src/app.js", "Client safety", "keeps client-safety proof point");
+includes("src/app.js", "marketplace-sparkz-creator-launch", "keeps the Sparkz creator-launch template");
+includes("src/app.js", "automation-pack-sparkz-launch-control", "keeps the Sparkz launch-control automations");
+includes("src/app.js", "function previewIcmContext", "keeps the read-only ICM Project Memory bridge");
+includes("src/app.js", "icmContextInputValue = value", "preserves ICM input across loading and provider errors");
+includes("src/app.js", "This exact ICM context version is already captured", "keeps ICM context deduplication");
+includes("src/app-runtime.js", "#memory-icm-preview", "wires ICM preview through delegated runtime events");
+includes("templates/marketplace.json", "marketplace-sparkz-creator-launch", "keeps the portable Sparkz marketplace artifact");
+includes("docs/sparkz-launch-pack.md", "Agora coordinates the work, evidence, approvals, risks, and decisions", "documents the Sparkz product boundary");
 
 includes("src/app-runtime.js", "document.addEventListener(\"click\"", "keeps delegated click handling in runtime");
 includes("src/app-runtime.js", "render();", "keeps app bootstrap in runtime");

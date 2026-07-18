@@ -9,6 +9,7 @@ const app = ["app.js", "app-inbox.js", "app-recovery.js", "app-project-board.js"
   .map((file) => fs.readFileSync(path.join(root, "src", file), "utf8"))
   .join("\n");
 const api = fs.readFileSync(path.join(root, "server", "api.js"), "utf8");
+const icmContext = fs.readFileSync(path.join(root, "server", "icm-context.js"), "utf8");
 const storage = fs.readFileSync(path.join(root, "server", "storage.js"), "utf8");
 const concurrency = fs.readFileSync(path.join(root, "server", "concurrency.js"), "utf8");
 const staticServer = fs.readFileSync(path.join(root, "server", "static.js"), "utf8");
@@ -100,6 +101,10 @@ assert(app.includes("function renderBackendRateLimitPanel"), "Backend Health UI 
 assert(envExample.includes("AGORA_AUTHENTICATED_WRITE_RATE_LIMIT_ATTEMPTS"), ".env.example must document authenticated write rate limits");
 assert(envExample.includes("AGORA_RATE_LIMIT_DRIVER=memory"), ".env.example must document rate limit driver selection");
 assert(api.includes("function authorizedClientAiBaseUrl") && api.includes("AGORA_AI_ALLOWED_BASE_URLS"), "client AI base URLs must be admin gated and allowlisted");
+assert(icmContext.includes("function icmObjectHash") && icmContext.includes('["useicm.com", "www.useicm.com"]'), "ICM context reads must use an explicit provider allowlist");
+assert(icmContext.includes('redirect: "error"') && icmContext.includes("ICM_CONTEXT_LIMIT_BYTES") && icmContext.includes("ICM_CONTEXT_TIMEOUT_MS"), "ICM context reads must reject redirects and enforce size/time limits");
+assert(api.includes('hasPermission(session, "integrations:write")') && api.includes('url.pathname === "/api/integrations/icm/context/preview"'), "ICM context preview must require integration permission");
+assert(app.includes("untrusted import") && app.includes("contentHash"), "ICM captures must retain visible untrusted provenance");
 assert(api.includes("function localCorsOriginsAllowed()"), "localhost CORS origins must be environment gated");
 assert(hostedVerifier.includes("function checkCorsPolicy()"), "hosted verifier must fail unsafe production CORS policy");
 assert(hostedVerifier.includes("AGORA_ALLOW_LOCALHOST_ORIGINS=false"), "hosted verifier must guide localhost CORS hardening");

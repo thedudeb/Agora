@@ -2,6 +2,8 @@
 
 This folder holds shareable Agora project-template packs. Each template can be imported from the Templates page by pasting the JSON into the marketplace import box.
 
+`marketplace.json` includes the Sparkz Creator Launch workflow. Its product and integration boundary is documented in [`../docs/sparkz-launch-pack.md`](../docs/sparkz-launch-pack.md).
+
 Validate a template marketplace file before sharing it:
 
 ```sh

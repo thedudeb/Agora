@@ -37,10 +37,27 @@ async function run() {
       updatedAt: "2026-06-28T12:00:00.000Z"
     }
   ]);
+  const icmContextBody = "# Sparkz - context for AI\n\nDecision: Lead with creator features, not a token.\nTask: Review the tokenless launch plan.";
+  const icmRemoteRequests = [];
   const server = createServer({
     storage,
     allowDemoAuth: true,
-    allowPasswordlessAuth: true
+    allowPasswordlessAuth: true,
+    remoteFetch: async (url, options = {}) => {
+      icmRemoteRequests.push({ url: String(url), options });
+      if (String(url).includes("icm_OversizedContext")) {
+        return new Response("x".repeat(13 * 1024), { headers: { "content-type": "text/plain" } });
+      }
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers({
+          "content-type": "text/plain; charset=utf-8",
+          "content-length": String(Buffer.byteLength(icmContextBody))
+        }),
+        text: async () => icmContextBody
+      };
+    }
   });
 
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -90,6 +107,7 @@ async function run() {
     assert(openApi.paths?.["/api/tasks"]?.get, "openapi endpoint missed tasks list route");
     assert(openApi.paths?.["/api/backups/run"]?.post, "openapi endpoint missed backup run route");
     assert(openApi.paths?.["/api/admin/diagnostics"]?.get, "openapi endpoint missed admin diagnostics route");
+    assert(openApi.paths?.["/api/integrations/icm/context/preview"]?.post, "openapi endpoint missed ICM context preview route");
     assert(openApi.components?.securitySchemes?.bearerAuth, "openapi endpoint missed bearer auth scheme");
 
     const login = await request(`${baseUrl}/api/auth/demo-login`, {
@@ -105,6 +123,45 @@ async function run() {
       token: login.token
     });
     assert(access.users.length === 4, "member list did not include demo users");
+
+    const invalidIcmContext = await requestError(`${baseUrl}/api/integrations/icm/context/preview`, {
+      method: "POST",
+      token: login.token,
+      body: { url: "https://example.com/private-context" }
+    });
+    assert(invalidIcmContext.status === 400, "ICM preview should reject non-ICM URLs");
+    assert(icmRemoteRequests.length === 0, "ICM preview should reject unsafe URLs before fetching");
+
+    const memberIcmLogin = await request(`${baseUrl}/api/auth/demo-login`, {
+      method: "POST",
+      body: { memberId: "nina" }
+    });
+    const blockedMemberIcmContext = await requestError(`${baseUrl}/api/integrations/icm/context/preview`, {
+      method: "POST",
+      token: memberIcmLogin.token,
+      body: { hash: "icm_SparkzContext" }
+    });
+    assert(blockedMemberIcmContext.status === 403, "member should not preview remote ICM context");
+
+    const icmContext = await request(`${baseUrl}/api/integrations/icm/context/preview`, {
+      method: "POST",
+      token: login.token,
+      body: { url: "https://www.useicm.com/api/objects/icm_SparkzContext/llm.txt" }
+    });
+    assert(icmContext.type === "agora.icm-context-preview", "ICM preview returned the wrong type");
+    assert(icmContext.sourceUrl === "https://useicm.com/api/objects/icm_SparkzContext/llm.txt", "ICM preview did not canonicalize the source URL");
+    assert(icmContext.content === icmContextBody, "ICM preview returned unexpected content");
+    assert(icmContext.contentHash.length === 64, "ICM preview did not include a SHA-256 content hash");
+    assert(icmContext.readOnly === true && icmContext.untrusted === true, "ICM preview did not expose its safety posture");
+    assert(icmRemoteRequests.length === 1 && icmRemoteRequests[0].url === icmContext.sourceUrl, "ICM preview fetched an unexpected URL");
+    assert(icmRemoteRequests[0].options.redirect === "error", "ICM preview should reject provider redirects");
+
+    const oversizedIcmContext = await requestError(`${baseUrl}/api/integrations/icm/context/preview`, {
+      method: "POST",
+      token: login.token,
+      body: { hash: "icm_OversizedContext" }
+    });
+    assert(oversizedIcmContext.status === 413, "ICM preview should stop streaming context above 12 KB");
 
     const secondLogin = await request(`${baseUrl}/api/auth/demo-login`, {
       method: "POST",

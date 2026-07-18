@@ -96,6 +96,178 @@
       }
     },
     {
+      "id": "marketplace-sparkz-creator-launch",
+      "name": "Sparkz Creator Launch",
+      "category": "Creator Economy",
+      "description": "Run a tokenless-first creator launch from spark intake and collectables through backing, boost momentum, collaborator approvals, and an optional graduation decision.",
+      "owner": "mara",
+      "creatorName": "Agora + Sparkz",
+      "durationDays": 42,
+      "tasks": [
+        {
+          "key": "spark-intake",
+          "title": "Capture the creator spark",
+          "description": "Document the creator, release, audience, desired momentum, collaborators, and why the project matters without leading with a token.",
+          "assignee": "mara",
+          "priority": "urgent",
+          "startOffset": 0,
+          "dueOffset": 3,
+          "tags": ["sparkz", "intake"],
+          "blockedBy": [],
+          "subtasks": ["Creator brief", "Release goal", "Audience and collaborators"]
+        },
+        {
+          "key": "creator-review",
+          "title": "Complete creator and project review",
+          "description": "Confirm identity, quality bar, launch ownership, content rights, and the ZAO-backed acceptance decision.",
+          "assignee": "sam",
+          "priority": "high",
+          "startOffset": 2,
+          "dueOffset": 6,
+          "tags": ["sparkz", "review"],
+          "blockedBy": ["spark-intake"],
+          "subtasks": ["Identity and rights", "Quality review", "Acceptance decision"]
+        },
+        {
+          "key": "tokenless-design",
+          "title": "Design the tokenless launch",
+          "description": "Define collectables, backing mechanics, boost participation, community perks, and success signals before considering any token path.",
+          "assignee": "nina",
+          "priority": "urgent",
+          "startOffset": 5,
+          "dueOffset": 12,
+          "tags": ["sparkz", "tokenless"],
+          "blockedBy": ["creator-review"],
+          "subtasks": ["Collectables", "Backing experience", "Boost and leaderboard"]
+        },
+        {
+          "key": "launch-assets",
+          "title": "Produce creator launch assets",
+          "description": "Prepare the creator story, collectable media, campaign page, social assets, FAQs, and community update cadence.",
+          "assignee": "eli",
+          "priority": "high",
+          "startOffset": 8,
+          "dueOffset": 18,
+          "tags": ["sparkz", "creative"],
+          "blockedBy": ["tokenless-design"],
+          "subtasks": ["Creator story", "Collectable media", "Launch and social copy"]
+        },
+        {
+          "key": "collaborator-split",
+          "title": "Approve collaborator fee-split intent",
+          "description": "Record participants, rationale, percentages, mutable split owner, and approval evidence without executing a transaction in Agora.",
+          "assignee": "mara",
+          "priority": "urgent",
+          "startOffset": 10,
+          "dueOffset": 18,
+          "tags": ["sparkz", "approval", "splits"],
+          "blockedBy": ["creator-review"],
+          "subtasks": ["Participant list", "Split rationale", "Recorded approvals"]
+        },
+        {
+          "key": "legal-language",
+          "title": "Review public language and claims",
+          "description": "Use this workflow checklist to keep messaging feature-led and creator-friendly: backing and present-day perks, no promised returns, and no language that frames participation as a raise. This task is not legal advice.",
+          "assignee": "sam",
+          "priority": "urgent",
+          "startOffset": 14,
+          "dueOffset": 21,
+          "tags": ["sparkz", "legal-review"],
+          "blockedBy": ["launch-assets", "collaborator-split"],
+          "subtasks": ["Feature-first framing", "Perks and backing language", "Qualified legal review"]
+        },
+        {
+          "key": "tokenless-launch",
+          "title": "Launch the spark",
+          "description": "Publish the tokenless experience, activate collectables and backing, open boost participation, and begin the community update loop.",
+          "assignee": "nina",
+          "priority": "urgent",
+          "startOffset": 21,
+          "dueOffset": 25,
+          "tags": ["sparkz", "launch"],
+          "blockedBy": ["legal-language"],
+          "subtasks": ["Publish experience", "Activate boost", "Send launch update"]
+        },
+        {
+          "key": "momentum-review",
+          "title": "Review creator and community momentum",
+          "description": "Assess collectable activity, backing, boost participation, creator engagement, operational risks, and qualitative community signals.",
+          "assignee": "eli",
+          "priority": "high",
+          "startOffset": 25,
+          "dueOffset": 36,
+          "tags": ["sparkz", "momentum"],
+          "blockedBy": ["tokenless-launch"],
+          "subtasks": ["Momentum scorecard", "Creator check-in", "Risk and blocker review"]
+        },
+        {
+          "key": "graduation-decision",
+          "title": "Decide whether the spark should graduate",
+          "description": "Document a human-reviewed go, wait, or never-token decision. If approved, hand execution to the configured external rails; Agora remains the decision and evidence system.",
+          "assignee": "mara",
+          "priority": "urgent",
+          "startOffset": 36,
+          "dueOffset": 42,
+          "tags": ["sparkz", "decision"],
+          "blockedBy": ["momentum-review"],
+          "subtasks": ["Readiness evidence", "Go/wait/never decision", "External execution handoff"]
+        }
+      ],
+      "milestones": [
+        {
+          "title": "Tokenless launch approved",
+          "description": "Creator review, experience design, split intent, assets, and public language are approved.",
+          "owner": "mara",
+          "dueOffset": 21,
+          "status": "planned",
+          "taskKeys": ["creator-review", "tokenless-design", "collaborator-split", "legal-language"]
+        },
+        {
+          "title": "Spark live",
+          "description": "The tokenless creator experience is live and the community update loop has started.",
+          "owner": "nina",
+          "dueOffset": 25,
+          "status": "planned",
+          "taskKeys": ["tokenless-launch"]
+        },
+        {
+          "title": "Graduation decision recorded",
+          "description": "The project has an evidence-backed go, wait, or never-token decision.",
+          "owner": "mara",
+          "dueOffset": 42,
+          "status": "planned",
+          "taskKeys": ["momentum-review", "graduation-decision"]
+        }
+      ],
+      "docs": [
+        {
+          "title": "Spark Brief",
+          "type": "Brief",
+          "body": "Creator, project, audience, collaborators, current momentum, tokenless offer, success signals, and launch owner."
+        },
+        {
+          "title": "Legal-Safe Messaging Checklist",
+          "type": "Checklist",
+          "body": "Lead with features. Say backing and present-day perks. Avoid raise, promised returns, guaranteed upside, or coin-first framing. Record reviewer and approval date."
+        },
+        {
+          "title": "Collaborator Split Decision",
+          "type": "Decision",
+          "body": "Participants, contribution rationale, proposed percentages, mutable split owner, approvals, external contract reference, and revision history. Agora records intent and evidence; external rails execute."
+        },
+        {
+          "title": "Graduation Decision Record",
+          "type": "Decision",
+          "body": "Momentum evidence, creator preference, risks, legal review, fee and governance proposal, go/wait/never outcome, approvers, and external execution handoff."
+        }
+      ],
+      "intakeForm": {
+        "title": "Creator Spark Intake",
+        "assignee": "mara",
+        "description": "Capture the creator, project, collaborators, audience, tokenless launch idea, rights posture, and desired community outcome."
+      }
+    },
+    {
       "id": "marketplace-agency-retainer-os",
       "name": "Agency Retainer OS",
       "category": "Premium",

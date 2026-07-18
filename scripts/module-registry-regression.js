@@ -34,11 +34,11 @@ function assertSyntaxChecked(sourcePath) {
 }
 
 const moduleScripts = [
-  "./src/app.js?v=workspace-platform-v13",
+  "./src/app.js?v=workspace-platform-v14",
   "./src/app-inbox.js?v=workspace-platform-v2",
   "./src/app-recovery.js?v=workspace-platform-v2",
   "./src/app-project-board.js?v=workspace-platform-v4",
-  "./src/app-runtime.js?v=workspace-platform-v2"
+  "./src/app-runtime.js?v=workspace-platform-v3"
 ];
 
 moduleScripts.slice(0, -1).forEach((script, index) => {

@@ -234,6 +234,18 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const memoryIcmPreviewButton = event.target.closest("#memory-icm-preview");
+  if (memoryIcmPreviewButton) {
+    previewIcmContext();
+    return;
+  }
+
+  const memoryIcmCaptureButton = event.target.closest("#memory-icm-capture");
+  if (memoryIcmCaptureButton) {
+    captureIcmContextPreview();
+    return;
+  }
+
   const memoryPreviewButton = event.target.closest("[data-memory-preview]");
   if (memoryPreviewButton) {
     previewProjectUpdateExtraction(memoryPreviewButton.dataset.memoryPreview);
