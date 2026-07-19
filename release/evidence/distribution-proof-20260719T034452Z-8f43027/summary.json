@@ -1,0 +1,253 @@
+{
+  "type": "agora.distribution-evidence",
+  "generatedAt": "2026-07-19T03:44:52.993Z",
+  "branch": "main",
+  "commit": "8f43027",
+  "dirty": false,
+  "productVersion": "0.1.0",
+  "release": "v0.1-beta",
+  "bundleDir": "release/evidence/distribution-proof-20260719T034452Z-8f43027",
+  "channels": [
+    {
+      "id": "source",
+      "label": "Source install",
+      "artifactType": "Git checkout or source archive",
+      "platforms": [
+        "macOS",
+        "Windows",
+        "Linux"
+      ],
+      "entrypoint": "npm run setup",
+      "requiredFiles": [
+        "package.json",
+        "package-lock.json",
+        "scripts/agora-setup.js",
+        "docs/install.md"
+      ],
+      "verification": [
+        "npm run setup -- --dry-run",
+        "npm run check"
+      ],
+      "manualProof": [
+        "Start from a clean checkout or source archive.",
+        "Open the app locally and export a portable workspace bundle.",
+        "Record OS, Node version, and browser used."
+      ],
+      "acceptedRisk": "None recorded yet."
+    },
+    {
+      "id": "docker-compose",
+      "label": "Docker Compose",
+      "artifactType": "Container image plus compose stack",
+      "platforms": [
+        "macOS",
+        "Windows",
+        "Linux",
+        "server"
+      ],
+      "entrypoint": "docker compose up --build",
+      "requiredFiles": [
+        "Dockerfile",
+        "docker-compose.yml",
+        ".dockerignore",
+        "docs/install.md"
+      ],
+      "verification": [
+        "npm run setup -- --profile docker --dry-run",
+        "docker compose config"
+      ],
+      "manualProof": [
+        "Boot app and API services from Docker Compose.",
+        "Confirm the API data volume persists after restart.",
+        "Record backup path or backup artifact."
+      ],
+      "acceptedRisk": "Registry publishing and digest pinning are not required until public container distribution."
+    },
+    {
+      "id": "hosted",
+      "label": "Hosted web/API deployment",
+      "artifactType": "Static web app plus long-running API service",
+      "platforms": [
+        "Vercel",
+        "Render",
+        "Fly.io",
+        "Railway",
+        "Node host"
+      ],
+      "entrypoint": "npm run start && npm run start:api",
+      "requiredFiles": [
+        "vercel.json",
+        "server/api.js",
+        "server/static.js",
+        "docs/deployment.md",
+        "docs/hosted-launch-runbook.md"
+      ],
+      "verification": [
+        "npm run verify:hosted",
+        "npm run rehearse:hosted"
+      ],
+      "manualProof": [
+        "Confirm hosted app URL and API health endpoint.",
+        "Open Backend Health and record persistence, email, backup, and public-surface status.",
+        "Submit a feature request or invite email if enabled."
+      ],
+      "acceptedRisk": "None recorded yet."
+    },
+    {
+      "id": "pwa-offline",
+      "label": "Offline PWA",
+      "artifactType": "Installable browser app",
+      "platforms": [
+        "iOS",
+        "Android",
+        "desktop browser"
+      ],
+      "entrypoint": "Open hosted app and install from browser",
+      "requiredFiles": [
+        "manifest.webmanifest",
+        "sw.js",
+        "offline.html",
+        "assets/icons/agora-192.png",
+        "assets/icons/agora-512.png"
+      ],
+      "verification": [
+        "npm run test:golden"
+      ],
+      "manualProof": [
+        "Install from Android Chrome or a desktop browser.",
+        "Launch in airplane mode or with networking disabled.",
+        "Create a local edit and export a portable bundle while offline."
+      ],
+      "acceptedRisk": "Native iOS/Android wrappers are not shipped; offline mobile proof is PWA-only."
+    },
+    {
+      "id": "desktop-macos",
+      "label": "macOS desktop shell",
+      "artifactType": "DMG and ZIP",
+      "platforms": [
+        "macOS"
+      ],
+      "entrypoint": "npm --prefix desktop run pack:mac",
+      "requiredFiles": [
+        "desktop/package.json",
+        "desktop/package-lock.json",
+        "desktop/electron/main.cjs",
+        "desktop/electron/preload.cjs",
+        "docs/desktop-app.md"
+      ],
+      "verification": [
+        "npm run check",
+        "npm --prefix desktop run pack:mac"
+      ],
+      "manualProof": [
+        "Pack on macOS and record signing/notarization status.",
+        "Launch with networking disabled.",
+        "Create a local edit and export a portable bundle."
+      ],
+      "acceptedRisk": "Unsigned/not notarized is acceptable for v0.1 beta only if release notes repeat it."
+    },
+    {
+      "id": "desktop-windows",
+      "label": "Windows desktop shell",
+      "artifactType": "NSIS installer and portable executable",
+      "platforms": [
+        "Windows"
+      ],
+      "entrypoint": "npm --prefix desktop run pack:win",
+      "requiredFiles": [
+        "desktop/package.json",
+        "desktop/package-lock.json",
+        "desktop/electron/main.cjs",
+        "desktop/electron/preload.cjs",
+        "docs/desktop-app.md"
+      ],
+      "verification": [
+        "npm run check",
+        "npm --prefix desktop run pack:win"
+      ],
+      "manualProof": [
+        "Pack on Windows and record signing status.",
+        "Install/uninstall or launch portable executable.",
+        "Launch with networking disabled, create a local edit, and export a portable bundle."
+      ],
+      "acceptedRisk": "Unsigned installer is acceptable for v0.1 beta only if release notes repeat it."
+    },
+    {
+      "id": "cli",
+      "label": "Agora CLI",
+      "artifactType": "Node.js command wrapper",
+      "platforms": [
+        "macOS",
+        "Windows",
+        "Linux"
+      ],
+      "entrypoint": "npm run agora -- help",
+      "requiredFiles": [
+        "scripts/agora-cli.js",
+        "README.md",
+        "docs/install.md"
+      ],
+      "verification": [
+        "npm run agora -- verify --quick",
+        "npm run agora -- package-check --json"
+      ],
+      "manualProof": [
+        "Run quick verification from a fresh shell.",
+        "Inspect at least one portable bundle.",
+        "Generate demo links for the release demo URL."
+      ],
+      "acceptedRisk": "None recorded yet."
+    },
+    {
+      "id": "mcp-server",
+      "label": "Local MCP server",
+      "artifactType": "stdio MCP server for local power-user clients",
+      "platforms": [
+        "macOS",
+        "Windows",
+        "Linux"
+      ],
+      "entrypoint": "npm run mcp",
+      "requiredFiles": [
+        "scripts/agora-mcp-server.js",
+        "docs/mcp-server.md",
+        "docs/mcp-security-audit.md"
+      ],
+      "verification": [
+        "npm run test:mcp"
+      ],
+      "manualProof": [
+        "Run the MCP integration test.",
+        "Confirm read-only default behavior.",
+        "Record whether write tools are enabled and why."
+      ],
+      "acceptedRisk": "None recorded yet."
+    },
+    {
+      "id": "portable-data",
+      "label": "Portable workspace bundle",
+      "artifactType": "JSON/CSV/Markdown workspace export",
+      "platforms": [
+        "Agora web",
+        "Agora desktop",
+        "future mobile shells"
+      ],
+      "entrypoint": "Data > Portable workspace bundle",
+      "requiredFiles": [
+        "docs/portable-workspace.md",
+        "tests/fixtures/portable-workspace-bundle.json",
+        "server/portable-fixtures-test.js"
+      ],
+      "verification": [
+        "npm run test:fixtures",
+        "npm run agora -- bundle inspect tests/fixtures/portable-workspace-bundle.json"
+      ],
+      "manualProof": [
+        "Validate portable workspace fixtures.",
+        "Preview an import before applying it.",
+        "Run a restore drill from the selected backup or bundle."
+      ],
+      "acceptedRisk": "None recorded yet."
+    }
+  ]
+}

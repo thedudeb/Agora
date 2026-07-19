@@ -62,11 +62,12 @@ Manual evidence still required: hosted demo URL, hosted production verify, real 
 
 ## Latest Distribution Evidence Bundle
 
-- Generated: pending
-- Commit: pending
-- Bundle: pending
+- Generated: 2026-07-19T03:44:52.993Z
+- Commit: `8f43027` (clean)
+- Bundle: [distribution-proof-20260719T034452Z-8f43027](../release/evidence/distribution-proof-20260719T034452Z-8f43027/README.md)
 - Channels covered: source, docker-compose, hosted, pwa-offline, desktop-macos, desktop-windows, cli, mcp-server, portable-data
-- Paste-in: pending
+- Paste-in: [release-candidate-paste.md](../release/evidence/distribution-proof-20260719T034452Z-8f43027/release-candidate-paste.md)
+- Status: scaffold generated; per-channel command and manual proof remain pending
 
 ## Acme Demo Gate
 
