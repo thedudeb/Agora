@@ -3,6 +3,17 @@
   gap: 16px;
 }
 
+.presentation-sparkz-pilot .topbar,
+.presentation-sparkz-pilot .toolbar,
+.presentation-sparkz-pilot .connection-banner,
+.presentation-sparkz-pilot #app-view > :not(#sparkz-pilot) {
+  display: none !important;
+}
+
+.presentation-sparkz-pilot .sparkz-pilot-header {
+  padding-top: 0;
+}
+
 .sparkz-pilot-header {
   display: flex;
   justify-content: space-between;
@@ -114,6 +125,14 @@
 }
 
 @media (max-width: 680px) {
+  .presentation-sparkz-pilot .sidebar {
+    display: none;
+  }
+
+  .presentation-sparkz-pilot .main-content {
+    padding: 16px;
+  }
+
   .sparkz-pilot-header {
     display: grid;
     gap: 14px;

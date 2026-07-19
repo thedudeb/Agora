@@ -54,6 +54,19 @@ function sparkzPilotProject() {
   return activeProjects().find(isSparkzPilotProject) || null;
 }
 
+function focusSparkzPilotFromHash() {
+  if (window.location.hash !== "#sparkz-pilot") return;
+  window.requestAnimationFrame(() => {
+    const anchor = document.querySelector("#sparkz-pilot");
+    if (!anchor) return;
+    const root = document.documentElement;
+    const previousScrollBehavior = root.style.scrollBehavior;
+    root.style.scrollBehavior = "auto";
+    anchor.scrollIntoView({ block: "start" });
+    root.style.scrollBehavior = previousScrollBehavior;
+  });
+}
+
 function sparkzPilotReviewForProject(project) {
   const record = (state.sparkzPilotReviews || []).find((item) => item.projectId === project.id);
   return normalizeSparkzPilotReview(record, project);
@@ -260,6 +273,7 @@ async function startOrOpenSparkzPilot() {
     openSidebarGroupForRoute("project");
     saveState();
     render();
+    focusSparkzPilotFromHash();
     showToast("Opened the active Sparkz pilot", "success");
     return;
   }
@@ -300,6 +314,7 @@ async function startOrOpenSparkzPilot() {
   state.filters.company = created.project.companyId;
   saveState();
   render();
+  focusSparkzPilotFromHash();
   showToast("Sparkz pilot workspace is ready", "success");
   await syncProjectToApi(created.project, "Sparkz pilot project synced to API", true);
   for (const task of created.tasks) {
@@ -357,7 +372,7 @@ function renderSparkzPilotTab(project) {
   const canEdit = canWrite("projects:write");
   const editDisabled = canEdit ? "" : "disabled";
   return `
-    <div class="sparkz-pilot-shell">
+    <div class="sparkz-pilot-shell" id="sparkz-pilot">
       <section class="sparkz-pilot-header">
         <div>
           <p class="eyebrow">Creator launch pilot</p>

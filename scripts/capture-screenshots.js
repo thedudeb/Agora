@@ -22,6 +22,8 @@ const captures = [
   { route: "data", query: { demoAction: "recoveryPlan" }, file: "agora-acme-recovery-proof.png", width: 1265, height: 712, expectedText: ["Recovery confidence", "Portable workspace OS"] },
   { route: "permissions", file: "permissions-audit-desktop.png", width: 1265, height: 712, expectedText: ["Role and Operator audit", "Operator guardrails"] },
   { route: "operator", file: "operator-trust-desktop.png", width: 1265, height: 712, expectedText: ["Operator workspace", "Trust and context"] },
+  { route: "marketplace", query: { golden: "screenshot", goldenAction: "startSparkzPilot", presentation: "sparkz-pilot" }, file: "agora-sparkz-pilot.png", width: 1265, height: 1000, expectedText: ["Sparkz pilot cockpit", "Pilot scorecard"] },
+  { route: "marketplace", query: { golden: "screenshot-mobile", goldenAction: "startSparkzPilot", presentation: "sparkz-pilot" }, file: "agora-mobile-sparkz-pilot.png", width: 500, height: 844, expectedText: ["Sparkz pilot cockpit", "Pilot scorecard"] },
   { route: "daily", file: "agora-mobile-today.png", width: 500, height: 844, expectedText: ["Today"] }
 ];
 
@@ -52,6 +54,7 @@ async function main() {
         "--no-default-browser-check",
         "--disable-extensions",
         "--disable-background-networking",
+        "--disable-smooth-scrolling",
         "--hide-scrollbars",
         "--run-all-compositor-stages-before-draw",
         `--window-size=${capture.width},${capture.height}`,
@@ -71,6 +74,7 @@ async function main() {
         "--no-default-browser-check",
         "--disable-extensions",
         "--disable-background-networking",
+        "--disable-smooth-scrolling",
         "--hide-scrollbars",
         "--run-all-compositor-stages-before-draw",
         `--window-size=${capture.width},${capture.height}`,

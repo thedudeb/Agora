@@ -25,7 +25,7 @@ assertIncludes("index.html", "./src/project-launch.js", "must load the launch mo
 assertIncludes("index.html", "./src/project-launch.css", "must load the launch stylesheet");
 assertIncludes("sw.js", "./src/project-launch.js?v=workspace-platform-v1", "must cache the launch module for offline reloads");
 assertIncludes("sw.js", "./src/project-launch.css?v=workspace-platform-v1", "must cache the launch stylesheet for offline reloads");
-assertIncludes("sw.js", "./src/app.js?v=workspace-platform-v15", "must cache the current app bundle version");
+assertIncludes("sw.js", "./src/app.js?v=workspace-platform-v16", "must cache the current app bundle version");
 assertIncludes("sw.js", "./src/app-inbox.js?v=workspace-platform-v2", "must cache Inbox route rendering");
 assertIncludes("sw.js", "./src/app-recovery.js?v=workspace-platform-v2", "must cache Data and Recovery route rendering");
 assertIncludes("sw.js", "./src/app-project-board.js?v=workspace-platform-v5", "must cache Project and Board route rendering");

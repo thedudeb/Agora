@@ -1,0 +1,116 @@
+{
+  "type": "agora.release-evidence",
+  "generatedAt": "2026-07-19T03:26:08.813Z",
+  "branch": "main",
+  "commit": "d185140",
+  "dirty": false,
+  "mode": "full",
+  "ok": true,
+  "bundleDir": "release/evidence/20260719T032608Z-d185140",
+  "commands": [
+    {
+      "id": "release-check",
+      "label": "Release candidate discipline",
+      "command": "npm run release:check",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 265,
+      "output": "release-check.txt"
+    },
+    {
+      "id": "demo-check",
+      "label": "Hosted demo readiness",
+      "command": "npm run demo:check",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 266,
+      "output": "demo-check.txt"
+    },
+    {
+      "id": "distribution-check",
+      "label": "Distribution proof ledger",
+      "command": "npm run distribution:check",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 291,
+      "output": "distribution-check.txt"
+    },
+    {
+      "id": "beta-check",
+      "label": "Beta feedback loop",
+      "command": "npm run beta:check",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 263,
+      "output": "beta-check.txt"
+    },
+    {
+      "id": "package-check",
+      "label": "Packaging manifest",
+      "command": "npm run package:check",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 287,
+      "output": "package-check.txt"
+    },
+    {
+      "id": "trust",
+      "label": "Trust evidence",
+      "command": "npm run trust",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 314,
+      "output": "trust.txt"
+    },
+    {
+      "id": "golden-demo",
+      "label": "Acme demo browser golden path",
+      "command": "npm run test:golden",
+      "env": {
+        "AGORA_GOLDEN_SUITE": "demo"
+      },
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 12602,
+      "output": "golden-demo.txt"
+    },
+    {
+      "id": "golden-feedback",
+      "label": "Feedback browser golden path",
+      "command": "npm run test:golden",
+      "env": {
+        "AGORA_GOLDEN_SUITE": "feedback"
+      },
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 6299,
+      "output": "golden-feedback.txt"
+    },
+    {
+      "id": "qa",
+      "label": "Full release QA",
+      "command": "npm run qa",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 104934,
+      "output": "qa.txt"
+    },
+    {
+      "id": "security",
+      "label": "Security gate",
+      "command": "npm run security",
+      "env": {},
+      "ok": true,
+      "exitCode": 0,
+      "durationMs": 6994,
+      "output": "security.txt"
+    }
+  ]
+}

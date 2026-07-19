@@ -18204,6 +18204,10 @@ function runGoldenActionFromLocation() {
   const params = new URLSearchParams(window.location.search);
   if (!params.has("golden")) return;
 
+  if (params.get("presentation") === "sparkz-pilot") {
+    document.documentElement.classList.add("presentation-sparkz-pilot");
+  }
+
   if (params.get("goldenAction") === "startBetaWorkspace") {
     const startButton = document.querySelector('[data-onboarding-action="start-beta"]');
     if (startButton) startButton.click();

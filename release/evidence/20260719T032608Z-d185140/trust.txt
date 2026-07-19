@@ -1,0 +1,67 @@
+$ npm run trust
+
+> agora@0.1.0 trust
+> node scripts/trust-report.js
+
+Trust Center Report
+Status: PASS
+Generated: 2026-07-19T03:26:10.495Z
+Summary: 16/16 passed
+
+[PASS] README states the no ads, no trackers, no lock-in promise
+  Category: Product promise
+  Evidence: README.md
+[PASS] Runtime files contain no known third-party tracking tokens
+  Category: Privacy
+  Detail: No tracker tokens found in runtime files.
+  Evidence: index.html, offline.html, manifest.webmanifest, sw.js, src/app.js, src/boot.js, server/api.js, server/static.js
+[PASS] Security policy keeps production secrets server-only
+  Category: Security
+  Evidence: SECURITY.md
+[PASS] Static server emits browser security headers
+  Category: Security
+  Evidence: server/static.js
+[PASS] API emits defensive response headers
+  Category: Security
+  Evidence: server/api.js
+[PASS] API exposes redacted admin diagnostics and release metadata
+  Category: Operations
+  Evidence: server/api.js, docs/deployment.md
+[PASS] Disaster recovery drill is documented and runnable
+  Category: Recovery
+  Evidence: scripts/disaster-recovery-drill.js, docs/disaster-recovery-drill.md
+[PASS] Production upgrades have a preflight gate
+  Category: Operations
+  Evidence: scripts/upgrade-safety-check.js, docs/upgrade-checklist.md
+[PASS] Portable workspace contract is documented and fixture-backed
+  Category: Portability
+  Evidence: docs/portable-workspace.md, tests/fixtures/portable-workspace-bundle.json
+[PASS] Migration concierge verifies safe competitor imports
+  Category: Portability
+  Detail: Concierge covers field coverage, cleanup, rollback, apply strategy, reviewer checklist, and regression tests.
+  Evidence: scripts/migration-concierge.js, scripts/migration-concierge-test.js, docs/migration-tool.md
+[PASS] Hosted production readiness checks are documented and runnable
+  Category: Operations
+  Evidence: scripts/hosted-env-verify.js, docs/hosted-launch-runbook.md
+[PASS] Plugin and MCP ecosystem contract is inspectable
+  Category: Extensibility
+  Evidence: ecosystem/extension-points.json, docs/ecosystem.md
+[PASS] Buyer trust evidence matrix maps claims to proof
+  Category: Customer evidence
+  Detail: Evidence matrix covers claims, evidence files, verification commands, cadence, AI, audits, recovery, migration, and extensions.
+  Evidence: docs/trust-evidence-matrix.md, docs/trust-center.md
+[PASS] AI data policy documents provider defaults and controls
+  Category: AI governance
+  Detail: AI policy covers external-provider defaults, server-only keys, context minimization, previews, rationale, audit, undo, and provider review.
+  Evidence: docs/ai-data-policy.md, SECURITY.md, docs/api-agent-contract.md, docs/project-autopilot.md
+[PASS] Security and dependency audit receipt is recorded
+  Category: Security
+  Detail: Security audit receipt includes verification commands, npm audit commands, results, and remaining follow-up.
+  Evidence: docs/security-audit-2026-07-05.md, package.json, desktop/package-lock.json
+[PASS] Trust Center documentation exists for evaluators
+  Category: Customer evidence
+  Evidence: docs/trust-center.md
+
+
+exitCode=0
+durationMs=314

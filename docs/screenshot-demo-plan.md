@@ -51,6 +51,8 @@ These checked-in screenshots are the automated Acme launch set for README, landi
 - `assets/screenshots/agora-acme-recovery-proof.png`
 - `assets/screenshots/permissions-audit-desktop.png`
 - `assets/screenshots/operator-trust-desktop.png`
+- `assets/screenshots/agora-sparkz-pilot.png`
+- `assets/screenshots/agora-mobile-sparkz-pilot.png`
 - `assets/screenshots/agora-mobile-today.png`
 
 ## Canonical Acme Launch Set
@@ -66,6 +68,8 @@ The next screenshot refresh should follow the same Acme Studio story as [`acme-c
 - `assets/screenshots/agora-acme-recovery-proof.png`: recovery confidence, backups, import preview, portable export.
 
 Supporting trust assets can still include marketplace, permissions, operator, and mobile Today, but the first public gallery should read as one client-delivery story.
+
+The Sparkz companion set uses the same repeatable capture command. It shows the creator-launch pilot cockpit at desktop and mobile widths, including operational signals, human review gates, and the explicit boundary between Agora coordination and external execution.
 
 ## Required Screenshots
 

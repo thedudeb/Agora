@@ -18,14 +18,14 @@ includes("index.html", "./src/app-recovery.js?v=workspace-platform-v2", "loads D
 includes("index.html", "./src/app-project-board.js?v=workspace-platform-v5", "loads Project and Board route rendering before runtime wiring");
 includes("index.html", "./src/icm-context.css?v=workspace-platform-v1", "loads focused ICM context bridge styles");
 includes("index.html", "./src/sparkz-pilot.js?v=workspace-platform-v1", "loads the Sparkz pilot module");
-includes("index.html", "./src/sparkz-pilot.css?v=workspace-platform-v1", "loads focused Sparkz pilot styles");
+includes("index.html", "./src/sparkz-pilot.css?v=workspace-platform-v2", "loads focused Sparkz pilot styles");
 includes("sw.js", "./src/app-runtime.js?v=workspace-platform-v4", "caches runtime wiring for offline reloads");
 includes("sw.js", "./src/app-inbox.js?v=workspace-platform-v2", "caches Inbox route rendering for offline reloads");
 includes("sw.js", "./src/app-recovery.js?v=workspace-platform-v2", "caches Data and Recovery route rendering for offline reloads");
 includes("sw.js", "./src/app-project-board.js?v=workspace-platform-v5", "caches Project and Board route rendering for offline reloads");
 includes("sw.js", "./src/icm-context.css?v=workspace-platform-v1", "caches ICM context bridge styles for offline reloads");
 includes("sw.js", "./src/sparkz-pilot.js?v=workspace-platform-v1", "caches the Sparkz pilot module for offline reloads");
-includes("sw.js", "./src/sparkz-pilot.css?v=workspace-platform-v1", "caches Sparkz pilot styles for offline reloads");
+includes("sw.js", "./src/sparkz-pilot.css?v=workspace-platform-v2", "caches Sparkz pilot styles for offline reloads");
 includes("package.json", "node --check src/app-runtime.js", "syntax-checks runtime wiring");
 includes("package.json", "node --check src/app-inbox.js", "syntax-checks Inbox route rendering");
 includes("package.json", "node --check src/app-recovery.js", "syntax-checks Data and Recovery route rendering");
@@ -51,6 +51,9 @@ includes("src/sparkz-pilot.js", "function sparkzPilotPacket", "keeps exportable 
 includes("src/sparkz-pilot.js", "Execution boundary discipline", "keeps the external-execution review gate");
 includes("src/sparkz-pilot.js", 'aria-pressed="${entry.status === status}"', "exposes selected Sparkz score states accessibly");
 includes("src/sparkz-pilot.js", 'const canEdit = canWrite("projects:write")', "keeps Sparkz pilot editing permission-aware");
+includes("scripts/capture-screenshots.js", "agora-sparkz-pilot.png", "keeps the desktop Sparkz launch capture");
+includes("scripts/capture-screenshots.js", "agora-mobile-sparkz-pilot.png", "keeps the mobile Sparkz launch capture");
+includes("src/app.js", 'presentation-sparkz-pilot', "keeps the focused Sparkz presentation route");
 includes("server/sparkz-pilot.js", "function normalizeSparkzPilotReview", "normalizes synced Sparkz pilot reviews");
 includes("server/migrations/007_sparkz_pilot_reviews.sql", "agora_sparkz_pilot_reviews", "persists Sparkz pilot reviews in Supabase");
 includes("src/app.js", "function previewIcmContext", "keeps the read-only ICM Project Memory bridge");

@@ -34,7 +34,7 @@ function assertSyntaxChecked(sourcePath) {
 }
 
 const moduleScripts = [
-  "./src/app.js?v=workspace-platform-v15",
+  "./src/app.js?v=workspace-platform-v16",
   "./src/sparkz-pilot.js?v=workspace-platform-v1",
   "./src/app-inbox.js?v=workspace-platform-v2",
   "./src/app-recovery.js?v=workspace-platform-v2",
