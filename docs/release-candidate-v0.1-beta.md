@@ -35,27 +35,28 @@ npm run release:evidence
 | Production verify | `npm run verify:production -- --env .env.production --backup <server-backup.json> --bundle <portable-workspace-bundle.json> --strict` | Pending real hosted env |
 | Recovery drill | `npm run drill:recovery -- --backup <server-backup.json>` | Pending real release backup |
 
+
 ## Latest Local Evidence Bundle
 
-- Generated: 2026-07-19T03:26:08.813Z
-- Commit: d185140
+- Generated: 2026-07-19T03:41:21.676Z
+- Commit: bf45810
 - Dirty worktree: no
 - Mode: full
 - Status: PASS
-- Bundle: [release/evidence/20260719T032608Z-d185140](../release/evidence/20260719T032608Z-d185140/README.md)
+- Bundle: [release/evidence/20260719T034121Z-bf45810](../release/evidence/20260719T034121Z-bf45810/README.md)
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
-| Release candidate discipline | PASS | [release-check.txt](../release/evidence/20260719T032608Z-d185140/release-check.txt) |
-| Hosted demo readiness | PASS | [demo-check.txt](../release/evidence/20260719T032608Z-d185140/demo-check.txt) |
-| Distribution proof ledger | PASS | [distribution-check.txt](../release/evidence/20260719T032608Z-d185140/distribution-check.txt) |
-| Beta feedback loop | PASS | [beta-check.txt](../release/evidence/20260719T032608Z-d185140/beta-check.txt) |
-| Packaging manifest | PASS | [package-check.txt](../release/evidence/20260719T032608Z-d185140/package-check.txt) |
-| Trust evidence | PASS | [trust.txt](../release/evidence/20260719T032608Z-d185140/trust.txt) |
-| Acme demo browser golden path | PASS | [golden-demo.txt](../release/evidence/20260719T032608Z-d185140/golden-demo.txt) |
-| Feedback browser golden path | PASS | [golden-feedback.txt](../release/evidence/20260719T032608Z-d185140/golden-feedback.txt) |
-| Full release QA | PASS | [qa.txt](../release/evidence/20260719T032608Z-d185140/qa.txt) |
-| Security gate | PASS | [security.txt](../release/evidence/20260719T032608Z-d185140/security.txt) |
+| Release candidate discipline | PASS | [release-check.txt](../release/evidence/20260719T034121Z-bf45810/release-check.txt) |
+| Hosted demo readiness | PASS | [demo-check.txt](../release/evidence/20260719T034121Z-bf45810/demo-check.txt) |
+| Distribution proof ledger | PASS | [distribution-check.txt](../release/evidence/20260719T034121Z-bf45810/distribution-check.txt) |
+| Beta feedback loop | PASS | [beta-check.txt](../release/evidence/20260719T034121Z-bf45810/beta-check.txt) |
+| Packaging manifest | PASS | [package-check.txt](../release/evidence/20260719T034121Z-bf45810/package-check.txt) |
+| Trust evidence | PASS | [trust.txt](../release/evidence/20260719T034121Z-bf45810/trust.txt) |
+| Acme demo browser golden path | PASS | [golden-demo.txt](../release/evidence/20260719T034121Z-bf45810/golden-demo.txt) |
+| Feedback browser golden path | PASS | [golden-feedback.txt](../release/evidence/20260719T034121Z-bf45810/golden-feedback.txt) |
+| Full release QA | PASS | [qa.txt](../release/evidence/20260719T034121Z-bf45810/qa.txt) |
+| Security gate | PASS | [security.txt](../release/evidence/20260719T034121Z-bf45810/security.txt) |
 
 Manual evidence still required: hosted demo URL, hosted production verify, real device/offline checks, release backup, portable bundle, and beta tester follow-up.
 

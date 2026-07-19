@@ -1,0 +1,21 @@
+$ npm run test:golden
+
+> agora@0.1.0 test:golden
+> node scripts/golden-path-qa.js
+
+Passed App shell
+Passed PWA manifest
+Passed Offline fallback page
+Passed Missing route uses offline fallback
+Running Settings feedback intake [feedback]
+Passed Settings feedback intake [feedback]
+Running Feature request triage [feedback]
+Passed Feature request triage [feedback]
+Running Public feedback form [feedback]
+Passed Public feedback form [feedback]
+
+Golden path QA passed: 4 static checks, 3 route checks
+
+
+exitCode=0
+durationMs=6480

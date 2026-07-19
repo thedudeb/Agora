@@ -1,0 +1,205 @@
+$ npm run qa
+
+> agora@0.1.0 qa
+> node scripts/release-qa.js
+
+Agora release QA
+================
+
+Running Power-user quick verification...
+
+> node --check src/app.js
+
+> node --check src/sparkz-pilot.js
+
+> node --check server/api.js
+
+> node --check server/sparkz-pilot.js
+
+> node --check server/storage.js
+
+> node --check server/static.js
+
+> node --check server/env.js
+
+> node --check server/smoke-test.js
+
+> node --check server/mcp-integration-test.js
+
+> node --check server/migration-importer.js
+
+> node --check server/migration-importer-test.js
+
+> node --check server/supabase-verify.js
+
+> node --check server/portable-fixtures-test.js
+
+> node --check scripts/agora-setup.js
+
+> node --check scripts/demo-links.js
+
+> node --check scripts/migration-concierge.js
+
+> node --check scripts/ecosystem-check.js
+
+> node --check scripts/trust-report.js
+
+> node --check scripts/packaging-check.js
+
+> node --check scripts/recovery-stress-test.js
+
+> node --check scripts/disaster-recovery-drill.js
+
+> node --check scripts/capture-screenshots.js
+
+> node --check scripts/golden-path-qa.js
+
+> node --check scripts/admin-security-regression.js
+
+> node --check scripts/release-qa.js
+
+> node --check scripts/agora-cli.js
+
+> node --check scripts/agora-mcp-server.js
+
+> node --check scripts/agora-plugin-check.js
+
+> node --check scripts/hosted-env-verify.js
+
+> node --check scripts/hosted-deploy-rehearsal.js
+
+> node --check scripts/upgrade-safety-check.js
+
+> node --check desktop/electron/main.cjs
+
+> node --check desktop/electron/preload.cjs
+
+> fixture validation
+Portable fixture validation passed
+
+> recovery stress test
+Recovery stress test passed
+
+> migration importer test
+Migration importer test passed.
+Skipping API smoke test because --quick was passed.
+Skipping MCP integration test because --quick was passed.
+Skipping Supabase verification. Pass --supabase to include it.
+
+Running Browser golden path QA...
+Passed App shell
+Passed PWA manifest
+Passed Offline fallback page
+Passed Missing route uses offline fallback
+Running Landing page ownership story [marketing]
+Passed Landing page ownership story [marketing]
+Running Dashboard onboarding golden paths [first-run]
+Passed Dashboard onboarding golden paths [first-run]
+Running Guided launch flow [first-run]
+Passed Guided launch flow [first-run]
+Running Sample workspace launch path [first-run]
+Passed Sample workspace launch path [first-run]
+Running Clean board starter empty state [first-run]
+Passed Clean board starter empty state [first-run]
+Running Clean sprint starter empty state [first-run]
+Passed Clean sprint starter empty state [first-run]
+Running Clean Data recovery empty state [first-run]
+Passed Clean Data recovery empty state [first-run]
+Running Project Memory sample capture empty path [first-run]
+Passed Project Memory sample capture empty path [first-run]
+Running PM command center [workspace]
+Passed PM command center [workspace]
+Running Command Inbox work queue [workspace]
+Passed Command Inbox work queue [workspace]
+Running Project Memory capture [workspace]
+Passed Project Memory capture [workspace]
+Running Project Autopilot drift detector [workspace]
+Passed Project Autopilot drift detector [workspace]
+Running Portfolio resource planning [workspace]
+Passed Portfolio resource planning [workspace]
+Running Power-user Kanban board [workspace]
+Passed Power-user Kanban board [workspace]
+Running Project Gantt timeline [workspace]
+Passed Project Gantt timeline [workspace]
+Running Project command center [workspace]
+Passed Project command center [workspace]
+Running Sprint command center [workspace]
+Passed Sprint command center [workspace]
+Running Decision log [workspace]
+Passed Decision log [workspace]
+Running Client visibility review [workspace]
+Passed Client visibility review [workspace]
+Running Operator agent review queue [ai]
+Passed Operator agent review queue [ai]
+Running Collaboration decision promotion [workspace]
+Passed Collaboration decision promotion [workspace]
+Running Production readiness audit [release]
+Passed Production readiness audit [release]
+Running Release management ship room [release]
+Passed Release management ship room [release]
+Running Audit Log 2.0 [security]
+Passed Audit Log 2.0 [security]
+Running Beta launch handoff [release]
+Passed Beta launch handoff [release]
+Running Evaluator landing path [release]
+Passed Evaluator landing path [release]
+Running Start beta workspace click path [release]
+Passed Start beta workspace click path [release]
+Running Direct beta demo link [release]
+Passed Direct beta demo link [release]
+Running Template to project path [workspace]
+Passed Template to project path [workspace]
+Running Marketplace automation path [workspace]
+Passed Marketplace automation path [workspace]
+Running Sparkz creator pilot cockpit [workspace]
+Passed Sparkz creator pilot cockpit [workspace]
+Running Portable recovery path [data]
+Passed Portable recovery path [data]
+Running Settings production controls [admin]
+Passed Settings production controls [admin]
+Running Settings sync and offline readiness [offline]
+Passed Settings sync and offline readiness [offline]
+Running Settings security posture [security]
+Passed Settings security posture [security]
+Running Settings trust ownership proof [security]
+Passed Settings trust ownership proof [security]
+Running Settings feedback intake [feedback]
+Passed Settings feedback intake [feedback]
+Running Settings integration registry [admin]
+Passed Settings integration registry [admin]
+Running Settings integration job console [admin]
+Passed Settings integration job console [admin]
+Running Settings plugin registry [admin]
+Passed Settings plugin registry [admin]
+Running Project backlog pipeline [workspace]
+Passed Project backlog pipeline [workspace]
+Running Acme demo triage request [demo]
+Passed Acme demo triage request [demo]
+Running Acme demo scope project [demo]
+Passed Acme demo scope project [demo]
+Running Acme demo review approvals [demo]
+Passed Acme demo review approvals [demo]
+Running Acme demo inspect timeline risk [demo]
+Passed Acme demo inspect timeline risk [demo]
+Running Acme demo draft client update [demo]
+Passed Acme demo draft client update [demo]
+Running Acme demo recovery proof [demo]
+Passed Acme demo recovery proof [demo]
+Running Mobile dashboard golden paths [mobile]
+Passed Mobile dashboard golden paths [mobile]
+Running Mobile evaluator first screen [mobile]
+Passed Mobile evaluator first screen [mobile]
+Running Mobile app native offline plan [mobile]
+Passed Mobile app native offline plan [mobile]
+Running Feature request triage [feedback]
+Passed Feature request triage [feedback]
+Running Public feedback form [feedback]
+Passed Public feedback form [feedback]
+
+Golden path QA passed: 4 static checks, 52 route checks
+
+Release QA passed: 2 suites
+
+
+exitCode=0
+durationMs=104897

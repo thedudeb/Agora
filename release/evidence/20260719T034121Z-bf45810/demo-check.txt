@@ -1,0 +1,19 @@
+$ npm run demo:check
+
+> agora@0.1.0 demo:check
+> node scripts/hosted-demo-check.js
+
+Hosted Demo Check
+Status: PASS
+Summary: 5/5 passed
+
+[PASS] Canonical Acme demo exists first in the catalog
+[PASS] Acme demo has a complete six-step route sequence
+  Detail: https://demo.example.com/?route=command-center&demoAction=sampleAgencyWorkspace | https://demo.example.com/?route=project-backlog | https://demo.example.com/?route=visibility | https://demo.example.com/?route=project&project=launch&tab=timeline | https://demo.example.com/?route=reports | https://demo.example.com/?route=data&demoAction=recoveryPlan
+[PASS] Hosted runbook documents safe public demo settings
+[PASS] Demo docs point at the hosted demo runbook
+[PASS] Generated hosted links include story proof routes
+
+
+exitCode=0
+durationMs=260
