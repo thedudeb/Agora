@@ -361,3 +361,5 @@ In ancient Greece, the agora was a public gathering place for discussion, trade,
 ## License
 
 Agora is licensed under the GNU Affero General Public License v3.0. See `LICENSE` for details.
+
+Copyright © 2026 0ffline Labs.
